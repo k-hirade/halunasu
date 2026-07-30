@@ -1,0 +1,123 @@
+{
+  "schemaVersion": "fee-encounter-basic-source-v1",
+  "revision": "2026-06-v1",
+  "effectiveFrom": "2026-06-01",
+  "verifiedAt": "2026-07-30",
+  "sourceDocuments": [
+    {
+      "sourceId": "ssk-medical-procedure-master-2026-06-15",
+      "title": "診療行為マスター 2026-06-15",
+      "url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_01.files/s_ALL20260605.zip",
+      "sha256": "4d333fe3c0be4070f6fc1aa15a01db2cc7a5af4580fed7652ae3af8884b0be75",
+      "sourceVersion": "2026-06-15"
+    }
+  ],
+  "ruleBasisUrls": [
+    "https://www.mhlw.go.jp/stf/newpage_67729.html",
+    "https://shinryohoshu.mhlw.go.jp/shinryohoshu/paMenu/doPaDetailSpNext&99"
+  ],
+  "rules": [
+    {
+      "ruleId": "basic_initial",
+      "category": "basic_fee",
+      "feeKind": "initial",
+      "procedureName": "初診料"
+    },
+    {
+      "ruleId": "basic_revisit",
+      "category": "basic_fee",
+      "feeKind": "revisit",
+      "procedureName": "再診料"
+    },
+    {
+      "ruleId": "basic_telephone_revisit",
+      "category": "basic_fee",
+      "feeKind": "revisit",
+      "visitKind": "telephone_revisit",
+      "procedureName": "電話等再診料"
+    },
+    {
+      "ruleId": "house_call",
+      "category": "encounter_fee",
+      "setting": "house_call",
+      "procedureName": "往診料"
+    },
+    {
+      "ruleId": "time_after_hours_initial",
+      "category": "time_addon",
+      "timeClass": "after_hours",
+      "feeKind": "initial",
+      "procedureName": "時間外加算（初診）"
+    },
+    {
+      "ruleId": "time_after_hours_revisit",
+      "category": "time_addon",
+      "timeClass": "after_hours",
+      "feeKind": "revisit",
+      "procedureName": "時間外加算（再診）（入院外）"
+    },
+    {
+      "ruleId": "time_holiday_initial",
+      "category": "time_addon",
+      "timeClass": "holiday",
+      "feeKind": "initial",
+      "procedureName": "休日加算（初診）"
+    },
+    {
+      "ruleId": "time_holiday_revisit",
+      "category": "time_addon",
+      "timeClass": "holiday",
+      "feeKind": "revisit",
+      "procedureName": "休日加算（再診）（入院外）"
+    },
+    {
+      "ruleId": "time_late_night_initial",
+      "category": "time_addon",
+      "timeClass": "late_night",
+      "feeKind": "initial",
+      "procedureName": "深夜加算（初診）"
+    },
+    {
+      "ruleId": "time_late_night_revisit",
+      "category": "time_addon",
+      "timeClass": "late_night",
+      "feeKind": "revisit",
+      "procedureName": "深夜加算（再診）（入院外）"
+    },
+    {
+      "ruleId": "facility_after_hours_response_1",
+      "category": "facility_addon",
+      "feeKind": "revisit",
+      "requiredFacilityStandardKey": "jikan_gai_taio_taisei_1",
+      "procedureName": "時間外対応体制加算１"
+    },
+    {
+      "ruleId": "facility_after_hours_response_2",
+      "category": "facility_addon",
+      "feeKind": "revisit",
+      "requiredFacilityStandardKey": "jikan_gai_taio_taisei_2",
+      "procedureName": "時間外対応体制加算２"
+    },
+    {
+      "ruleId": "facility_after_hours_response_3",
+      "category": "facility_addon",
+      "feeKind": "revisit",
+      "requiredFacilityStandardKey": "jikan_gai_taio_taisei_3",
+      "procedureName": "時間外対応体制加算３"
+    },
+    {
+      "ruleId": "facility_after_hours_response_4",
+      "category": "facility_addon",
+      "feeKind": "revisit",
+      "requiredFacilityStandardKey": "jikan_gai_taio_taisei_4",
+      "procedureName": "時間外対応体制加算４"
+    },
+    {
+      "ruleId": "facility_itemized_statement",
+      "category": "facility_addon",
+      "feeKind": "revisit",
+      "requiredFacilityStandardKey": "meisaisho_hakko_taisei",
+      "procedureName": "明細書発行体制等加算"
+    }
+  ]
+}

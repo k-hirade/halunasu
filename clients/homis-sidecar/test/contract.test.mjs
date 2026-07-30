@@ -19,10 +19,13 @@ after(async () => {
   await browser?.close();
 });
 
-test("homis-mock-v3 extracts the complete displayed chart and residence determinant", async () => {
+test("homis-mock-v3 remains backward compatible for the displayed chart", async () => {
   const page = await contractPage();
   const result = await page.evaluate((href) => (
-    globalThis.HalunasuSidecarContract.extractContractSnapshot(document, { locationHref: href })
+    globalThis.HalunasuSidecarContract.extractContractSnapshot(document, {
+      locationHref: href,
+      selectorContractVersion: "homis-mock-v3"
+    })
   ), locationHref);
   assert.deepEqual(result, {
     externalPatientId: "1006",
@@ -51,6 +54,111 @@ test("homis-mock-v3 extracts the complete displayed chart and residence determin
     matchedRequiredElementCount: 5,
     clinicalTextNodeCount: 4
   });
+  await page.close();
+});
+
+test("homis-mock-v4 reads bounded current-chart facts without reading the action list", async () => {
+  const page = await contractPage();
+  const result = await page.evaluate((href) => {
+    const container = document.querySelector("#pdetail_karte");
+    const body = container.querySelector(".karte-body");
+    const structured = document.createElement("div");
+    structured.className = "structured-fields";
+
+    const care = document.createElement("div");
+    care.className = "kaigo-text";
+    care.textContent = "要介護5";
+    structured.append(care);
+
+    const nurse = document.createElement("div");
+    nurse.className = "houkan-box";
+    nurse.textContent = "訪問看護 週4回 MCS連携";
+    structured.append(nurse);
+
+    const device = document.createElement("div");
+    device.className = "device-text";
+    device.textContent = "気管切開・複管カニューレ 8.0mm";
+    structured.append(device);
+
+    const prescription = document.createElement("div");
+    prescription.className = "shohou-wrap";
+    const table = document.createElement("table");
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.textContent = "ラコサミド錠100mg 2錠";
+    row.append(cell);
+    table.append(row);
+    prescription.append(table);
+    structured.append(prescription);
+    body.append(structured);
+
+    const calendar = document.querySelector("#calendar3");
+    const visit = document.createElement("td");
+    visit.className = "visit";
+    const day = document.createElement("span");
+    day.className = "cal-day";
+    day.dataset.iso = "2026-06-24";
+    visit.append(day);
+    calendar.append(visit);
+
+    const actionList = document.createElement("div");
+    actionList.id = "action_list";
+    actionList.textContent = "DONT_READ_ACTION_SECRET";
+    container.append(actionList);
+
+    const value = globalThis.HalunasuSidecarContract.extractContractSnapshot(document, {
+      locationHref: href
+    });
+    return {
+      version: value.selectorContractVersion,
+      currentChart: value.sourceSurfaces.currentChart,
+      serialized: JSON.stringify(value)
+    };
+  }, locationHref);
+  assert.equal(result.version, "homis-mock-v4");
+  assert.deepEqual(result.currentChart, {
+    status: "ok",
+    patientId: "1006",
+    raw: {
+      careInsuranceText: "要介護5",
+      visitingNurseText: "訪問看護 週4回 MCS連携",
+      deviceManagementText: "気管切開・複管カニューレ 8.0mm",
+      prescriptionRows: ["ラコサミド錠100mg 2錠"],
+      patientStartDate: "",
+      calendarMonth: "2026-06",
+      calendarVisitDates: ["2026-06-24"]
+    }
+  });
+  assert.doesNotMatch(result.serialized, /DONT_READ_ACTION_SECRET/u);
+  await page.close();
+});
+
+test("homis-mock-v4 parses the separately fetched documents surface", async () => {
+  const page = await browser.newPage();
+  await page.setContent(`
+    <div class="patient-id-line">患者名 1006 / 後期高齢者医療</div>
+    <table class="docs-table"><tbody>
+      <tr><td>1</td><td>訪問看護指示書</td><td>6/1 - 6/30</td><td>6/1</td><td>作成済</td></tr>
+    </tbody></table>
+    <div id="action_list">DONT_READ_DOCUMENT_ACTION</div>
+  `);
+  await page.addScriptTag({ path: path.join(extensionDir, "lib/contract.js") });
+  const surface = await page.evaluate(() => (
+    globalThis.HalunasuSidecarContract.readDocumentsSurface(document, { patientId: "1006" })
+  ));
+  assert.deepEqual(surface, {
+    status: "ok",
+    patientId: "1006",
+    raw: {
+      rows: [{
+        kind: "訪問看護指示書",
+        period: "6/1 - 6/30",
+        writtenDate: "6/1",
+        status: "作成済"
+      }]
+    }
+  });
+  assert.doesNotMatch(JSON.stringify(surface), /DONT_READ_DOCUMENT_ACTION/u);
   await page.close();
 });
 

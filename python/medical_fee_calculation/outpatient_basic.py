@@ -111,6 +111,14 @@ MEISAISHO_HAKKO_TRIGGER_CODES = frozenset(
         "112024950",  # 同日再診料（情報通信機器）
     }
 )
+OUTPATIENT_AFTER_HOURS_RESPONSE_STANDARD_KEYS = frozenset(
+    {
+        "jikan_gai_taio_taisei_1",
+        "jikan_gai_taio_taisei_2",
+        "jikan_gai_taio_taisei_3",
+        "jikan_gai_taio_taisei_4",
+    }
+)
 OUTPATIENT_BASIC_DERIVED_ADD_ON_RULES = (
     BasicFeeDerivedAddOnRule(
         rule_id="outpatient_price_support_initial",
@@ -140,6 +148,56 @@ OUTPATIENT_BASIC_DERIVED_ADD_ON_RULES = (
         effective_from=date(2026, 6, 1),
         reason="Outpatient/home base-up evaluation fee (1) derived from a telephone revisit",
         required_facility_standard_key="base_up_hyoka_1",
+        silent_when_missing_standard=True,
+    ),
+    # A001再診料 注10 / 令和8年度医科点数表。届出済みの区分は
+    # 互いに排他的であり、確認済み施設基準が1区分だけ存在する場合に限り加算する。
+    BasicFeeDerivedAddOnRule(
+        rule_id="outpatient_after_hours_response_system_1",
+        add_on_code="112016070",
+        trigger_codes=OUTPATIENT_REVISIT_BASIC_FEE_CODES,
+        source="outpatient_after_hours_response_system_add_on",
+        effective_from=date(2026, 6, 1),
+        reason="After-hours response system add-on 1 derived from a revisit basic fee",
+        required_facility_standard_key="jikan_gai_taio_taisei_1",
+        prohibited_facility_standard_keys=OUTPATIENT_AFTER_HOURS_RESPONSE_STANDARD_KEYS
+        - {"jikan_gai_taio_taisei_1"},
+        silent_when_missing_standard=True,
+    ),
+    BasicFeeDerivedAddOnRule(
+        rule_id="outpatient_after_hours_response_system_2",
+        add_on_code="112708370",
+        trigger_codes=OUTPATIENT_REVISIT_BASIC_FEE_CODES,
+        source="outpatient_after_hours_response_system_add_on",
+        effective_from=date(2026, 6, 1),
+        reason="After-hours response system add-on 2 derived from a revisit basic fee",
+        required_facility_standard_key="jikan_gai_taio_taisei_2",
+        prohibited_facility_standard_keys=OUTPATIENT_AFTER_HOURS_RESPONSE_STANDARD_KEYS
+        - {"jikan_gai_taio_taisei_2"},
+        silent_when_missing_standard=True,
+    ),
+    BasicFeeDerivedAddOnRule(
+        rule_id="outpatient_after_hours_response_system_3",
+        add_on_code="112708470",
+        trigger_codes=OUTPATIENT_REVISIT_BASIC_FEE_CODES,
+        source="outpatient_after_hours_response_system_add_on",
+        effective_from=date(2026, 6, 1),
+        reason="After-hours response system add-on 3 derived from a revisit basic fee",
+        required_facility_standard_key="jikan_gai_taio_taisei_3",
+        prohibited_facility_standard_keys=OUTPATIENT_AFTER_HOURS_RESPONSE_STANDARD_KEYS
+        - {"jikan_gai_taio_taisei_3"},
+        silent_when_missing_standard=True,
+    ),
+    BasicFeeDerivedAddOnRule(
+        rule_id="outpatient_after_hours_response_system_4",
+        add_on_code="112708570",
+        trigger_codes=OUTPATIENT_REVISIT_BASIC_FEE_CODES,
+        source="outpatient_after_hours_response_system_add_on",
+        effective_from=date(2026, 6, 1),
+        reason="After-hours response system add-on 4 derived from a revisit basic fee",
+        required_facility_standard_key="jikan_gai_taio_taisei_4",
+        prohibited_facility_standard_keys=OUTPATIENT_AFTER_HOURS_RESPONSE_STANDARD_KEYS
+        - {"jikan_gai_taio_taisei_4"},
         silent_when_missing_standard=True,
     ),
     # A001再診料 注11 / 令和8年度医科点数表:

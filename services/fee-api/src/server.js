@@ -63,6 +63,9 @@ import {
 } from "./longitudinal-context.js";
 import { applyEncounterVariantToPreparation } from "./encounter-variants.js";
 import { buildStandingBillingLane } from "./standing-billing-profiles.js";
+import { buildStandingStructuredFacts } from "./standing-structured-triggers.js";
+import { applyCandidateProposalGovernance } from "./candidate-proposal-governance.js";
+import { normalizeSidecarStructuredFacts } from "./sidecar-structured-facts.js";
 import { whiteboxRuntimeModes } from "./whitebox-extraction.js";
 import {
   normalizeClinicalExtractionStrategy,
@@ -266,10 +269,15 @@ async function routeFeeApiRequest(input = {}) {
       canonicalIdentity
     });
     const sourceRevisionHash = sidecarSourceRevisionHash(normalized);
+    const structuredSourceFacts = normalizeSidecarStructuredFacts({
+      sourceSurfaces: normalized.sourceSurfaces,
+      serviceDate: normalized.serviceDate
+    });
     const encounterDetails = {
       sameBuilding: normalized.sameBuilding,
       sameBuildingSource: normalized.sameBuildingSource,
       singleBuildingPatientCount: normalized.singleBuildingPatientCount,
+      residenceType: normalized.residenceType,
       visitKind: normalized.visitKind,
       visitKindSource: normalized.visitKindSource,
       telephoneEligibility: normalized.telephoneEligibility
@@ -288,6 +296,8 @@ async function routeFeeApiRequest(input = {}) {
       externalSourceSystem: normalized.sourceSystem,
       idempotencyKeyHash: identity.idempotencyKeyHash,
       sourceRevisionHash,
+      sourceSurfaces: normalized.sourceSurfaces || null,
+      structuredSourceFacts,
       encounterDetails,
       facilitySnapshot: facilitySnapshot(facility, now),
       departmentSnapshot: department ? departmentSnapshot(department, now) : null,
@@ -426,6 +436,8 @@ async function routeFeeApiRequest(input = {}) {
       encounterDetails: sidecarDraft.encounterDetails,
       receptionTime: sidecarDraft.receptionTime,
       clinicalText: sidecarDraft.clinicalText,
+      sourceSurfaces: sidecarDraft.sourceSurfaces,
+      structuredSourceFacts: sidecarDraft.structuredSourceFacts,
       orders: sidecarDraft.orders,
       diagnoses: sidecarDraft.diagnoses,
       diagnosesSource: sidecarDraft.diagnosesSource,
@@ -1946,13 +1958,28 @@ function sidecarSourceRevisionHash(input = {}) {
     sameBuilding: input.sameBuilding ?? null,
     sameBuildingSource: input.sameBuildingSource || null,
     singleBuildingPatientCount: input.singleBuildingPatientCount ?? null,
+    residenceType: input.residenceType || null,
     visitKind: input.visitKind || null,
     visitKindSource: input.visitKindSource || null,
     telephoneEligibility: input.telephoneEligibility || null,
     clinicalText: input.clinicalText,
     orders: input.orders || [],
-    diagnoses: input.diagnoses || []
+    diagnoses: input.diagnoses || [],
+    sourceSurfaces: sidecarSourceSurfaceRevisionPayload(input.sourceSurfaces)
   })).digest("hex");
+}
+
+function sidecarSourceSurfaceRevisionPayload(sourceSurfaces = {}) {
+  return Object.fromEntries(
+    ["currentChart", "documents"]
+      .filter((name) => sourceSurfaces?.[name])
+      .map((name) => [name, {
+        status: sourceSurfaces[name].status,
+        patientId: sourceSurfaces[name].patientId,
+        surfaceHash: sourceSurfaces[name].surfaceHash,
+        unavailableReason: sourceSurfaces[name].unavailableReason || null
+      }])
+  );
 }
 
 function assertFreshSidecarExtraction(proof = {}, nowInput = new Date()) {
@@ -2144,6 +2171,8 @@ function uniqueHistoryRecords(records = []) {
 
 function sidecarCalculationResponse(sidecarDraft = {}) {
   const calculation = sidecarDraft.calculationResult || {};
+  const warnings = Array.isArray(calculation.warnings) ? calculation.warnings : [];
+  const reviewIssues = Array.isArray(calculation.reviewIssues) ? calculation.reviewIssues : [];
   const lineCandidates = (Array.isArray(calculation.lineItems) ? calculation.lineItems : []).map((line) => ({
     candidateId: line.lineId || line.code || null,
     sourceType: "calculated_line",
@@ -2168,6 +2197,15 @@ function sidecarCalculationResponse(sidecarDraft = {}) {
       code: proposal.code || null,
       codeCandidates,
       requiresSelection: !proposal.code && codeCandidates.length > 0,
+      selectionGroupId: proposal.selectionGroupId || null,
+      selectionGroupLabel: proposal.selectionGroupLabel || null,
+      selectionGroupSource: proposal.selectionGroupSource || null,
+      selectionMode: proposal.selectionMode || null,
+      mutuallyExclusive: proposal.mutuallyExclusive === true,
+      adoptionBlocked: proposal.adoptionBlocked === true,
+      adoptionBlockReason: proposal.adoptionBlockReason || null,
+      facilityStandardStatus: proposal.facilityStandardStatus || null,
+      requiredFacilityStandardKeys: uniqueStrings(proposal.requiredFacilityStandardKeys || []),
       name: proposal.name || proposal.title || null,
       display: buildFeeCandidateDisplay(displayName, { proposal: true }),
       orderType: proposal.orderType || null,
@@ -2193,11 +2231,131 @@ function sidecarCalculationResponse(sidecarDraft = {}) {
         candidateOnly: true,
         estimatedTotalPoints: Number(calculation.totalPoints || 0),
         candidates: uniqueSidecarCandidates([...lineCandidates, ...proposalCandidates]),
-        warnings: Array.isArray(calculation.warnings) ? calculation.warnings : [],
-        reviewIssues: Array.isArray(calculation.reviewIssues) ? calculation.reviewIssues : []
+        notices: sidecarCalculationNotices({ warnings, reviewIssues }),
+        warnings,
+        reviewIssues
       }
     }
   };
+}
+
+function sidecarCalculationNotices({ warnings = [], reviewIssues = [] } = {}) {
+  const notices = [];
+  const seenKeys = new Set();
+  const structuredMessageKeys = new Set();
+
+  for (const issue of reviewIssues) {
+    if (!issue || typeof issue !== "object") {
+      continue;
+    }
+    const messageForStaff = sidecarNoticeMessage(issue);
+    if (!messageForStaff) {
+      continue;
+    }
+    const messageKey = normalizeSidecarNoticeText(messageForStaff);
+    const deduplicationKey = sidecarReviewIssueDeduplicationKey(issue, messageKey);
+    if (seenKeys.has(deduplicationKey)) {
+      continue;
+    }
+    seenKeys.add(deduplicationKey);
+    structuredMessageKeys.add(messageKey);
+    notices.push({
+      ...issue,
+      noticeId: issue.reviewIssueId || sidecarNoticeId(deduplicationKey),
+      sourceType: "review_issue",
+      severity: normalizeSidecarNoticeSeverity(issue.severity, "warning"),
+      messageForStaff
+    });
+  }
+
+  for (const warning of warnings) {
+    const messageForStaff = sidecarNoticeMessage(warning);
+    if (!messageForStaff) {
+      continue;
+    }
+    const messageKey = normalizeSidecarNoticeText(messageForStaff);
+    if (structuredMessageKeys.has(messageKey)) {
+      continue;
+    }
+    const deduplicationKey = `warning|${messageKey}`;
+    if (seenKeys.has(deduplicationKey)) {
+      continue;
+    }
+    seenKeys.add(deduplicationKey);
+    notices.push({
+      noticeId: sidecarNoticeId(deduplicationKey),
+      sourceType: "warning",
+      issueCode: null,
+      topicCode: null,
+      relatedClinicalEventId: null,
+      severity: "warning",
+      messageForStaff
+    });
+  }
+
+  return notices.sort((left, right) => (
+    sidecarNoticeSeverityOrder(left.severity) - sidecarNoticeSeverityOrder(right.severity)
+    || String(left.topicCode || left.issueCode || "").localeCompare(
+      String(right.topicCode || right.issueCode || ""),
+      "ja"
+    )
+    || String(left.noticeId || "").localeCompare(String(right.noticeId || ""))
+  ));
+}
+
+function sidecarReviewIssueDeduplicationKey(issue = {}, normalizedMessage = "") {
+  const topic = String(issue.topicCode || issue.reviewTopic || "").trim();
+  const issueCode = String(issue.issueCode || "").trim();
+  const target = String(
+    issue.relatedClinicalEventId
+    || issue.clinicalEventId
+    || issue.sourceFactId
+    || issue.targetId
+    || issue.candidateId
+    || ""
+  ).trim();
+  if (topic) {
+    return `topic|${topic}|${target || normalizedMessage}`;
+  }
+  return `issue|${issueCode || "unclassified"}|${target}|${normalizedMessage}`;
+}
+
+function sidecarNoticeMessage(notice) {
+  if (typeof notice === "string") {
+    return notice.trim();
+  }
+  return String(
+    notice?.messageForStaff
+    || notice?.message
+    || notice?.reason
+    || notice?.title
+    || ""
+  ).trim();
+}
+
+function normalizeSidecarNoticeText(value = "") {
+  return String(value || "")
+    .normalize("NFKC")
+    .replace(/\s+/gu, " ")
+    .trim();
+}
+
+function normalizeSidecarNoticeSeverity(value, fallback = "info") {
+  const severity = String(value || "").trim().toLowerCase();
+  return ["critical", "error", "warning", "info"].includes(severity) ? severity : fallback;
+}
+
+function sidecarNoticeSeverityOrder(value) {
+  return {
+    critical: 0,
+    error: 1,
+    warning: 2,
+    info: 3
+  }[normalizeSidecarNoticeSeverity(value)] ?? 4;
+}
+
+function sidecarNoticeId(value = "") {
+  return `notice_${crypto.createHash("sha256").update(String(value || "")).digest("hex").slice(0, 20)}`;
 }
 
 function uniqueSidecarCandidates(candidates = []) {
@@ -7685,10 +7843,12 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
     {
       session: baseSession,
       priorSessions: combinedPriorSessions,
-      historyCompleteness
+      historyCompleteness,
+      feeSettings,
+      facilityStandardKeys: effectiveFacilityProfile.facilityStandardKeys
     }
   );
-  const primaryPrepared = await measureStage(stageTimings, "standingFactLane", () => (
+  const primaryPreparedWithStandingFacts = await measureStage(stageTimings, "standingFactLane", () => (
     applyStandingFactsToPreparation(primaryPreparedWithoutStandingFacts, {
       enabled: feeStandingFactsEnabled(input.processEnv || process.env),
       feeStore: input.feeStore,
@@ -7701,6 +7861,15 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
         baseSession,
         priorSessionsResult.sessions
       ),
+      facilityStandardKeys: effectiveFacilityProfile.facilityStandardKeys
+    })
+  ));
+  const primaryPrepared = await measureStage(stageTimings, "candidateProposalGovernance", () => (
+    applyCandidateProposalGovernanceToPreparation(primaryPreparedWithStandingFacts, {
+      feeCalculator,
+      feeSettings,
+      serviceDate: baseSession.serviceDate,
+      session: baseSession,
       facilityStandardKeys: effectiveFacilityProfile.facilityStandardKeys
     })
   ));
@@ -7798,6 +7967,84 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
   };
 }
 
+async function applyCandidateProposalGovernanceToPreparation(prepared = {}, {
+  feeCalculator,
+  feeSettings = {},
+  serviceDate = "",
+  session = {},
+  facilityStandardKeys = []
+} = {}) {
+  const proposalCodes = uniqueStrings(
+    asArrayValue(prepared.candidateProposals).flatMap((proposal) => [
+      proposal?.code,
+      proposal?.candidateLine?.code,
+      ...asArrayValue(proposal?.codeCandidates)
+    ])
+  );
+  let exclusionStatus = proposalCodes.length < 2 ? "not_required" : "lookup_unavailable";
+  let canonicalExclusionRules = [];
+  if (proposalCodes.length >= 2 && typeof feeCalculator?.checkLookup === "function") {
+    try {
+      const lookup = await feeCalculator.checkLookup({
+        act_codes: proposalCodes,
+        drug_codes: [],
+        disease_codes: [],
+        service_date: serviceDate,
+        claim_month: String(serviceDate || "").slice(0, 7)
+      });
+      const envelope = isPlainObject(lookup?.actExclusionRules)
+        ? lookup.actExclusionRules
+        : null;
+      exclusionStatus = String(envelope?.status || "lookup_failed");
+      canonicalExclusionRules = exclusionStatus === "complete"
+        ? asArrayValue(envelope?.rules)
+        : [];
+    } catch (error) {
+      exclusionStatus = "lookup_failed";
+      logFeeApiError(error, {
+        stage: "candidateProposalGovernance",
+        proposalCodeCount: proposalCodes.length
+      });
+    }
+  }
+
+  const governed = applyCandidateProposalGovernance({
+    candidateProposals: prepared.candidateProposals,
+    facilityStandardsConfirmed: feeSettings?.facilityStandardsConfirmed === true,
+    facilityStandardKeys,
+    canonicalExclusionRules,
+    confirmedProcedureCodes: uniqueStrings([
+      ...asArrayValue(prepared.calculationOptions?.procedure_codes),
+      ...asArrayValue(prepared.calculationOptions?.procedureCodes),
+      ...[
+        ...asArrayValue(session?.calculationResult?.lines),
+        ...asArrayValue(session?.receiptDraft?.lines)
+      ].filter((line) => String(line?.status || "") === "confirmed")
+        .map((line) => line?.code)
+    ])
+  });
+  return {
+    ...prepared,
+    candidateProposals: governed.candidateProposals,
+    reviewIssues: [
+      ...asArrayValue(prepared.reviewIssues),
+      ...governed.reviewIssues
+    ],
+    reviewWarnings: uniqueStrings([
+      ...asArrayValue(prepared.reviewWarnings),
+      ...governed.reviewIssues.map((issue) => issue.messageForStaff)
+    ]),
+    metrics: {
+      ...(prepared.metrics || {}),
+      candidateProposalGovernance: {
+        ...governed.diagnostics,
+        exclusionLookupStatus: exclusionStatus,
+        proposalCodeCount: proposalCodes.length
+      }
+    }
+  };
+}
+
 function countCurrentMonthEncounters(session = {}, priorSessions = []) {
   const claimMonth = String(session.serviceDate || "").slice(0, 7);
   if (!/^\d{4}-\d{2}$/u.test(claimMonth)) {
@@ -7877,6 +8124,19 @@ async function applyStandingFactsToPreparation(prepared = {}, {
         encounterDetails: session.encounterDetails || null,
         currentMonthEncounterCount,
         facilityStandardKeys,
+        structuredFacts: buildStandingStructuredFacts({
+          prepared,
+          session,
+          facilityStandardKeys,
+          historyCompleteness,
+          confirmedHistoryCodes: uniqueStrings(
+            asArrayValue(profiles).flatMap((profile) => [
+              ...asArrayValue(profile?.latestConfirmedCodes)
+                .map((entry) => entry?.code || entry),
+              ...asArrayValue(profile?.confirmedLineCodes)
+            ])
+          )
+        }),
         procedureCodes: uniqueStrings([
           ...asArrayValue(prepared.calculationOptions?.procedure_codes),
           ...asArrayValue(prepared.calculationOptions?.procedureCodes)

@@ -3,7 +3,8 @@
 
 The mock HOMIS `action_list` is a gold action list by display name. This script
 maps exact master-name matches to codes/points and leaves everything else as
-manual_required or comment_only. It intentionally does not guess codes.
+manual_required or a non-billable action class. It intentionally does not
+guess codes.
 """
 
 from __future__ import annotations
@@ -31,12 +32,15 @@ FIELDS = [
     "normalized_action_name",
     "occurrence_count",
     "match_status",
+    "action_class",
     "master_kind",
     "code",
     "master_name",
     "points",
     "unit_amount_yen",
     "candidate_codes",
+    "billing_scope",
+    "billing_scope_source",
     "note",
 ]
 
@@ -53,13 +57,17 @@ def action_key(value: str) -> str:
     return re.sub(r"\s+", "", normalize_action_name(value))
 
 
-def is_comment_only(normalized: str) -> bool:
-    return (
-        "{date}" in normalized
-        or "{count}" in normalized
-        or "{dates}" in normalized
-        or normalized.startswith("往診交通費")
-    )
+def classify_nonbillable_action(normalized: str) -> str | None:
+    # 厚生労働省「診療報酬の算定方法」別表第一 第2章第2部
+    # C000 往診料 注7: 往診に要した交通費は患家の負担とする。
+    # https://www.mhlw.go.jp/web/t_doc?dataId=84aa9729&dataType=0&pageNo=6
+    if normalized.startswith("往診交通費"):
+        return "patient_charge"
+    if "{date}" in normalized or "{count}" in normalized:
+        return "claim_attribute"
+    if "{dates}" in normalized:
+        return "claim_comment"
+    return None
 
 
 def exact_master_matches(conn: sqlite3.Connection, name: str) -> list[dict]:
@@ -94,6 +102,82 @@ def exact_master_matches(conn: sqlite3.Connection, name: str) -> list[dict]:
     return matches
 
 
+def billing_scope_from_limit_names(limit_names: list[str]) -> str:
+    """Return the evaluation scope without inferring unsupported fee rules.
+
+    Day/week limits remain visit-scoped. A month/year window means that the
+    claim line may be placed on any encounter in the covered month, so the G0
+    evaluator must reconcile it in the patient-month bucket.
+    """
+
+    normalized = {
+        re.sub(r"\s+", "", str(value or "")).translate(
+            str.maketrans("０１２３４５６７８９", "0123456789")
+        )
+        for value in limit_names
+        if str(value or "").strip()
+    }
+    if normalized and all(
+        ("月" in value or "年" in value)
+        and "日" not in value
+        and "週" not in value
+        for value in normalized
+    ):
+        return "per_month"
+    return "per_visit"
+
+
+def billing_scope_for_codes(
+    conn: sqlite3.Connection,
+    codes: list[str],
+) -> tuple[str, str]:
+    normalized_codes = sorted({str(code or "").strip() for code in codes if str(code or "").strip()})
+    if not normalized_codes:
+        return "per_visit", "conservative_default:no_resolved_code"
+
+    source = conn.execute(
+        """
+        SELECT id, source_version, checksum_sha256
+        FROM master_sources
+        WHERE source_type = 'medical_electronic_fee_table'
+        ORDER BY imported_at DESC, id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    if source is None:
+        return "per_visit", "conservative_default:no_frequency_source"
+
+    placeholders = ",".join("?" for _ in normalized_codes)
+    rows = conn.execute(
+        f"""
+        SELECT procedure_code, limit_name
+        FROM electronic_frequency_limits
+        WHERE source_id = ?
+          AND procedure_code IN ({placeholders})
+        """,
+        (int(source["id"]), *normalized_codes),
+    ).fetchall()
+    names_by_code: dict[str, list[str]] = {code: [] for code in normalized_codes}
+    for row in rows:
+        names_by_code.setdefault(str(row["procedure_code"] or ""), []).append(
+            str(row["limit_name"] or "")
+        )
+
+    scopes = {
+        billing_scope_from_limit_names(names_by_code.get(code, []))
+        for code in normalized_codes
+    }
+    # Ambiguous master matches are month-scoped only when every possible code
+    # has an explicit month/year limit. Any uncertainty stays per-visit.
+    scope = "per_month" if scopes == {"per_month"} else "per_visit"
+    source_version = str(source["source_version"] or "")
+    source_checksum = str(source["checksum_sha256"] or "")
+    return (
+        scope,
+        f"electronic_frequency_limits:{source_version}:{source_checksum}",
+    )
+
+
 def build_rows(input_path: Path, master_path: Path) -> tuple[list[dict], dict]:
     with input_path.open(encoding="utf-8", newline="") as f:
         actions = [row["action_name"] for row in csv.DictReader(f) if row.get("action_name")]
@@ -118,38 +202,64 @@ def build_rows(input_path: Path, master_path: Path) -> tuple[list[dict], dict]:
                 "normalized_action_name": normalized,
                 "occurrence_count": counts[key],
                 "match_status": "",
+                "action_class": "",
                 "master_kind": "",
                 "code": "",
                 "master_name": "",
                 "points": "",
                 "unit_amount_yen": "",
                 "candidate_codes": "",
+                "billing_scope": "",
+                "billing_scope_source": "",
                 "note": "",
             }
-            if is_comment_only(normalized):
+            nonbillable_class = classify_nonbillable_action(normalized)
+            if nonbillable_class:
                 row.update({
                     "match_status": "comment_or_nonclaim",
-                    "note": "Display-only comment/free-text/non-claim item. No code or points are present in mock HOMIS source.",
+                    "action_class": nonbillable_class,
+                    "note": (
+                        "Patient charge outside insured claim lines."
+                        if nonbillable_class == "patient_charge"
+                        else "Claim comment/attribute outside billable detail lines."
+                    ),
                 })
                 rows.append(row)
                 continue
 
             matches = exact_master_matches(conn, normalized)
             if len(matches) == 1:
+                billing_scope, billing_scope_source = billing_scope_for_codes(
+                    conn,
+                    [matches[0]["code"]],
+                )
                 row.update({
                     **matches[0],
                     "match_status": "exact_master_name",
+                    "action_class": "billable_line",
+                    "billing_scope": billing_scope,
+                    "billing_scope_source": billing_scope_source,
                     "note": "Exact name match against current local master. No semantic inference used.",
                 })
             elif len(matches) > 1:
+                billing_scope, billing_scope_source = billing_scope_for_codes(
+                    conn,
+                    [match["code"] for match in matches],
+                )
                 row.update({
                     "match_status": "ambiguous_exact_master_name",
+                    "action_class": "billable_line",
                     "candidate_codes": ";".join(f"{m['master_kind']}:{m['code']}:{m['master_name']}" for m in matches),
+                    "billing_scope": billing_scope,
+                    "billing_scope_source": billing_scope_source,
                     "note": "Multiple exact master-name matches. Manual selection required.",
                 })
             else:
                 row.update({
                     "match_status": "manual_required",
+                    "action_class": "billable_line",
+                    "billing_scope": "per_visit",
+                    "billing_scope_source": "conservative_default:unresolved_master_name",
                     "note": "No exact current-master name match. Code was not inferred.",
                 })
             rows.append(row)
@@ -162,6 +272,7 @@ def build_rows(input_path: Path, master_path: Path) -> tuple[list[dict], dict]:
         "actionRowCount": len(actions),
         "uniqueActionKeyCount": len(rows),
         "statusCounts": dict(Counter(row["match_status"] for row in rows)),
+        "actionClassCounts": dict(Counter(row["action_class"] for row in rows)),
     }
     return rows, summary
 

@@ -28,7 +28,34 @@
       singleBuildingPatientCount: extraction.singleBuildingPatientCount ?? null,
       sameBuilding: extraction.sameBuilding ?? null
     }));
-    return [extraction.externalPatientId, extraction.sourceRecordId, clinicalTextHash, determinantHash].join(":");
+    const sourceSurfaceHash = await textFingerprint(JSON.stringify(
+      sourceSurfaceRevisionPayload(extraction.sourceSurfaces)
+    ));
+    return [
+      extraction.externalPatientId,
+      extraction.sourceRecordId,
+      clinicalTextHash,
+      determinantHash,
+      sourceSurfaceHash
+    ].join(":");
+  }
+
+  async function sealSourceSurfaces(sourceSurfaces = {}, input = {}) {
+    const observedAt = input.observedAt || new Date().toISOString();
+    const result = {};
+    for (const name of ["currentChart", "documents"]) {
+      const surface = sourceSurfaces?.[name];
+      if (!surface) {
+        continue;
+      }
+      const revisionPayload = sourceSurfacePayload(surface);
+      result[name] = {
+        ...revisionPayload,
+        observedAt,
+        surfaceHash: await textFingerprint(JSON.stringify(revisionPayload))
+      };
+    }
+    return result;
   }
 
   function buildExtractionProof(extraction, input = {}) {
@@ -44,7 +71,15 @@
       previewMatched: Boolean(input.previewMatched),
       requiredElementCount: extraction.requiredElementCount,
       matchedRequiredElementCount: extraction.matchedRequiredElementCount,
-      clinicalTextNodeCount: extraction.clinicalTextNodeCount
+      clinicalTextNodeCount: extraction.clinicalTextNodeCount,
+      surfaceProofs: Object.fromEntries(
+        Object.entries(extraction.sourceSurfaces || {}).map(([name, surface]) => [name, {
+          status: surface.status,
+          patientId: surface.patientId,
+          observedAt: surface.observedAt,
+          surfaceHash: surface.surfaceHash
+        }])
+      )
     };
   }
 
@@ -62,9 +97,34 @@
     return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
   }
 
+  function sourceSurfacePayload(surface = {}) {
+    return {
+      status: surface.status || "unavailable",
+      patientId: surface.patientId || "",
+      ...(surface.status === "ok" ? { raw: surface.raw || {} } : {}),
+      ...(surface.status === "unavailable"
+        ? { unavailableReason: surface.unavailableReason || "fetch_failed" }
+        : {})
+    };
+  }
+
+  function sourceSurfaceRevisionPayload(sourceSurfaces = {}) {
+    return Object.fromEntries(
+      Object.entries(sourceSurfaces || {}).map(([name, surface]) => [
+        name,
+        {
+          status: surface.status,
+          patientId: surface.patientId,
+          surfaceHash: surface.surfaceHash
+        }
+      ])
+    );
+  }
+
   global.HalunasuSidecarProof = Object.freeze({
     buildExtractionProof,
     previewFingerprint,
+    sealSourceSurfaces,
     sameIdentity,
     textFingerprint
   });

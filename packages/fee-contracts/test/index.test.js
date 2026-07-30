@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   clinicalServiceContextCues,
+  clinicalServiceContextCuesForMention,
   validateCreateFeePatientInput,
   validateCreateFeeSessionInput,
   validateSidecarCalculationInput,
@@ -14,6 +15,7 @@ import {
   hasPerformedBloodCollectionEvidenceInText,
   isClinicalDateRatioFalsePositiveContext,
   isPastOrExternalClinicalServiceContext,
+  splitClinicalEvidenceClauses,
   validateReviewDecisionInput
 } from "../src/index.js";
 
@@ -100,6 +102,7 @@ test("validates the sidecar v1 extraction and atomic identity contract", () => {
     sameBuilding: false,
     sameBuildingSource: "user",
     singleBuildingPatientCount: 1,
+    residenceType: "private",
     clinicalText: "O: 訪問診療を実施。",
     extractionProof: {
       patientIdBefore: "1001",
@@ -123,8 +126,103 @@ test("validates the sidecar v1 extraction and atomic identity contract", () => {
   assert.equal(input.sameBuilding, false);
   assert.equal(input.sameBuildingSource, "user");
   assert.equal(input.singleBuildingPatientCount, 1);
+  assert.equal(input.residenceType, "private");
   assert.equal(input.extractionProof.domMutationDetected, false);
   assert.equal(Object.hasOwn(input, "sourceUrl"), false);
+});
+
+test("validates homis-mock-v4 multi-surface inputs and matching surface proofs", () => {
+  const surfaceHash = `sha256-${"A".repeat(43)}`;
+  const sourceSurfaces = {
+    currentChart: {
+      status: "ok",
+      patientId: "1001",
+      observedAt: "2026-07-18T01:00:00.000Z",
+      surfaceHash,
+      raw: {
+        careInsuranceText: "要介護5",
+        visitingNurseText: "訪問看護 週4回 MCS連携",
+        deviceManagementText: "気管切開・複管カニューレ 8.0mm",
+        prescriptionRows: ["薬剤A 1錠"],
+        patientStartDate: "2026-05-01",
+        calendarMonth: "2026-07",
+        calendarVisitDates: ["2026-07-18"]
+      }
+    },
+    documents: {
+      status: "unavailable",
+      patientId: "1001",
+      observedAt: "2026-07-18T01:00:00.000Z",
+      surfaceHash,
+      unavailableReason: "timeout"
+    }
+  };
+  const input = validateSidecarCalculationInput({
+    contractVersion: "v1",
+    facilityId: "fac_001",
+    sourceSystem: "homis",
+    externalPatientId: "1001",
+    sourceRecordId: "record-001",
+    serviceDate: "2026-07-18",
+    setting: "home_visit",
+    encounterTypeSource: "dom",
+    clinicalText: "O: 訪問診療を実施。",
+    sourceSurfaces,
+    extractionProof: {
+      patientIdBefore: "1001",
+      patientIdAfter: "1001",
+      sourceRecordIdBefore: "record-001",
+      sourceRecordIdAfter: "record-001",
+      selectorContractVersion: "homis-mock-v4",
+      extractedAt: "2026-07-18T01:00:00.000Z",
+      domMutationDetected: false,
+      contractValidationPassed: true,
+      previewMatched: true,
+      requiredElementCount: 5,
+      matchedRequiredElementCount: 5,
+      clinicalTextNodeCount: 1,
+      surfaceProofs: {
+        currentChart: {
+          status: "ok",
+          patientId: "1001",
+          observedAt: "2026-07-18T01:00:00.000Z",
+          surfaceHash
+        },
+        documents: {
+          status: "unavailable",
+          patientId: "1001",
+          observedAt: "2026-07-18T01:00:00.000Z",
+          surfaceHash
+        }
+      }
+    }
+  });
+
+  assert.equal(input.sourceSurfaces.currentChart.raw.calendarVisitDates[0], "2026-07-18");
+  assert.equal(input.sourceSurfaces.currentChart.raw.patientStartDate, "2026-05-01");
+  assert.equal(input.sourceSurfaces.documents.unavailableReason, "timeout");
+  assert.equal(input.extractionProof.surfaceProofs.documents.status, "unavailable");
+
+  assert.throws(() => validateSidecarCalculationInput({
+    ...input,
+    sourceSurfaces: {
+      ...sourceSurfaces,
+      documents: { ...sourceSurfaces.documents, patientId: "1002" }
+    }
+  }), /patient does not match/);
+  assert.throws(() => validateSidecarCalculationInput({
+    ...input,
+    extractionProof: {
+      ...input.extractionProof,
+      surfaceProofs: {
+        ...input.extractionProof.surfaceProofs,
+        currentChart: {
+          ...input.extractionProof.surfaceProofs.currentChart,
+          surfaceHash: `sha256-${"B".repeat(43)}`
+        }
+      }
+    }
+  }), /does not match sourceSurfaces/);
 });
 
 test("validates three-state same-building sidecar inputs without treating unknown as outside", () => {
@@ -158,6 +256,11 @@ test("validates three-state same-building sidecar inputs without treating unknow
   assert.equal(unknown.sameBuilding, null);
   assert.equal(unknown.sameBuildingSource, null);
   assert.equal(unknown.singleBuildingPatientCount, null);
+  assert.equal(unknown.residenceType, null);
+  assert.throws(() => validateSidecarCalculationInput({
+    ...base,
+    residenceType: "nursing_home"
+  }), /residenceType/);
   assert.throws(() => validateSidecarCalculationInput({
     ...base,
     sameBuilding: true,
@@ -304,6 +407,7 @@ test("normalizes telephone revisit details on a standard fee session", () => {
     sameBuilding: null,
     sameBuildingSource: null,
     singleBuildingPatientCount: null,
+    residenceType: null,
     visitKind: "telephone_revisit",
     visitKindSource: "user",
     telephoneEligibility: {
@@ -394,7 +498,8 @@ test("normalizes fee session input to Platform identifiers", () => {
     encounter_details: {
       same_building: true,
       same_building_source: "dom",
-      single_building_patient_count: 4
+      single_building_patient_count: 4,
+      residence_type: "facility"
     }
   });
 
@@ -409,6 +514,7 @@ test("normalizes fee session input to Platform identifiers", () => {
     sameBuilding: true,
     sameBuildingSource: "dom",
     singleBuildingPatientCount: 4,
+    residenceType: "facility",
     visitKind: null,
     visitKindSource: null,
     telephoneEligibility: null
@@ -601,6 +707,85 @@ test("normalizes structured facility standards and drops unused policy fields", 
   assert.equal(normalized.initialRevisitPolicy.priorHistoryBehavior, undefined);
 });
 
+test("normalizes effective-dated facility service schedules", () => {
+  const normalized = validateUpdateFeeSettingsInput({
+    facilityId: "fac_001",
+    facilityServiceSchedules: [{
+      scheduleId: "clinic-hours-2026",
+      effectiveFrom: "2026-06-01",
+      effectiveTo: "2026-12-31",
+      timezone: "Asia/Tokyo",
+      weeklyHours: {
+        monday: [{ start: "09:00", end: "12:00" }, { start: "14:00", end: "18:00" }],
+        tuesday: [{ start: "09:00", end: "18:00" }],
+        wednesday: [{ start: "09:00", end: "18:00" }],
+        thursday: [{ start: "09:00", end: "18:00" }],
+        friday: [{ start: "09:00", end: "18:00" }],
+        saturday: [{ start: "09:00", end: "12:00" }]
+      },
+      holidayDates: ["2026-07-20"],
+      specialHours: [{
+        date: "2026-07-19",
+        hours: [{ start: "10:00", end: "13:00" }]
+      }]
+    }]
+  });
+
+  assert.equal(normalized.facilityServiceSchedules.length, 1);
+  assert.equal(normalized.facilityServiceSchedules[0].scheduleId, "clinic-hours-2026");
+  assert.deepEqual(normalized.facilityServiceSchedules[0].weeklyHours.sunday, []);
+  assert.deepEqual(normalized.facilityServiceSchedules[0].holidayDates, ["2026-07-20"]);
+  assert.deepEqual(normalized.facilityServiceSchedules[0].specialHours, [{
+    date: "2026-07-19",
+    hours: [{ start: "10:00", end: "13:00" }]
+  }]);
+});
+
+test("rejects ambiguous or invalid facility service schedules", () => {
+  assert.throws(
+    () => validateUpdateFeeSettingsInput({
+      facilityServiceSchedules: [{
+        effectiveFrom: "2026-06-01",
+        weeklyHours: {
+          monday: [
+            { start: "09:00", end: "12:00" },
+            { start: "11:00", end: "13:00" }
+          ]
+        }
+      }]
+    }),
+    /windows must not overlap/
+  );
+  assert.throws(
+    () => validateUpdateFeeSettingsInput({
+      facilityServiceSchedules: [
+        {
+          scheduleId: "first",
+          effectiveFrom: "2026-06-01",
+          effectiveTo: "2026-08-31",
+          weeklyHours: { monday: [{ start: "09:00", end: "18:00" }] }
+        },
+        {
+          scheduleId: "second",
+          effectiveFrom: "2026-08-01",
+          weeklyHours: { monday: [{ start: "09:00", end: "18:00" }] }
+        }
+      ]
+    }),
+    /effective periods overlap/
+  );
+  assert.throws(
+    () => validateUpdateFeeSettingsInput({
+      facilityServiceSchedules: [{
+        effectiveFrom: "2026-06-01",
+        timezone: "UTC",
+        weeklyHours: { monday: [{ start: "09:00", end: "18:00" }] }
+      }]
+    }),
+    /timezone must be Asia\/Tokyo/
+  );
+});
+
 test("normalizes standing fact staleness policy within the supported range", () => {
   assert.equal(validateUpdateFeeSettingsInput({
     standingFactsPolicy: { stalenessMonths: 5 }
@@ -631,6 +816,25 @@ test("validates sidecar patient auto-provision as a strict facility boolean", ()
   );
 });
 
+test("validates facility standard completeness as a strict facility boolean", () => {
+  assert.equal(defaultFeeSettings({ facilityId: "fac_001" }).facilityStandardsConfirmed, false);
+  assert.equal(validateUpdateFeeSettingsInput({
+    facilityId: "fac_001",
+    facilityStandardsConfirmed: true
+  }).facilityStandardsConfirmed, true);
+  assert.equal(validateUpdateFeeSettingsInput({
+    facilityId: "fac_001",
+    current: { facilityStandardsConfirmed: true }
+  }).facilityStandardsConfirmed, true);
+  assert.throws(
+    () => validateUpdateFeeSettingsInput({
+      facilityId: "fac_001",
+      facilityStandardsConfirmed: "true"
+    }),
+    /facilityStandardsConfirmed must be a boolean/
+  );
+});
+
 test("rejects mutually exclusive active detail-issuance facility standards", () => {
   assert.throws(
     () => validateUpdateFeeSettingsInput({
@@ -654,6 +858,32 @@ test("rejects mutually exclusive active detail-issuance facility standards", () 
     ]
   });
   assert.equal(historical.facilityStandards.length, 2);
+});
+
+test("rejects multiple active after-hours response system standards", () => {
+  assert.throws(
+    () => validateUpdateFeeSettingsInput({
+      facilityId: "fac_001",
+      facilityStandards: [
+        { key: "jikan_gai_taio_taisei_1", status: "active" },
+        { key: "jikan_gai_taio_taisei_3", status: "active" }
+      ]
+    }),
+    (error) => (
+      error?.name === "ValidationError"
+      && error?.field === "facilityStandards"
+      && /only one after-hours response system standard/u.test(error.message)
+    )
+  );
+
+  const normalized = validateUpdateFeeSettingsInput({
+    facilityId: "fac_001",
+    facilityStandards: [
+      { key: "jikan_gai_taio_taisei_1", status: "expired" },
+      { key: "jikan_gai_taio_taisei_3", status: "active" }
+    ]
+  });
+  assert.equal(normalized.facilityStandards.length, 2);
 });
 
 test("detects performed blood collection using the shared strict predicate", () => {
@@ -696,6 +926,52 @@ test("builds shared clinical-service cues without treating outside prescriptions
     pastOrExternal: false,
     currentVisit: false
   });
+});
+
+test("splits clinical evidence at punctuation and parenthetical boundaries with code-point offsets", () => {
+  const text = "O）😀静脈採血を施行（HbA1cは後日確認予定）、尿検査も実施。";
+  const clauses = splitClinicalEvidenceClauses(text, { lineId: "O-001" });
+  assert.deepEqual(clauses.map((clause) => clause.text), [
+    "O）😀静脈採血を施行",
+    "HbA1cは後日確認予定",
+    "尿検査も実施。"
+  ]);
+  assert.equal(
+    Array.from(text).slice(clauses[0].charStart, clauses[0].charEnd).join(""),
+    "O）😀静脈採血を施行"
+  );
+});
+
+test("scopes future cues to the mentioned act and keeps governing past cues", () => {
+  const performed = clinicalServiceContextCuesForMention(
+    "静脈採血を施行（HbA1c・腎機能・電解質を確認予定）。",
+    "静脈採血"
+  );
+  assert.equal(performed.futureOrOrderOnly, false);
+  assert.equal(performed.performedEvidence, true);
+  assert.match(performed.scopedText, /静脈採血を施行/u);
+  assert.doesNotMatch(performed.scopedText, /確認予定/u);
+
+  const planned = clinicalServiceContextCuesForMention("次回、静脈採血を予定。", "静脈採血");
+  assert.equal(planned.futureOrOrderOnly, true);
+
+  const past = clinicalServiceContextCuesForMention("前医で、静脈採血を実施。", "静脈採血");
+  assert.equal(past.pastOrExternal, true);
+});
+
+test("blood collection predicate separates performed collection from future result review", () => {
+  assert.equal(
+    hasPerformedBloodCollectionEvidenceInText(
+      "O: 静脈採血を施行（HbA1c・腎機能・電解質を確認予定）。"
+    ),
+    true
+  );
+  assert.equal(hasPerformedBloodCollectionEvidenceInText("P: 次回、静脈採血を予定。"), false);
+  assert.equal(
+    hasPerformedBloodCollectionEvidenceInText("O: 静脈採血を実施。P: 次回も静脈採血を予定。"),
+    true
+  );
+  assert.equal(hasPerformedBloodCollectionEvidenceInText("O: 静脈採血を実施せず。"), false);
 });
 
 test("filters pain-scale ratios from clinical date extraction contexts", () => {

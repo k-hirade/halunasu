@@ -1,7 +1,9 @@
 (function registerSidecarContract(global) {
   "use strict";
 
-  const VERSION = "homis-mock-v3";
+  const VERSION = "homis-mock-v4";
+  const LEGACY_VERSION = "homis-mock-v3";
+  const SUPPORTED_VERSIONS = Object.freeze([VERSION, LEGACY_VERSION]);
   const REQUIRED_ELEMENT_COUNT = 5;
   const ENCOUNTER_TYPES = Object.freeze({
     "定期": "home_visit",
@@ -27,6 +29,13 @@
   }
 
   function extractContractSnapshot(documentRef, options = {}) {
+    const selectorContractVersion = options.selectorContractVersion || VERSION;
+    if (!SUPPORTED_VERSIONS.includes(selectorContractVersion)) {
+      const error = new Error("画面の読取契約バージョンが未対応です");
+      error.code = "selector_contract_version_unsupported";
+      error.contractVersion = selectorContractVersion;
+      throw error;
+    }
     const identity = readIdentity(documentRef, options);
     const container = documentRef.querySelector("#pdetail_karte");
     const dateElement = container?.querySelector(".note-soap .karte-date") || null;
@@ -48,7 +57,7 @@
     if (matchedRequiredElementCount !== REQUIRED_ELEMENT_COUNT) {
       const error = new Error("画面の形式が想定と異なります");
       error.code = "selector_contract_mismatch";
-      error.contractVersion = VERSION;
+      error.contractVersion = selectorContractVersion;
       error.requiredElementCount = REQUIRED_ELEMENT_COUNT;
       error.matchedRequiredElementCount = matchedRequiredElementCount;
       throw error;
@@ -59,7 +68,7 @@
       .join(" ");
     const residence = readResidenceDetails(documentRef, container, metaText);
     const encounter = readEncounterType(container);
-    return {
+    const snapshot = {
       externalPatientId: identity.patientId,
       sourceRecordId: identity.sourceRecordId,
       sourceRecordDisplayId: (metaText.match(/カルテID：\s*([^\s]+)/) || [])[1] || "",
@@ -68,11 +77,76 @@
       clinicalText: soapNodes.map(text).join("\n"),
       ...encounter,
       ...residence,
-      selectorContractVersion: VERSION,
+      selectorContractVersion,
       requiredElementCount: REQUIRED_ELEMENT_COUNT,
       matchedRequiredElementCount,
       clinicalTextNodeCount: soapNodes.length
     };
+    if (selectorContractVersion === VERSION) {
+      snapshot.sourceSurfaces = {
+        currentChart: readCurrentChartSurface(documentRef, container, identity.patientId)
+      };
+    }
+    return snapshot;
+  }
+
+  function readCurrentChartSurface(documentRef, container, patientId) {
+    return {
+      status: "ok",
+      patientId,
+      raw: {
+        careInsuranceText: text(container?.querySelector(".kaigo-text")),
+        visitingNurseText: text(container?.querySelector(".houkan-box")),
+        deviceManagementText: text(container?.querySelector(".device-text")),
+        prescriptionRows: readTextRows(container, ".shohou-wrap table tr"),
+        patientStartDate: readPatientStartDate(documentRef),
+        calendarMonth: readCalendarMonth(documentRef),
+        calendarVisitDates: readCalendarVisitDates(documentRef)
+      }
+    };
+  }
+
+  function readDocumentsSurface(documentRef, options = {}) {
+    const patientId = options.patientId || readIdentity(documentRef, options).patientId;
+    const rows = [...documentRef.querySelectorAll(".docs-table tbody tr")]
+      .map((row) => [...row.querySelectorAll("td")].map(text))
+      .filter((cells) => cells.length >= 5)
+      .map((cells) => ({
+        kind: cells[1],
+        period: cells[2],
+        writtenDate: cells[3],
+        status: cells[4]
+      }))
+      .filter((row) => row.kind && row.kind !== "登録書類なし");
+    return {
+      status: "ok",
+      patientId,
+      raw: { rows }
+    };
+  }
+
+  function readTextRows(root, selector) {
+    return root
+      ? [...root.querySelectorAll(selector)].map(text).filter(Boolean)
+      : [];
+  }
+
+  function readCalendarMonth(documentRef) {
+    const match = text(documentRef.querySelector("#calendar3 .cal-title, .cal-title"))
+      .match(/(\d{4})年\s*(\d{1,2})月/u);
+    return match ? `${match[1]}-${String(match[2]).padStart(2, "0")}` : "";
+  }
+
+  function readPatientStartDate(documentRef) {
+    const match = text(documentRef.querySelector(".patient-header .ph-sub"))
+      .match(/診療開始[：:]\s*(\d{4}-\d{2}-\d{2})/u);
+    return match ? match[1] : "";
+  }
+
+  function readCalendarVisitDates(documentRef) {
+    return [...documentRef.querySelectorAll("#calendar3 td.visit .cal-day[data-iso]")]
+      .map((node) => String(node.getAttribute("data-iso") || "").trim())
+      .filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value));
   }
 
   function readEncounterType(container) {
@@ -140,8 +214,12 @@
 
   global.HalunasuSidecarContract = Object.freeze({
     VERSION,
+    LEGACY_VERSION,
+    SUPPORTED_VERSIONS,
     REQUIRED_ELEMENT_COUNT,
     extractContractSnapshot,
+    readCurrentChartSurface,
+    readDocumentsSurface,
     readEncounterType,
     readResidenceDetails,
     readIdentity

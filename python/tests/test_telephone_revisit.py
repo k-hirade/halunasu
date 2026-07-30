@@ -40,7 +40,7 @@ class TelephoneRevisitTest(unittest.TestCase):
                 "test.csv",
                 "telephone-revisit-test",
                 "utf-8",
-                6,
+                10,
                 "2026-07-23T00:00:00Z",
             ),
         )
@@ -50,6 +50,10 @@ class TelephoneRevisitTest(unittest.TestCase):
             ("112011010", "外来管理加算", 52),
             ("112000970", "乳幼児加算（再診）", 38),
             ("112015770", "明細書発行体制等加算", 1),
+            ("112016070", "時間外対応体制加算１", 7),
+            ("112708370", "時間外対応体制加算２", 5),
+            ("112708470", "時間外対応体制加算３", 4),
+            ("112708570", "時間外対応体制加算４", 2),
             ("180725810", "外来・在宅ベースアップ評価料（１）２（再診時等）", 4),
             ("180820010", "物価対応料１（再診時等）ロ", 2),
         ):
@@ -164,6 +168,62 @@ class TelephoneRevisitTest(unittest.TestCase):
             {"180820010", "180725810", "112015770", "112000970"},
         )
         self.assertEqual(management.lines, ())
+
+    def test_adds_only_the_confirmed_after_hours_response_system_add_on(self) -> None:
+        telephone_line = CalculationLine(
+            code="112007950",
+            name="電話等再診料",
+            points=76,
+            quantity=1,
+            status=ClaimItemStatus.CANDIDATE,
+            reason="test",
+            source="outpatient_basic_fee",
+        )
+        expected = {
+            "jikan_gai_taio_taisei_1": "112016070",
+            "jikan_gai_taio_taisei_2": "112708370",
+            "jikan_gai_taio_taisei_3": "112708470",
+            "jikan_gai_taio_taisei_4": "112708570",
+        }
+
+        for standard_key, expected_code in expected.items():
+            with self.subTest(standard_key=standard_key):
+                result = calculate_outpatient_basic_derived_add_ons(
+                    self.conn,
+                    (),
+                    date(2026, 7, 23),
+                    is_outpatient=True,
+                    existing_lines=(telephone_line,),
+                    facility_standard_keys={standard_key},
+                    source_id=self.source_id,
+                )
+                response_lines = [
+                    line
+                    for line in result.lines
+                    if line.source == "outpatient_after_hours_response_system_add_on"
+                ]
+                self.assertEqual([line.code for line in response_lines], [expected_code])
+
+        conflicting = calculate_outpatient_basic_derived_add_ons(
+            self.conn,
+            (),
+            date(2026, 7, 23),
+            is_outpatient=True,
+            existing_lines=(telephone_line,),
+            facility_standard_keys={
+                "jikan_gai_taio_taisei_1",
+                "jikan_gai_taio_taisei_2",
+            },
+            source_id=self.source_id,
+        )
+        self.assertEqual(
+            [
+                line.code
+                for line in conflicting.lines
+                if line.source == "outpatient_after_hours_response_system_add_on"
+            ],
+            [],
+        )
 
     def test_batch_contract_preserves_nullable_telephone_eligibility(self) -> None:
         context = parse_claim_context_payload(

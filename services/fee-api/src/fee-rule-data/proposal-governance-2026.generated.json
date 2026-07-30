@@ -1,0 +1,119 @@
+{
+  "schemaVersion": "fee-proposal-governance-artifact-v2",
+  "revision": "2026-06-19",
+  "effectiveFrom": "2026-06-01",
+  "verifiedAt": "2026-07-29",
+  "sourceDefinitionSha256": "cff8c3a7b74f39a17c213e578c195a0d992ebd5e5400d566bf5bd8da6371cb7c",
+  "sourceDocuments": [
+    {
+      "sourceId": "r8_medical_fee_interpretation",
+      "title": "診療報酬の算定方法の一部改正に伴う実施上の留意事項について 別添1 医科診療報酬点数表に関する事項",
+      "url": "https://www.mhlw.go.jp/content/12400000/001713882.pdf",
+      "sha256": "b30f366a59c57c942c567da63aa144000f632420b1700fe68b56545acba80630"
+    },
+    {
+      "sourceId": "r8_medical_fee_schedule",
+      "title": "令和8年厚生労働省告示第69号 別表第一 医科診療報酬点数表",
+      "url": "https://www.mhlw.go.jp/content/12400000/001686842.pdf",
+      "sha256": "1b72d3cc1d0006f0e8f91afd2c3a49f21272e3ba376b8d24a6dffda63092e2d6"
+    },
+    {
+      "sourceId": "r8_special_facility_standards",
+      "title": "特掲診療料の施設基準等及びその届出に関する手続きの取扱いについて（令和8年3月5日保医発0305第8号、0619訂正後）",
+      "url": "https://www.mhlw.go.jp/content/12400000/001713895.pdf",
+      "sha256": "7db2ee54c3e00c99e4ccebf75a580811e212a48cc29497676fc4dc23eb2487ee"
+    }
+  ],
+  "facilityStandardRequirements": [
+    {
+      "code": "113014610",
+      "name": "認知症専門診断管理料２（基幹型又は地域型）",
+      "requiredAllOf": [
+        "ninchisho_shikkan_iryo_center"
+      ],
+      "sourceRef": {
+        "sourceId": "r8_special_facility_standards",
+        "section": "第11の4 認知症専門診断管理料"
+      }
+    },
+    {
+      "code": "113022610",
+      "name": "認知症専門診断管理料１（基幹型又は地域型）",
+      "requiredAllOf": [
+        "ninchisho_shikkan_iryo_center"
+      ],
+      "sourceRef": {
+        "sourceId": "r8_special_facility_standards",
+        "section": "第11の4 認知症専門診断管理料"
+      }
+    },
+    {
+      "code": "113022710",
+      "name": "認知症専門診断管理料１（連携型）",
+      "requiredAllOf": [
+        "ninchisho_shikkan_iryo_center"
+      ],
+      "sourceRef": {
+        "sourceId": "r8_special_facility_standards",
+        "section": "第11の4 認知症専門診断管理料"
+      }
+    },
+    {
+      "code": "113042610",
+      "name": "認知症専門診断管理料２（連携型）",
+      "requiredAllOf": [
+        "ninchisho_shikkan_iryo_center"
+      ],
+      "sourceRef": {
+        "sourceId": "r8_special_facility_standards",
+        "section": "第11の4 認知症専門診断管理料"
+      }
+    }
+  ],
+  "variantFamilies": [
+    {
+      "familyId": "b005_7_ninchisho_senmon_shindan_kanri",
+      "name": "B005-7 認知症専門診断管理料",
+      "codes": [
+        "113014610",
+        "113022610",
+        "113022710",
+        "113042610"
+      ],
+      "selectionMode": "choose_one",
+      "mutuallyExclusive": true,
+      "sourceRef": {
+        "sourceId": "r8_medical_fee_schedule",
+        "section": "B005-7 認知症専門診断管理料"
+      }
+    }
+  ],
+  "bundlingRules": [
+    {
+      "ruleId": "c107_includes_j045_artificial_ventilation",
+      "managementCodes": [
+        "114005410"
+      ],
+      "includedProcedureCodes": [
+        "140009310",
+        "140009550",
+        "140009750",
+        "140023510",
+        "140023750",
+        "140023950",
+        "140039550",
+        "140039650",
+        "140063810",
+        "140064050",
+        "140064350",
+        "140064750"
+      ],
+      "scope": "same_month",
+      "sourceRef": {
+        "sourceId": "r8_medical_fee_interpretation",
+        "section": "C107 在宅人工呼吸指導管理料"
+      }
+    }
+  ],
+  "artifactPayloadSha256": "80a840526877bc830cd9c0610eedf3d96a75e1efc656e2f40f137b96161b56ab"
+}

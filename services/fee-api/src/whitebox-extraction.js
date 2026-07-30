@@ -1,6 +1,9 @@
 import crypto from "node:crypto";
 import { readFileSync } from "node:fs";
-import { clinicalServiceContextCues } from "../../../packages/fee-contracts/src/index.js";
+import {
+  clinicalServiceContextCues,
+  splitClinicalEvidenceClauses
+} from "../../../packages/fee-contracts/src/index.js";
 
 export const WHITEBOX_LINKER_MODES = Object.freeze(["off", "shadow", "propose"]);
 export const WHITEBOX_CONTEXT_MODES = Object.freeze(["off", "shadow", "assist"]);
@@ -94,8 +97,6 @@ const MEDICATION_BILLING_ACT_PATTERN = /(?:処方箋|処方料|調剤料|一般�
 const DRUG_PRODUCT_PATTERN = /(?:錠|カプセル|散|顆粒|細粒|シロップ|液|軟膏|クリーム|ゲル|テープ|パッチ|坐剤|注射液|点眼|点鼻|吸入|mg|μg|mcg|mL|％|%)/iu;
 const MAX_REVIEWABLE_LINKER_FAMILY_SIZE = 25;
 const NON_BLOCKING_LINKER_REASON_CODES = new Set(["linker_family_identified"]);
-const WHITEBOX_CLAUSE_BOUNDARY_PATTERN = /(?:[。！？!?；;]+|[、,](?=\s*(?:本日|今回|当日|前回|先月|以前|過去|次回|後日|今後|他院|前医|当院|院内|自院)))/gu;
-
 export const WHITEBOX_CONTEXT_REASON_DISPOSITIONS = Object.freeze({
   classifier_only: "diagnostic",
   classifier_predicate_agree: "diagnostic",
@@ -117,47 +118,24 @@ export const WHITEBOX_CONTEXT_REASON_DISPOSITIONS = Object.freeze({
 
 export function splitWhiteboxEvidenceClauses(line = {}) {
   const text = String(line?.text || "");
-  const clauses = [];
-  let start = 0;
-  const append = (rawStart, rawEnd) => {
-    const raw = text.slice(rawStart, rawEnd);
-    const leading = raw.search(/\S/u);
-    if (leading < 0) {
-      return;
-    }
-    const trimmedRight = raw.trimEnd();
-    const clauseStartUtf16 = rawStart + leading;
-    const clauseEndUtf16 = rawStart + trimmedRight.length;
-    const clauseText = text.slice(clauseStartUtf16, clauseEndUtf16);
-    const clauseStart = codePointLength(text.slice(0, clauseStartUtf16));
-    const clauseEnd = codePointLength(text.slice(0, clauseEndUtf16));
-    const localCues = clinicalServiceContextCues(clauseText);
+  return splitClinicalEvidenceClauses(text, { lineId: line?.lineId }).map((clause) => {
+    const localCues = clinicalServiceContextCues(clause.text);
     const inheritCurrentVisit = line?.cues?.currentVisit === true
       && !localCues.pastOrExternal
       && !localCues.futureOrOrderOnly;
-    clauses.push({
-      clauseId: `${String(line?.lineId || "L")}:C${String(clauses.length + 1).padStart(3, "0")}`,
+    return {
+      clauseId: clause.clauseId,
       lineId: String(line?.lineId || ""),
-      text: clauseText,
-      charStart: clauseStart,
-      charEnd: clauseEnd,
+      text: clause.text,
+      charStart: clause.charStart,
+      charEnd: clause.charEnd,
       cues: {
         ...localCues,
         currentVisit: localCues.currentVisit || inheritCurrentVisit,
         syntheticMeta: line?.cues?.syntheticMeta === true
       }
-    });
-  };
-  for (const match of text.matchAll(WHITEBOX_CLAUSE_BOUNDARY_PATTERN)) {
-    const end = Number(match.index || 0) + match[0].length;
-    append(start, end);
-    start = end;
-  }
-  append(start, text.length);
-  if (!clauses.length && text.length) {
-    append(0, text.length);
-  }
-  return clauses;
+    };
+  });
 }
 
 export function buildContextClassifierItems({

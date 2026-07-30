@@ -150,7 +150,13 @@
         sameBuilding: sameBuilding.value,
         sameBuildingSource: sameBuilding.source,
         singleBuildingPatientCount: prepared.singleBuildingPatientCount ?? null,
+        residenceType: prepared.facilityResidence === true
+          ? "facility"
+          : prepared.privateResidence === true
+            ? "private"
+            : null,
         clinicalText: prepared.clinicalText,
+        sourceSurfaces: prepared.sourceSurfaces,
         extractionProof: prepared.extractionProof
       });
       assertCurrentPreview(expectedPreviewFingerprint);
@@ -374,10 +380,13 @@
     ].filter(Boolean).join(" ・ ");
     renderCandidates(elements["line-candidates"], candidates.filter((item) => item.sourceType === "calculated_line"));
     renderCandidates(elements["proposal-candidates"], candidates.filter((item) => item.sourceType === "proposal"));
-    const issues = [
-      ...(Array.isArray(calculation.warnings) ? calculation.warnings : []),
-      ...sortReviewIssues(Array.isArray(calculation.reviewIssues) ? calculation.reviewIssues : [])
-    ];
+    const notices = Array.isArray(calculation.notices) ? calculation.notices : null;
+    const issues = notices
+      ? sortReviewIssues(notices)
+      : [
+          ...(Array.isArray(calculation.warnings) ? calculation.warnings : []),
+          ...sortReviewIssues(Array.isArray(calculation.reviewIssues) ? calculation.reviewIssues : [])
+        ];
     elements["issue-count"].textContent = `${issues.length}件`;
     replaceChildren(elements.issues, issues.length
       ? issues.map((issue) => createTextRow("issue-row", issueText(issue)))
@@ -390,6 +399,7 @@
       const row = document.createElement("div");
       row.className = "candidate-row";
       row.classList.toggle("requires-selection", Boolean(candidate.requiresSelection));
+      row.classList.toggle("adoption-blocked", Boolean(candidate.adoptionBlocked));
       const header = document.createElement("header");
       const name = document.createElement("strong");
       name.className = "candidate-name";
@@ -412,6 +422,20 @@
         qualifier.className = "candidate-qualifier";
         qualifier.textContent = display.qualifier;
         meta.append(qualifier);
+      }
+      if (candidate.adoptionBlocked) {
+        const blocked = document.createElement("span");
+        blocked.className = "candidate-qualifier";
+        blocked.textContent = candidate.facilityStandardStatus === "unknown"
+          ? "施設基準未確認・採用不可"
+          : "採用不可";
+        meta.append(blocked);
+      }
+      if (candidate.mutuallyExclusive && candidate.selectionGroupLabel) {
+        const group = document.createElement("span");
+        group.className = "candidate-qualifier";
+        group.textContent = `${candidate.selectionGroupLabel}から1つを選択`;
+        meta.append(group);
       }
       if (candidate.requiresSelection && candidate.codeCandidates?.length) {
         const choices = document.createElement("span");
@@ -640,7 +664,7 @@
       return "カルテ画面と接続できません。拡張機能とカルテ画面を再読み込みしてください。";
     }
     if (error.code === "selector_contract_mismatch") {
-      return "画面の形式が想定と異なります（契約 homis-mock-v3）。";
+      return "画面の形式が想定と異なります（契約 homis-mock-v4）。";
     }
     if (["preview_changed", "chart_changed_during_extraction"].includes(error.code)) {
       return "カルテが切り替わりました。画面を再読み取りしてください。";

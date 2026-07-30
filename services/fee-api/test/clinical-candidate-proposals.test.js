@@ -63,6 +63,55 @@ test("医学管理・文書系イベントはマスタ照合され点数付き�
   assert.deepEqual(result.procedureCodes, [], "確定明細のprocedure_codesには入れない");
 });
 
+test("特定材料の属性が一意なら公式材料コードへ確定する", async () => {
+  const result = await convertClinicalCalculationEvents({
+    clinicalEvents: [{
+      clinicalEventId: "ev_material_trach",
+      type: "material",
+      name: "気管切開後留置用チューブ（一般・カフ付き・吸引有・二重管）",
+      action_status: "performed",
+      temporal_relation: "current",
+      provider_ownership: "own",
+      evidence: "本日、複管8.0mmのカニューレ交換を実施。カフ圧確認、吸引あり。",
+      canonical_fact_status: "eligible_for_master_search",
+      evidenceVerificationStatus: "verified"
+    }],
+    feeCalculator: mockFeeCalculator(),
+    serviceDate: "2026-06-23"
+  });
+
+  assert.deepEqual(result.materialInputs, [{ code: "733840000", quantity: "1" }]);
+  assert.equal(result.candidateProposals.length, 0);
+  assert.equal(result.masterCandidates[0].generatedBy, "specific_material_attribute_resolver");
+});
+
+test("材料属性が絞れても請求表が不明なら候補選択に留める", async () => {
+  const result = await convertClinicalCalculationEvents({
+    clinicalEvents: [{
+      clinicalEventId: "ev_material_gastro",
+      type: "material",
+      name: "交換用胃瘻カテーテル（胃留置型・バルーン型）",
+      action_status: "performed",
+      temporal_relation: "current",
+      provider_ownership: "own",
+      evidence: "本日、胃留置型バルーンの交換を実施。",
+      canonical_fact_status: "eligible_for_master_search",
+      evidenceVerificationStatus: "verified"
+    }],
+    feeCalculator: mockFeeCalculator(),
+    serviceDate: "2026-06-25"
+  });
+
+  assert.deepEqual(result.materialInputs, []);
+  const proposal = result.candidateProposals.find((item) => (
+    item.basis === "specific_material_attribute_candidate"
+  ));
+  assert.ok(proposal);
+  assert.equal(proposal.candidateOnly, true);
+  assert.deepEqual(proposal.codeCandidates, ["721004000", "733810000"]);
+  assert.equal(result.reviewIssues[0].issueCode, "specific_material_code_ambiguous");
+});
+
 test("限定再確認由来イベントは候補専用で直接算定フラグを立てない", async () => {
   const result = await convertClinicalCalculationEvents({
     clinicalEvents: [managementEvent({
@@ -650,6 +699,62 @@ test("辞書スキャン: 同一別名の複数コードは code未確定の曖�
   assert.ok(proposal.title.includes("在宅酸素"));
 });
 
+test("デバイス稼働状態だけの記載からJ045人工呼吸候補を生成しない", async () => {
+  const text = "O）人工呼吸器は作動良好。TPPV常時使用でリークなし。";
+  const prep = await buildClinicalCalculationPreparation({
+    session: {
+      feeSessionId: "fee_device_state_only",
+      orgId: "org_1",
+      patientId: "pat_1",
+      serviceDate: "2026-06-25",
+      setting: "home_visit",
+      clinicalText: text
+    },
+    calculationInput: {},
+    feeCalculator: {
+      async searchMaster() {
+        return { items: [] };
+      },
+      async scanMasterNames() {
+        return {
+          matches: [{
+            index: text.indexOf("人工呼吸"),
+            matchedText: "人工呼吸",
+            codeCount: 1,
+            codes: [{
+              code: "140009310",
+              name: "人工呼吸",
+              points: 302,
+              role: "base"
+            }]
+          }]
+        };
+      }
+    },
+    openAiApiKey: "dummy",
+    clinicalFactsExtractor: async ({ preprocessedLines }) => ({
+      visit_type: { kind: "revisit", evidence: "再診", confidence: "medium" },
+      diagnoses: [],
+      line_review: preprocessedLines.map((line) => ({
+        line_id: line.lineId,
+        line_role: "none"
+      })),
+      clinical_events: [],
+      excluded_events: [],
+      missing_information: [],
+      review_flags: []
+    })
+  });
+
+  assert.equal(
+    prep.candidateProposals.some((proposal) => (
+      proposal.code === "140009310"
+      || proposal.codeCandidates?.includes("140009310")
+    )),
+    false
+  );
+});
+
 test("管理シグナル候補は単一マスタ解決時だけ点数を表示する", async () => {
   const input = {
     diagnoses: [{ name: "睡眠時無呼吸症候群", status: "active" }],
@@ -884,15 +989,36 @@ test("加算(親項目前提)はイベント照合レーンから単独候補に
   );
 });
 
-test("受付時刻の時間帯判定: 深夜・休日・時間外・時間内", async () => {
+test("受付時刻の時間帯判定は有効期間付き施設設定だけを使う", async () => {
   const { receptionTimeContextWarning } = await import("../src/clinical-calculation-input.js");
-  assert.match(receptionTimeContextWarning("23:30", "2026-06-10"), /深夜加算確認/u);
-  assert.match(receptionTimeContextWarning("05:59", "2026-06-10"), /深夜加算確認/u);
-  assert.match(receptionTimeContextWarning("10:00", "2026-06-14"), /休日加算確認/u); // 日曜
-  assert.match(receptionTimeContextWarning("10:00", "2026-01-01"), /休日加算確認/u); // 祝日
-  assert.match(receptionTimeContextWarning("19:30", "2026-06-10"), /時間外加算確認/u);
-  assert.equal(receptionTimeContextWarning("10:00", "2026-06-10"), ""); // 平日日中
-  assert.equal(receptionTimeContextWarning("", "2026-06-10"), ""); // 未入力
+  const feeSettings = {
+    facilityServiceSchedules: [{
+      scheduleId: "test-hours",
+      effectiveFrom: "2026-01-01",
+      effectiveTo: "",
+      timezone: "Asia/Tokyo",
+      weeklyHours: {
+        monday: [{ start: "09:00", end: "18:00" }],
+        tuesday: [{ start: "09:00", end: "18:00" }],
+        wednesday: [{ start: "09:00", end: "18:00" }],
+        thursday: [{ start: "09:00", end: "18:00" }],
+        friday: [{ start: "09:00", end: "18:00" }],
+        saturday: [{ start: "09:00", end: "12:00" }],
+        sunday: []
+      },
+      holidayDates: ["2026-01-01", "2026-06-14"],
+      specialHours: [],
+      status: "active"
+    }]
+  };
+  assert.match(receptionTimeContextWarning("23:30", "2026-06-10", feeSettings), /深夜加算判定/u);
+  assert.match(receptionTimeContextWarning("05:59", "2026-06-10", feeSettings), /深夜加算判定/u);
+  assert.match(receptionTimeContextWarning("10:00", "2026-06-14", feeSettings), /休日加算判定/u);
+  assert.match(receptionTimeContextWarning("10:00", "2026-01-01", feeSettings), /休日加算判定/u);
+  assert.match(receptionTimeContextWarning("19:30", "2026-06-10", feeSettings), /時間外加算判定/u);
+  assert.equal(receptionTimeContextWarning("10:00", "2026-06-10", feeSettings), "");
+  assert.match(receptionTimeContextWarning("19:30", "2026-06-10"), /設定されていない/u);
+  assert.equal(receptionTimeContextWarning("", "2026-06-10", feeSettings), "");
 });
 
 test("v15全行カバレッジ: performed判定なのに未イベント化の行を確認事項として明示する", async () => {

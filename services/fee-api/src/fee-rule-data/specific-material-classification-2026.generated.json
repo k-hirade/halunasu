@@ -1,0 +1,1160 @@
+{
+  "artifactPayloadSha256": "1783731cb55a16d378e1ca185fd860d9f2b6b0fe835654495719ee7ae6cb8687",
+  "categories": [
+    {
+      "attributeAxes": [
+        {
+          "key": "placement",
+          "values": [
+            {
+              "candidateNameContains": [
+                "胃留置型"
+              ],
+              "inputPatterns": [
+                "胃留置型",
+                "胃内留置"
+              ],
+              "value": "stomach"
+            },
+            {
+              "candidateNameContains": [
+                "小腸留置型"
+              ],
+              "inputPatterns": [
+                "小腸留置型",
+                "小腸内留置"
+              ],
+              "value": "small_bowel"
+            }
+          ]
+        },
+        {
+          "key": "retention",
+          "values": [
+            {
+              "candidateNameContains": [
+                "バルーン型"
+              ],
+              "inputPatterns": [
+                "バルーン型",
+                "バルーン"
+              ],
+              "value": "balloon"
+            },
+            {
+              "candidateNameContains": [
+                "バンパー型"
+              ],
+              "inputPatterns": [
+                "バンパー型",
+                "バンパー"
+              ],
+              "value": "bumper"
+            },
+            {
+              "candidateNameContains": [
+                "一般型"
+              ],
+              "inputPatterns": [
+                "一般型"
+              ],
+              "value": "general"
+            }
+          ]
+        },
+        {
+          "key": "guidewire",
+          "values": [
+            {
+              "candidateNameContains": [
+                "ガイドワイヤーあり"
+              ],
+              "inputPatterns": [
+                "ガイドワイヤーあり",
+                "ガイドワイヤー有"
+              ],
+              "value": true
+            },
+            {
+              "candidateNameContains": [
+                "ガイドワイヤーなし"
+              ],
+              "inputPatterns": [
+                "ガイドワイヤーなし",
+                "ガイドワイヤー無"
+              ],
+              "value": false
+            }
+          ]
+        }
+      ],
+      "candidates": [
+        {
+          "attributes": {
+            "placement": "small_bowel",
+            "retention": "bumper"
+          },
+          "code": "721005000",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "交換用胃瘻カテーテル（小腸留置型・バンパー型）",
+          "notificationSectionNumber": "12",
+          "notificationTableNumber": "1",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 26500,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "placement": "small_bowel",
+            "retention": "general"
+          },
+          "code": "721006000",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "交換用胃瘻カテーテル（小腸留置型・一般型）",
+          "notificationSectionNumber": "12",
+          "notificationTableNumber": "1",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 15800,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "placement": "stomach",
+            "retention": "balloon"
+          },
+          "code": "721004000",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "交換用胃瘻カテーテル（胃留置型・バルーン型）",
+          "notificationSectionNumber": "12",
+          "notificationTableNumber": "1",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 7420,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "guidewire": true,
+            "placement": "stomach",
+            "retention": "bumper"
+          },
+          "code": "721002000",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "交換用胃瘻カテーテル（胃留置型・バンパー型・ガイドワイヤーあり）",
+          "notificationSectionNumber": "12",
+          "notificationTableNumber": "1",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 21700,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "guidewire": false,
+            "placement": "stomach",
+            "retention": "bumper"
+          },
+          "code": "721003000",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "交換用胃瘻カテーテル（胃留置型・バンパー型・ガイドワイヤーなし）",
+          "notificationSectionNumber": "12",
+          "notificationTableNumber": "1",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 15500,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "placement": "small_bowel",
+            "retention": "bumper"
+          },
+          "code": "710011078",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "交換用胃瘻カテーテル（小腸留置型・バンパー型）",
+          "notificationSectionNumber": "37",
+          "notificationTableNumber": "2",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 26500,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "placement": "small_bowel",
+            "retention": "general"
+          },
+          "code": "733820000",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "交換用胃瘻カテーテル（小腸留置型・一般型）",
+          "notificationSectionNumber": "37",
+          "notificationTableNumber": "2",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 15800,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "placement": "stomach",
+            "retention": "balloon"
+          },
+          "code": "733810000",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "交換用胃瘻カテーテル（胃留置型・バルーン型）",
+          "notificationSectionNumber": "37",
+          "notificationTableNumber": "2",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 7420,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "guidewire": true,
+            "placement": "stomach",
+            "retention": "bumper"
+          },
+          "code": "710010076",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "交換用胃瘻カテーテル（胃留置型・バンパー型・ガイドワイヤーあり）",
+          "notificationSectionNumber": "37",
+          "notificationTableNumber": "2",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 21700,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "guidewire": false,
+            "placement": "stomach",
+            "retention": "bumper"
+          },
+          "code": "710010077",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "交換用胃瘻カテーテル（胃留置型・バンパー型・ガイドワイヤーなし）",
+          "notificationSectionNumber": "37",
+          "notificationTableNumber": "2",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 15500,
+          "unitName": ""
+        }
+      ],
+      "categoryId": "gastrostomy_replacement_catheter",
+      "deviceFactTypes": [
+        "gastrostomy_catheter"
+      ],
+      "displayName": "交換用胃瘻カテーテル",
+      "inputCategoryPatterns": [
+        "交換用胃瘻カテーテル",
+        "胃瘻カテーテル交換",
+        "胃瘻チューブ交換",
+        "胃瘻ボタン交換"
+      ],
+      "masterNamePrefix": "交換用胃瘻カテーテル"
+    },
+    {
+      "attributeAxes": [
+        {
+          "key": "route",
+          "values": [
+            {
+              "candidateNameContains": [
+                "経鼻用"
+              ],
+              "inputPatterns": [
+                "経鼻",
+                "鼻腔"
+              ],
+              "value": "nasal"
+            },
+            {
+              "candidateNameContains": [
+                "腸瘻用"
+              ],
+              "inputPatterns": [
+                "腸瘻"
+              ],
+              "value": "enterostomy"
+            }
+          ]
+        },
+        {
+          "key": "variant",
+          "values": [
+            {
+              "candidateNameContains": [
+                "乳幼児用・非ＤＥＨＰ型"
+              ],
+              "inputPatterns": [
+                "乳幼児用・非DEHP",
+                "乳幼児用非DEHP"
+              ],
+              "value": "infant_non_dehp"
+            },
+            {
+              "candidateNameContains": [
+                "乳幼児用・一般型"
+              ],
+              "inputPatterns": [
+                "乳幼児用・一般",
+                "乳幼児用一般"
+              ],
+              "value": "infant_general"
+            },
+            {
+              "candidateNameContains": [
+                "経腸栄養用"
+              ],
+              "inputPatterns": [
+                "経腸栄養用"
+              ],
+              "value": "enteral_nutrition"
+            },
+            {
+              "candidateNameContains": [
+                "特殊型"
+              ],
+              "inputPatterns": [
+                "特殊型"
+              ],
+              "value": "special"
+            },
+            {
+              "candidateNameContains": [
+                "経鼻用・一般用"
+              ],
+              "inputPatterns": [
+                "経鼻用・一般",
+                "経鼻用一般"
+              ],
+              "value": "general"
+            }
+          ]
+        }
+      ],
+      "candidates": [
+        {
+          "attributes": {
+            "route": "nasal",
+            "variant": "general"
+          },
+          "code": "732800000",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "栄養用ディスポカテ（在宅）（経鼻用・一般用）",
+          "notificationSectionNumber": "5",
+          "notificationTableNumber": "1",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 183,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "route": "nasal",
+            "variant": "infant_general"
+          },
+          "code": "710010072",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "栄養用ディスポカテ（在宅）（経鼻用・乳幼児用・一般型）",
+          "notificationSectionNumber": "5",
+          "notificationTableNumber": "1",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 94,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "route": "nasal",
+            "variant": "infant_non_dehp"
+          },
+          "code": "710010073",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "栄養用ディスポカテ（在宅）（経鼻用・乳幼児用・非ＤＥＨＰ型）",
+          "notificationSectionNumber": "5",
+          "notificationTableNumber": "1",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 147,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "route": "nasal",
+            "variant": "special"
+          },
+          "code": "732830000",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "栄養用ディスポカテ（在宅）（経鼻用・特殊型）",
+          "notificationSectionNumber": "5",
+          "notificationTableNumber": "1",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 2110,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "route": "nasal",
+            "variant": "enteral_nutrition"
+          },
+          "code": "732820000",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "栄養用ディスポカテ（在宅）（経鼻用・経腸栄養用）",
+          "notificationSectionNumber": "5",
+          "notificationTableNumber": "1",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 1600,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "route": "enterostomy"
+          },
+          "code": "732840000",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "栄養用ディスポカテ（在宅）（腸瘻用）",
+          "notificationSectionNumber": "5",
+          "notificationTableNumber": "1",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 3870,
+          "unitName": ""
+        }
+      ],
+      "categoryId": "nutrition_disposable_catheter",
+      "deviceFactTypes": [
+        "enteral_nasal_tube"
+      ],
+      "displayName": "栄養用ディスポカテ",
+      "inputCategoryPatterns": [
+        "栄養用ディスポカテ",
+        "経鼻栄養カテーテル",
+        "経腸栄養カテーテル",
+        "腸瘻カテーテル"
+      ],
+      "masterNamePrefix": "栄養用ディスポカテ（在宅）"
+    },
+    {
+      "attributeAxes": [
+        {
+          "key": "purpose",
+          "values": [
+            {
+              "candidateNameContains": [
+                "輪状甲状膜切開"
+              ],
+              "inputPatterns": [
+                "輪状甲状膜切開"
+              ],
+              "value": "cricothyrotomy"
+            },
+            {
+              "candidateNameContains": [
+                "保持用気管切開"
+              ],
+              "inputPatterns": [
+                "保持用気管切開",
+                "保持用チューブ"
+              ],
+              "value": "retention"
+            },
+            {
+              "candidateNameContains": [
+                "一般・",
+                "カフ付チューブ",
+                "カフなし気管切開"
+              ],
+              "inputPatterns": [
+                "一般型"
+              ],
+              "value": "general"
+            }
+          ]
+        },
+        {
+          "key": "cuffed",
+          "values": [
+            {
+              "candidateNameContains": [
+                "カフ付き",
+                "カフ付チューブ"
+              ],
+              "inputPatterns": [
+                "カフ付き",
+                "カフ付",
+                "カフあり",
+                "カフ有",
+                "カフ圧"
+              ],
+              "value": true
+            },
+            {
+              "candidateNameContains": [
+                "カフなし"
+              ],
+              "inputPatterns": [
+                "カフなし",
+                "カフ無し",
+                "カフ無"
+              ],
+              "value": false
+            }
+          ]
+        },
+        {
+          "key": "suctionEnabled",
+          "values": [
+            {
+              "candidateNameContains": [
+                "吸引有"
+              ],
+              "inputPatterns": [
+                "吸引有",
+                "吸引あり",
+                "吸引機能あり",
+                "カフ上部吸引"
+              ],
+              "value": true
+            },
+            {
+              "candidateNameContains": [
+                "吸引無"
+              ],
+              "inputPatterns": [
+                "吸引無",
+                "吸引なし",
+                "吸引無し"
+              ],
+              "value": false
+            }
+          ]
+        },
+        {
+          "key": "tubeStructure",
+          "values": [
+            {
+              "candidateNameContains": [
+                "一重管"
+              ],
+              "inputPatterns": [
+                "一重管",
+                "単管"
+              ],
+              "value": "single"
+            },
+            {
+              "candidateNameContains": [
+                "二重管"
+              ],
+              "inputPatterns": [
+                "二重管",
+                "複管",
+                "交換可能な内筒"
+              ],
+              "value": "double"
+            }
+          ]
+        }
+      ],
+      "candidates": [
+        {
+          "attributes": {
+            "cuffed": false,
+            "purpose": "general"
+          },
+          "code": "732770000",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "気管切開後留置用チューブ（在宅）（カフなし気管切開チューブ）",
+          "notificationSectionNumber": "3",
+          "notificationTableNumber": "1",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 4080,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "cuffed": true,
+            "purpose": "general",
+            "suctionEnabled": true,
+            "tubeStructure": "single"
+          },
+          "code": "732730000",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "気管切開後留置用チューブ（在宅）（カフ付チューブ吸引有・一重管）",
+          "notificationSectionNumber": "3",
+          "notificationTableNumber": "1",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 4020,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "cuffed": true,
+            "purpose": "general",
+            "suctionEnabled": true,
+            "tubeStructure": "double"
+          },
+          "code": "732740000",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "気管切開後留置用チューブ（在宅）（カフ付チューブ吸引有・二重管）",
+          "notificationSectionNumber": "3",
+          "notificationTableNumber": "1",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 5690,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "cuffed": true,
+            "purpose": "general",
+            "suctionEnabled": false,
+            "tubeStructure": "single"
+          },
+          "code": "732750000",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "気管切開後留置用チューブ（在宅）（カフ付チューブ吸引無・一重管）",
+          "notificationSectionNumber": "3",
+          "notificationTableNumber": "1",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 3800,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "cuffed": true,
+            "purpose": "general",
+            "suctionEnabled": false,
+            "tubeStructure": "double"
+          },
+          "code": "732760000",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "気管切開後留置用チューブ（在宅）（カフ付チューブ吸引無・二重管）",
+          "notificationSectionNumber": "3",
+          "notificationTableNumber": "1",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 6080,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "purpose": "retention"
+          },
+          "code": "732790000",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "気管切開後留置用チューブ（在宅）（保持用気管切開チューブ）",
+          "notificationSectionNumber": "3",
+          "notificationTableNumber": "1",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 6140,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "purpose": "cricothyrotomy"
+          },
+          "code": "732780000",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "気管切開後留置用チューブ（在宅）（輪状甲状膜切開チューブ）",
+          "notificationSectionNumber": "3",
+          "notificationTableNumber": "1",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 2030,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "cuffed": false,
+            "purpose": "general"
+          },
+          "code": "733870000",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "気管切開後留置用チューブ（一般・カフなし）",
+          "notificationSectionNumber": "38",
+          "notificationTableNumber": "2",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 4080,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "cuffed": true,
+            "purpose": "general",
+            "suctionEnabled": true,
+            "tubeStructure": "single"
+          },
+          "code": "733830000",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "気管切開後留置用チューブ（一般・カフ付き・吸引有・一重管）",
+          "notificationSectionNumber": "38",
+          "notificationTableNumber": "2",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 4020,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "cuffed": true,
+            "purpose": "general",
+            "suctionEnabled": true,
+            "tubeStructure": "double"
+          },
+          "code": "733840000",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "気管切開後留置用チューブ（一般・カフ付き・吸引有・二重管）",
+          "notificationSectionNumber": "38",
+          "notificationTableNumber": "2",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 5690,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "cuffed": true,
+            "purpose": "general",
+            "suctionEnabled": false,
+            "tubeStructure": "single"
+          },
+          "code": "733850000",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "気管切開後留置用チューブ（一般・カフ付き・吸引無・一重管）",
+          "notificationSectionNumber": "38",
+          "notificationTableNumber": "2",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 3800,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "cuffed": true,
+            "purpose": "general",
+            "suctionEnabled": false,
+            "tubeStructure": "double"
+          },
+          "code": "733860000",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "気管切開後留置用チューブ（一般・カフ付き・吸引無・二重管）",
+          "notificationSectionNumber": "38",
+          "notificationTableNumber": "2",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 6080,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "purpose": "retention"
+          },
+          "code": "733890000",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "気管切開後留置用チューブ（保持用気管切開）",
+          "notificationSectionNumber": "38",
+          "notificationTableNumber": "2",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 6140,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "purpose": "cricothyrotomy"
+          },
+          "code": "733880000",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "気管切開後留置用チューブ（輪状甲状膜切開）",
+          "notificationSectionNumber": "38",
+          "notificationTableNumber": "2",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 2030,
+          "unitName": ""
+        }
+      ],
+      "categoryId": "tracheostomy_tube",
+      "deviceFactTypes": [
+        "tracheostomy_cannula"
+      ],
+      "displayName": "気管切開後留置用チューブ",
+      "inputCategoryPatterns": [
+        "気管切開後留置用チューブ",
+        "気管カニューレ",
+        "気管切開カニューレ",
+        "カニューレ交換"
+      ],
+      "masterNamePrefix": "気管切開後留置用チューブ"
+    },
+    {
+      "attributeAxes": [
+        {
+          "key": "variant",
+          "values": [
+            {
+              "candidateNameContains": [
+                "圧迫止血"
+              ],
+              "inputPatterns": [
+                "圧迫止血"
+              ],
+              "value": "compression_hemostasis"
+            },
+            {
+              "candidateNameContains": [
+                "特定（１）"
+              ],
+              "inputPatterns": [
+                "特定(1)",
+                "特定（1）",
+                "特定（１）"
+              ],
+              "value": "special_1"
+            },
+            {
+              "candidateNameContains": [
+                "特定（２）"
+              ],
+              "inputPatterns": [
+                "特定(2)",
+                "特定（2）",
+                "特定（２）"
+              ],
+              "value": "special_2"
+            },
+            {
+              "candidateNameContains": [
+                "２管一般（１）"
+              ],
+              "inputPatterns": [
+                "2管一般(1)",
+                "2管一般（1）",
+                "2管一般（１）"
+              ],
+              "value": "two_lumen_1"
+            },
+            {
+              "candidateNameContains": [
+                "２管一般（２）",
+                "２管（２）"
+              ],
+              "inputPatterns": [
+                "2管(2)",
+                "2管（2）",
+                "2管（２）",
+                "二腔"
+              ],
+              "value": "two_lumen_2"
+            },
+            {
+              "candidateNameContains": [
+                "２管一般（３）",
+                "２管（３）"
+              ],
+              "inputPatterns": [
+                "2管(3)",
+                "2管（3）",
+                "2管（３）"
+              ],
+              "value": "two_lumen_3"
+            }
+          ]
+        },
+        {
+          "key": "system",
+          "values": [
+            {
+              "candidateNameContains": [
+                "閉鎖式"
+              ],
+              "inputPatterns": [
+                "閉鎖式"
+              ],
+              "value": "closed"
+            },
+            {
+              "candidateNameContains": [
+                "標準型"
+              ],
+              "inputPatterns": [
+                "標準型"
+              ],
+              "value": "standard"
+            }
+          ]
+        }
+      ],
+      "candidates": [
+        {
+          "attributes": {
+            "system": "standard",
+            "variant": "two_lumen_2"
+          },
+          "code": "728370000",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "膀胱留置用ディスポーザブルカテーテル（在宅・２管（２）・標準型）",
+          "notificationSectionNumber": "4",
+          "notificationTableNumber": "1",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 561,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "system": "closed",
+            "variant": "two_lumen_2"
+          },
+          "code": "710010897",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "膀胱留置用ディスポーザブルカテーテル（在宅・２管（２）・閉鎖式）",
+          "notificationSectionNumber": "4",
+          "notificationTableNumber": "1",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 862,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "system": "standard",
+            "variant": "two_lumen_3"
+          },
+          "code": "728380000",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "膀胱留置用ディスポーザブルカテーテル（在宅・２管（３）・標準型）",
+          "notificationSectionNumber": "4",
+          "notificationTableNumber": "1",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 1650,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "system": "closed",
+            "variant": "two_lumen_3"
+          },
+          "code": "710010898",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "膀胱留置用ディスポーザブルカテーテル（在宅・２管（３）・閉鎖式）",
+          "notificationSectionNumber": "4",
+          "notificationTableNumber": "1",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 2030,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "variant": "special_1"
+          },
+          "code": "728390000",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "膀胱留置用ディスポーザブルカテーテル（在宅）（特定（１））",
+          "notificationSectionNumber": "4",
+          "notificationTableNumber": "1",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 741,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "variant": "special_2"
+          },
+          "code": "728400000",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "膀胱留置用ディスポーザブルカテーテル（在宅）（特定（２））",
+          "notificationSectionNumber": "4",
+          "notificationTableNumber": "1",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 2060,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "variant": "two_lumen_1"
+          },
+          "code": "750080000",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "膀胱留置用ディスポーザブルカテーテル（在宅）（２管一般（１））",
+          "notificationSectionNumber": "4",
+          "notificationTableNumber": "1",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 233,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "variant": "compression_hemostasis"
+          },
+          "code": "728790000",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "膀胱留置用ディスポーザブルカテーテル（圧迫止血）",
+          "notificationSectionNumber": "39",
+          "notificationTableNumber": "2",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 4610,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "variant": "special_1"
+          },
+          "code": "728750000",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "膀胱留置用ディスポーザブルカテーテル（特定（１））",
+          "notificationSectionNumber": "39",
+          "notificationTableNumber": "2",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 741,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "variant": "special_2"
+          },
+          "code": "728760000",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "膀胱留置用ディスポーザブルカテーテル（特定（２））",
+          "notificationSectionNumber": "39",
+          "notificationTableNumber": "2",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 2060,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "variant": "two_lumen_1"
+          },
+          "code": "728720000",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "膀胱留置用ディスポーザブルカテーテル（２管一般（１））",
+          "notificationSectionNumber": "39",
+          "notificationTableNumber": "2",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 233,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "system": "standard",
+            "variant": "two_lumen_2"
+          },
+          "code": "728730000",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "膀胱留置用ディスポーザブルカテーテル（２管一般（２）・標準型）",
+          "notificationSectionNumber": "39",
+          "notificationTableNumber": "2",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 561,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "system": "closed",
+            "variant": "two_lumen_2"
+          },
+          "code": "710010926",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "膀胱留置用ディスポーザブルカテーテル（２管一般（２）・閉鎖式）",
+          "notificationSectionNumber": "39",
+          "notificationTableNumber": "2",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 862,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "system": "standard",
+            "variant": "two_lumen_3"
+          },
+          "code": "728740000",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "膀胱留置用ディスポーザブルカテーテル（２管一般（３）・標準型）",
+          "notificationSectionNumber": "39",
+          "notificationTableNumber": "2",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 1650,
+          "unitName": ""
+        },
+        {
+          "attributes": {
+            "system": "closed",
+            "variant": "two_lumen_3"
+          },
+          "code": "710010927",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "膀胱留置用ディスポーザブルカテーテル（２管一般（３）・閉鎖式）",
+          "notificationSectionNumber": "39",
+          "notificationTableNumber": "2",
+          "sourceVersion": "2026-06-15",
+          "unitAmountYen": 2030,
+          "unitName": ""
+        }
+      ],
+      "categoryId": "urinary_indwelling_catheter",
+      "deviceFactTypes": [
+        "urinary_indwelling_catheter"
+      ],
+      "displayName": "膀胱留置用ディスポーザブルカテーテル",
+      "inputCategoryPatterns": [
+        "膀胱留置用ディスポーザブルカテーテル",
+        "膀胱留置カテーテル",
+        "尿道留置カテーテル",
+        "尿道カテーテル交換"
+      ],
+      "masterNamePrefix": "膀胱留置用ディスポーザブルカテーテル"
+    }
+  ],
+  "effectiveFrom": "2026-06-01",
+  "medicalNotificationTables": [
+    "1",
+    "2"
+  ],
+  "revision": "2026-06-first-wave-v1",
+  "schemaVersion": "fee-specific-material-classification-artifact-v1",
+  "sourceDefinitionSha256": "d535e849db8b16cd9605a0073b9903d288593b87d0afca4e6215a95b079049f1",
+  "sourceDocuments": [
+    {
+      "sha256": "aedd8a13876eeb79503087251124ed4cd1a905bb0f00a32683cd619f07a3867e",
+      "sourceId": "mhlw-specific-material-definitions-page-3",
+      "sourceVersion": "retrieved-2026-07-30",
+      "title": "特定保険医療材料の定義について 第3ページ",
+      "url": "https://www.mhlw.go.jp/web/t_doc?dataId=00tc4905&dataType=1&pageNo=3"
+    },
+    {
+      "sha256": "6b50ec605a97c6b61b71e35043a6c4ab0bc103b119673b1121f8a6a4c166498c",
+      "sourceId": "ssk-specific-material-master-2026-06-15",
+      "sourceVersion": "2026-06-15",
+      "title": "特定器材マスター 2026-06-15",
+      "url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_05.files/t_ALL20260529.zip"
+    }
+  ],
+  "verifiedAt": "2026-07-30"
+}

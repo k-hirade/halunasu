@@ -1,0 +1,175 @@
+{
+  "artifactPayloadSha256": "71888946ba1a677853263b8330b4ce85272e39e7d0f23a036e34a4031045f69b",
+  "candidateActionStatuses": [
+    "created",
+    "issued"
+  ],
+  "effectiveFrom": "2026-06-01",
+  "families": [
+    {
+      "displayName": "傷病手当金意見書",
+      "excludePatterns": [],
+      "familyId": "injury_sickness_allowance_opinion",
+      "inputPatterns": [
+        "傷病手当金意見書",
+        "傷病手当意見書"
+      ],
+      "procedures": [
+        {
+          "baseName": "傷病手当金意見書交付料",
+          "code": "180000710",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "傷病手当金意見書交付料",
+          "points": 100,
+          "sourceVersion": "2026-06-15"
+        }
+      ]
+    },
+    {
+      "displayName": "療養費同意書",
+      "excludePatterns": [],
+      "familyId": "medical_expense_consent",
+      "inputPatterns": [
+        "療養費同意書",
+        "鍼灸同意書",
+        "マッサージ同意書"
+      ],
+      "procedures": [
+        {
+          "baseName": "療養費同意書交付料",
+          "code": "113004310",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "療養費同意書交付料",
+          "points": 100,
+          "sourceVersion": "2026-06-15"
+        }
+      ]
+    },
+    {
+      "displayName": "診療情報提供書",
+      "excludePatterns": [
+        "受領",
+        "持参"
+      ],
+      "familyId": "medical_information_referral",
+      "inputPatterns": [
+        "診療情報提供書",
+        "診療情報提供",
+        "紹介状"
+      ],
+      "procedures": [
+        {
+          "baseName": "診療情報提供料（１）",
+          "code": "180016110",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "診療情報提供料（１）",
+          "points": 250,
+          "sourceVersion": "2026-06-15"
+        }
+      ]
+    },
+    {
+      "displayName": "精神科特別訪問看護指示書",
+      "excludePatterns": [],
+      "familyId": "psychiatric_special_visiting_nursing_instruction",
+      "inputPatterns": [
+        "精神科特別訪問看護指示書",
+        "精神科特別訪看指示書"
+      ],
+      "procedures": [
+        {
+          "baseName": "精神科特別訪問看護指示加算",
+          "code": "180038770",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "精神科特別訪問看護指示加算",
+          "points": 100,
+          "sourceVersion": "2026-06-15"
+        }
+      ]
+    },
+    {
+      "displayName": "精神科訪問看護指示書",
+      "excludePatterns": [
+        "特別"
+      ],
+      "familyId": "psychiatric_visiting_nursing_instruction",
+      "inputPatterns": [
+        "精神科訪問看護指示書",
+        "精神科訪看指示書"
+      ],
+      "procedures": [
+        {
+          "baseName": "精神科訪問看護指示料",
+          "code": "180038610",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "精神科訪問看護指示料",
+          "points": 300,
+          "sourceVersion": "2026-06-15"
+        }
+      ]
+    },
+    {
+      "displayName": "特別訪問看護指示書",
+      "excludePatterns": [
+        "精神科"
+      ],
+      "familyId": "special_visiting_nursing_instruction",
+      "inputPatterns": [
+        "特別訪問看護指示書",
+        "特別訪看指示書"
+      ],
+      "procedures": [
+        {
+          "baseName": "特別訪問看護指示加算",
+          "code": "114008370",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "特別訪問看護指示加算",
+          "points": 100,
+          "sourceVersion": "2026-06-15"
+        }
+      ]
+    },
+    {
+      "displayName": "訪問看護指示書",
+      "excludePatterns": [
+        "特別",
+        "精神科"
+      ],
+      "familyId": "visiting_nursing_instruction",
+      "inputPatterns": [
+        "訪問看護指示書",
+        "訪看指示書"
+      ],
+      "procedures": [
+        {
+          "baseName": "訪問看護指示料",
+          "code": "114008010",
+          "effectiveFrom": "2026-06-01",
+          "effectiveTo": "9999-12-31",
+          "name": "訪問看護指示料",
+          "points": 300,
+          "sourceVersion": "2026-06-15"
+        }
+      ]
+    }
+  ],
+  "revision": "2026-06-first-wave-v1",
+  "schemaVersion": "fee-document-billing-artifact-v1",
+  "sourceDefinitionSha256": "8f56ad32f16a3b983310b07e273dc6df89adfc78e5f3e3bb479e5e7053bc80c8",
+  "sourceDocuments": [
+    {
+      "sha256": "4d333fe3c0be4070f6fc1aa15a01db2cc7a5af4580fed7652ae3af8884b0be75",
+      "sourceId": "ssk-medical-procedure-master-2026-06-15",
+      "sourceVersion": "2026-06-15",
+      "title": "診療行為マスター 2026-06-15",
+      "url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_01.files/s_ALL20260605.zip"
+    }
+  ],
+  "verifiedAt": "2026-07-30"
+}

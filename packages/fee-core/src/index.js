@@ -74,6 +74,8 @@ export function buildFeeSession(input = {}, options = {}) {
     externalSourceSystem: input.externalSourceSystem || null,
     externalPatientId: input.externalPatientId || null,
     sourceRecordId: input.sourceRecordId || null,
+    sourceSurfaces: isPlainObject(input.sourceSurfaces) ? input.sourceSurfaces : null,
+    structuredSourceFacts: isPlainObject(input.structuredSourceFacts) ? input.structuredSourceFacts : null,
     calculationResult: input.calculationResult || null,
     calculationSummary: input.calculationSummary || null,
     latestCalculationId: null,
@@ -117,6 +119,12 @@ export function applyFeeSessionPatch(current = {}, patch = {}, options = {}) {
         ? patch.inpatientBasicDays || patch.inpatient_basic_days || null
         : undefined,
       clinicalText: hasOwn(patch, "clinicalText") ? patch.clinicalText || "" : undefined,
+      sourceSurfaces: hasOwn(patch, "sourceSurfaces") && isPlainObject(patch.sourceSurfaces)
+        ? patch.sourceSurfaces
+        : undefined,
+      structuredSourceFacts: hasOwn(patch, "structuredSourceFacts") && isPlainObject(patch.structuredSourceFacts)
+        ? patch.structuredSourceFacts
+        : undefined,
       orders: hasOwn(patch, "orders") ? patch.orders : undefined,
       diagnoses: hasOwn(patch, "diagnoses") ? patch.diagnoses : undefined,
       diagnosesSource: hasOwn(patch, "diagnosesSource") ? patch.diagnosesSource || null : undefined,

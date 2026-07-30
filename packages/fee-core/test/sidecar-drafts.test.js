@@ -23,7 +23,8 @@ function draftInput(overrides = {}) {
     encounterDetails: {
       sameBuilding: false,
       sameBuildingSource: "user",
-      singleBuildingPatientCount: 1
+      singleBuildingPatientCount: 1,
+      residenceType: "private"
     },
     extractionProof: { domMutationDetected: false },
     facilityId: "fac_001",
@@ -56,7 +57,11 @@ test("sidecar draft revisions the same immutable record instead of creating a fe
   assert.deepEqual(revised.encounterDetails, {
     sameBuilding: false,
     sameBuildingSource: "user",
-    singleBuildingPatientCount: 1
+    singleBuildingPatientCount: 1,
+    residenceType: "private",
+    visitKind: null,
+    visitKindSource: null,
+    telephoneEligibility: null
   });
   assert.match(revised.clinicalText, /継続/);
   assert.throws(() => applySidecarDraftInput(current, draftInput({ sourceRecordId: "record-002" })), /identity mismatch/);
@@ -71,7 +76,8 @@ test("sidecar draft persists a same-building override as calculation input", () 
     encounterDetails: {
       sameBuilding: true,
       sameBuildingSource: "user",
-      singleBuildingPatientCount: 4
+      singleBuildingPatientCount: 4,
+      residenceType: "facility"
     }
   }), {
     now: new Date("2026-07-18T00:01:00.000Z")
@@ -81,7 +87,11 @@ test("sidecar draft persists a same-building override as calculation input", () 
   assert.deepEqual(revised.encounterDetails, {
     sameBuilding: true,
     sameBuildingSource: "user",
-    singleBuildingPatientCount: 4
+    singleBuildingPatientCount: 4,
+    residenceType: "facility",
+    visitKind: null,
+    visitKindSource: null,
+    telephoneEligibility: null
   });
 });
 

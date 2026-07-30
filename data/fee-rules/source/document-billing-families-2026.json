@@ -1,0 +1,117 @@
+{
+  "schemaVersion": "fee-document-billing-source-v1",
+  "revision": "2026-06-first-wave-v1",
+  "effectiveFrom": "2026-06-01",
+  "verifiedAt": "2026-07-30",
+  "sourceDocuments": [
+    {
+      "sourceId": "ssk-medical-procedure-master-2026-06-15",
+      "title": "診療行為マスター 2026-06-15",
+      "url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_01.files/s_ALL20260605.zip",
+      "sha256": "4d333fe3c0be4070f6fc1aa15a01db2cc7a5af4580fed7652ae3af8884b0be75",
+      "sourceVersion": "2026-06-15"
+    }
+  ],
+  "candidateActionStatuses": [
+    "created",
+    "issued"
+  ],
+  "families": [
+    {
+      "familyId": "special_visiting_nursing_instruction",
+      "displayName": "特別訪問看護指示書",
+      "inputPatterns": [
+        "特別訪問看護指示書",
+        "特別訪看指示書"
+      ],
+      "excludePatterns": [
+        "精神科"
+      ],
+      "procedureNames": [
+        "特別訪問看護指示加算"
+      ]
+    },
+    {
+      "familyId": "visiting_nursing_instruction",
+      "displayName": "訪問看護指示書",
+      "inputPatterns": [
+        "訪問看護指示書",
+        "訪看指示書"
+      ],
+      "excludePatterns": [
+        "特別",
+        "精神科"
+      ],
+      "procedureNames": [
+        "訪問看護指示料"
+      ]
+    },
+    {
+      "familyId": "psychiatric_special_visiting_nursing_instruction",
+      "displayName": "精神科特別訪問看護指示書",
+      "inputPatterns": [
+        "精神科特別訪問看護指示書",
+        "精神科特別訪看指示書"
+      ],
+      "excludePatterns": [],
+      "procedureNames": [
+        "精神科特別訪問看護指示加算"
+      ]
+    },
+    {
+      "familyId": "psychiatric_visiting_nursing_instruction",
+      "displayName": "精神科訪問看護指示書",
+      "inputPatterns": [
+        "精神科訪問看護指示書",
+        "精神科訪看指示書"
+      ],
+      "excludePatterns": [
+        "特別"
+      ],
+      "procedureNames": [
+        "精神科訪問看護指示料"
+      ]
+    },
+    {
+      "familyId": "medical_information_referral",
+      "displayName": "診療情報提供書",
+      "inputPatterns": [
+        "診療情報提供書",
+        "診療情報提供",
+        "紹介状"
+      ],
+      "excludePatterns": [
+        "受領",
+        "持参"
+      ],
+      "procedureNames": [
+        "診療情報提供料（１）"
+      ]
+    },
+    {
+      "familyId": "injury_sickness_allowance_opinion",
+      "displayName": "傷病手当金意見書",
+      "inputPatterns": [
+        "傷病手当金意見書",
+        "傷病手当意見書"
+      ],
+      "excludePatterns": [],
+      "procedureNames": [
+        "傷病手当金意見書交付料"
+      ]
+    },
+    {
+      "familyId": "medical_expense_consent",
+      "displayName": "療養費同意書",
+      "inputPatterns": [
+        "療養費同意書",
+        "鍼灸同意書",
+        "マッサージ同意書"
+      ],
+      "excludePatterns": [],
+      "procedureNames": [
+        "療養費同意書交付料"
+      ]
+    }
+  ]
+}

@@ -27,6 +27,51 @@ const FAMILY = Object.freeze({
   ]
 });
 
+const HOME_MANAGEMENT_FAMILY = Object.freeze({
+  familyId: "fee_family_home_management",
+  name: "在医総管",
+  aliases: ["在医総管", "在宅時医学総合管理料"],
+  hierarchy: {
+    chapter: "2",
+    part: "02",
+    alphaPart: "C",
+    section: "002",
+    branch: "00"
+  },
+  variants: [
+    {
+      code: "114100001",
+      name: "在医総管（機能強化在支診等・月２回以上・１人）",
+      points: 5000,
+      frequencyLimits: [{ windowMonths: 1, maxCount: 1 }]
+    },
+    {
+      code: "114100002",
+      name: "在医総管（在支診等以外・月１回・１人）",
+      points: 2500,
+      frequencyLimits: [{ windowMonths: 1, maxCount: 1 }]
+    }
+  ]
+});
+
+function homeManagementStructuredFacts(overrides = {}) {
+  return {
+    encounter: {
+      plannedHomeVisit: true,
+      residenceType: "private",
+      ...overrides.encounter
+    },
+    clinical: {
+      activeDiagnosisCount: 2,
+      currentManagementOrCounselingCount: 1,
+      medicationFactCount: 2,
+      deviceFactCount: 0,
+      testFactCount: 1,
+      ...overrides.clinical
+    }
+  };
+}
+
 function confirmedProfile(overrides = {}) {
   return applyStandingBillingEvidence(null, {
     orgId: "org_1",
@@ -429,6 +474,104 @@ test("first-month management mention creates only a review candidate and no prof
   assert.equal(result.candidateProposals[0].basis, "standing_mention_first_month_candidate");
   assert.equal(result.candidateProposals[0].candidateOnly, true);
   assert.equal(result.statusTransitions.length, 0);
+});
+
+test("W1c emits an unresolved review-only family candidate from structured positive facts", () => {
+  const result = buildStandingBillingLane({
+    profiles: [],
+    catalog: { families: [HOME_MANAGEMENT_FAMILY] },
+    serviceDate: "2026-07-10",
+    standingMentions: [],
+    currentInputs: {
+      structuredFacts: homeManagementStructuredFacts()
+    }
+  });
+
+  assert.equal(result.candidateProposals.length, 1);
+  const proposal = result.candidateProposals[0];
+  assert.equal(proposal.basis, "standing_structured_trigger_candidate");
+  assert.equal(proposal.candidateOnly, true);
+  assert.equal(proposal.reviewRequired, true);
+  assert.equal(proposal.actionType, "confirm_required");
+  assert.equal(proposal.code, "");
+  assert.equal(proposal.candidateLine, null);
+  assert.deepEqual(proposal.codeCandidates, ["114100001", "114100002"]);
+  assert.equal(proposal.standingTrigger.version, "2026");
+  assert.equal(result.metrics.reasons.structured_trigger_candidate, 1);
+});
+
+test("W1c does not infer management from outpatient or medication-only facts", () => {
+  const outpatient = buildStandingBillingLane({
+    profiles: [],
+    catalog: { families: [HOME_MANAGEMENT_FAMILY] },
+    serviceDate: "2026-07-10",
+    currentInputs: {
+      structuredFacts: homeManagementStructuredFacts({
+        encounter: { plannedHomeVisit: false }
+      })
+    }
+  });
+  assert.equal(outpatient.candidateProposals.length, 0);
+
+  const medicationOnly = buildStandingBillingLane({
+    profiles: [],
+    catalog: { families: [HOME_MANAGEMENT_FAMILY] },
+    serviceDate: "2026-07-10",
+    currentInputs: {
+      structuredFacts: homeManagementStructuredFacts({
+        clinical: {
+          currentManagementOrCounselingCount: 0,
+          medicationFactCount: 4
+        }
+      })
+    }
+  });
+  assert.equal(medicationOnly.candidateProposals.length, 0);
+});
+
+test("W1 confirmed history suppresses W1c for the same family", () => {
+  const profile = confirmedProfile({
+    family: HOME_MANAGEMENT_FAMILY,
+    codes: [{
+      code: HOME_MANAGEMENT_FAMILY.variants[0].code,
+      name: HOME_MANAGEMENT_FAMILY.variants[0].name
+    }]
+  });
+  const result = buildStandingBillingLane({
+    profiles: [profile],
+    catalog: { families: [HOME_MANAGEMENT_FAMILY] },
+    serviceDate: "2026-07-10",
+    currentInputs: {
+      structuredFacts: homeManagementStructuredFacts()
+    }
+  });
+
+  assert.equal(
+    result.candidateProposals.some((proposal) => proposal.basis === "standing_structured_trigger_candidate"),
+    false
+  );
+  assert.equal(result.metrics.reasons.structured_trigger_suppressed_by_history, 1);
+});
+
+test("W1b explicit first-month mention suppresses duplicate W1c output", () => {
+  const result = buildStandingBillingLane({
+    profiles: [],
+    catalog: { families: [HOME_MANAGEMENT_FAMILY] },
+    serviceDate: "2026-07-10",
+    standingMentions: [{
+      lineId: "L1",
+      target: "在医総管",
+      status: "continued",
+      text: "在医総管を継続する。"
+    }],
+    currentInputs: {
+      structuredFacts: homeManagementStructuredFacts()
+    }
+  });
+
+  assert.equal(result.candidateProposals.length, 1);
+  assert.equal(result.candidateProposals[0].basis, "standing_mention_first_month_candidate");
+  assert.equal(result.metrics.reasons.structured_trigger_suppressed_by_mention, 1);
 });
 
 test("memory store persists profiles by facility and applies manual state transitions", () => {

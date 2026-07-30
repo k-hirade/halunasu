@@ -1,13 +1,23 @@
-// 受診区分。home_visit(訪問診療)/house_call(往診)は入院外レセだが、
-// 外来基本料(初診・再診・外来管理加算)を自動算定しない。
+// 受診区分。home_visit(定期的な訪問診療)は外来基本料を使わない。
+// house_call(患者・家族の求めによる往診)は初再診料と往診料を組み合わせる。
 export const feeSettings = Object.freeze(["outpatient", "inpatient", "home_visit", "house_call"]);
 export const sidecarEncounterTypeSources = Object.freeze(["dom", "user"]);
+export const feeResidenceTypes = Object.freeze(["private", "facility"]);
 export const feeVisitKinds = Object.freeze(["telephone_revisit"]);
 export const sidecarContractVersions = Object.freeze(["v1"]);
+export const sidecarSourceSurfaceStatuses = Object.freeze(["ok", "unavailable"]);
+export const sidecarSourceSurfaceUnavailableReasons = Object.freeze([
+  "fetch_failed",
+  "http_error",
+  "selector_mismatch",
+  "timeout"
+]);
 export {
   clinicalServiceContextCues,
+  clinicalServiceContextCuesForMention,
   hasCurrentVisitClinicalServiceContext,
   hasBloodCollectionNegationOrPlanningContext,
+  hasPerformedClinicalServiceEvidence,
   hasPerformedBloodCollectionEvidence,
   hasPerformedBloodCollectionEvidenceInText,
   hasStructuredBloodCollectionEvidence,
@@ -15,7 +25,9 @@ export {
   isFutureOrOrderOnlyClinicalServiceContext,
   isNegatedClinicalServiceContext,
   isPastOrExternalClinicalServiceContext,
-  normalizeClinicalPredicateText
+  normalizeClinicalPredicateText,
+  resolveClinicalServiceMentionScope,
+  splitClinicalEvidenceClauses
 } from "./clinical-predicates.js";
 export const feeSessionStatuses = Object.freeze([
   "draft",
@@ -56,6 +68,21 @@ export const feeReceiptExportEncodings = Object.freeze(["shift_jis", "utf-8"]);
 export const feeFacilityStandardStatuses = Object.freeze(["active", "pending", "expired", "withdrawn"]);
 const MEISAISHO_HAKKO_STANDARD_KEY = "meisaisho_hakko_taisei";
 const DENSHITEKI_SHINRYO_JOHO_RENKEI_STANDARD_KEY = "denshiteki_shinryo_joho_renkei_taisei";
+const AFTER_HOURS_RESPONSE_STANDARD_KEYS = Object.freeze([
+  "jikan_gai_taio_taisei_1",
+  "jikan_gai_taio_taisei_2",
+  "jikan_gai_taio_taisei_3",
+  "jikan_gai_taio_taisei_4"
+]);
+const FACILITY_SERVICE_SCHEDULE_WEEKDAYS = Object.freeze([
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+  "sunday"
+]);
 // 恒常算定ルールの動作: confirm=算定入力へ自動追加(エンジンがマスタ照合・制約チェック),
 // candidate=承認待ち候補として提示(合計に入らない)。
 export const feeAutoBillingRuleActions = Object.freeze(["confirm", "candidate"]);
@@ -185,9 +212,19 @@ export function validateSidecarCalculationInput(input = {}) {
     throw validationError("encounterTypeSource is required", "encounterTypeSource");
   }
 
+  const selectorContractVersion = boundedRequiredString(
+    input.extractionProof?.selectorContractVersion
+      ?? input.extraction_proof?.selector_contract_version,
+    "extractionProof.selectorContractVersion",
+    128
+  );
+  const sourceSurfaces = validateSidecarSourceSurfaces(
+    input.sourceSurfaces ?? input.source_surfaces,
+    { externalPatientId, selectorContractVersion }
+  );
   const proof = validateSidecarExtractionProof(
     input.extractionProof ?? input.extraction_proof,
-    { externalPatientId, sourceRecordId }
+    { externalPatientId, sourceRecordId, sourceSurfaces }
   );
   const encounterDetails = normalizeFeeEncounterDetails({
     sameBuilding: hasOwn(input, "sameBuilding") || hasOwn(input, "same_building")
@@ -198,6 +235,9 @@ export function validateSidecarCalculationInput(input = {}) {
       : null,
     singleBuildingPatientCount: hasOwn(input, "singleBuildingPatientCount") || hasOwn(input, "single_building_patient_count")
       ? (input.singleBuildingPatientCount ?? input.single_building_patient_count)
+      : null,
+    residenceType: hasOwn(input, "residenceType") || hasOwn(input, "residence_type")
+      ? (input.residenceType ?? input.residence_type)
       : null,
     visitKind: hasOwn(input, "visitKind") || hasOwn(input, "visit_kind")
       ? (input.visitKind ?? input.visit_kind)
@@ -228,12 +268,14 @@ export function validateSidecarCalculationInput(input = {}) {
     sameBuilding: encounterDetails.sameBuilding,
     sameBuildingSource: encounterDetails.sameBuildingSource,
     singleBuildingPatientCount: encounterDetails.singleBuildingPatientCount,
+    residenceType: encounterDetails.residenceType,
     visitKind: encounterDetails.visitKind,
     visitKindSource: encounterDetails.visitKindSource,
     telephoneEligibility: encounterDetails.telephoneEligibility,
     clinicalText,
     orders: normalizeFeeOrders(input.orders),
     diagnoses: normalizeDiagnoses(input.diagnoses),
+    sourceSurfaces,
     extractionProof: proof
   });
 }
@@ -263,6 +305,10 @@ function validateSidecarExtractionProof(value, expected) {
     clinicalTextNodeCount: optionalPositiveInteger(
       value.clinicalTextNodeCount ?? value.clinical_text_node_count,
       "extractionProof.clinicalTextNodeCount"
+    ),
+    surfaceProofs: validateSidecarSurfaceProofs(
+      value.surfaceProofs ?? value.surface_proofs,
+      expected
     )
   };
   if (proof.domMutationDetected !== false) {
@@ -290,6 +336,239 @@ function validateSidecarExtractionProof(value, expected) {
     throw validationError("required chart elements are missing", "extractionProof");
   }
   return proof;
+}
+
+function validateSidecarSourceSurfaces(value, expected) {
+  const required = expected.selectorContractVersion === "homis-mock-v4";
+  if (value === undefined || value === null) {
+    if (required) {
+      throw validationError("sourceSurfaces is required for homis-mock-v4", "sourceSurfaces");
+    }
+    return undefined;
+  }
+  if (!isPlainObject(value)) {
+    throw validationError("sourceSurfaces must be an object", "sourceSurfaces");
+  }
+  const currentChart = validateSidecarSourceSurface(value.currentChart ?? value.current_chart, {
+    name: "currentChart",
+    externalPatientId: expected.externalPatientId,
+    allowUnavailable: false
+  });
+  const documents = validateSidecarSourceSurface(value.documents, {
+    name: "documents",
+    externalPatientId: expected.externalPatientId,
+    allowUnavailable: true
+  });
+  if (required && (!currentChart || !documents)) {
+    throw validationError(
+      "currentChart and documents source surfaces are required for homis-mock-v4",
+      "sourceSurfaces"
+    );
+  }
+  return compactObject({ currentChart, documents });
+}
+
+function validateSidecarSourceSurface(value, options) {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  const field = `sourceSurfaces.${options.name}`;
+  if (!isPlainObject(value)) {
+    throw validationError(`${field} must be an object`, field);
+  }
+  const status = optionalEnum(value.status, sidecarSourceSurfaceStatuses, `${field}.status`);
+  if (!status) {
+    throw validationError(`${field}.status is required`, `${field}.status`);
+  }
+  if (status === "unavailable" && options.allowUnavailable !== true) {
+    throw validationError(`${field} cannot be unavailable`, `${field}.status`);
+  }
+  const patientId = boundedRequiredString(
+    value.patientId ?? value.patient_id,
+    `${field}.patientId`,
+    256
+  );
+  if (patientId !== options.externalPatientId) {
+    throw validationError(`${field} patient does not match the displayed chart`, `${field}.patientId`);
+  }
+  const observedAt = requiredIsoTimestamp(
+    value.observedAt ?? value.observed_at,
+    `${field}.observedAt`
+  );
+  const surfaceHash = validateSidecarSurfaceHash(
+    value.surfaceHash ?? value.surface_hash,
+    `${field}.surfaceHash`
+  );
+  if (status === "unavailable") {
+    return {
+      status,
+      patientId,
+      observedAt,
+      surfaceHash,
+      unavailableReason: optionalEnum(
+        value.unavailableReason ?? value.unavailable_reason,
+        sidecarSourceSurfaceUnavailableReasons,
+        `${field}.unavailableReason`
+      ) || "fetch_failed"
+    };
+  }
+  return {
+    status,
+    patientId,
+    observedAt,
+    surfaceHash,
+    raw: options.name === "currentChart"
+      ? validateSidecarCurrentChartRaw(value.raw, `${field}.raw`)
+      : validateSidecarDocumentsRaw(value.raw, `${field}.raw`)
+  };
+}
+
+function validateSidecarCurrentChartRaw(value, field) {
+  if (!isPlainObject(value)) {
+    throw validationError(`${field} must be an object`, field);
+  }
+  return {
+    careInsuranceText: multilineStringValue(value.careInsuranceText ?? value.care_insurance_text, 10_000),
+    visitingNurseText: multilineStringValue(value.visitingNurseText ?? value.visiting_nurse_text, 10_000),
+    deviceManagementText: multilineStringValue(value.deviceManagementText ?? value.device_management_text, 20_000),
+    prescriptionRows: boundedTextArray(
+      value.prescriptionRows ?? value.prescription_rows,
+      `${field}.prescriptionRows`,
+      { maxItems: 256, maxLength: 2_000 }
+    ),
+    patientStartDate: optionalDate(
+      value.patientStartDate ?? value.patient_start_date,
+      `${field}.patientStartDate`
+    ) || null,
+    calendarMonth: optionalClaimMonth(value.calendarMonth ?? value.calendar_month) || null,
+    calendarVisitDates: boundedDateArray(
+      value.calendarVisitDates ?? value.calendar_visit_dates,
+      `${field}.calendarVisitDates`,
+      62
+    )
+  };
+}
+
+function validateSidecarDocumentsRaw(value, field) {
+  if (!isPlainObject(value)) {
+    throw validationError(`${field} must be an object`, field);
+  }
+  const rows = value.rows;
+  if (!Array.isArray(rows)) {
+    throw validationError(`${field}.rows must be an array`, `${field}.rows`);
+  }
+  if (rows.length > 200) {
+    throw validationError(`${field}.rows must contain 200 items or less`, `${field}.rows`);
+  }
+  return {
+    rows: rows.map((row, index) => {
+      const rowField = `${field}.rows[${index}]`;
+      if (!isPlainObject(row)) {
+        throw validationError(`${rowField} must be an object`, rowField);
+      }
+      return {
+        kind: multilineStringValue(row.kind, 2_000),
+        period: multilineStringValue(row.period, 2_000),
+        writtenDate: multilineStringValue(row.writtenDate ?? row.written_date, 256),
+        status: multilineStringValue(row.status, 256)
+      };
+    })
+  };
+}
+
+function validateSidecarSurfaceProofs(value, expected) {
+  const required = expected.sourceSurfaces !== undefined;
+  if (value === undefined || value === null) {
+    if (required) {
+      throw validationError("extractionProof.surfaceProofs is required", "extractionProof.surfaceProofs");
+    }
+    return undefined;
+  }
+  if (!isPlainObject(value)) {
+    throw validationError(
+      "extractionProof.surfaceProofs must be an object",
+      "extractionProof.surfaceProofs"
+    );
+  }
+  const result = {};
+  for (const name of ["currentChart", "documents"]) {
+    const source = expected.sourceSurfaces?.[name];
+    const proof = value[name];
+    if (!source && !proof) {
+      continue;
+    }
+    if (!source || !isPlainObject(proof)) {
+      throw validationError(
+        `extractionProof.surfaceProofs.${name} does not match sourceSurfaces`,
+        `extractionProof.surfaceProofs.${name}`
+      );
+    }
+    const normalized = {
+      status: optionalEnum(
+        proof.status,
+        sidecarSourceSurfaceStatuses,
+        `extractionProof.surfaceProofs.${name}.status`
+      ),
+      patientId: boundedRequiredString(
+        proof.patientId ?? proof.patient_id,
+        `extractionProof.surfaceProofs.${name}.patientId`,
+        256
+      ),
+      observedAt: requiredIsoTimestamp(
+        proof.observedAt ?? proof.observed_at,
+        `extractionProof.surfaceProofs.${name}.observedAt`
+      ),
+      surfaceHash: validateSidecarSurfaceHash(
+        proof.surfaceHash ?? proof.surface_hash,
+        `extractionProof.surfaceProofs.${name}.surfaceHash`
+      )
+    };
+    if (
+      normalized.status !== source.status
+      || normalized.patientId !== source.patientId
+      || normalized.observedAt !== source.observedAt
+      || normalized.surfaceHash !== source.surfaceHash
+    ) {
+      throw validationError(
+        `extractionProof.surfaceProofs.${name} does not match sourceSurfaces`,
+        `extractionProof.surfaceProofs.${name}`
+      );
+    }
+    result[name] = normalized;
+  }
+  return result;
+}
+
+function validateSidecarSurfaceHash(value, field) {
+  const normalized = boundedRequiredString(value, field, 128);
+  if (!/^(?:sha256-[A-Za-z0-9_-]{43}|fnv1a64-[0-9a-f]{16})$/u.test(normalized)) {
+    throw validationError(`${field} is invalid`, field);
+  }
+  return normalized;
+}
+
+function boundedTextArray(value, field, options) {
+  if (!Array.isArray(value)) {
+    throw validationError(`${field} must be an array`, field);
+  }
+  if (value.length > options.maxItems) {
+    throw validationError(`${field} must contain ${options.maxItems} items or less`, field);
+  }
+  return value.map((item, index) => multilineStringValue(
+    item,
+    options.maxLength,
+    `${field}[${index}]`
+  ));
+}
+
+function boundedDateArray(value, field, maxItems) {
+  if (!Array.isArray(value)) {
+    throw validationError(`${field} must be an array`, field);
+  }
+  if (value.length > maxItems) {
+    throw validationError(`${field} must contain ${maxItems} items or less`, field);
+  }
+  return value.map((item, index) => requiredDate(item, `${field}[${index}]`));
 }
 
 export function validateUpdateFeeSessionInput(input = {}) {
@@ -413,7 +692,9 @@ export function defaultFeeSettings(input = {}) {
       stalenessMonths: 3
     },
     sidecarPatientAutoProvision: false,
+    facilityStandardsConfirmed: false,
     facilityStandards: [],
+    facilityServiceSchedules: [],
     autoBillingRules: [],
     receiptPolicy: {
       ukeEncoding: "shift_jis",
@@ -465,8 +746,16 @@ export function validateUpdateFeeSettingsInput(input = {}) {
   const autoBillingRulesInput = hasOwn(input, "autoBillingRules") || hasOwn(input, "auto_billing_rules")
     ? (input.autoBillingRules ?? input.auto_billing_rules)
     : (current.autoBillingRules ?? current.auto_billing_rules);
+  const facilityServiceSchedulesInput = hasOwn(input, "facilityServiceSchedules")
+    || hasOwn(input, "facility_service_schedules")
+    ? (input.facilityServiceSchedules ?? input.facility_service_schedules)
+    : (current.facilityServiceSchedules ?? current.facility_service_schedules);
   const facilityStandards = normalizeFacilityStandards(facilityStandardsInput);
   validateExclusiveFacilityStandards(facilityStandards);
+  const facilityServiceSchedules = normalizeFacilityServiceSchedules(
+    facilityServiceSchedulesInput
+  );
+  validateNonOverlappingFacilityServiceSchedules(facilityServiceSchedules);
   const sidecarPatientAutoProvisionInput = hasOwn(input, "sidecarPatientAutoProvision")
     || hasOwn(input, "sidecar_patient_auto_provision")
     ? (input.sidecarPatientAutoProvision ?? input.sidecar_patient_auto_provision)
@@ -475,6 +764,15 @@ export function validateUpdateFeeSettingsInput(input = {}) {
         || hasOwn(current, "sidecar_patient_auto_provision")
           ? (current.sidecarPatientAutoProvision ?? current.sidecar_patient_auto_provision)
           : base.sidecarPatientAutoProvision
+      );
+  const facilityStandardsConfirmedInput = hasOwn(input, "facilityStandardsConfirmed")
+    || hasOwn(input, "facility_standards_confirmed")
+    ? (input.facilityStandardsConfirmed ?? input.facility_standards_confirmed)
+    : (
+        hasOwn(current, "facilityStandardsConfirmed")
+        || hasOwn(current, "facility_standards_confirmed")
+          ? (current.facilityStandardsConfirmed ?? current.facility_standards_confirmed)
+          : base.facilityStandardsConfirmed
       );
   return {
     facilityId: optionalString(input.facilityId ?? input.facility_id ?? current.facilityId ?? current.facility_id) || base.facilityId,
@@ -486,10 +784,230 @@ export function validateUpdateFeeSettingsInput(input = {}) {
       sidecarPatientAutoProvisionInput,
       "sidecarPatientAutoProvision"
     ),
+    facilityStandardsConfirmed: strictBoolean(
+      facilityStandardsConfirmedInput,
+      "facilityStandardsConfirmed"
+    ),
     facilityStandards,
+    facilityServiceSchedules,
     autoBillingRules: normalizeAutoBillingRules(autoBillingRulesInput),
     receiptPolicy: normalizeReceiptPolicy(baseReceiptPolicy)
   };
+}
+
+function normalizeFacilityServiceSchedules(input) {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+  return input.map((entry, index) => {
+    if (!isPlainObject(entry)) {
+      throw validationError(
+        "facilityServiceSchedules entries must be objects",
+        "facilityServiceSchedules"
+      );
+    }
+    const scheduleId = optionalString(entry.scheduleId ?? entry.schedule_id)
+      || `facility_schedule_${index + 1}`;
+    const effectiveFrom = optionalDate(
+      entry.effectiveFrom ?? entry.effective_from,
+      "facilityServiceSchedules.effectiveFrom"
+    );
+    const effectiveTo = optionalDate(
+      entry.effectiveTo ?? entry.effective_to,
+      "facilityServiceSchedules.effectiveTo"
+    ) || "";
+    if (!effectiveFrom) {
+      throw validationError(
+        "facilityServiceSchedules.effectiveFrom is required",
+        "facilityServiceSchedules.effectiveFrom"
+      );
+    }
+    if (effectiveTo && effectiveTo < effectiveFrom) {
+      throw validationError(
+        "facilityServiceSchedules.effectiveTo must be on or after effectiveFrom",
+        "facilityServiceSchedules.effectiveTo"
+      );
+    }
+    const timezone = optionalString(entry.timezone) || "Asia/Tokyo";
+    if (timezone !== "Asia/Tokyo") {
+      throw validationError(
+        "facilityServiceSchedules.timezone must be Asia/Tokyo",
+        "facilityServiceSchedules.timezone"
+      );
+    }
+    const weeklyHours = normalizeFacilityWeeklyHours(
+      entry.weeklyHours ?? entry.weekly_hours
+    );
+    if (!Object.values(weeklyHours).some((windows) => windows.length > 0)) {
+      throw validationError(
+        "facilityServiceSchedules.weeklyHours must contain at least one opening window",
+        "facilityServiceSchedules.weeklyHours"
+      );
+    }
+    const holidayDates = normalizeUniqueDates(
+      entry.holidayDates ?? entry.holiday_dates,
+      "facilityServiceSchedules.holidayDates"
+    );
+    const specialHours = normalizeFacilitySpecialHours(
+      entry.specialHours ?? entry.special_hours
+    );
+    const duplicateOverride = specialHours.find((override) => (
+      holidayDates.includes(override.date)
+    ));
+    if (duplicateOverride) {
+      throw validationError(
+        `facilityServiceSchedules date cannot be both a holiday and special opening: ${duplicateOverride.date}`,
+        "facilityServiceSchedules.specialHours"
+      );
+    }
+    return {
+      scheduleId,
+      effectiveFrom,
+      effectiveTo,
+      timezone,
+      weeklyHours,
+      holidayDates,
+      specialHours,
+      status: optionalEnum(
+        entry.status,
+        feeFacilityStandardStatuses,
+        "facilityServiceSchedules.status"
+      ) || "active"
+    };
+  });
+}
+
+function normalizeFacilityWeeklyHours(input) {
+  if (!isPlainObject(input)) {
+    throw validationError(
+      "facilityServiceSchedules.weeklyHours must be an object",
+      "facilityServiceSchedules.weeklyHours"
+    );
+  }
+  return Object.fromEntries(
+    FACILITY_SERVICE_SCHEDULE_WEEKDAYS.map((weekday) => [
+      weekday,
+      normalizeFacilityTimeWindows(
+        input[weekday],
+        `facilityServiceSchedules.weeklyHours.${weekday}`
+      )
+    ])
+  );
+}
+
+function normalizeFacilitySpecialHours(input) {
+  if (input === undefined || input === null) {
+    return [];
+  }
+  if (!Array.isArray(input)) {
+    throw validationError(
+      "facilityServiceSchedules.specialHours must be an array",
+      "facilityServiceSchedules.specialHours"
+    );
+  }
+  const dates = new Set();
+  return input.map((entry) => {
+    if (!isPlainObject(entry)) {
+      throw validationError(
+        "facilityServiceSchedules.specialHours entries must be objects",
+        "facilityServiceSchedules.specialHours"
+      );
+    }
+    const date = optionalDate(
+      entry.date,
+      "facilityServiceSchedules.specialHours.date"
+    );
+    if (!date) {
+      throw validationError(
+        "facilityServiceSchedules.specialHours.date is required",
+        "facilityServiceSchedules.specialHours.date"
+      );
+    }
+    if (dates.has(date)) {
+      throw validationError(
+        `duplicate facilityServiceSchedules special date: ${date}`,
+        "facilityServiceSchedules.specialHours"
+      );
+    }
+    dates.add(date);
+    const hours = normalizeFacilityTimeWindows(
+      entry.hours,
+      "facilityServiceSchedules.specialHours.hours"
+    );
+    if (!hours.length) {
+      throw validationError(
+        "facilityServiceSchedules.specialHours.hours must not be empty",
+        "facilityServiceSchedules.specialHours.hours"
+      );
+    }
+    return { date, hours };
+  }).sort((left, right) => left.date.localeCompare(right.date));
+}
+
+function normalizeFacilityTimeWindows(input, field) {
+  if (input === undefined || input === null) {
+    return [];
+  }
+  if (!Array.isArray(input)) {
+    throw validationError(`${field} must be an array`, field);
+  }
+  const windows = input.map((entry) => {
+    if (!isPlainObject(entry)) {
+      throw validationError(`${field} entries must be objects`, field);
+    }
+    const start = normalizeFacilityTime(entry.start, `${field}.start`);
+    const end = normalizeFacilityTime(entry.end, `${field}.end`);
+    if (start >= end) {
+      throw validationError(`${field} start must be before end`, field);
+    }
+    return { start, end };
+  }).sort((left, right) => left.start.localeCompare(right.start));
+  for (let index = 1; index < windows.length; index += 1) {
+    if (windows[index].start < windows[index - 1].end) {
+      throw validationError(`${field} windows must not overlap`, field);
+    }
+  }
+  return windows;
+}
+
+function normalizeFacilityTime(value, field) {
+  const text = optionalString(value);
+  if (!text || !/^([01]\d|2[0-3]):[0-5]\d$/u.test(text)) {
+    throw validationError(`${field} must use HH:MM`, field);
+  }
+  return text;
+}
+
+function normalizeUniqueDates(input, field) {
+  if (input === undefined || input === null) {
+    return [];
+  }
+  if (!Array.isArray(input)) {
+    throw validationError(`${field} must be an array`, field);
+  }
+  return [...new Set(input.map((value) => {
+    const date = optionalDate(value, field);
+    if (!date) {
+      throw validationError(`${field} must contain YYYY-MM-DD values`, field);
+    }
+    return date;
+  }))].sort();
+}
+
+function validateNonOverlappingFacilityServiceSchedules(schedules) {
+  const active = schedules
+    .filter((schedule) => schedule.status === "active")
+    .sort((left, right) => left.effectiveFrom.localeCompare(right.effectiveFrom));
+  for (let index = 1; index < active.length; index += 1) {
+    const previous = active[index - 1];
+    const current = active[index];
+    if (!previous.effectiveTo || current.effectiveFrom <= previous.effectiveTo) {
+      throw validationError(
+        `active facilityServiceSchedules effective periods overlap: ${previous.scheduleId} / ${current.scheduleId}`,
+        "facilityServiceSchedules"
+      );
+    }
+  }
 }
 
 function normalizeStandingFactsPolicy(input = {}) {
@@ -556,6 +1074,11 @@ export function normalizeFeeEncounterDetails(input) {
   const singleBuildingPatientCount = nullablePositiveInteger(
     input.singleBuildingPatientCount ?? input.single_building_patient_count,
     "encounterDetails.singleBuildingPatientCount"
+  );
+  const residenceType = nullableEnum(
+    input.residenceType ?? input.residence_type,
+    feeResidenceTypes,
+    "encounterDetails.residenceType"
   );
   const visitKind = nullableEnum(
     input.visitKind ?? input.visit_kind,
@@ -627,6 +1150,7 @@ export function normalizeFeeEncounterDetails(input) {
     sameBuilding,
     sameBuildingSource,
     singleBuildingPatientCount,
+    residenceType,
     visitKind,
     visitKindSource,
     telephoneEligibility
@@ -843,6 +1367,15 @@ function validateExclusiveFacilityStandards(facilityStandards) {
   ) {
     throw validationError(
       "meisaisho_hakko_taisei and denshiteki_shinryo_joho_renkei_taisei cannot both be active",
+      "facilityStandards"
+    );
+  }
+  const activeAfterHoursResponseKeys = AFTER_HOURS_RESPONSE_STANDARD_KEYS.filter(
+    (key) => activeKeys.has(key)
+  );
+  if (activeAfterHoursResponseKeys.length > 1) {
+    throw validationError(
+      `only one after-hours response system standard can be active: ${activeAfterHoursResponseKeys.join(", ")}`,
       "facilityStandards"
     );
   }

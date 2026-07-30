@@ -13,7 +13,7 @@ test("calculate request snapshot keeps the v1 sidecar boundary", () => {
     "contractVersion", "sourceSystem", "externalPatientId", "sourceRecordId", "serviceDate",
     "setting", "encounterTypeSource", "visitKind", "visitKindSource", "telephoneEligibility",
     "sameBuilding", "sameBuildingSource",
-    "singleBuildingPatientCount", "clinicalText", "extractionProof"
+    "singleBuildingPatientCount", "clinicalText", "sourceSurfaces", "extractionProof"
   ]) {
     assert.match(panelSource, new RegExp(`\\b${field}\\b`));
   }

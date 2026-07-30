@@ -13,6 +13,7 @@ test("extension has no server-internal imports or sensitive input surface", asyn
   const source = (await Promise.all(files.map((file) => readFile(file, "utf8")))).join("\n");
   assert.doesNotMatch(source, /(?:packages|services)\//);
   assert.doesNotMatch(source, /sourceUrl/);
+  assert.doesNotMatch(source, /#action_list|\.koui-area|\.koui-item/u);
   assert.doesNotMatch(source, /type=["']password["']/i);
   assert.doesNotMatch(source, /\.innerHTML\s*=/);
   assert.match(source, /candidateOnly|承認前/);

@@ -4,6 +4,7 @@
   const contract = global.HalunasuSidecarContract;
   const proof = global.HalunasuSidecarProof;
   const MAX_EXTRACTION_ATTEMPTS = 3;
+  const DOCUMENTS_SURFACE_TIMEOUT_MS = 2500;
   const AUTO_READ_DEBOUNCE_MS = 180;
   let observedContainer = null;
   let observedPanel = null;
@@ -37,6 +38,13 @@
     try {
       await Promise.resolve();
       const extraction = contract.extractContractSnapshot(document, { locationHref: location.href });
+      if (extraction.selectorContractVersion === contract.VERSION) {
+        const documents = await fetchDocumentsSurface(identityBefore.patientId);
+        extraction.sourceSurfaces = await proof.sealSourceSurfaces({
+          ...extraction.sourceSurfaces,
+          documents
+        }, { observedAt: new Date().toISOString() });
+      }
       await Promise.resolve();
       const identityAfter = contract.readIdentity(document, { locationHref: location.href });
       if (domMutationDetected || !proof.sameIdentity(identityBefore, identityAfter)) {
@@ -80,6 +88,7 @@
       singleBuildingPatientCount: extraction.singleBuildingPatientCount,
       sameBuilding: extraction.sameBuilding,
       sameBuildingSource: extraction.sameBuildingSource,
+      sourceSurfaces: extraction.sourceSurfaces,
       previewFingerprint: extraction.previewFingerprint,
       extractionProof: proof.buildExtractionProof(extraction, {
         identityBefore: extraction.identityBefore,
@@ -201,6 +210,60 @@
     } catch {
       // The side panel can be closed; chart monitoring must remain silent in that case.
     }
+  }
+
+  async function fetchDocumentsSurface(patientId) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), DOCUMENTS_SURFACE_TIMEOUT_MS);
+    try {
+      const url = new URL(location.href);
+      url.search = "";
+      url.searchParams.set("pid", "docs_index");
+      url.searchParams.set("patient_id", patientId);
+      const response = await fetch(url, {
+        credentials: "include",
+        cache: "no-store",
+        signal: controller.signal
+      });
+      if (!response.ok) {
+        return unavailableDocumentsSurface(patientId, "http_error");
+      }
+      const parsed = new DOMParser().parseFromString(await response.text(), "text/html");
+      if (!parsed.querySelector(".docs-table")) {
+        return unavailableDocumentsSurface(patientId, "selector_mismatch");
+      }
+      if (!documentHeaderMatchesPatient(parsed, patientId)) {
+        const error = new Error("書類画面の患者が表示中のカルテと一致しません。再読み取りします。");
+        error.code = "supplemental_surface_patient_mismatch";
+        error.retryable = true;
+        throw error;
+      }
+      return contract.readDocumentsSurface(parsed, { patientId });
+    } catch (error) {
+      if (error?.code === "supplemental_surface_patient_mismatch") {
+        throw error;
+      }
+      return unavailableDocumentsSurface(
+        patientId,
+        error?.name === "AbortError" ? "timeout" : "fetch_failed"
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  function unavailableDocumentsSurface(patientId, unavailableReason) {
+    return {
+      status: "unavailable",
+      patientId,
+      unavailableReason
+    };
+  }
+
+  function documentHeaderMatchesPatient(documentRef, patientId) {
+    const header = String(documentRef.querySelector(".patient-id-line")?.textContent || "");
+    const escaped = String(patientId).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`(?:^|\\s)${escaped}\\s*\\/`, "u").test(header);
   }
 
   function delay(milliseconds) {

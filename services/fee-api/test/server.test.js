@@ -9498,7 +9498,8 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
       ...requestBody,
       sameBuilding: true,
       sameBuildingSource: "user",
-      singleBuildingPatientCount: 4
+      singleBuildingPatientCount: 4,
+      residenceType: "facility"
     },
     sidecarHeaders,
     sidecarRequestOptions()
@@ -9510,6 +9511,7 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
     sameBuilding: true,
     sameBuildingSource: "user",
     singleBuildingPatientCount: 4,
+    residenceType: "facility",
     visitKind: null,
     visitKindSource: null,
     telephoneEligibility: null
@@ -9597,6 +9599,7 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
     sameBuilding: true,
     sameBuildingSource: "user",
     singleBuildingPatientCount: 4,
+    residenceType: "facility",
     visitKind: null,
     visitKindSource: null,
     telephoneEligibility: null
@@ -9628,6 +9631,90 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
   assert.equal(adoptedList.statusCode, 200);
   assert.equal(adoptedList.body.totalCount, 1);
   assert.equal(adoptedList.body.sidecarDrafts[0].lifecycleStatus, "adopted");
+});
+
+test("sidecar notices deduplicate warning and review issue paths and honor encounter applicability", async () => {
+  const stores = createStores();
+  const originalCalculate = stores.feeCalculator.calculate;
+  stores.feeCalculator.calculate = async (...args) => {
+    const calculated = await originalCalculate(...args);
+    return {
+      ...calculated,
+      warnings: [
+        ...(Array.isArray(calculated.warnings) ? calculated.warnings : []),
+        "独立した確認事項です。"
+      ]
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: {
+      kind: "unknown",
+      confidence: "low",
+      evidence: "初診か再診かは不明。"
+    },
+    diagnoses: [],
+    clinical_events: [],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+  const sidecarHeaders = await signedSidecarHeaders(stores);
+  const baseBody = sidecarCalculationBody();
+
+  const homeVisit = await request(
+    stores,
+    "POST",
+    "/v1/integrations/sidecar/calculate",
+    baseBody,
+    sidecarHeaders,
+    sidecarRequestOptions({ clinicalFactsExtractor })
+  );
+  assert.equal(homeVisit.statusCode, 201);
+  assert.equal(
+    homeVisit.body.sidecarDraft.calculation.reviewIssues
+      .some((issue) => issue.issueCode === "visit_type_unknown"),
+    false
+  );
+  assert.equal(
+    homeVisit.body.sidecarDraft.calculation.notices
+      .some((notice) => notice.issueCode === "visit_type_unknown"),
+    false
+  );
+
+  const outpatient = await request(
+    stores,
+    "POST",
+    "/v1/integrations/sidecar/calculate",
+    {
+      ...baseBody,
+      sourceRecordId: "homis-record-20260528-outpatient",
+      sourceRecordDisplayId: "1001-0528-outpatient",
+      setting: "outpatient",
+      encounterTypeSource: "user",
+      extractionProof: {
+        ...baseBody.extractionProof,
+        sourceRecordIdBefore: "homis-record-20260528-outpatient",
+        sourceRecordIdAfter: "homis-record-20260528-outpatient"
+      }
+    },
+    sidecarHeaders,
+    sidecarRequestOptions({ clinicalFactsExtractor })
+  );
+  assert.equal(outpatient.statusCode, 201);
+  const calculation = outpatient.body.sidecarDraft.calculation;
+  assert.equal(
+    calculation.reviewIssues.filter((issue) => issue.issueCode === "visit_type_unknown").length,
+    1
+  );
+  assert.equal(
+    calculation.notices.filter((notice) => notice.issueCode === "visit_type_unknown").length,
+    1
+  );
+  assert.equal(
+    calculation.notices.filter((notice) => notice.messageForStaff === "独立した確認事項です。").length,
+    1
+  );
+  assert.ok(calculation.notices.length < calculation.warnings.length + calculation.reviewIssues.length);
 });
 
 test("sidecar auto-provisions an unlinked patient without changing the canonical history key", async () => {
@@ -10973,6 +11060,7 @@ test("同一建物区分で施設恒常算定ルールを選び、未確定時�
     sameBuilding: null,
     sameBuildingSource: null,
     singleBuildingPatientCount: null,
+    residenceType: null,
     visitKind: null,
     visitKindSource: null,
     telephoneEligibility: null
@@ -11031,6 +11119,27 @@ test("電話再診は施設履歴で既診関係を判定し、通常再診料�
     standing_mentions: []
   });
 
+  const settings = await request(stores, "PATCH", "/v1/fee/settings/fac_001", {
+    facilityServiceSchedules: [{
+      scheduleId: "clinic-hours-2026",
+      effectiveFrom: "2026-06-01",
+      timezone: "Asia/Tokyo",
+      weeklyHours: {
+        monday: [{ start: "09:00", end: "18:00" }],
+        tuesday: [{ start: "09:00", end: "18:00" }],
+        wednesday: [{ start: "09:00", end: "18:00" }],
+        thursday: [{ start: "09:00", end: "18:00" }],
+        friday: [{ start: "09:00", end: "18:00" }],
+        saturday: [{ start: "09:00", end: "12:00" }],
+        sunday: []
+      },
+      holidayDates: [],
+      specialHours: [],
+      status: "active"
+    }]
+  }, headers);
+  assert.equal(settings.statusCode, 200);
+
   const patient = await request(stores, "POST", "/v1/fee/patients", {
     displayName: "電話再診テスト患者"
   }, headers);
@@ -11042,11 +11151,17 @@ test("電話再診は施設履歴で既診関係を判定し、通常再診料�
     clinicalText: "対面で診察した。"
   }, headers);
 
-  async function calculateTelephone({ serviceDate, encounterDetails, clinicalText }) {
+  async function calculateTelephone({
+    serviceDate,
+    receptionTime = null,
+    encounterDetails,
+    clinicalText
+  }) {
     const created = await request(stores, "POST", "/v1/fee/sessions", {
       patientId: patient.body.patient.patientId,
       facilityId: "fac_001",
       serviceDate,
+      receptionTime,
       setting: "outpatient",
       encounterDetails,
       clinicalText
@@ -11063,6 +11178,7 @@ test("電話再診は施設履歴で既診関係を判定し、通常再診料�
 
   const eligible = await calculateTelephone({
     serviceDate: "2026-06-02",
+    receptionTime: "18:40",
     clinicalText: "患者から電話相談があり、治療上必要な指示をした。",
     encounterDetails: {
       visitKind: "telephone_revisit",
@@ -11085,6 +11201,7 @@ test("電話再診は施設履歴で既診関係を判定し、通常再診料�
       scheduled_management: false
     }
   });
+  assert.ok(receivedInputs[0].calculationOptions.procedure_codes.includes("112001110"));
 
   const unknown = await calculateTelephone({
     serviceDate: "2026-06-03",
@@ -11115,6 +11232,62 @@ test("電話再診は施設履歴で既診関係を判定し、通常再診料�
   assert.ok(wordingOnly.body.calculationResult.reviewIssues.some((issue) => (
     issue.issueCode === "telephone_visit_kind_unconfirmed"
   )));
+});
+
+test("臨時往診は既存の初再診経路に往診料を追加する", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  let receivedInput = null;
+  stores.feeCalculator.calculate = async (_feeSession, calculationInput) => {
+    receivedInput = calculationInput;
+    return {
+      provider: "test",
+      source: "test",
+      status: "completed",
+      totalPoints: 796,
+      lineItems: [],
+      warnings: []
+    };
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "unknown", evidence: "", confidence: "low" },
+    diagnoses: [],
+    clinical_events: [],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: [],
+    line_review: [],
+    standing_mentions: []
+  });
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "臨時往診テスト患者"
+  }, headers);
+  await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-01",
+    setting: "outpatient",
+    clinicalText: "対面で再診した。"
+  }, headers);
+  const houseCall = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    serviceDate: "2026-06-12",
+    setting: "house_call",
+    clinicalText: "状態悪化の連絡を受けて患家へ臨時往診した。"
+  }, headers);
+  const calculation = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${houseCall.body.feeSession.feeSessionId}/calculate`,
+    {},
+    headers,
+    { clinicalFactsExtractor }
+  );
+
+  assert.equal(calculation.statusCode, 201);
+  assert.equal(receivedInput.calculationOptions.outpatient_basic.fee_kind, "revisit");
+  assert.ok(receivedInput.calculationOptions.procedure_codes.includes("114000110"));
 });
 
 test("既存レセ一括取込が外部請求履歴になり、初診/再診判定に使われる", async () => {

@@ -2,8 +2,19 @@ import {
   isPastOrExternalClinicalServiceContext,
   normalizeClinicalPredicateText
 } from "../../../packages/fee-contracts/src/index.js";
+import {
+  classifyFacilityServiceTime,
+  encounterBasicFeeMetadata,
+  encounterBasicFeeRule,
+  facilityDerivedAddonRules,
+  facilityServiceTimeReviewWarning,
+  timeAddonRule
+} from "./facility-service-schedule.js";
 
-const TELEPHONE_REVISIT_CODE = "112007950";
+const INITIAL_FEE_CODE = requiredRule("basic_initial").code;
+const REVISIT_FEE_CODE = requiredRule("basic_revisit").code;
+const TELEPHONE_REVISIT_CODE = requiredRule("basic_telephone_revisit").code;
+const HOUSE_CALL_CODE = requiredRule("house_call").code;
 const TELEPHONE_REVISIT_KIND = "telephone_revisit";
 
 const TELEPHONE_VISIT_PATTERN_SOURCE = String.raw`(?:電話(?:等)?再診|電話相談|電話(?:で|にて|による).{0,20}(?:診療|相談|指示)|(?:患者|家族|看護者).{0,20}電話.{0,20}(?:相談|指示))`;
@@ -81,22 +92,73 @@ export function hasTelephoneVisitWording(value) {
 export function applyEncounterVariantToPreparation(prepared = {}, {
   session = {},
   priorSessions = [],
-  historyCompleteness = "unknown"
+  historyCompleteness = "unknown",
+  feeSettings = {},
+  facilityStandardKeys = []
 } = {}) {
   const encounterDetails = isPlainObject(session.encounterDetails)
     ? session.encounterDetails
     : {};
   const visitKind = String(encounterDetails.visitKind || "").trim() || null;
   const telephoneWording = hasTelephoneVisitWording(session.clinicalText);
+  const common = {
+    session,
+    feeSettings,
+    facilityStandardKeys
+  };
+
+  if (String(session.setting || "") === "home_visit") {
+    const autoKeys = new Set(asArray(prepared.calculationOptionsAutoKeys));
+    const result = autoKeys.has("outpatient_basic") || autoKeys.has("outpatientBasic")
+      ? withoutOutpatientBasicFee(prepared)
+      : prepared;
+    return applyEncounterTimeAndFacilityRules(
+      withEncounterVariantMetrics(result, {
+        visitKind,
+        outcome: "home_visit_basic_suppressed",
+        establishedPatient: null
+      }),
+      common
+    );
+  }
+
+  if (String(session.setting || "") === "house_call") {
+    const result = applyHouseCallVariant(prepared, {
+      session,
+      priorSessions,
+      historyCompleteness
+    });
+    return applyEncounterTimeAndFacilityRules(result, common);
+  }
 
   if (visitKind !== TELEPHONE_REVISIT_KIND && !telephoneWording) {
-    return withEncounterVariantMetrics(prepared, {
+    const result = withEncounterVariantMetrics(prepared, {
       visitKind,
       outcome: "not_applicable",
       establishedPatient: null
     });
+    return applyEncounterTimeAndFacilityRules(result, common);
   }
 
+  const result = applyTelephoneVariant(prepared, {
+    session,
+    priorSessions,
+    historyCompleteness,
+    visitKind,
+    telephoneWording
+  });
+  return applyEncounterTimeAndFacilityRules(result, common);
+}
+
+function applyTelephoneVariant(prepared, {
+  session,
+  priorSessions,
+  historyCompleteness,
+  visitKind
+}) {
+  const encounterDetails = isPlainObject(session.encounterDetails)
+    ? session.encounterDetails
+    : {};
   const withoutBasicFee = withoutOutpatientBasicFee(prepared);
   if (visitKind !== TELEPHONE_REVISIT_KIND) {
     const message = "電話等再診の可能性があります。受診方法を選択してください。";
@@ -212,6 +274,214 @@ export function applyEncounterVariantToPreparation(prepared = {}, {
   });
 }
 
+function applyHouseCallVariant(prepared, {
+  session = {},
+  priorSessions = [],
+  historyCompleteness = "unknown"
+} = {}) {
+  const establishedPatient = deriveEstablishedPatient({
+    session,
+    priorSessions,
+    historyCompleteness
+  });
+  const baseOptions = isPlainObject(prepared.calculationOptions)
+    ? prepared.calculationOptions
+    : {};
+  const existingBasicFeeKind = ["initial", "revisit"].includes(
+    String(baseOptions.outpatient_basic?.fee_kind || "")
+  )
+    ? String(baseOptions.outpatient_basic.fee_kind)
+    : null;
+  const basicFeeIsAutomatic = asArray(prepared.calculationOptionsAutoKeys)
+    .includes("outpatient_basic");
+  const confirmedBasicFeeKind = existingBasicFeeKind && !basicFeeIsAutomatic
+    ? existingBasicFeeKind
+    : null;
+  let result = appendProcedureCodes(prepared, [HOUSE_CALL_CODE]);
+  let outcome = "basic_fee_unknown";
+  let basicFeeKind = null;
+
+  if (confirmedBasicFeeKind || establishedPatient !== null) {
+    basicFeeKind = confirmedBasicFeeKind || (establishedPatient ? "revisit" : "initial");
+    result = {
+      ...result,
+      calculationOptions: {
+        ...(isPlainObject(result.calculationOptions) ? result.calculationOptions : {}),
+        outpatient_basic: {
+          ...(isPlainObject(baseOptions.outpatient_basic) ? baseOptions.outpatient_basic : {}),
+          fee_kind: basicFeeKind
+        }
+      },
+      calculationOptionsAutoKeys: uniqueStrings([
+        ...asArray(result.calculationOptionsAutoKeys),
+        "outpatient_basic"
+      ])
+    };
+    outcome = confirmedBasicFeeKind
+      ? `house_call_manual_${basicFeeKind}`
+      : `house_call_${basicFeeKind}`;
+  } else {
+    result = withoutOutpatientBasicFee(result);
+    const message = "往診時の初診料・再診料区分を履歴だけでは確定できません。患者の受診履歴と今回病名との継続性を確認してください。";
+    result = {
+      ...result,
+      candidateProposals: [
+        ...asArray(result.candidateProposals),
+        houseCallBasicFeeCandidate(message)
+      ],
+      reviewIssues: [
+        ...asArray(result.reviewIssues),
+        houseCallBasicFeeReviewIssue(message)
+      ],
+      reviewWarnings: uniqueStrings([
+        ...asArray(result.reviewWarnings),
+        message
+      ])
+    };
+  }
+
+  result = {
+    ...result,
+    reviewWarnings: uniqueStrings([
+      ...asArray(result.reviewWarnings),
+      "往診交通費は診療報酬点数ではなく患家負担として扱うため、この算定案では自動計上していません。施設の運用に従って別途確認してください。"
+    ])
+  };
+  return withEncounterVariantMetrics(result, {
+    visitKind: "house_call",
+    outcome,
+    establishedPatient,
+    eligibility: {
+      houseCallCode: HOUSE_CALL_CODE,
+      basicFeeKind
+    }
+  });
+}
+
+function applyEncounterTimeAndFacilityRules(prepared, {
+  session = {},
+  feeSettings = {},
+  facilityStandardKeys = []
+} = {}) {
+  const setting = String(session.setting || "").trim();
+  if (!["outpatient", "house_call"].includes(setting)) {
+    return {
+      ...prepared,
+      metrics: {
+        ...(prepared.metrics || {}),
+        encounterFeeSet: {
+          scheduleStatus: "not_applicable",
+          scheduleId: null,
+          timeClass: null,
+          timeAddonCode: null,
+          facilityDerivedRuleIds: []
+        }
+      }
+    };
+  }
+  const classification = classifyFacilityServiceTime({
+    receptionTime: session.receptionTime,
+    serviceDate: session.serviceDate,
+    feeSettings
+  });
+  const warning = facilityServiceTimeReviewWarning(classification);
+  let result = warning
+    ? {
+        ...prepared,
+        reviewWarnings: uniqueStrings([
+          ...asArray(prepared.reviewWarnings),
+          warning
+        ])
+      }
+    : prepared;
+  const basicFeeKind = String(
+    result.calculationOptions?.outpatient_basic?.fee_kind || ""
+  );
+  let selectedTimeRule = null;
+
+  if (
+    classification.status === "classified"
+    && classification.timeClass !== "within_hours"
+  ) {
+    selectedTimeRule = timeAddonRule({
+      timeClass: classification.timeClass,
+      feeKind: basicFeeKind
+    });
+    if (selectedTimeRule) {
+      result = appendProcedureCodes(result, [selectedTimeRule.code]);
+    } else {
+      result = {
+        ...result,
+        reviewWarnings: uniqueStrings([
+          ...asArray(result.reviewWarnings),
+          "初診料・再診料の区分が未確定のため、時間帯加算の請求コードを自動選択していません。"
+        ])
+      };
+    }
+  }
+
+  const facilityRules = facilityDerivedAddonRules({
+    feeKind: basicFeeKind,
+    facilityStandardKeys
+  });
+  const trace = {
+    stage: "encounter_fee_set",
+    categoryLabel: "受診別基本診療料セット",
+    outcome: selectedTimeRule
+      ? "time_addon_applied"
+      : classification.status === "classified" ? classification.timeClass : classification.status,
+    selected: {
+      artifact: encounterBasicFeeMetadata(),
+      basicFeeKind: basicFeeKind || null,
+      timeClassification: classification,
+      timeAddonCode: selectedTimeRule?.code || null,
+      facilityDerivedRuleIds: facilityRules.map((rule) => rule.ruleId)
+    },
+    message: "encounter_fee_set_evaluated"
+  };
+  const clinicalExtraction = isPlainObject(result.clinicalExtraction)
+    ? {
+        ...result.clinicalExtraction,
+        trace: [...asArray(result.clinicalExtraction.trace), trace]
+      }
+    : result.clinicalExtraction || null;
+  return {
+    ...result,
+    clinicalExtraction,
+    metrics: {
+      ...(result.metrics || {}),
+      encounterFeeSet: {
+        scheduleStatus: classification.status,
+        scheduleId: classification.scheduleId || null,
+        timeClass: classification.timeClass || null,
+        timeAddonCode: selectedTimeRule?.code || null,
+        facilityDerivedRuleIds: facilityRules.map((rule) => rule.ruleId)
+      }
+    }
+  };
+}
+
+function appendProcedureCodes(prepared, codes = []) {
+  const currentOptions = isPlainObject(prepared.calculationOptions)
+    ? prepared.calculationOptions
+    : {};
+  const procedureCodes = uniqueStrings([
+    ...asArray(currentOptions.procedure_codes),
+    ...codes
+  ]);
+  return {
+    ...prepared,
+    calculationOptions: {
+      ...currentOptions,
+      procedure_codes: procedureCodes
+    },
+    calculationOptionsAutoKeys: uniqueStrings([
+      ...asArray(prepared.calculationOptionsAutoKeys),
+      ...(codes.length ? ["procedure_codes"] : [])
+    ])
+  };
+}
+
 function withoutOutpatientBasicFee(prepared = {}) {
   const calculationOptions = isPlainObject(prepared.calculationOptions)
     ? { ...prepared.calculationOptions }
@@ -227,6 +497,39 @@ function withoutOutpatientBasicFee(prepared = {}) {
       .filter((key) => key !== "outpatient_basic" && key !== "outpatientBasic"),
     candidateProposals: asArray(prepared.candidateProposals)
       .filter((proposal) => proposal?.proposalId !== "outpatient_management_addon")
+  };
+}
+
+function houseCallBasicFeeCandidate(reason) {
+  return {
+    proposalId: "encounter_variant_house_call_basic_fee",
+    title: "往診時の初診料・再診料区分確認",
+    reason,
+    conditionText: "患者履歴と今回病名との継続性を確認し、初診料または再診料を選択してください。",
+    basis: "encounter_variant_candidate",
+    actionType: "confirm_required",
+    potentialPoints: 0,
+    codeCandidates: [INITIAL_FEE_CODE, REVISIT_FEE_CODE],
+    orderType: "basic",
+    source: "encounter_variant",
+    sortOrder: 14,
+    candidateOnly: true
+  };
+}
+
+function houseCallBasicFeeReviewIssue(message) {
+  return {
+    reviewIssueId: "encounter_variant_house_call_basic_fee_unconfirmed",
+    issueCode: "house_call_basic_fee_unconfirmed",
+    severity: "warning",
+    title: "往診時の初診料・再診料区分確認",
+    topicCode: "encounter_variant_check",
+    topicLabel: "受診方法の確認",
+    messageForStaff: message,
+    evidence: "",
+    requiredInput: "当該施設での受診履歴と今回病名との継続性",
+    codeCandidates: [INITIAL_FEE_CODE, REVISIT_FEE_CODE],
+    source: "encounter_variant"
   };
 }
 
@@ -395,4 +698,12 @@ function asArray(value) {
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function requiredRule(ruleId) {
+  const rule = encounterBasicFeeRule(ruleId);
+  if (!rule) {
+    throw new Error(`required encounter basic fee rule is missing: ${ruleId}`);
+  }
+  return rule;
 }

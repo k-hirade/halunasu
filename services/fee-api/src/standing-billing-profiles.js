@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { evaluateStandingStructuredTriggers } from "./standing-structured-triggers.js";
 
 const PROFILE_FACT_TYPE = "monthly_management_fee";
 const ACTIVE_STATUS = "active";
@@ -315,11 +316,41 @@ export function buildStandingBillingLane({
     countReason("proposed");
   }
 
-  for (const matchGroup of groupedFirstMonthMatches(matches, existingProfileFamilyIds)) {
+  const firstMonthMatchGroups = groupedFirstMonthMatches(matches, existingProfileFamilyIds);
+  const firstMonthMentionFamilyIds = new Set(
+    firstMonthMatchGroups.map((matchGroup) => String(matchGroup.family?.familyId || ""))
+  );
+  for (const matchGroup of firstMonthMatchGroups) {
     const family = matchGroup.family;
     const selected = selectStandingFamilyVariant(family, matchGroup.matches, currentInputs);
     candidateProposals.push(standingFirstMonthProposal(family, selected, matchGroup.matches[0]?.mention));
     countReason("first_month_candidate");
+  }
+
+  const structuredTriggerResult = evaluateStandingStructuredTriggers({
+    families,
+    structuredFacts: currentInputs?.structuredFacts,
+    availableParentFamilyIds: uniqueStrings([
+      ...candidateProposals.map((proposal) => proposal?.standingFamilyId),
+      ...familyIdsForProcedureCodes(families, currentInputs?.procedureCodes)
+    ])
+  });
+  for (const match of structuredTriggerResult.matches) {
+    const familyId = String(match.family?.familyId || "");
+    if (existingProfileFamilyIds.has(familyId)) {
+      countReason("structured_trigger_suppressed_by_history");
+      continue;
+    }
+    if (firstMonthMentionFamilyIds.has(familyId)) {
+      countReason("structured_trigger_suppressed_by_mention");
+      continue;
+    }
+    candidateProposals.push(standingStructuredTriggerProposal(match));
+    countReason("structured_trigger_candidate");
+  }
+  for (const warning of structuredTriggerResult.sensorWarnings) {
+    reviewIssues.push(standingStructuredTriggerSensorIssue(warning));
+    countReason("structured_trigger_sensor_warning");
   }
 
   const proposedCount = candidateProposals.length;
@@ -340,7 +371,8 @@ export function buildStandingBillingLane({
       activeCount,
       proposedCount,
       suspendedCount,
-      reasons
+      reasons,
+      structuredTriggers: structuredTriggerResult.diagnostics
     }
   };
 }
@@ -656,6 +688,7 @@ function standingVariantProposal(profile, family, variant, { evidence = "", clai
     code: String(variant.code || ""),
     orderType: "procedure",
     source: "standing_fact_lane",
+    standingFamilyId: String(family.familyId || ""),
     sortOrder: 35,
     candidateOnly: true,
     candidateLine: standingCandidateLine({
@@ -680,6 +713,7 @@ function standingFamilyChoiceProposal(profile, family, selected) {
     codeCandidates: selected.codeCandidates || asArray(family.variants).map((variant) => variant.code),
     orderType: "procedure",
     source: "standing_fact_lane",
+    standingFamilyId: String(family.familyId || ""),
     sortOrder: 35,
     candidateOnly: true,
     candidateLine: null
@@ -704,9 +738,86 @@ function standingFirstMonthProposal(family, selected, mention = {}) {
     codeCandidates: variant ? undefined : asArray(family.variants).map((entry) => entry.code),
     orderType: "procedure",
     source: "standing_fact_lane",
+    standingFamilyId: String(family.familyId || ""),
     sortOrder: 36,
     candidateOnly: true,
     candidateLine: variant ? standingCandidateLine({ proposalId, variant, reason }) : null
+  };
+}
+
+function standingStructuredTriggerProposal({
+  family = {},
+  trigger = {},
+  matchedFacts = [],
+  parentFamilyIds = []
+} = {}) {
+  const proposalId = `standing_structured_${trigger.triggerId}_${family.familyId}`;
+  const dependent = trigger.ruleKind === "dependent_addon";
+  const deviceManagement = trigger.ruleKind === "device_management";
+  return {
+    proposalId,
+    title: `${family.name}の算定対象確認`,
+    reason: dependent
+      ? "構造化情報と親管理料の候補が、この従属加算の確認条件に一致しました。"
+      : deviceManagement
+        ? "機器・処方・病名の構造化情報が、この指導管理料ファミリの確認条件に一致しました。"
+        : "当日の構造化情報が、定期的な訪問診療と医学管理を要件とする管理料ファミリの確認条件に一致しました。",
+    conditionText: dependent
+      ? "確認候補です。親管理料の採用、当月の実施内容、施設基準、月内算定履歴を確認してから採用してください。"
+      : "確認候補です。当月の指導管理実施、対象病名、施設基準、回数上限、患者に合う算定区分を確認し、人が承認してください。",
+    basis: "standing_structured_trigger_candidate",
+    evidence: "",
+    actionType: "confirm_required",
+    potentialPoints: 0,
+    code: "",
+    codeCandidates: asArray(family.variants).map((variant) => String(variant?.code || "")).filter(Boolean),
+    orderType: "procedure",
+    source: "standing_fact_lane",
+    standingFamilyId: String(family.familyId || ""),
+    dependentOnStandingFamilyIds: asArray(parentFamilyIds),
+    billingScope: trigger.scope || "per_month",
+    sortOrder: 37,
+    candidateOnly: true,
+    reviewRequired: true,
+    candidateLine: null,
+    standingTrigger: {
+      triggerId: trigger.triggerId,
+      ruleKind: trigger.ruleKind,
+      version: trigger.version,
+      source: trigger.source,
+      matchedFacts: asArray(matchedFacts)
+    }
+  };
+}
+
+function familyIdsForProcedureCodes(families = [], procedureCodes = []) {
+  const codes = new Set(asArray(procedureCodes)
+    .map((code) => String(code || "").trim())
+    .filter(Boolean));
+  return asArray(families)
+    .filter((family) => asArray(family?.variants).some((variant) => (
+      codes.has(String(variant?.code || ""))
+    )))
+    .map((family) => String(family?.familyId || ""))
+    .filter(Boolean);
+}
+
+function standingStructuredTriggerSensorIssue(warning = {}) {
+  const triggerId = String(warning.triggerId || "unknown");
+  return {
+    reviewIssueId: `standing_structured_trigger_${triggerId}_${String(warning.reason || "unknown")}`,
+    issueCode: "standing_structured_trigger_unresolved",
+    severity: "warning",
+    title: "恒常算定候補の構造化条件確認",
+    topicCode: "standing_fee_check",
+    topicLabel: "恒常算定の確認",
+    messageForStaff: "恒常算定候補の構造化条件を確定できませんでした。必要に応じて当月の管理内容と施設条件を確認してください。",
+    evidence: "",
+    metadata: {
+      triggerId,
+      reason: String(warning.reason || "unknown"),
+      missingFacts: asArray(warning.missingFacts)
+    }
   };
 }
 
@@ -942,6 +1053,12 @@ function dedupeBy(values = [], keyOf = (value) => JSON.stringify(value)) {
     result.push(value);
   }
   return result;
+}
+
+function uniqueStrings(values = []) {
+  return [...new Set(asArray(values)
+    .map((value) => String(value || "").trim())
+    .filter(Boolean))];
 }
 
 function asArray(value) {

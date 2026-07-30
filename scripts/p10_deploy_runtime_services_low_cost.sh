@@ -24,7 +24,7 @@ TARGET_SERVICE="${TARGET_SERVICE:-all}"
 RUNTIME_FEATURE_PROFILE="${RUNTIME_FEATURE_PROFILE:-}"
 STG_HOMIS_SIDECAR_ENABLED_DEFAULT="true"
 STG_HOMIS_SIDECAR_EXTENSION_IDS_DEFAULT="nhbmaniknlcaaelpaoogepmkhphmmjof"
-STG_HOMIS_SIDECAR_SELECTOR_CONTRACTS_DEFAULT="homis-mock-v3,homis-mock-v2"
+STG_HOMIS_SIDECAR_SELECTOR_CONTRACTS_DEFAULT="homis-mock-v4,homis-mock-v3,homis-mock-v2"
 
 load_runtime_feature_profile() {
   if [[ -z "${RUNTIME_FEATURE_PROFILE}" ]]; then

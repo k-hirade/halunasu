@@ -13,7 +13,8 @@ import {
   isFutureOrOrderOnlyClinicalServiceContext as isSharedFutureOrOrderOnlyClinicalServiceContext,
   isNegatedClinicalServiceContext as isSharedNegatedClinicalServiceContext,
   isPastOrExternalClinicalServiceContext,
-  normalizeClinicalPredicateText
+  normalizeClinicalPredicateText,
+  resolveClinicalServiceMentionScope
 } from "../../../packages/fee-contracts/src/index.js";
 import {
   FEE_CONCEPT_REGISTRY_VERSION,
@@ -35,6 +36,15 @@ import {
   candidateProposalsFromClinicalBillingKnowledge,
   currentSpecificDiseaseManagementEvidence
 } from "./clinical-billing-knowledge.js";
+import { resolveSpecificMaterialAttributes } from "./specific-material-attribute-resolver.js";
+import {
+  buildDocumentBillingLane,
+  dedupeDocumentBillingCandidateProposals
+} from "./document-billing-lane.js";
+import {
+  classifyFacilityServiceTime,
+  facilityServiceTimeReviewWarning
+} from "./facility-service-schedule.js";
 import {
   buildExtractionSnapshotCore,
   clinicalFactsFromMemo,
@@ -779,7 +789,10 @@ export async function buildClinicalCalculationPreparation({
     const dictionaryScan = await dictionaryScanCandidateProposals({
       feeCalculator,
       text,
-      suppressedRanges: managementContinuationRanges,
+      suppressedRanges: dedupeObjects([
+        ...managementContinuationRanges,
+        ...deterministicDeviceStateOnlyRanges(deterministicStandingPreprocessing)
+      ], (range) => `${range.lineId}\u001f${range.charStart}\u001f${range.charEnd}`),
       knownCodes: uniqueStrings([
         ...asArray(inferred.procedure_codes),
         ...billingCandidates.map((candidate) => candidate?.code).filter(Boolean),
@@ -889,25 +902,29 @@ export async function buildClinicalCalculationPreparation({
   if (isInpatientEncounter(session, text) && !hasOwn(manualOptions, "outpatient_basic")) {
     delete normalizedInferred.outpatient_basic;
   }
-  // 受付時刻による時間帯判定(v1): 休日・深夜は客観判定できるため確認候補を明示する。
-  // 時間外(診療時間依存)は施設の診療時間設定が入るまで自動確定しない。
-  const timeContextWarning = receptionTimeContextWarning(session.receptionTime, session.serviceDate);
+  // 時間外・休日・深夜は、有効期間付きの施設診療時間だけを確定根拠にする。
+  // 未設定時はコードを推測せず、確認警告だけを残す。
+  const timeContextWarning = receptionTimeContextWarning(
+    session.receptionTime,
+    session.serviceDate,
+    feeSettings
+  );
   if (timeContextWarning) {
     reviewWarnings.push(timeContextWarning);
   }
 
-  // 訪問診療/往診の受診区分では、外来基本料(初診料・再診料・外来管理加算)を自動算定しない。
-  // 在宅系の基本料・加算は施設の恒常算定ルールまたは候補レーンで扱う。
-  const isHomeCareEncounter = ["home_visit", "house_call"].includes(String(session.setting || ""));
-  if (isHomeCareEncounter && !hasOwn(manualOptions, "outpatient_basic")) {
+  // 定期的な訪問診療は外来基本料を使わない。往診は初再診料と往診料の
+  // 組み合わせなので、下の履歴推論を通して encounter variant で補完する。
+  const isScheduledHomeVisit = String(session.setting || "") === "home_visit";
+  if (isScheduledHomeVisit && !hasOwn(manualOptions, "outpatient_basic")) {
     delete normalizedInferred.outpatient_basic;
     // 注: 「初診/再診」の語を含めると calculationWarningKey の visit グループで
     // 既存警告と重複排除されて消えるため、文言に含めない。
     reviewWarnings.push(
-      "在宅区分の算定方針: この受診は訪問診療/往診として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
+      "在宅区分の算定方針: この受診は定期的な訪問診療として登録されています。外来の基本診療料と外来管理加算は自動算定していません。在宅系の基本料・加算は施設の恒常算定ルールまたは算定候補から確認してください。"
     );
   }
-  if (!isHomeCareEncounter && !isInpatientEncounter(session, text) && !hasUnresolvedInpatientEncounterText(session, text)) {
+  if (!isScheduledHomeVisit && !isInpatientEncounter(session, text) && !hasUnresolvedInpatientEncounterText(session, text)) {
     if (historyCompleteness === "unavailable") {
       if (!hasOwn(manualOptions, "outpatient_basic")) {
         delete normalizedInferred.outpatient_basic;
@@ -951,6 +968,16 @@ export async function buildClinicalCalculationPreparation({
     }
   }
 
+  const applicableReviewIssues = applyReviewIssueApplicability(reviewIssues, { session });
+  const suppressedReviewIssueMessages = new Set(
+    reviewIssues
+      .filter((issue) => !applicableReviewIssues.includes(issue))
+      .map((issue) => normalizeClinicalText(issue?.messageForStaff || ""))
+      .filter(Boolean)
+  );
+  const applicableReviewWarnings = reviewWarnings.filter((warning) => (
+    !suppressedReviewIssueMessages.has(normalizeClinicalText(warning))
+  ));
   const autoKeys = Object.keys(normalizedInferred).filter((key) => (
     CLINICAL_AUTO_OPTION_KEYS.has(key) && !hasOwn(manualOptions, key)
   ));
@@ -960,14 +987,18 @@ export async function buildClinicalCalculationPreparation({
     calculationOptionsAutoKeys: autoKeys,
     calculationOptionsSource: calculationOptionsSource(manualOptions, autoKeys),
     diagnoses: normalizeClinicalDiagnoses(inferredDiagnoses),
-    candidateProposals: normalizeCandidateProposals(candidateProposals),
-    reviewWarnings: normalizeReviewWarnings(reviewWarnings),
+    candidateProposals: normalizeCandidateProposals(
+      dedupeDocumentBillingCandidateProposals(candidateProposals, {
+        serviceDate: session.serviceDate
+      })
+    ),
+    reviewWarnings: normalizeReviewWarnings(applicableReviewWarnings),
     clinicalEvents: normalizeClinicalEventsForResult(clinicalEvents),
     standingMentions: normalizeStandingMentionsForLane(standingMentions),
     canonicalClinicalFacts: normalizeCanonicalClinicalFacts(canonicalClinicalFacts),
     masterCandidates: normalizeMasterCandidates(masterCandidates),
     billingCandidates: normalizeBillingCandidates(billingCandidates),
-    reviewIssues: normalizeReviewIssues(reviewIssues),
+    reviewIssues: normalizeReviewIssues(applicableReviewIssues),
     clinicalExtraction: clinicalExtractionMetadata({
       session,
       calculationInput,
@@ -980,7 +1011,7 @@ export async function buildClinicalCalculationPreparation({
       masterCandidateCount: masterCandidates.length,
       billingCandidateCount: billingCandidates.length,
       billingIntentCount: billingIntents.length,
-      reviewIssueCount: reviewIssues.length,
+      reviewIssueCount: applicableReviewIssues.length,
       clinicalTrace,
       visitFacts: extractedVisitFacts,
       checklistFindingStatusCounts,
@@ -1545,7 +1576,7 @@ function verificationContextsForClinicalEvent(event = {}, evidenceRefs = [], quo
   const contexts = [];
   const rawQuote = String(quote || "").trim();
   if (rawQuote) {
-    contexts.push(rawQuote);
+    contexts.push(resolveClinicalCueScopeForEvent(event, rawQuote).scopedContext);
   }
   for (const ref of asArray(evidenceRefs)) {
     if (ref?.approximate || ref?.notFoundInText) {
@@ -1589,73 +1620,12 @@ function withScopeResolution(evidenceRef = {}, event = {}) {
 function resolveClinicalCueScopeForEvent(event = {}, context = "") {
   const value = String(context || "").trim();
   const tokens = clinicalEventScopeTokens(event);
-  if (!value || !tokens.length) {
-    return {
-      scopedContext: value,
-      strategy: tokens.length ? "empty_context" : "no_scope_tokens",
-      matchedClauses: []
-    };
-  }
-  const clauses = splitClinicalClauses(value);
-  const matchedClauses = clauses.filter((clause) => tokens.some((token) => clause.includes(token)));
-  if (!matchedClauses.length) {
-    return {
-      scopedContext: value,
-      strategy: "fallback_full_context_no_matched_clause",
-      matchedClauses: []
-    };
-  }
-
-  // Ownership cues such as "前医で" at the beginning of a sentence often scope
-  // over every following comma-separated clause. Keep the whole sentence so we
-  // do not accidentally turn outside/past references into current in-house facts.
-  if (leadingOwnershipOrPastCueScopesOverContext(value, matchedClauses[0])) {
-    return {
-      scopedContext: value,
-      strategy: "full_context_due_to_leading_ownership_or_past_cue",
-      matchedClauses
-    };
-  }
+  const resolved = resolveClinicalServiceMentionScope(value, tokens);
   return {
-    scopedContext: uniqueStrings(matchedClauses).join("。"),
-    strategy: "matched_clauses",
-    matchedClauses
+    scopedContext: resolved.scopedText,
+    strategy: resolved.strategy,
+    matchedClauses: resolved.matchedClauses.map((clause) => clause.text)
   };
-}
-
-function splitClinicalClauses(text = "") {
-  return String(text || "")
-    .split(/[。．.!！?？\n\r、，；;]+/u)
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .slice(0, 12);
-}
-
-function leadingOwnershipOrPastCueScopesOverContext(context = "", firstMatchedClause = "") {
-  const value = String(context || "");
-  const clause = String(firstMatchedClause || "");
-  if (!value || !clause) {
-    return false;
-  }
-  const firstMatchIndex = value.indexOf(clause);
-  const prefix = firstMatchIndex > 0 ? value.slice(0, firstMatchIndex) : "";
-  const sameSentencePrefix = prefix.split(/[。．.!！?？\n\r]/u).pop() || "";
-  if (!/(前医|他院|紹介状|持参|健診|先月|前回|以前|過去)/u.test(sameSentencePrefix)) {
-    return false;
-  }
-  const cueIndex = Math.max(
-    sameSentencePrefix.lastIndexOf("前医"),
-    sameSentencePrefix.lastIndexOf("他院"),
-    sameSentencePrefix.lastIndexOf("紹介状"),
-    sameSentencePrefix.lastIndexOf("持参"),
-    sameSentencePrefix.lastIndexOf("健診"),
-    sameSentencePrefix.lastIndexOf("先月"),
-    sameSentencePrefix.lastIndexOf("前回"),
-    sameSentencePrefix.lastIndexOf("以前"),
-    sameSentencePrefix.lastIndexOf("過去")
-  );
-  const afterCue = cueIndex >= 0 ? sameSentencePrefix.slice(cueIndex) : sameSentencePrefix;
-  return !/(本日|今回|当院|院内|自院|当日)/u.test(afterCue);
 }
 
 function clinicalEventScopeTokens(event = {}) {
@@ -3003,7 +2973,9 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     clinicalEvents: clinicalEventsForCalculation,
     feeCalculator,
     clinicalText: text,
-    verifiedOutsidePrescription
+    verifiedOutsidePrescription,
+    structuredSourceFacts: session?.structuredSourceFacts,
+    serviceDate: session?.serviceDate
   });
 
   // v14契約検証の未解消分: 欠落行のみ再抽出しても line_review が埋まらなかった行は、
@@ -3216,7 +3188,11 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
   return {
     inferred,
     diagnoses,
-    candidateProposals: normalizeCandidateProposals(candidateProposals),
+    candidateProposals: normalizeCandidateProposals(
+      dedupeDocumentBillingCandidateProposals(candidateProposals, {
+        serviceDate: session.serviceDate
+      })
+    ),
     reviewWarnings: normalizeReviewWarnings(reviewWarnings),
     clinicalEvents,
     outpatientManagementEvidence: currentSpecificDiseaseManagementEvidence(clinicalEventsForCalculation),
@@ -3238,7 +3214,9 @@ export async function convertClinicalCalculationEvents({
   clinicalEvents = [],
   feeCalculator,
   clinicalText = "",
-  verifiedOutsidePrescription = false
+  verifiedOutsidePrescription = false,
+  structuredSourceFacts = null,
+  serviceDate = ""
 } = {}) {
   const result = {
     procedureCodes: [],
@@ -3256,13 +3234,35 @@ export async function convertClinicalCalculationEvents({
     hasCaseLevelLabProcedureCode: false,
     hasCaseLevelBloodCollectionEvidence: false
   };
+  const documentLane = buildDocumentBillingLane({
+    clinicalEvents,
+    structuredSourceFacts,
+    serviceDate
+  });
+  result.candidateProposals.push(...documentLane.candidateProposals);
+  result.reviewIssues.push(...documentLane.reviewIssues);
+  result.reviewWarnings.push(...documentLane.reviewWarnings);
+  result.clinicalTrace.push(...documentLane.clinicalTrace);
+  const deferredDocumentEventIds = new Set(documentLane.deferredClinicalEventIds);
 
   for (const event of asArray(clinicalEvents)) {
+    const clinicalEventId = String(
+      event?.clinicalEventId
+      || event?.clinical_event_id
+      || event?.eventId
+      || event?.event_id
+      || ""
+    ).trim();
+    if (clinicalEventId && deferredDocumentEventIds.has(clinicalEventId)) {
+      continue;
+    }
     const converted = await convertSingleClinicalCalculationEvent({
       event,
       feeCalculator,
       clinicalText,
-      verifiedOutsidePrescription
+      verifiedOutsidePrescription,
+      structuredSourceFacts,
+      serviceDate
     });
     mergeClinicalEventConversionResult(result, converted);
   }
@@ -3315,7 +3315,9 @@ async function convertSingleClinicalCalculationEvent({
   event = {},
   feeCalculator,
   clinicalText = "",
-  verifiedOutsidePrescription = false
+  verifiedOutsidePrescription = false,
+  structuredSourceFacts = null,
+  serviceDate = ""
 } = {}) {
   const result = emptyClinicalEventConversionResult();
   const type = normalizeClinicalEventType(event);
@@ -3464,13 +3466,19 @@ async function convertSingleClinicalCalculationEvent({
       result.reviewWarnings.push(...medication.reviewWarnings);
       return result;
     }
-    const material = await materialInputFromClinicalEvent(event, feeCalculator);
+    const material = await materialInputFromClinicalEvent(event, feeCalculator, {
+      structuredSourceFacts,
+      serviceDate
+    });
     if (material.input) {
       result.materialInputs.push(material.input);
     }
     result.masterCandidates.push(...asArray(material.masterCandidates));
     result.billingCandidates.push(...billingCandidatesFromMaterialResult(event, material));
+    result.candidateProposals.push(...asArray(material.candidateProposals));
+    result.reviewIssues.push(...asArray(material.reviewIssues));
     result.reviewWarnings.push(...material.reviewWarnings);
+    result.clinicalTrace.push(...asArray(material.traceEvents));
     return result;
   }
 
@@ -3555,7 +3563,9 @@ async function convertAuxiliaryRecheckClinicalEventToCandidate({
     event: conversionEvent,
     feeCalculator,
     clinicalText,
-    verifiedOutsidePrescription
+    verifiedOutsidePrescription,
+    structuredSourceFacts: null,
+    serviceDate: ""
   });
   const proposals = asArray(converted.candidateProposals).map((proposal) => (
     auxiliaryCandidateProposal(proposal, event)
@@ -4818,43 +4828,18 @@ function standingMentionStatusPriority(status = "") {
   return { continued: 1, changed: 2, stopped: 3 }[String(status || "")] || 0;
 }
 
-// 日本の祝日(受付時刻の時間帯判定用)。年度更新時に追記する。
-const JP_HOLIDAYS = new Set([
-  "2026-01-01", "2026-01-12", "2026-02-11", "2026-02-23", "2026-03-20",
-  "2026-04-29", "2026-05-03", "2026-05-04", "2026-05-05", "2026-05-06",
-  "2026-07-20", "2026-08-11", "2026-09-21", "2026-09-22", "2026-09-23",
-  "2026-10-12", "2026-11-03", "2026-11-23",
-  "2027-01-01", "2027-01-11", "2027-02-11", "2027-02-23", "2027-03-21", "2027-03-22",
-  "2027-04-29", "2027-05-03", "2027-05-04", "2027-05-05",
-  "2027-07-19", "2027-08-11", "2027-09-20", "2027-09-23",
-  "2027-10-11", "2027-11-03", "2027-11-23"
-]);
-
-// 受付時刻・診療日から時間帯加算(休日・深夜・時間外)の確認を提示する。
-// v1: 休日(日曜・祝日・年末年始)と深夜(22時〜6時)は客観判定できるため確認候補を出す。
-// 時間外は施設の診療時間設定に依存するため、標準的時間帯(8〜18時)の外なら弱い確認のみ。
-export function receptionTimeContextWarning(receptionTime = "", serviceDate = "") {
-  const time = String(receptionTime || "").trim();
-  const date = String(serviceDate || "").trim();
-  if (!/^\d{2}:\d{2}$/u.test(time) || !/^\d{4}-\d{2}-\d{2}$/u.test(date)) {
-    return "";
-  }
-  const hour = Number(time.slice(0, 2));
-  const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
-  const monthDay = date.slice(5);
-  const isHoliday = weekday === 0 || JP_HOLIDAYS.has(date)
-    || ["12-29", "12-30", "12-31", "01-02", "01-03"].includes(monthDay);
-  const isLateNight = hour >= 22 || hour < 6;
-  if (isLateNight) {
-    return `深夜加算確認: 受付時刻${time}は深夜(22時〜6時)に該当します。深夜加算(該当区分は施設の届出による)の算定要件を確認してください。`;
-  }
-  if (isHoliday) {
-    return `休日加算確認: 診療日${date}は休日(日曜・祝日等)に該当します。休日加算の算定要件を確認してください。`;
-  }
-  if (hour < 8 || hour >= 18) {
-    return `時間外加算確認: 受付時刻${time}は標準的な診療時間帯の外です。施設の診療時間と時間外加算の算定要件を確認してください。`;
-  }
-  return "";
+// 受付時刻だけでは時間外を確定しない。有効な施設診療時間がない場合は
+// fail-closedの確認警告に留め、加算コードの追加は encounter variant 側で行う。
+export function receptionTimeContextWarning(
+  receptionTime = "",
+  serviceDate = "",
+  feeSettings = {}
+) {
+  return facilityServiceTimeReviewWarning(classifyFacilityServiceTime({
+    receptionTime,
+    serviceDate,
+    feeSettings
+  }));
 }
 
 // 辞書スキャン候補から除外する文脈(否定・未実施・予定・他院・既往等)。
@@ -4881,9 +4866,13 @@ export async function detectEmptyExtractionContradiction({
   const dictionaryResult = await dictionaryScanCandidateProposals({
     feeCalculator,
     text: clinicalText,
-    suppressedRanges: deterministicManagementContinuationRanges(
-      buildClinicalTextPreprocessing(clinicalText)
-    ),
+    suppressedRanges: (() => {
+      const preprocessing = buildClinicalTextPreprocessing(clinicalText);
+      return [
+        ...deterministicManagementContinuationRanges(preprocessing),
+        ...deterministicDeviceStateOnlyRanges(preprocessing)
+      ];
+    })(),
     knownCodes: []
   });
   if (dictionaryResult.proposals.length) {
@@ -5187,6 +5176,30 @@ function deterministicManagementContinuationRanges(preprocessing = null) {
       charStart: Number(line?.charStart || 0),
       charEnd: Number(line?.charEnd || 0)
     }));
+}
+
+function deterministicDeviceStateOnlyRanges(preprocessing = null) {
+  return asArray(preprocessing?.lines)
+    .filter((line) => deviceStateOnlyText(line?.text))
+    .map((line) => ({
+      lineId: String(line?.lineId || ""),
+      charStart: Number(line?.charStart || 0),
+      charEnd: Number(line?.charEnd || 0)
+    }));
+}
+
+function deviceStateOnlyText(value = "") {
+  const text = normalizeClinicalPredicateText(value);
+  if (!text
+    || hasCurrentPerformedActPredicate(text)
+    || isNegatedClinicalServiceContext(text)
+    || isFutureOrOrderOnlyContext(text)
+    || isPastOrExternalClinicalServiceContext(text)) {
+    return false;
+  }
+  const device = /(?:人工呼吸器|呼吸器|TPPV|NPPV|CPAP|酸素濃縮装置|酸素ボンベ|デマンドバルブ|気管カニューレ|気管切開部|人工鼻|吸引器)/iu;
+  const state = /(?:作動良好|装着良好|稼働良好|常時使用|使用中|管理下|リークなし|異常なし|問題なし|状態良好|安定|設定変更なし|アラームなし)/u;
+  return device.test(text) && state.test(text);
 }
 
 function managementContinuationRangesForLane(facts = {}, preprocessing = null) {
@@ -6036,8 +6049,46 @@ function reviewIssueFromVisitTypeFact(visitType = {}) {
     messageForStaff,
     requiredInput: "患者の過去受診履歴、今回病名との継続性、初診/再診の扱い",
     evidence,
-    source: "visit_type_rule"
+    source: "visit_type_rule",
+    applicability: {
+      encounterSettings: ["outpatient"],
+      allowUnresolvedEncounterSetting: true,
+      allowUnstructuredEncounterSetting: true
+    }
   }, "visit_type_check");
+}
+
+function applyReviewIssueApplicability(reviewIssues = [], { session = {} } = {}) {
+  return reviewIssues.filter((issue) => reviewIssueAppliesToEncounter(issue, session));
+}
+
+function reviewIssueAppliesToEncounter(issue = {}, session = {}) {
+  const applicability = issue?.applicability;
+  if (!applicability || typeof applicability !== "object") {
+    return true;
+  }
+  const setting = encounterSetting(session);
+  const allowedSettings = uniqueStrings(applicability.encounterSettings || []);
+  if (!allowedSettings.length || allowedSettings.includes(setting)) {
+    return true;
+  }
+  if (!setting) {
+    return applicability.allowUnresolvedEncounterSetting !== false;
+  }
+  if (!hasStructuredEncounterSettingSource(session)) {
+    return applicability.allowUnstructuredEncounterSetting !== false;
+  }
+  return false;
+}
+
+function hasStructuredEncounterSettingSource(session = {}) {
+  const source = String(
+    session?.encounterTypeSource
+    || session?.encounterDetails?.visitKindSource
+    || session?.encounter?.settingSource
+    || ""
+  ).trim().toLowerCase();
+  return ["dom", "user", "api", "manual", "structured"].includes(source);
 }
 
 function outpatientBasicFromStructuredVisit(visitType = {}, text = "") {
@@ -9561,23 +9612,37 @@ function medicationQuantityFromClinicalEvent(event = {}) {
   };
 }
 
-async function materialInputFromClinicalEvent(event = {}, feeCalculator) {
+async function materialInputFromClinicalEvent(event = {}, feeCalculator, {
+  structuredSourceFacts = null,
+  serviceDate = ""
+} = {}) {
   const reviewWarnings = [];
   const name = clinicalEventName(event);
   if (isMaterialNameNoise(name)) {
-    return { input: null, masterCandidates: [], reviewWarnings };
+    return emptyMaterialConversionResult(reviewWarnings);
   }
   if (!name) {
     reviewWarnings.push("特定器材・材料名がカルテ本文から確定できないため、算定候補には入れていません。");
-    return { input: null, masterCandidates: [], reviewWarnings };
+    return emptyMaterialConversionResult(reviewWarnings);
   }
   if (isMedicationLikeName(name)) {
-    return { input: null, masterCandidates: [], reviewWarnings };
+    return emptyMaterialConversionResult(reviewWarnings);
   }
+
+  const resolution = resolveSpecificMaterialAttributes({
+    event,
+    structuredSourceFacts,
+    serviceDate
+  });
+  if (resolution.status !== "unconfigured") {
+    return materialConversionFromAttributeResolution(event, resolution, reviewWarnings);
+  }
+
+  // 対応表未定義カテゴリは挙動を変えず、従来の完全一致マスター検索へ渡す。
   const item = await searchFirstMasterItem(feeCalculator, "material", name, "material");
   if (!item?.code) {
     reviewWarnings.push(`特定器材・材料「${name}」をマスターコードへ解決できませんでした。`);
-    return { input: null, masterCandidates: [], reviewWarnings };
+    return emptyMaterialConversionResult(reviewWarnings);
   }
   return {
     input: {
@@ -9590,7 +9655,155 @@ async function materialInputFromClinicalEvent(event = {}, feeCalculator) {
         searchQuery: name
       })
     ].filter(Boolean),
-    reviewWarnings
+    candidateProposals: [],
+    reviewIssues: [],
+    reviewWarnings,
+    traceEvents: []
+  };
+}
+
+function materialConversionFromAttributeResolution(event, resolution, reviewWarnings) {
+  const name = clinicalEventName(event);
+  const quantity = numericText(event?.total_quantity) || numericText(event?.quantity_per_day) || "1";
+  const masterCandidates = asArray(resolution.candidates)
+    .map((candidate, index) => masterCandidateFromItem({
+      ...candidate,
+      kind: "material",
+      sourceType: "specific_material_master",
+      points: candidate.points
+    }, event, {
+      masterType: "material",
+      rank: index + 1,
+      candidateStatus: resolution.status === "exact" ? "strong_match" : "ambiguous_match",
+      searchQuery: name,
+      generatedBy: "specific_material_attribute_resolver"
+    }))
+    .filter(Boolean);
+  const trace = clinicalTraceEvent({
+    stage: "specific_material_attribute_resolution",
+    event,
+    categoryLabel: "特定保険医療材料",
+    outcome: resolution.status,
+    selected: {
+      categoryId: resolution.categoryId,
+      attributes: resolution.attributes,
+      reasonCode: resolution.reasonCode,
+      candidateCodes: asArray(resolution.candidates).map((candidate) => candidate.code),
+      artifactRevision: resolution.metadata?.revision || ""
+    },
+    message: "specific_material_attribute_resolution_completed"
+  });
+
+  if (resolution.status === "exact" && resolution.candidates.length === 1) {
+    return {
+      input: {
+        code: String(resolution.candidates[0].code),
+        quantity
+      },
+      masterCandidates,
+      candidateProposals: [],
+      reviewIssues: [],
+      reviewWarnings,
+      traceEvents: [trace]
+    };
+  }
+
+  const codeCandidates = uniqueStrings(
+    asArray(resolution.candidates).map((candidate) => candidate?.code)
+  );
+  const evidence = String(clinicalEventEvidence(event) || name).slice(0, 180);
+  if (resolution.status === "ambiguous" && codeCandidates.length) {
+    const message = `特定器材・材料「${name}」は属性から${codeCandidates.length}件まで絞りましたが、請求区分を一意に確定できません。該当区分を選択してください。`;
+    reviewWarnings.push(message);
+    return {
+      input: null,
+      masterCandidates,
+      candidateProposals: [{
+        proposalId: `material_choice_${candidateIdPart([
+          event?.clinicalEventId || event?.clinical_event_id,
+          resolution.categoryId,
+          ...codeCandidates
+        ].join("_"))}`,
+        title: `${resolution.categoryName || name}の材料区分確認`,
+        reason: message,
+        conditionText: "材料の構造・用途・請求表を確認し、一致する材料コードを選択した場合のみ算定してください。",
+        basis: "specific_material_attribute_candidate",
+        evidence,
+        actionType: "confirm_required",
+        potentialPoints: 0,
+        code: "",
+        codeCandidates,
+        orderType: "material",
+        source: "specific_material_attribute_resolver",
+        sortOrder: 42,
+        candidateOnly: true,
+        candidateLine: null
+      }],
+      reviewIssues: [withReviewTopic({
+        reviewIssueId: `issue_${candidateIdPart([
+          "material_ambiguous",
+          event?.clinicalEventId || event?.clinical_event_id,
+          ...codeCandidates
+        ].join("_"))}`,
+        issueCode: "specific_material_code_ambiguous",
+        severity: "warning",
+        title: "特定保険医療材料の区分確認",
+        messageForStaff: message,
+        evidence,
+        requiredInput: "材料の構造・用途・請求表",
+        source: "specific_material_attribute_resolver",
+        codeCandidates
+      }, "master_code_check")],
+      reviewWarnings,
+      traceEvents: [trace]
+    };
+  }
+
+  const message = resolution.reasonCode === "material_attributes_do_not_match_master"
+    ? `特定器材・材料「${name}」の記載属性に一致する現行材料コードがありません。属性とマスター適用年月を確認してください。`
+    : `特定器材・材料「${name}」は材料区分を確定する属性が不足しています。マスター検索で確認してください。`;
+  reviewWarnings.push(message);
+  return {
+    input: null,
+    masterCandidates,
+    candidateProposals: [],
+    reviewIssues: [withReviewTopic({
+      reviewIssueId: `issue_${candidateIdPart([
+        "material_insufficient",
+        event?.clinicalEventId || event?.clinical_event_id,
+        resolution.categoryId,
+        resolution.reasonCode
+      ].join("_"))}`,
+      issueCode: "specific_material_attributes_insufficient",
+      severity: "warning",
+      title: "特定保険医療材料の属性確認",
+      messageForStaff: message,
+      evidence,
+      requiredInput: materialRequiredInputLabel(resolution.categoryId),
+      source: "specific_material_attribute_resolver"
+    }, "master_code_check")],
+    reviewWarnings,
+    traceEvents: [trace]
+  };
+}
+
+function materialRequiredInputLabel(categoryId) {
+  return {
+    tracheostomy_tube: "用途、カフ有無、吸引機能、一重管/二重管、請求表",
+    nutrition_disposable_catheter: "留置経路、一般/乳幼児/経腸栄養/特殊の区分",
+    urinary_indwelling_catheter: "管区分、標準/閉鎖式、特定区分、請求表",
+    gastrostomy_replacement_catheter: "胃/小腸留置、バンパー/バルーン、ガイドワイヤー有無、請求表"
+  }[String(categoryId || "")] || "材料の構造・用途・請求区分";
+}
+
+function emptyMaterialConversionResult(reviewWarnings = []) {
+  return {
+    input: null,
+    masterCandidates: [],
+    candidateProposals: [],
+    reviewIssues: [],
+    reviewWarnings,
+    traceEvents: []
   };
 }
 

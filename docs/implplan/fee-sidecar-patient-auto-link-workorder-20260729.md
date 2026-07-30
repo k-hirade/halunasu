@@ -172,7 +172,7 @@ seedは「過去の情報を取得する」機構ではなく「運用の中で�
 
 ### 5.3 分離後ワークオーダーに引き継ぐ設計要件
 
-1. 読取行の4分類: `billable_line` / `claim_comment` / `claim_attribute` / `unknown`
+1. 読取行の**5分類**: `billable_line` / `claim_comment` / `claim_attribute` / `patient_charge`(往診交通費等の患家負担) / `unknown`。fee-universal-act-coverage-workorder-20260729.md G0と同一規約(2026-07-29に5分類へ統一。mock行為欄には属性行と患家負担行が両方実在するため)
 2. **診療行為コードへ完全一致で解決できた行だけを履歴化候補にする**(部分一致・推測解決は不可)
 3. 取り込みステータス: `source: "external_observed"`、`verificationStatus: "unverified"` で保存し、元画面・請求月・contractバージョン・hashをprovenanceに保持。**管理者確認後にのみstanding profileへ昇格**
 4. STGの疑似HOMISに限り、明示的なテストモードフラグで自動確定を許可(PROD経路とはコードレベルで分離)

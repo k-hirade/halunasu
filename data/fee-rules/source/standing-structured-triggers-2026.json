@@ -1,0 +1,395 @@
+{
+  "schemaVersion": "fee-standing-structured-trigger-source-v1",
+  "revision": "2026-06-01",
+  "effectiveFrom": "2026-06-01",
+  "verifiedAt": "2026-07-29",
+  "sourceDocuments": [
+    {
+      "sourceId": "r8_medical_fee_interpretation",
+      "title": "診療報酬の算定方法の一部改正に伴う実施上の留意事項について 別添1 医科診療報酬点数表に関する事項",
+      "url": "https://www.mhlw.go.jp/content/12400000/001713882.pdf",
+      "sha256": "b30f366a59c57c942c567da63aa144000f632420b1700fe68b56545acba80630"
+    }
+  ],
+  "triggers": [
+    {
+      "triggerId": "c002_home_management_review_candidate",
+      "ruleKind": "standing_family",
+      "version": "2026",
+      "familySelector": {
+        "name": "在医総管",
+        "hierarchy": {
+          "chapter": "2",
+          "part": "02",
+          "alphaPart": "C",
+          "section": "002",
+          "branch": "00"
+        }
+      },
+      "requiredPositiveFacts": [
+        {
+          "fact": "encounter.plannedHomeVisit",
+          "operator": "equals",
+          "value": true
+        },
+        {
+          "fact": "encounter.residenceType",
+          "operator": "equals",
+          "value": "private"
+        },
+        {
+          "fact": "clinical.activeDiagnosisCount",
+          "operator": "gte",
+          "value": 1
+        },
+        {
+          "fact": "clinical.currentManagementOrCounselingCount",
+          "operator": "gte",
+          "value": 1
+        }
+      ],
+      "failureMode": "silent",
+      "source": {
+        "sourceId": "r8_medical_fee_interpretation",
+        "section": "C002 在宅時医学総合管理料 (2), (4)",
+        "requirementSummary": "通院困難な在宅療養患者について、個別の在宅療養計画に基づく定期的な訪問診療と総合的な医学管理を行うこと。"
+      }
+    },
+    {
+      "triggerId": "c002_2_facility_management_review_candidate",
+      "ruleKind": "standing_family",
+      "version": "2026",
+      "familySelector": {
+        "name": "施医総管",
+        "hierarchy": {
+          "chapter": "2",
+          "part": "02",
+          "alphaPart": "C",
+          "section": "002",
+          "branch": "02"
+        }
+      },
+      "requiredPositiveFacts": [
+        {
+          "fact": "encounter.plannedHomeVisit",
+          "operator": "equals",
+          "value": true
+        },
+        {
+          "fact": "encounter.residenceType",
+          "operator": "equals",
+          "value": "facility"
+        },
+        {
+          "fact": "clinical.activeDiagnosisCount",
+          "operator": "gte",
+          "value": 1
+        },
+        {
+          "fact": "clinical.currentManagementOrCounselingCount",
+          "operator": "gte",
+          "value": 1
+        }
+      ],
+      "failureMode": "silent",
+      "source": {
+        "sourceId": "r8_medical_fee_interpretation",
+        "section": "C002-2 施設入居時等医学総合管理料 (3), (4)",
+        "requirementSummary": "対象施設で療養する通院困難な患者について、個別の在宅療養計画に基づく定期的な訪問診療と総合的な医学管理を行うこと。"
+      }
+    },
+    {
+      "triggerId": "c103_home_oxygen_management_review_candidate",
+      "ruleKind": "device_management",
+      "version": "2026",
+      "familySelector": {
+        "name": "在宅酸素療法指導管理料",
+        "hierarchy": {
+          "chapter": "2",
+          "part": "02",
+          "alphaPart": "C",
+          "section": "103",
+          "branch": "00"
+        }
+      },
+      "requiredPositiveFacts": [
+        {
+          "fact": "clinical.deviceTypes",
+          "operator": "contains_any",
+          "value": [
+            "home_oxygen",
+            "oxygen_concentrator",
+            "oxygen_cylinder",
+            "oxygen_demand_valve"
+          ]
+        }
+      ],
+      "failureMode": "silent",
+      "source": {
+        "sourceId": "r8_medical_fee_interpretation",
+        "section": "C103 在宅酸素療法指導管理料",
+        "requirementSummary": "在宅酸素療法を行う患者に対して必要な指導管理を行った場合の月次管理料。"
+      }
+    },
+    {
+      "triggerId": "c107_home_ventilator_management_review_candidate",
+      "ruleKind": "device_management",
+      "version": "2026",
+      "familySelector": {
+        "name": "在宅人工呼吸指導管理料",
+        "hierarchy": {
+          "chapter": "2",
+          "part": "02",
+          "alphaPart": "C",
+          "section": "107",
+          "branch": "00"
+        }
+      },
+      "requiredPositiveFacts": [
+        {
+          "fact": "clinical.deviceTypes",
+          "operator": "contains",
+          "value": "ventilator"
+        }
+      ],
+      "failureMode": "silent",
+      "source": {
+        "sourceId": "r8_medical_fee_interpretation",
+        "section": "C107 在宅人工呼吸指導管理料",
+        "requirementSummary": "在宅で人工呼吸を行う患者に対して必要な指導管理を行った場合の月次管理料。"
+      }
+    },
+    {
+      "triggerId": "c112_home_tracheostomy_management_review_candidate",
+      "ruleKind": "device_management",
+      "version": "2026",
+      "familySelector": {
+        "name": "在宅気管切開患者指導管理料",
+        "hierarchy": {
+          "chapter": "2",
+          "part": "02",
+          "alphaPart": "C",
+          "section": "112",
+          "branch": "00"
+        }
+      },
+      "requiredPositiveFacts": [
+        {
+          "fact": "clinical.deviceTypes",
+          "operator": "contains",
+          "value": "tracheostomy_cannula"
+        }
+      ],
+      "failureMode": "silent",
+      "source": {
+        "sourceId": "r8_medical_fee_interpretation",
+        "section": "C112 在宅気管切開患者指導管理料",
+        "requirementSummary": "気管切開を行っている患者に対して在宅で必要な指導管理を行った場合の月次管理料。"
+      }
+    },
+    {
+      "triggerId": "b001_22_cancer_pain_management_review_candidate",
+      "ruleKind": "device_management",
+      "version": "2026",
+      "familySelector": {
+        "name": "がん性疼痛緩和指導管理料",
+        "hierarchy": {
+          "chapter": "2",
+          "part": "01",
+          "alphaPart": "B",
+          "section": "001",
+          "branch": "00"
+        }
+      },
+      "requiredPositiveFacts": [
+        {
+          "fact": "clinical.hasCancerPainDiagnosis",
+          "operator": "equals",
+          "value": true
+        },
+        {
+          "fact": "clinical.hasNarcoticAnalgesicPrescription",
+          "operator": "equals",
+          "value": true
+        }
+      ],
+      "failureMode": "silent",
+      "source": {
+        "sourceId": "r8_medical_fee_interpretation",
+        "section": "B001 注22 がん性疼痛緩和指導管理料",
+        "requirementSummary": "がん性疼痛患者に対して麻薬を処方し、療養上必要な指導を行った場合の月次管理料。"
+      }
+    },
+    {
+      "triggerId": "c002_comprehensive_support_addon_review_candidate",
+      "ruleKind": "dependent_addon",
+      "version": "2026",
+      "familySelector": {
+        "name": "包括的支援加算",
+        "hierarchy": {
+          "chapter": "2",
+          "part": "02",
+          "alphaPart": "C",
+          "section": "002",
+          "branch": "00"
+        }
+      },
+      "parentFamilySelectors": [
+        {
+          "name": "在医総管",
+          "hierarchy": {
+            "chapter": "2",
+            "part": "02",
+            "alphaPart": "C",
+            "section": "002",
+            "branch": "00"
+          }
+        },
+        {
+          "name": "施医総管",
+          "hierarchy": {
+            "chapter": "2",
+            "part": "02",
+            "alphaPart": "C",
+            "section": "002",
+            "branch": "02"
+          }
+        }
+      ],
+      "requiredFacilityStandardKey": "houkatsuteki_shien_kasan",
+      "scope": "per_month",
+      "requiredPositiveFacts": [
+        {
+          "fact": "care.certificationLevel",
+          "operator": "gte",
+          "value": 2
+        },
+        {
+          "fact": "care.visitingNurseWeeklyCount",
+          "operator": "gte",
+          "value": 1
+        }
+      ],
+      "failureMode": "silent",
+      "source": {
+        "sourceId": "r8_medical_fee_interpretation",
+        "section": "C002 注10 包括的支援加算",
+        "requirementSummary": "在医総管又は施医総管を算定する患者で、要介護度や訪問看護等の状態を踏まえ包括的な支援を行う場合の月次加算。"
+      }
+    },
+    {
+      "triggerId": "c002_information_coordination_addon_review_candidate",
+      "ruleKind": "dependent_addon",
+      "version": "2026",
+      "familySelector": {
+        "name": "在宅医療情報連携加算",
+        "hierarchy": {
+          "chapter": "2",
+          "part": "02",
+          "alphaPart": "C",
+          "section": "002",
+          "branch": "00"
+        }
+      },
+      "parentFamilySelectors": [
+        {
+          "name": "在医総管",
+          "hierarchy": {
+            "chapter": "2",
+            "part": "02",
+            "alphaPart": "C",
+            "section": "002",
+            "branch": "00"
+          }
+        },
+        {
+          "name": "施医総管",
+          "hierarchy": {
+            "chapter": "2",
+            "part": "02",
+            "alphaPart": "C",
+            "section": "002",
+            "branch": "02"
+          }
+        }
+      ],
+      "requiredFacilityStandardKey": "zaitaku_iryo_joho_renkei_kasan",
+      "scope": "per_month",
+      "requiredPositiveFacts": [
+        {
+          "fact": "care.ictCoordination",
+          "operator": "equals",
+          "value": true
+        }
+      ],
+      "failureMode": "silent",
+      "source": {
+        "sourceId": "r8_medical_fee_interpretation",
+        "section": "C002 注13 在宅医療情報連携加算",
+        "requirementSummary": "在医総管又は施医総管を算定する患者について、ICTを用いた関係職種間の情報共有体制を整備し情報連携を行う場合の月次加算。"
+      }
+    },
+    {
+      "triggerId": "c002_early_transition_addon_review_candidate",
+      "ruleKind": "dependent_addon",
+      "version": "2026",
+      "familySelector": {
+        "name": "在宅移行早期加算",
+        "hierarchy": {
+          "chapter": "2",
+          "part": "02",
+          "alphaPart": "C",
+          "section": "002",
+          "branch": "00"
+        }
+      },
+      "parentFamilySelectors": [
+        {
+          "name": "在医総管",
+          "hierarchy": {
+            "chapter": "2",
+            "part": "02",
+            "alphaPart": "C",
+            "section": "002",
+            "branch": "00"
+          }
+        },
+        {
+          "name": "施医総管",
+          "hierarchy": {
+            "chapter": "2",
+            "part": "02",
+            "alphaPart": "C",
+            "section": "002",
+            "branch": "02"
+          }
+        }
+      ],
+      "requiredFacilityStandardKey": "zaitaku_iko_soki_kasan",
+      "scope": "per_month",
+      "requiredPositiveFacts": [
+        {
+          "fact": "encounter.withinThreeMonthsOfPatientStart",
+          "operator": "equals",
+          "value": true
+        },
+        {
+          "fact": "history.completeness",
+          "operator": "equals",
+          "value": "complete"
+        },
+        {
+          "fact": "history.confirmedCodes",
+          "operator": "not_contains",
+          "value": "114016070"
+        }
+      ],
+      "failureMode": "silent",
+      "source": {
+        "sourceId": "r8_medical_fee_interpretation",
+        "section": "C002 注5 在宅移行早期加算",
+        "requirementSummary": "在宅医療への移行後早期の患者について、在医総管又は施医総管に加算する月次項目。"
+      }
+    }
+  ]
+}
