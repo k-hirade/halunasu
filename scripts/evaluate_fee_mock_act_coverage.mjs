@@ -21,6 +21,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const defaults = {
   mockRoot: "tmp/mock_homis",
   actionMap: "tmp/dataset_recalculation_diff_diagnosis/20260702_185214_mock_homis/homis_action_master_map.csv",
+  actionMapOverrides: "data/tests/fee-mock-act-coverage/manual-action-map-overrides.json",
   platformBaseUrl: "https://platform-api-stg-lp2t3inhza-an.a.run.app",
   feeBaseUrl: "https://fee-api-stg-wmfrwcpzkq-an.a.run.app",
   organizationCode: "yamamoto-demo-stg",
@@ -30,9 +31,13 @@ const defaults = {
   mfaCode: process.env.FEE_E2E_MFA_CODE || "",
   facilityId: "fac_9fe275b29feebb03bfeb9410f7",
   departmentId: "dep_00d6c56dcd8b4d65acf0d8f2ab",
-  selectorContractVersion: "homis-mock-v3",
+  selectorContractVersion: "homis-mock-v4",
   claimMonth: "",
-  claimMonths: "2026-05,2026-06",
+  claimMonths: "2026-06,2026-07",
+  expectedClinicalExtractionStrategy: "openai_primary",
+  expectedExtractionCoverageMode: "verify",
+  expectedStandingFacts: "true",
+  repeat: 1,
   timeoutMs: 180_000
 };
 
@@ -43,9 +48,13 @@ if (args.help) {
 }
 
 const dataset = exportCases(args);
-const mappingRows = fs.existsSync(resolveRepoPath(args.actionMap))
+const baseMappingRows = fs.existsSync(resolveRepoPath(args.actionMap))
   ? parseCsv(fs.readFileSync(resolveRepoPath(args.actionMap), "utf8"))
   : [];
+const mappingRows = applyMappingOverrides(
+  baseMappingRows,
+  readJsonArrayIfPresent(resolveRepoPath(args.actionMapOverrides))
+);
 const classification = summarizeClassification(dataset.cases, mappingRows);
 if (args.dryRun) {
   process.stdout.write(`${JSON.stringify({
@@ -73,6 +82,7 @@ assertResponse(ready, "fee-api readyz");
 if (String(ready.body?.env || "") !== "stg" && !args.allowNonStg) {
   throw new Error(`refusing non-STG target: ${String(ready.body?.env || "unknown")}`);
 }
+validateRuntimePreflight(ready.body, args);
 const sidecarAuth = await createSidecarAuth(args, extensionId);
 const sidecarOptions = {
   ...args,
@@ -85,7 +95,7 @@ if (!sidecarOptions.facilityId) {
 }
 
 const result = {
-  schemaVersion: "fee-mock-act-coverage-run-v1",
+  schemaVersion: "fee-mock-act-coverage-run-v2",
   generatedAt: new Date().toISOString(),
   status: "running",
   source: {
@@ -93,6 +103,9 @@ const result = {
     mockPatientsSha256: sha256File(path.join(resolveRepoPath(args.mockRoot), "data/patients.py")),
     actionMapSha256: fs.existsSync(resolveRepoPath(args.actionMap))
       ? sha256File(resolveRepoPath(args.actionMap))
+      : null,
+    actionMapOverridesSha256: fs.existsSync(resolveRepoPath(args.actionMapOverrides))
+      ? sha256File(resolveRepoPath(args.actionMapOverrides))
       : null,
     claimMonths: dataset.claimMonths
   },
@@ -103,6 +116,11 @@ const result = {
     facilityId: sidecarOptions.facilityId,
     departmentId: sidecarOptions.departmentId || null,
     cloudRunRevision: ready.body?.runtime?.cloudRunRevision || null,
+    runtimeFeatures: {
+      clinicalExtractionStrategy: ready.body?.runtimeFeatures?.clinicalExtractionStrategy || null,
+      extractionCoverageMode: ready.body?.runtimeFeatures?.extractionCoverage?.mode || null,
+      standingFactsEnabled: ready.body?.runtimeFeatures?.standingFactsEnabled === true
+    },
     sidecarAuthorization: {
       ...sidecarAuth.metadata,
       grantRevoked: null
@@ -121,36 +139,57 @@ const result = {
     ]
   },
   classification,
+  repeatCount: args.repeat,
+  repetitions: [],
   runs: []
 };
 persist(outputDir, result);
 
 try {
-  for (let index = 0; index < dataset.cases.length; index += 1) {
-    const item = dataset.cases[index];
-    process.stdout.write(`[${index + 1}/${dataset.cases.length}] ${item.caseId}\n`);
-    const body = sidecarBody(item, sidecarOptions);
-    const credentials = await sidecarAuth.credentials();
-    const response = await requestJson(`${args.feeBaseUrl}/v1/integrations/sidecar/calculate`, {
-      method: "POST",
-      body,
-      timeoutMs: args.timeoutMs,
-      headers: {
-        authorization: `Bearer ${credentials.accessToken}`,
-        origin: `chrome-extension://${extensionId}`,
-        "x-sidecar-code-verifier": credentials.verifier
-      }
-    });
-    assertResponse(response, item.caseId);
-    result.runs.push(auditMockActCoverageCase(item, response.body, mappingRows));
-    reconcileMockActCoverageRuns(result.runs, mappingRows);
-    result.summary = summarizeMockActCoverage(result.runs);
-    persist(outputDir, result);
+  for (let repeatIndex = 1; repeatIndex <= args.repeat; repeatIndex += 1) {
+    const repetition = {
+      repeatIndex,
+      status: "running",
+      runs: []
+    };
+    result.repetitions.push(repetition);
+    for (let index = 0; index < dataset.cases.length; index += 1) {
+      const item = dataset.cases[index];
+      process.stdout.write(
+        `[repeat ${repeatIndex}/${args.repeat}] [${index + 1}/${dataset.cases.length}] ${item.caseId}\n`
+      );
+      const body = sidecarBody(item, sidecarOptions);
+      const credentials = await sidecarAuth.credentials();
+      const response = await requestJson(`${args.feeBaseUrl}/v1/integrations/sidecar/calculate`, {
+        method: "POST",
+        body,
+        timeoutMs: args.timeoutMs,
+        headers: {
+          authorization: `Bearer ${credentials.accessToken}`,
+          origin: `chrome-extension://${extensionId}`,
+          "x-sidecar-code-verifier": credentials.verifier
+        }
+      });
+      assertResponse(response, item.caseId);
+      repetition.runs.push({
+        repeatIndex,
+        ...auditMockActCoverageCase(item, response.body, mappingRows)
+      });
+      reconcileMockActCoverageRuns(repetition.runs, mappingRows);
+      repetition.summary = summarizeMockActCoverage(repetition.runs);
+      result.runs = result.repetitions.flatMap((entry) => entry.runs);
+      result.summary = summarizeRepetitions(result.repetitions);
+      persist(outputDir, result);
+    }
+    repetition.status = "complete";
+    reconcileMockActCoverageRuns(repetition.runs, mappingRows);
+    repetition.summary = summarizeMockActCoverage(repetition.runs);
+    repetition.outputSha256 = coverageOutputSha256(repetition.runs);
   }
   result.status = "complete";
   result.completedAt = new Date().toISOString();
-  reconcileMockActCoverageRuns(result.runs, mappingRows);
-  result.summary = summarizeMockActCoverage(result.runs);
+  result.runs = result.repetitions.flatMap((entry) => entry.runs);
+  result.summary = summarizeRepetitions(result.repetitions);
 } catch (error) {
   result.status = "failed";
   result.failedAt = new Date().toISOString();
@@ -169,6 +208,7 @@ process.stdout.write(`result=${path.join(outputDir, "result.json")}\n`);
 
 function sidecarBody(item, options) {
   const extractedAt = new Date().toISOString();
+  const sourceSurfaces = sealSourceSurfaces(item, extractedAt);
   return {
     contractVersion: "v1",
     facilityId: options.facilityId,
@@ -192,6 +232,7 @@ function sidecarBody(item, options) {
     clinicalText: item.clinicalText,
     orders: [],
     diagnoses: item.diagnoses,
+    sourceSurfaces,
     extractionProof: {
       patientIdBefore: item.patientId,
       patientIdAfter: item.patientId,
@@ -202,10 +243,54 @@ function sidecarBody(item, options) {
       domMutationDetected: false,
       contractValidationPassed: true,
       previewMatched: true,
-      requiredElementCount: 4,
-      matchedRequiredElementCount: 4,
-      clinicalTextNodeCount: Math.max(1, String(item.clinicalText || "").split(/\n/u).length)
+      requiredElementCount: 5,
+      matchedRequiredElementCount: 5,
+      clinicalTextNodeCount: Math.max(1, String(item.clinicalText || "").split(/\n/u).length),
+      surfaceProofs: Object.fromEntries(
+        Object.entries(sourceSurfaces).map(([name, surface]) => [name, {
+          status: surface.status,
+          patientId: surface.patientId,
+          observedAt: surface.observedAt,
+          surfaceHash: surface.surfaceHash
+        }])
+      )
     }
+  };
+}
+
+function sealSourceSurfaces(item, observedAt) {
+  const patientId = String(item.patientId || "");
+  const raw = item.sourceSurfaceRaw || {};
+  return {
+    currentChart: sealSourceSurface({
+      status: "ok",
+      patientId,
+      raw: raw.currentChart || {}
+    }, observedAt),
+    documents: sealSourceSurface({
+      status: "ok",
+      patientId,
+      raw: raw.documents || { rows: [] }
+    }, observedAt)
+  };
+}
+
+function sealSourceSurface(surface, observedAt) {
+  const revisionPayload = {
+    status: surface.status,
+    patientId: surface.patientId,
+    ...(surface.status === "ok" ? { raw: surface.raw || {} } : {}),
+    ...(surface.status === "unavailable"
+      ? { unavailableReason: surface.unavailableReason || "fetch_failed" }
+      : {})
+  };
+  return {
+    ...revisionPayload,
+    observedAt,
+    surfaceHash: `sha256-${crypto
+      .createHash("sha256")
+      .update(JSON.stringify(revisionPayload))
+      .digest("base64url")}`
   };
 }
 
@@ -279,13 +364,23 @@ function persist(outputDir, payload) {
       `- generatedAt: ${payload.generatedAt}`,
       `- claimMonths: ${asArray(payload.source.claimMonths).join(", ")}`,
       `- caseCount: ${payload.summary?.caseCount || payload.runs.length}`,
-      `- billableMatchRate: ${formatPercent(payload.summary?.billableMatchRate)}`,
+      `- repeatCount: ${payload.summary?.repeatCount || payload.repeatCount || 1}`,
+      `- actCoverageRecall: ${formatPercent(payload.summary?.actCoverageRecall)}`,
+      `- billableReadyMatchRate: ${formatPercent(payload.summary?.billableReadyMatchRate)}`,
       `- confirmedBillableRate: ${formatPercent(payload.summary?.confirmedBillableRate)}`,
       `- commentDetectionRate: ${formatPercent(payload.summary?.commentDetectionRate)}`,
       `- falseProposalCount: ${payload.summary?.falseProposalCount ?? 0}`,
+      `- dangerousFalsePositiveCount: ${payload.summary?.dangerousFalsePositiveCount ?? 0}`,
+      `- candidatePrecision: ${formatPercent(payload.summary?.candidatePrecision)}`,
+      `- mappedReferencePointTotal: ${payload.summary?.expectedPointTotal ?? 0}`,
+      `- billableReadyExpectedPointTotal: ${payload.summary?.billableReadyExpectedPointTotal ?? 0}`,
+      `- detectedBillableReadyPointTotal: ${payload.summary?.detectedBillableReadyPointTotal ?? 0}`,
+      `- pointTotalsMatch: ${payload.summary?.pointTotalsMatch === true}`,
+      `- deterministicOutputs: ${payload.summary?.deterministicOutputs === true}`,
       "",
       "行為欄は評価専用であり、算定APIへの入力には使用していません。",
       "患者名とカルテ本文は保存せず、本文はSHA-256のみを記録しています。",
+      "採用不可・区分未確定の候補はactCoverageRecallには含めますが、billableReadyMatchRateと点数合計には含めません。",
       ""
     ].join("\n")
   );
@@ -321,6 +416,152 @@ function assertResponse(response, label) {
   }
 }
 
+function validateRuntimePreflight(ready, options) {
+  const features = ready?.runtimeFeatures || {};
+  const actualStrategy = String(features.clinicalExtractionStrategy || "");
+  const actualCoverageMode = String(features.extractionCoverage?.mode || "");
+  const actualStandingFacts = features.standingFactsEnabled === true;
+  if (actualStrategy !== options.expectedClinicalExtractionStrategy) {
+    throw new Error(
+      `clinical extraction strategy must be ${options.expectedClinicalExtractionStrategy}, got ${actualStrategy || "missing"}`
+    );
+  }
+  if (actualCoverageMode !== options.expectedExtractionCoverageMode) {
+    throw new Error(
+      `extraction coverage mode must be ${options.expectedExtractionCoverageMode}, got ${actualCoverageMode || "missing"}`
+    );
+  }
+  const expectedStandingFacts = String(options.expectedStandingFacts).toLowerCase() === "true";
+  if (actualStandingFacts !== expectedStandingFacts) {
+    throw new Error(
+      `standing facts must be ${expectedStandingFacts}, got ${actualStandingFacts}`
+    );
+  }
+}
+
+function summarizeRepetitions(repetitions) {
+  const completed = repetitions.filter((entry) => entry.status === "complete" && entry.summary);
+  const latest = completed.at(-1)?.summary || repetitions.at(-1)?.summary || {};
+  const outputHashes = completed.map((entry) => entry.outputSha256).filter(Boolean);
+  const acceptance = completed.map((entry) => ({
+    repeatIndex: entry.repeatIndex,
+    actCoveragePassed: entry.summary.actCoverageRecall === 1,
+    dangerousFalsePositivePassed: entry.summary.dangerousFalsePositiveCount === 0,
+    commentDetectionPassed: entry.summary.commentDetectionRate === 1,
+    pointTotalsPassed: entry.summary.pointTotalsMatch === true
+  }));
+  return {
+    ...latest,
+    repeatCount: repetitions.length,
+    completedRepeatCount: completed.length,
+    deterministicOutputs: completed.length > 0
+      && outputHashes.length === completed.length
+      && new Set(outputHashes).size === 1,
+    allAcceptanceChecksPassed: completed.length > 0
+      && acceptance.every((entry) => (
+        entry.actCoveragePassed
+        && entry.dangerousFalsePositivePassed
+        && entry.commentDetectionPassed
+        && entry.pointTotalsPassed
+      )),
+    repeatAcceptance: acceptance
+  };
+}
+
+function coverageOutputSha256(runs) {
+  const output = runs.map((run) => ({
+    caseId: run.caseId,
+    gold: run.gold.map((item) => ({
+      actionIndex: item.actionIndex,
+      matchStatus: item.matchStatus,
+      matchedCode: item.matchedCode,
+      matchedSourceType: item.matchedSourceType,
+      matchedAdoptionBlocked: item.matchedAdoptionBlocked,
+      matchedRequiresSelection: item.matchedRequiresSelection,
+      matchedPoints: item.matchedPoints,
+      pointMatchStatus: item.pointMatchStatus
+    })),
+    falseProposals: run.actual.falseProposals
+  }));
+  return sha256Text(JSON.stringify(output));
+}
+
+function readJsonArrayIfPresent(filePath) {
+  if (!filePath || !fs.existsSync(filePath)) {
+    return [];
+  }
+  const value = JSON.parse(fs.readFileSync(filePath, "utf8"));
+  if (!Array.isArray(value)) {
+    throw new Error(`action map overrides must be an array: ${filePath}`);
+  }
+  validateMappingOverrides(value, filePath);
+  return value;
+}
+
+function validateMappingOverrides(overrides, filePath) {
+  const seen = new Set();
+  for (const [index, row] of overrides.entries()) {
+    const label = String(
+      row?.sample_action_name || row?.normalized_action_name || row?.action_key || ""
+    ).trim();
+    const normalized = normalizeMockActionName(label);
+    if (!normalized) {
+      throw new Error(`action map override ${index + 1} has no action name: ${filePath}`);
+    }
+    if (seen.has(normalized)) {
+      throw new Error(`duplicate action map override "${label}": ${filePath}`);
+    }
+    seen.add(normalized);
+    if (String(row?.match_status || "") !== "manual_reviewed_mapping") {
+      throw new Error(`action map override "${label}" is not human reviewed: ${filePath}`);
+    }
+    if (!["per_visit", "per_month"].includes(String(row?.billing_scope || ""))) {
+      throw new Error(`action map override "${label}" has invalid billing_scope: ${filePath}`);
+    }
+    if (!String(row?.code || "").trim() && !String(row?.candidate_codes || "").trim()) {
+      throw new Error(`action map override "${label}" has no code or candidate_codes: ${filePath}`);
+    }
+    if (!String(row?.source_version || "").trim()) {
+      throw new Error(`action map override "${label}" has no source_version: ${filePath}`);
+    }
+    if (!/^https:\/\/[^\s]+$/u.test(String(row?.source_url || "").trim())) {
+      throw new Error(`action map override "${label}" has invalid source_url: ${filePath}`);
+    }
+    if (!/^[a-f0-9]{64}$/u.test(String(row?.source_sha256 || "").trim())) {
+      throw new Error(`action map override "${label}" has invalid source_sha256: ${filePath}`);
+    }
+    if (!String(row?.note || "").trim()) {
+      throw new Error(`action map override "${label}" has no review note: ${filePath}`);
+    }
+  }
+}
+
+function applyMappingOverrides(rows, overrides) {
+  const byName = new Map(
+    overrides.map((row) => [normalizeMockActionName(
+      row.sample_action_name || row.normalized_action_name || row.action_key
+    ), row])
+  );
+  const applied = new Set();
+  const merged = rows.map((row) => {
+    const key = normalizeMockActionName(
+      row.sample_action_name || row.normalized_action_name || row.action_key
+    );
+    const override = byName.get(key);
+    if (!override) {
+      return row;
+    }
+    applied.add(key);
+    return { ...row, ...override };
+  });
+  for (const [key, override] of byName.entries()) {
+    if (!applied.has(key)) {
+      merged.push(override);
+    }
+  }
+  return merged;
+}
+
 function parseArgs(argv) {
   const parsed = {
     ...defaults,
@@ -346,6 +587,10 @@ function parseArgs(argv) {
     }
   }
   parsed.timeoutMs = Number(parsed.timeoutMs || defaults.timeoutMs);
+  parsed.repeat = Number(parsed.repeat || defaults.repeat);
+  if (!Number.isInteger(parsed.repeat) || parsed.repeat < 1 || parsed.repeat > 10) {
+    throw new Error("--repeat must be an integer from 1 to 10");
+  }
   return parsed;
 }
 
@@ -362,7 +607,9 @@ function printHelp() {
     + "  --verifier-file PATH          sidecar PKCE verifier file\n"
     + "  --extension-id ID             approved Chrome extension ID\n"
     + "  --claim-month YYYY-MM         evaluate one target month\n"
-    + "  --claim-months LIST           comma-separated months (default 2026-05,2026-06)\n"
+    + "  --claim-months LIST           comma-separated months (default 2026-06,2026-07)\n"
+    + "  --action-map-overrides PATH   reviewed manual mapping overrides\n"
+    + "  --repeat N                    repeat the full matrix for stability (default 1)\n"
     + "  --output-dir PATH             report directory\n"
   );
 }
@@ -438,6 +685,10 @@ function resolveRepoPath(value) {
 
 function sha256File(filePath) {
   return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+}
+
+function sha256Text(value) {
+  return crypto.createHash("sha256").update(String(value || "")).digest("hex");
 }
 
 function dateStamp(value) {

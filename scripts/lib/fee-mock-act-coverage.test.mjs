@@ -214,3 +214,154 @@ test("deduplicates the same monthly proposal emitted on multiple visits", () => 
     1
   );
 });
+
+test("separates act coverage from billable-ready matches and point totals", () => {
+  const mapping = [{
+    sample_action_name: "在宅データ提出加算",
+    action_class: "billable_line",
+    match_status: "exact_master_name",
+    code: "114057970",
+    points: "50",
+    billing_scope: "per_visit",
+    billing_scope_source: "fixture"
+  }];
+  const blocked = auditMockActCoverageCase({
+    caseId: "blocked-candidate",
+    patientId: "1001",
+    serviceDate: "2026-06-01",
+    clinicalText: "synthetic",
+    actionList: ["在宅データ提出加算"]
+  }, {
+    candidates: [{
+      sourceType: "proposal",
+      code: "114057970",
+      name: "在宅データ提出加算",
+      points: 50,
+      adoptionBlocked: true
+    }]
+  }, mapping);
+
+  const summary = summarizeMockActCoverage([blocked]);
+  assert.equal(summary.actCoverageRecall, 1);
+  assert.equal(summary.billableReadyMatchRate, 0);
+  assert.equal(summary.conditionalCandidateCount, 1);
+  assert.equal(summary.expectedPointTotal, 50);
+  assert.equal(summary.billableReadyExpectedPointTotal, 0);
+  assert.equal(summary.detectedBillableReadyPointTotal, 0);
+  assert.equal(summary.pointTotalsComparable, false);
+  assert.equal(summary.pointTotalsMatch, false);
+});
+
+test("counts unmatched calculated lines as dangerous false positives", () => {
+  const run = auditMockActCoverageCase({
+    caseId: "dangerous-false-positive",
+    patientId: "1001",
+    serviceDate: "2026-06-01",
+    clinicalText: "synthetic",
+    actionList: []
+  }, {
+    candidates: [{
+      sourceType: "calculated_line",
+      code: "999999999",
+      name: "行為欄にない確定行",
+      points: 100
+    }, {
+      sourceType: "proposal",
+      code: "888888888",
+      name: "行為欄にない確認候補",
+      points: 50
+    }]
+  }, []);
+
+  reconcileMockActCoverageRuns([run], []);
+  const summary = summarizeMockActCoverage([run]);
+  assert.equal(summary.dangerousFalsePositiveCount, 1);
+  assert.equal(summary.falseProposalCount, 2);
+  assert.equal(summary.candidateProposalCount, 1);
+  assert.equal(summary.candidatePrecision, 0);
+});
+
+test("matches billable-ready points only when code and points are resolved", () => {
+  const mapping = [{
+    sample_action_name: "往診",
+    action_class: "billable_line",
+    match_status: "manual_reviewed_mapping",
+    code: "114000110",
+    points: "720",
+    billing_scope: "per_visit",
+    billing_scope_source: "fixture"
+  }];
+  const run = auditMockActCoverageCase({
+    caseId: "resolved-points",
+    patientId: "1001",
+    serviceDate: "2026-06-01",
+    clinicalText: "synthetic",
+    actionList: ["往診"]
+  }, {
+    candidates: [{
+      sourceType: "proposal",
+      code: "114000110",
+      name: "往診料",
+      points: 720,
+      requiresSelection: false
+    }]
+  }, mapping);
+
+  const summary = summarizeMockActCoverage([run]);
+  assert.equal(summary.billableReadyMatchRate, 1);
+  assert.equal(summary.billableReadyExpectedPointTotal, 720);
+  assert.equal(summary.detectedBillableReadyPointTotal, 720);
+  assert.equal(summary.pointTotalsMatch, true);
+});
+
+test("point totals compare the same billable-ready scope on both sides", () => {
+  const mapping = [
+    {
+      sample_action_name: "往診",
+      action_class: "billable_line",
+      match_status: "manual_reviewed_mapping",
+      code: "114000110",
+      points: "720",
+      billing_scope: "per_visit",
+      billing_scope_source: "fixture"
+    },
+    {
+      sample_action_name: "在宅データ提出加算",
+      action_class: "billable_line",
+      match_status: "exact_master_name",
+      code: "114057970",
+      points: "50",
+      billing_scope: "per_visit",
+      billing_scope_source: "fixture"
+    }
+  ];
+  const run = auditMockActCoverageCase({
+    caseId: "mixed-point-scope",
+    patientId: "1001",
+    serviceDate: "2026-06-01",
+    clinicalText: "synthetic",
+    actionList: ["往診", "在宅データ提出加算"]
+  }, {
+    candidates: [
+      {
+        sourceType: "proposal",
+        code: "114000110",
+        name: "往診料",
+        points: 720
+      },
+      {
+        sourceType: "proposal",
+        code: "114057970",
+        name: "在宅データ提出加算",
+        points: 50,
+        adoptionBlocked: true
+      }
+    ]
+  }, mapping);
+
+  const summary = summarizeMockActCoverage([run]);
+  assert.equal(summary.expectedPointTotal, 770);
+  assert.equal(summary.billableReadyExpectedPointTotal, 720);
+  assert.equal(summary.detectedBillableReadyPointTotal, 720);
+  assert.equal(summary.pointTotalsMatch, true);
+});

@@ -127,6 +127,24 @@
       "queryScope": "COLLECTION",
       "fields": [
         {
+          "fieldPath": "facilityId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "serviceDate",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "lifecycleStatus",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "sidecar_calculation_drafts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
           "fieldPath": "patientId",
           "order": "ASCENDING"
         },

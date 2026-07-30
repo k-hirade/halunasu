@@ -54,6 +54,27 @@ const HOME_MANAGEMENT_FAMILY = Object.freeze({
   ]
 });
 
+const MEDICATION_REDUCTION_FAMILY = Object.freeze({
+  familyId: "fee_family_medication_reduction",
+  name: "薬剤総合評価調整管理料",
+  aliases: ["薬剤総合評価調整管理料"],
+  hierarchy: {
+    chapter: "2",
+    part: "01",
+    alphaPart: "B",
+    section: "008",
+    branch: "02"
+  },
+  variants: [
+    {
+      code: "113043210",
+      name: "薬剤総合評価調整管理料",
+      points: 250,
+      frequencyLimits: [{ windowMonths: 1, maxCount: 1 }]
+    }
+  ]
+});
+
 function homeManagementStructuredFacts(overrides = {}) {
   return {
     encounter: {
@@ -527,6 +548,49 @@ test("W1c does not infer management from outpatient or medication-only facts", (
     }
   });
   assert.equal(medicationOnly.candidateProposals.length, 0);
+});
+
+test("confirm-with-note trigger exposes an exact candidate but keeps adoption blocked", () => {
+  const result = buildStandingBillingLane({
+    profiles: [],
+    catalog: { families: [MEDICATION_REDUCTION_FAMILY] },
+    serviceDate: "2026-07-10",
+    currentInputs: {
+      structuredFacts: {
+        clinical: {
+          explicitMedicationReductionTwoOrMore: true
+        }
+      }
+    }
+  });
+
+  assert.equal(result.candidateProposals.length, 1);
+  const proposal = result.candidateProposals[0];
+  assert.equal(proposal.code, "113043210");
+  assert.equal(proposal.potentialPoints, 250);
+  assert.equal(proposal.candidateOnly, true);
+  assert.equal(proposal.reviewRequired, true);
+  assert.equal(proposal.adoptionBlocked, true);
+  assert.equal(proposal.adoptionBlockReason, "human_verification_required");
+  assert.match(proposal.conditionText, /6種類以上/u);
+  assert.match(proposal.conditionText, /4週間以上/u);
+});
+
+test("confirm-with-note trigger stays silent without its minimum positive fact", () => {
+  const result = buildStandingBillingLane({
+    profiles: [],
+    catalog: { families: [MEDICATION_REDUCTION_FAMILY] },
+    serviceDate: "2026-07-10",
+    currentInputs: {
+      structuredFacts: {
+        clinical: {
+          explicitMedicationReductionTwoOrMore: false
+        }
+      }
+    }
+  });
+
+  assert.equal(result.candidateProposals.length, 0);
 });
 
 test("W1 confirmed history suppresses W1c for the same family", () => {

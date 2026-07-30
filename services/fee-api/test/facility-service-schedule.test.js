@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   classifyFacilityServiceTime,
+  encounterBasicFeeCoverage,
   encounterBasicFeeMetadata,
   encounterBasicFeeRule,
   facilityDerivedAddonRules,
@@ -112,4 +113,15 @@ test("artifact-backed basic, time, and facility rules resolve to official master
     }).map((rule) => rule.code).sort(),
     ["112015770", "112016070"]
   );
+});
+
+test("basic fee rule coverage rejects dates before the loaded fee schedule", () => {
+  const unavailable = encounterBasicFeeCoverage("2026-05-31");
+  const available = encounterBasicFeeCoverage("2026-06-01");
+
+  assert.equal(unavailable.status, "unavailable");
+  assert.equal(unavailable.availableFrom, "2026-06-01");
+  assert.deepEqual(unavailable.missingRuleIds, ["basic_initial", "basic_revisit"]);
+  assert.equal(available.status, "available");
+  assert.deepEqual(available.missingRuleIds, []);
 });

@@ -1,5 +1,5 @@
 {
-  "artifactPayloadSha256": "cc3f3183f14633469f3aff3d5c6ac8c4e26f0812d0fbec9deaef9e1e54ad1e71",
+  "artifactPayloadSha256": "cadff6ef323d27913f51f5c8ede902e2f8142492743f90d1259ab66094d9e264",
   "effectiveFrom": "2026-06-01",
   "revision": "2026-06-v1",
   "ruleBasisUrls": [
@@ -104,6 +104,20 @@
       "sourceVersion": "2026-06-15"
     },
     {
+      "baseName": "外来・在宅ベースアップ評価料（１）２（再診時等）",
+      "category": "facility_addon",
+      "code": "180725810",
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31",
+      "feeKind": "revisit",
+      "name": "外来・在宅ベースアップ評価料（１）２（再診時等）",
+      "points": 4,
+      "procedureName": "外来・在宅ベースアップ評価料（１）２（再診時等）",
+      "requiredFacilityStandardKey": "base_up_hyoka_1",
+      "ruleId": "facility_base_up_revisit",
+      "sourceVersion": "2026-06-15"
+    },
+    {
       "baseName": "明細書発行体制等加算",
       "category": "facility_addon",
       "code": "112015770",
@@ -128,6 +142,19 @@
       "procedureName": "往診料",
       "ruleId": "house_call",
       "setting": "house_call",
+      "sourceVersion": "2026-06-15"
+    },
+    {
+      "baseName": "外来管理加算（再診）",
+      "category": "management_addon",
+      "code": "112011010",
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31",
+      "feeKind": "revisit",
+      "name": "外来管理加算",
+      "points": 52,
+      "procedureName": "外来管理加算",
+      "ruleId": "revisit_outpatient_management_addon",
       "sourceVersion": "2026-06-15"
     },
     {
@@ -216,7 +243,7 @@
     }
   ],
   "schemaVersion": "fee-encounter-basic-artifact-v1",
-  "sourceDefinitionSha256": "9038bdbbfa954da3cbd82eaf9753bb74bf13b2b4949dec264d57e72b9e0a97b2",
+  "sourceDefinitionSha256": "cc82290fcb174d3bd3bf619d7eea0e8a0e5be6451b4d8013eb673d968c0c31ac",
   "sourceDocuments": [
     {
       "sha256": "4d333fe3c0be4070f6fc1aa15a01db2cc7a5af4580fed7652ae3af8884b0be75",

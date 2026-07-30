@@ -43,6 +43,10 @@ export class LazyFirestoreFeeStore {
     return this.call("listSidecarCalculationDrafts", orgId, options);
   }
 
+  async listSidecarDraftsForServiceDate(orgId, options) {
+    return this.call("listSidecarDraftsForServiceDate", orgId, options);
+  }
+
   async updateSidecarCalculationDraft(orgId, sidecarDraftId, patch) {
     return this.call("updateSidecarCalculationDraft", orgId, sidecarDraftId, patch);
   }

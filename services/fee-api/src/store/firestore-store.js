@@ -144,6 +144,32 @@ export class FirestoreFeeStore {
     };
   }
 
+  async listSidecarDraftsForServiceDate(orgId, options = {}) {
+    const serviceDate = String(options.serviceDate || "").trim();
+    const facilityId = String(options.facilityId || "").trim();
+    const excludeDraftId = String(options.excludeDraftId || "").trim();
+    const limit = Math.min(500, Math.max(1, Number.parseInt(options.limit, 10) || 200));
+    if (!serviceDate) {
+      return [];
+    }
+    let query = this.orgCollection(orgId, collections.sidecarCalculationDrafts);
+    if (facilityId) {
+      query = query.where("facilityId", "==", facilityId);
+    }
+    const snapshot = await query
+      .where("serviceDate", "==", serviceDate)
+      .where("lifecycleStatus", "in", ["draft", "adopted"])
+      .limit(limit + 1)
+      .get();
+    return docsFromSnapshot(snapshot)
+      .filter((draft) => !excludeDraftId || draft.sidecarDraftId !== excludeDraftId)
+      .sort((left, right) => (
+        String(left.receptionTime || "").localeCompare(String(right.receptionTime || ""))
+        || String(left.sidecarDraftId || "").localeCompare(String(right.sidecarDraftId || ""))
+      ))
+      .slice(0, limit);
+  }
+
   async updateSidecarCalculationDraft(orgId, sidecarDraftId, patch) {
     const { updated } = await this.mutateSidecarDraft(orgId, sidecarDraftId, (current) => {
       if (current.lifecycleStatus !== "draft") {

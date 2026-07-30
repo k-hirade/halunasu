@@ -442,6 +442,14 @@ class ChecksApiTest(unittest.TestCase):
                         ),
                     ],
                 )
+                conn.execute(
+                    "INSERT INTO medical_procedures "
+                    "(source_id, code, short_name, base_name, points, facility_standard_codes, "
+                    "chapter, part, alpha_part, section, branch, item, effective_from, effective_to, raw_row_json) "
+                    "VALUES (1, '114716010', '頻回訪問加算（在医総管・施医総管）（２回目以降）', "
+                    "'頻回訪問加算', 300, '[\"721\"]', '2', '02', 'C', '002', '00', '006', "
+                    "'2026-06-01', '9999-12-31', '[]')"
+                )
                 conn.executemany(
                     "INSERT INTO electronic_frequency_limits "
                     "(source_id, procedure_code, procedure_name, limit_code, limit_name, effective_from, effective_to, raw_row_json) "
@@ -466,10 +474,25 @@ class ChecksApiTest(unittest.TestCase):
             result = standing_fee_families({
                 "db_path": str(db_path),
                 "service_date": "2026-07-01",
+                "additional_family_selectors": [
+                    {
+                        "name": "頻回訪問加算",
+                        "hierarchy": {
+                            "chapter": "2",
+                            "part": "02",
+                            "alphaPart": "C",
+                            "section": "002",
+                            "branch": "00",
+                        },
+                    }
+                ],
             })
 
-        self.assertEqual(len(result["families"]), 1)
-        family = result["families"][0]
+        self.assertEqual(len(result["families"]), 2)
+        family = next(
+            entry for entry in result["families"]
+            if entry["name"] == "在宅呼吸管理料"
+        )
         self.assertEqual([variant["code"] for variant in family["variants"]], [
             "113000001",
             "113000002",
@@ -481,6 +504,13 @@ class ChecksApiTest(unittest.TestCase):
         self.assertEqual(family["variants"][0]["facilityStandardCodes"], ["803", "804"])
         self.assertIn("在宅呼吸管理", family["aliases"])
         self.assertEqual(result["source"]["frequencyVersion"], "2026-test")
+        frequent = next(
+            entry for entry in result["families"]
+            if entry["name"] == "頻回訪問加算"
+        )
+        self.assertEqual([variant["code"] for variant in frequent["variants"]], ["114716010"])
+        self.assertEqual(frequent["variants"][0]["frequencyLimits"], [])
+        self.assertEqual(result["source"]["additionalFamilySelectorCount"], 1)
 
     def test_disease_act_candidates_resolves_filters_and_groups_families(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

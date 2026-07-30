@@ -79,6 +79,26 @@ export class MemoryFeeStore {
     };
   }
 
+  listSidecarDraftsForServiceDate(orgId, options = {}) {
+    const serviceDate = String(options.serviceDate || "").trim();
+    const facilityId = String(options.facilityId || "").trim();
+    const excludeDraftId = String(options.excludeDraftId || "").trim();
+    const limit = Math.min(500, Math.max(1, Number.parseInt(options.limit, 10) || 200));
+    if (!serviceDate) {
+      return [];
+    }
+    return [...this.sidecarDraftsForOrg(orgId).values()]
+      .filter((draft) => ["draft", "adopted"].includes(draft.lifecycleStatus))
+      .filter((draft) => String(draft.serviceDate || "") === serviceDate)
+      .filter((draft) => !facilityId || String(draft.facilityId || "") === facilityId)
+      .filter((draft) => !excludeDraftId || draft.sidecarDraftId !== excludeDraftId)
+      .sort((left, right) => (
+        String(left.receptionTime || "").localeCompare(String(right.receptionTime || ""))
+        || String(left.sidecarDraftId || "").localeCompare(String(right.sidecarDraftId || ""))
+      ))
+      .slice(0, limit);
+  }
+
   updateSidecarCalculationDraft(orgId, sidecarDraftId, patch) {
     const current = this.getSidecarCalculationDraft(orgId, sidecarDraftId);
     if (!current) {

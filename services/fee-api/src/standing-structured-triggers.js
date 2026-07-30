@@ -1,5 +1,11 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import {
+  isFutureOrOrderOnlyClinicalServiceContext,
+  isPastOrExternalClinicalServiceContext,
+  normalizeClinicalPredicateText,
+  splitClinicalEvidenceClauses
+} from "../../../packages/fee-contracts/src/index.js";
 
 const ARTIFACT_URL = new URL(
   "./fee-rule-data/standing-structured-triggers-2026.generated.json",
@@ -16,6 +22,14 @@ export function standingStructuredTriggerArtifactMetadata() {
     artifactPayloadSha256: ARTIFACT.artifactPayloadSha256,
     sourceDefinitionSha256: ARTIFACT.sourceDefinitionSha256
   };
+}
+
+export function standingStructuredTriggerFamilySelectors() {
+  const selectors = asArray(ARTIFACT.triggers).flatMap((trigger) => [
+    trigger.familySelector,
+    ...asArray(trigger.parentFamilySelectors)
+  ]);
+  return dedupeBy(selectors, (selector) => canonicalJson(selector));
 }
 
 export function buildStandingStructuredFacts({
@@ -49,6 +63,9 @@ export function buildStandingStructuredFacts({
     || sourceFacts?.encounter?.serviceDate
   );
   const patientStartDate = isoDateOrNull(sourceFacts?.encounter?.patientStartDate);
+  const monthlyVisitDays = uniqueStrings(
+    asArray(sourceFacts?.encounter?.monthlyVisitDays).filter(isoDateOrNull)
+  );
   const deviceTypes = uniqueStrings(
     sourceDevices.map((device) => device?.type)
   );
@@ -80,9 +97,8 @@ export function buildStandingStructuredFacts({
         patientStartDate,
         serviceDate
       ),
-      monthlyVisitDays: uniqueStrings(
-        asArray(sourceFacts?.encounter?.monthlyVisitDays).filter(isoDateOrNull)
-      )
+      monthlyVisitDays,
+      monthlyVisitDayCount: monthlyVisitDays.length
     },
     care: {
       certificationLevel: finiteNumberOrNull(sourceFacts?.care?.certificationLevel),
@@ -126,6 +142,9 @@ export function buildStandingStructuredFacts({
       hasNarcoticAnalgesicPrescription: prescriptionTexts.some((text) => (
         /(?:麻薬|モルヒネ|オキシコドン|フェンタニル|ヒドロモルフォン|メサドン|タペンタドール)/u.test(text)
       )),
+      explicitMedicationReductionTwoOrMore: hasExplicitMedicationReductionTwoOrMore(
+        session.clinicalText || prepared.clinicalText || ""
+      ),
       testFactCount: currentEvents.filter((event) => (
         ["lab", "imaging", "pathology"].includes(structuredClinicalEventType(event))
       )).length + structuredOptionEntryCount(calculationOptions, [
@@ -186,6 +205,7 @@ export function evaluateStandingStructuredTriggers({
     }
     const family = familyMatches[0];
     let parentFamilyIds = [];
+    const unresolvedConditions = [];
     if (trigger.ruleKind === "dependent_addon") {
       parentFamilyIds = asArray(trigger.parentFamilySelectors)
         .flatMap((selector) => asArray(families)
@@ -198,12 +218,19 @@ export function evaluateStandingStructuredTriggers({
       }
       const facilityKey = String(trigger.requiredFacilityStandardKey || "");
       if (
-        !facilityKey
-        || !asArray(valueAtPath(structuredFacts, "facility.activeStandardKeys"))
+        facilityKey
+        && !asArray(valueAtPath(structuredFacts, "facility.activeStandardKeys"))
           .includes(facilityKey)
       ) {
-        countReason("facility_standard_missing");
-        continue;
+        if (trigger.failureMode === "confirm_with_note") {
+          unresolvedConditions.push({
+            conditionId: "required_facility_standard",
+            instruction: `施設基準「${facilityKey}」の届出状況を確認してください。`
+          });
+        } else {
+          countReason("facility_standard_missing");
+          continue;
+        }
       }
     }
     const factResults = asArray(trigger.requiredPositiveFacts).map((condition) => ({
@@ -230,7 +257,9 @@ export function evaluateStandingStructuredTriggers({
       trigger,
       family,
       parentFamilyIds,
-      matchedFacts: factResults.map((result) => result.fact)
+      matchedFacts: factResults.map((result) => result.fact),
+      humanVerifiableConditions: asArray(trigger.humanVerifiableConditions),
+      unresolvedConditions
     });
   }
 
@@ -246,6 +275,35 @@ export function evaluateStandingStructuredTriggers({
       reasonCounts
     }
   };
+}
+
+function hasExplicitMedicationReductionTwoOrMore(value = "") {
+  return splitClinicalEvidenceClauses(value).some((clause) => {
+    const text = normalizeClinicalPredicateText(clause?.text || "");
+    if (
+      !text
+      || isPastOrExternalClinicalServiceContext(text)
+      || isFutureOrOrderOnlyClinicalServiceContext(text)
+      || /(?:中止|減薬|減量).{0,8}(?:せず|しない|していない|なし)/u.test(text)
+    ) {
+      return false;
+    }
+    const count = "(?:[2-9２-９]|二|三|四|五|六|七|八|九)";
+    const medicationCount = new RegExp(`${count}(?:剤|種類|薬剤)`, "u");
+    const reduction = /(?:中止|減薬|減量|削減|整理)/u;
+    if (!medicationCount.test(text) || !reduction.test(text)) {
+      return false;
+    }
+    const countBeforeAction = new RegExp(
+      `${count}(?:剤|種類|薬剤).{0,32}(?:中止|減薬|減量|削減|整理)`,
+      "u"
+    );
+    const actionBeforeCount = new RegExp(
+      `(?:中止|減薬|減量|削減|整理).{0,32}${count}(?:剤|種類|薬剤)`,
+      "u"
+    );
+    return countBeforeAction.test(text) || actionBeforeCount.test(text);
+  });
 }
 
 function standingFamilyMatchesSelector(family = {}, selector = {}) {
@@ -407,7 +465,7 @@ function isPlainObject(value) {
 }
 
 function assertArtifactIntegrity(artifact) {
-  if (artifact?.schemaVersion !== "fee-standing-structured-trigger-artifact-v2") {
+  if (artifact?.schemaVersion !== "fee-standing-structured-trigger-artifact-v3") {
     throw new TypeError("unsupported fee standing trigger artifact schema");
   }
   const payload = {
@@ -423,6 +481,18 @@ function assertArtifactIntegrity(artifact) {
   if (actual !== artifact.artifactPayloadSha256) {
     throw new TypeError("fee standing trigger artifact integrity check failed");
   }
+}
+
+function dedupeBy(values, keyFn) {
+  const seen = new Set();
+  return asArray(values).filter((value) => {
+    const key = keyFn(value);
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
 }
 
 function canonicalJson(value) {

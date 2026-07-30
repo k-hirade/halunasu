@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "fee-standing-structured-trigger-source-v1",
+  "schemaVersion": "fee-standing-structured-trigger-source-v2",
   "revision": "2026-06-01",
   "effectiveFrom": "2026-06-01",
   "verifiedAt": "2026-07-29",
@@ -12,6 +12,48 @@
     }
   ],
   "triggers": [
+    {
+      "triggerId": "b008_02_medication_reduction_review_candidate",
+      "ruleKind": "standing_family",
+      "version": "2026",
+      "familySelector": {
+        "name": "薬剤総合評価調整管理料",
+        "hierarchy": {
+          "chapter": "2",
+          "part": "01",
+          "alphaPart": "B",
+          "section": "008",
+          "branch": "02"
+        }
+      },
+      "requiredPositiveFacts": [
+        {
+          "fact": "clinical.explicitMedicationReductionTwoOrMore",
+          "operator": "equals",
+          "value": true
+        }
+      ],
+      "humanVerifiableConditions": [
+        {
+          "conditionId": "prior_six_or_more_internal_medications",
+          "instruction": "減薬前に内服薬が6種類以上処方されていたことを確認してください。"
+        },
+        {
+          "conditionId": "two_or_more_medications_reduced",
+          "instruction": "処方内容の総合評価により2種類以上を減薬したことを確認してください。"
+        },
+        {
+          "conditionId": "continued_for_four_or_more_weeks",
+          "instruction": "減薬後の状態を4週間以上継続して確認する計画を確認してください。"
+        }
+      ],
+      "failureMode": "confirm_with_note",
+      "source": {
+        "sourceId": "r8_medical_fee_interpretation",
+        "section": "B008-2 薬剤総合評価調整管理料",
+        "requirementSummary": "多剤投薬中の患者について処方内容を総合的に評価し、複数の内服薬を減薬した場合の管理料。"
+      }
+    },
     {
       "triggerId": "c002_home_management_review_candidate",
       "ruleKind": "standing_family",
@@ -322,7 +364,17 @@
           "value": true
         }
       ],
-      "failureMode": "silent",
+      "humanVerifiableConditions": [
+        {
+          "conditionId": "information_coordination_system",
+          "instruction": "ICTを用いた関係職種間の連携体制と対象機関を確認してください。"
+        },
+        {
+          "conditionId": "patient_consent_and_information_sharing",
+          "instruction": "患者同意と当月の情報共有実績を確認してください。"
+        }
+      ],
+      "failureMode": "confirm_with_note",
       "source": {
         "sourceId": "r8_medical_fee_interpretation",
         "section": "C002 注13 在宅医療情報連携加算",
@@ -372,23 +424,502 @@
           "fact": "encounter.withinThreeMonthsOfPatientStart",
           "operator": "equals",
           "value": true
-        },
-        {
-          "fact": "history.completeness",
-          "operator": "equals",
-          "value": "complete"
-        },
-        {
-          "fact": "history.confirmedCodes",
-          "operator": "not_contains",
-          "value": "114016070"
         }
       ],
-      "failureMode": "silent",
+      "humanVerifiableConditions": [
+        {
+          "conditionId": "initial_eligible_month",
+          "instruction": "在宅療養を開始した初回算定年月日を確認してください。"
+        },
+        {
+          "conditionId": "monthly_count_limit",
+          "instruction": "過去の算定履歴と算定回数上限を確認してください。"
+        },
+        {
+          "conditionId": "transition_support_requirements",
+          "instruction": "在宅移行後早期に必要な支援を実施したことを確認してください。"
+        }
+      ],
+      "failureMode": "confirm_with_note",
       "source": {
         "sourceId": "r8_medical_fee_interpretation",
         "section": "C002 注5 在宅移行早期加算",
         "requirementSummary": "在宅医療への移行後早期の患者について、在医総管又は施医総管に加算する月次項目。"
+      }
+    },
+    {
+      "triggerId": "c002_home_care_enhancement_addon_review_candidate",
+      "ruleKind": "dependent_addon",
+      "version": "2026",
+      "familySelector": {
+        "name": "在宅医療充実体制加算",
+        "hierarchy": {
+          "chapter": "2",
+          "part": "02",
+          "alphaPart": "C",
+          "section": "002",
+          "branch": "00"
+        }
+      },
+      "parentFamilySelectors": [
+        {
+          "name": "在医総管",
+          "hierarchy": {
+            "chapter": "2",
+            "part": "02",
+            "alphaPart": "C",
+            "section": "002",
+            "branch": "00"
+          }
+        }
+      ],
+      "requiredFacilityStandardKey": "4248",
+      "scope": "per_month",
+      "requiredPositiveFacts": [
+        {
+          "fact": "encounter.plannedHomeVisit",
+          "operator": "equals",
+          "value": true
+        }
+      ],
+      "humanVerifiableConditions": [
+        {
+          "conditionId": "home_care_enhancement_standard",
+          "instruction": "在宅医療充実体制加算の届出区分と当月の適用要件を確認してください。"
+        },
+        {
+          "conditionId": "home_management_parent",
+          "instruction": "当月に在医総管を算定することを確認してください。"
+        }
+      ],
+      "failureMode": "confirm_with_note",
+      "source": {
+        "sourceId": "r8_medical_fee_interpretation",
+        "section": "C002 在宅時医学総合管理料（在宅医療充実体制加算）",
+        "requirementSummary": "在宅医療を担う施設の届出区分に応じ、在医総管を算定する患者について月次で加算する項目。"
+      }
+    },
+    {
+      "triggerId": "c002_2_home_care_enhancement_addon_review_candidate",
+      "ruleKind": "dependent_addon",
+      "version": "2026",
+      "familySelector": {
+        "name": "在宅医療充実体制加算",
+        "hierarchy": {
+          "chapter": "2",
+          "part": "02",
+          "alphaPart": "C",
+          "section": "002",
+          "branch": "02"
+        }
+      },
+      "parentFamilySelectors": [
+        {
+          "name": "施医総管",
+          "hierarchy": {
+            "chapter": "2",
+            "part": "02",
+            "alphaPart": "C",
+            "section": "002",
+            "branch": "02"
+          }
+        }
+      ],
+      "requiredFacilityStandardKey": "4248",
+      "scope": "per_month",
+      "requiredPositiveFacts": [
+        {
+          "fact": "encounter.plannedHomeVisit",
+          "operator": "equals",
+          "value": true
+        }
+      ],
+      "humanVerifiableConditions": [
+        {
+          "conditionId": "home_care_enhancement_standard",
+          "instruction": "在宅医療充実体制加算の届出区分と当月の適用要件を確認してください。"
+        },
+        {
+          "conditionId": "facility_management_parent",
+          "instruction": "当月に施医総管を算定することを確認してください。"
+        }
+      ],
+      "failureMode": "confirm_with_note",
+      "source": {
+        "sourceId": "r8_medical_fee_interpretation",
+        "section": "C002-2 施設入居時等医学総合管理料（在宅医療充実体制加算）",
+        "requirementSummary": "在宅医療を担う施設の届出区分に応じ、施医総管を算定する患者について月次で加算する項目。"
+      }
+    },
+    {
+      "triggerId": "c164_positive_pressure_ventilator_addon_review_candidate",
+      "ruleKind": "dependent_addon",
+      "version": "2026",
+      "familySelector": {
+        "name": "人工呼吸器加算",
+        "hierarchy": {
+          "chapter": "2",
+          "part": "02",
+          "alphaPart": "C",
+          "section": "164",
+          "branch": "00"
+        }
+      },
+      "parentFamilySelectors": [
+        {
+          "name": "在宅人工呼吸指導管理料",
+          "hierarchy": {
+            "chapter": "2",
+            "part": "02",
+            "alphaPart": "C",
+            "section": "107",
+            "branch": "00"
+          }
+        }
+      ],
+      "scope": "per_month",
+      "requiredPositiveFacts": [
+        {
+          "fact": "clinical.deviceTypes",
+          "operator": "contains",
+          "value": "ventilator"
+        }
+      ],
+      "humanVerifiableConditions": [
+        {
+          "conditionId": "ventilator_type",
+          "instruction": "当月に使用した人工呼吸器の方式と対象区分を確認してください。"
+        },
+        {
+          "conditionId": "ventilator_management_parent",
+          "instruction": "当月に在宅人工呼吸指導管理料を算定することを確認してください。"
+        }
+      ],
+      "failureMode": "confirm_with_note",
+      "source": {
+        "sourceId": "r8_medical_fee_interpretation",
+        "section": "C164 人工呼吸器加算",
+        "requirementSummary": "在宅人工呼吸指導管理料を算定する患者が対象の人工呼吸器を使用した場合の月次加算。"
+      }
+    },
+    {
+      "triggerId": "c169_artificial_nose_addon_review_candidate",
+      "ruleKind": "dependent_addon",
+      "version": "2026",
+      "familySelector": {
+        "name": "気管切開患者用人工鼻加算",
+        "hierarchy": {
+          "chapter": "2",
+          "part": "02",
+          "alphaPart": "C",
+          "section": "169",
+          "branch": "00"
+        }
+      },
+      "parentFamilySelectors": [
+        {
+          "name": "在宅気管切開患者指導管理料",
+          "hierarchy": {
+            "chapter": "2",
+            "part": "02",
+            "alphaPart": "C",
+            "section": "112",
+            "branch": "00"
+          }
+        }
+      ],
+      "scope": "per_month",
+      "requiredPositiveFacts": [
+        {
+          "fact": "clinical.deviceTypes",
+          "operator": "contains",
+          "value": "artificial_nose"
+        }
+      ],
+      "humanVerifiableConditions": [
+        {
+          "conditionId": "artificial_nose_use",
+          "instruction": "当月に気管切開患者用人工鼻を使用したことを確認してください。"
+        },
+        {
+          "conditionId": "tracheostomy_management_parent",
+          "instruction": "当月に在宅気管切開患者指導管理料を算定することを確認してください。"
+        }
+      ],
+      "failureMode": "confirm_with_note",
+      "source": {
+        "sourceId": "r8_medical_fee_interpretation",
+        "section": "C169 気管切開患者用人工鼻加算",
+        "requirementSummary": "在宅気管切開患者指導管理料を算定する患者が人工鼻を使用した場合の月次加算。"
+      }
+    },
+    {
+      "triggerId": "c171_home_oxygen_material_addon_review_candidate",
+      "ruleKind": "dependent_addon",
+      "version": "2026",
+      "familySelector": {
+        "name": "在宅酸素療法材料加算",
+        "hierarchy": {
+          "chapter": "2",
+          "part": "02",
+          "alphaPart": "C",
+          "section": "171",
+          "branch": "00"
+        }
+      },
+      "parentFamilySelectors": [
+        {
+          "name": "在宅酸素療法指導管理料",
+          "hierarchy": {
+            "chapter": "2",
+            "part": "02",
+            "alphaPart": "C",
+            "section": "103",
+            "branch": "00"
+          }
+        }
+      ],
+      "scope": "per_month",
+      "requiredPositiveFacts": [
+        {
+          "fact": "clinical.deviceTypes",
+          "operator": "contains",
+          "value": "home_oxygen"
+        }
+      ],
+      "humanVerifiableConditions": [
+        {
+          "conditionId": "home_oxygen_material_type",
+          "instruction": "当月に使用した在宅酸素療法材料の対象区分を確認してください。"
+        },
+        {
+          "conditionId": "home_oxygen_management_parent",
+          "instruction": "当月に在宅酸素療法指導管理料を算定することを確認してください。"
+        }
+      ],
+      "failureMode": "confirm_with_note",
+      "source": {
+        "sourceId": "r8_medical_fee_interpretation",
+        "section": "C171 在宅酸素療法材料加算",
+        "requirementSummary": "在宅酸素療法指導管理料を算定する患者に使用する材料について月次で加算する項目。"
+      }
+    },
+    {
+      "triggerId": "c158_oxygen_concentrator_addon_review_candidate",
+      "ruleKind": "dependent_addon",
+      "version": "2026",
+      "familySelector": {
+        "name": "酸素濃縮装置加算",
+        "hierarchy": {
+          "chapter": "2",
+          "part": "02",
+          "alphaPart": "C",
+          "section": "158",
+          "branch": "00"
+        }
+      },
+      "parentFamilySelectors": [
+        {
+          "name": "在宅酸素療法指導管理料",
+          "hierarchy": {
+            "chapter": "2",
+            "part": "02",
+            "alphaPart": "C",
+            "section": "103",
+            "branch": "00"
+          }
+        }
+      ],
+      "scope": "per_month",
+      "requiredPositiveFacts": [
+        {
+          "fact": "clinical.deviceTypes",
+          "operator": "contains",
+          "value": "oxygen_concentrator"
+        }
+      ],
+      "humanVerifiableConditions": [
+        {
+          "conditionId": "oxygen_concentrator_use",
+          "instruction": "当月に酸素濃縮装置を使用したことを確認してください。"
+        },
+        {
+          "conditionId": "home_oxygen_management_parent",
+          "instruction": "当月に在宅酸素療法指導管理料を算定することを確認してください。"
+        }
+      ],
+      "failureMode": "confirm_with_note",
+      "source": {
+        "sourceId": "r8_medical_fee_interpretation",
+        "section": "C158 酸素濃縮装置加算",
+        "requirementSummary": "在宅酸素療法指導管理料を算定する患者が酸素濃縮装置を使用した場合の月次加算。"
+      }
+    },
+    {
+      "triggerId": "c157_oxygen_cylinder_addon_review_candidate",
+      "ruleKind": "dependent_addon",
+      "version": "2026",
+      "familySelector": {
+        "name": "酸素ボンベ加算",
+        "hierarchy": {
+          "chapter": "2",
+          "part": "02",
+          "alphaPart": "C",
+          "section": "157",
+          "branch": "00"
+        }
+      },
+      "parentFamilySelectors": [
+        {
+          "name": "在宅酸素療法指導管理料",
+          "hierarchy": {
+            "chapter": "2",
+            "part": "02",
+            "alphaPart": "C",
+            "section": "103",
+            "branch": "00"
+          }
+        }
+      ],
+      "scope": "per_month",
+      "requiredPositiveFacts": [
+        {
+          "fact": "clinical.deviceTypes",
+          "operator": "contains",
+          "value": "oxygen_cylinder"
+        }
+      ],
+      "humanVerifiableConditions": [
+        {
+          "conditionId": "oxygen_cylinder_type",
+          "instruction": "当月に使用した酸素ボンベの種類を確認してください。"
+        },
+        {
+          "conditionId": "home_oxygen_management_parent",
+          "instruction": "当月に在宅酸素療法指導管理料を算定することを確認してください。"
+        }
+      ],
+      "failureMode": "confirm_with_note",
+      "source": {
+        "sourceId": "r8_medical_fee_interpretation",
+        "section": "C157 酸素ボンベ加算",
+        "requirementSummary": "在宅酸素療法指導管理料を算定する患者が酸素ボンベを使用した場合の月次加算。"
+      }
+    },
+    {
+      "triggerId": "c159_2_oxygen_demand_valve_addon_review_candidate",
+      "ruleKind": "dependent_addon",
+      "version": "2026",
+      "familySelector": {
+        "name": "呼吸同調式デマンドバルブ加算",
+        "hierarchy": {
+          "chapter": "2",
+          "part": "02",
+          "alphaPart": "C",
+          "section": "159",
+          "branch": "02"
+        }
+      },
+      "parentFamilySelectors": [
+        {
+          "name": "在宅酸素療法指導管理料",
+          "hierarchy": {
+            "chapter": "2",
+            "part": "02",
+            "alphaPart": "C",
+            "section": "103",
+            "branch": "00"
+          }
+        }
+      ],
+      "scope": "per_month",
+      "requiredPositiveFacts": [
+        {
+          "fact": "clinical.deviceTypes",
+          "operator": "contains",
+          "value": "oxygen_demand_valve"
+        }
+      ],
+      "humanVerifiableConditions": [
+        {
+          "conditionId": "oxygen_demand_valve_use",
+          "instruction": "当月に呼吸同調式デマンドバルブを使用したことを確認してください。"
+        },
+        {
+          "conditionId": "home_oxygen_management_parent",
+          "instruction": "当月に在宅酸素療法指導管理料を算定することを確認してください。"
+        }
+      ],
+      "failureMode": "confirm_with_note",
+      "source": {
+        "sourceId": "r8_medical_fee_interpretation",
+        "section": "C159-2 呼吸同調式デマンドバルブ加算",
+        "requirementSummary": "在宅酸素療法指導管理料を算定する患者が呼吸同調式デマンドバルブを使用した場合の月次加算。"
+      }
+    },
+    {
+      "triggerId": "c002_frequent_visit_addon_review_candidate",
+      "ruleKind": "dependent_addon",
+      "version": "2026",
+      "familySelector": {
+        "name": "頻回訪問加算",
+        "hierarchy": {
+          "chapter": "2",
+          "part": "02",
+          "alphaPart": "C",
+          "section": "002",
+          "branch": "00"
+        }
+      },
+      "parentFamilySelectors": [
+        {
+          "name": "在医総管",
+          "hierarchy": {
+            "chapter": "2",
+            "part": "02",
+            "alphaPart": "C",
+            "section": "002",
+            "branch": "00"
+          }
+        },
+        {
+          "name": "施医総管",
+          "hierarchy": {
+            "chapter": "2",
+            "part": "02",
+            "alphaPart": "C",
+            "section": "002",
+            "branch": "02"
+          }
+        }
+      ],
+      "scope": "per_visit",
+      "requiredPositiveFacts": [
+        {
+          "fact": "encounter.monthlyVisitDayCount",
+          "operator": "gte",
+          "value": 4
+        }
+      ],
+      "humanVerifiableConditions": [
+        {
+          "conditionId": "frequent_visit_medical_necessity",
+          "instruction": "計画外の頻回訪問を必要とした医学的理由を確認してください。"
+        },
+        {
+          "conditionId": "eligible_visit_sequence",
+          "instruction": "当月の訪問日と初回・2回目以降の区分を確認してください。"
+        },
+        {
+          "conditionId": "parent_management_fee",
+          "instruction": "当月に在医総管又は施医総管を算定することを確認してください。"
+        }
+      ],
+      "failureMode": "confirm_with_note",
+      "source": {
+        "sourceId": "r8_medical_fee_interpretation",
+        "section": "C002 注6 頻回訪問加算",
+        "requirementSummary": "在医総管又は施医総管の対象患者に対し、診療上の必要から当月に頻回の訪問診療を行った場合の加算。"
       }
     }
   ]

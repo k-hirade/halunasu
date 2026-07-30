@@ -63,9 +63,17 @@ import {
 } from "./longitudinal-context.js";
 import { applyEncounterVariantToPreparation } from "./encounter-variants.js";
 import { buildStandingBillingLane } from "./standing-billing-profiles.js";
-import { buildStandingStructuredFacts } from "./standing-structured-triggers.js";
+import {
+  buildStandingStructuredFacts,
+  standingStructuredTriggerFamilySelectors
+} from "./standing-structured-triggers.js";
 import { applyCandidateProposalGovernance } from "./candidate-proposal-governance.js";
 import { normalizeSidecarStructuredFacts } from "./sidecar-structured-facts.js";
+import {
+  applySameHouseholdVisitGovernance,
+  buildSameHouseholdVisitContext
+} from "./same-household-visit.js";
+import { applyFeeRuleVersionCoverageToPreparation } from "./fee-rule-version-coverage.js";
 import {
   whiteboxRuntimeDiagnostics,
   whiteboxRuntimeModes
@@ -272,6 +280,7 @@ async function routeFeeApiRequest(input = {}) {
       identity,
       canonicalIdentity
     });
+    const draftStore = sidecarDraftCalculationStore(feeStore, canonicalIdentity);
     const sourceRevisionHash = sidecarSourceRevisionHash(normalized);
     const structuredSourceFacts = normalizeSidecarStructuredFacts({
       sourceSurfaces: normalized.sourceSurfaces,
@@ -287,6 +296,34 @@ async function routeFeeApiRequest(input = {}) {
       telephoneEligibility: normalized.telephoneEligibility
     };
     const now = input.now instanceof Date ? input.now : new Date(input.now || Date.now());
+    let sameDateDrafts = null;
+    try {
+      sameDateDrafts = await draftStore.listSidecarDraftsForServiceDate(
+        context.session.orgId,
+        {
+          serviceDate: normalized.serviceDate,
+          facilityId: normalized.facilityId,
+          excludeDraftId: identity.sidecarDraftId,
+          limit: 200
+        }
+      );
+    } catch (error) {
+      logFeeApiError(error, {
+        stage: "sameHouseholdVisitLookup",
+        orgId: context.session.orgId,
+        facilityId: normalized.facilityId,
+        serviceDate: normalized.serviceDate
+      });
+    }
+    const sameHouseholdVisitContext = buildSameHouseholdVisitContext({
+      currentDraft: {
+        ...normalized,
+        sidecarDraftId: identity.sidecarDraftId,
+        sidecarPatientKey: identity.sidecarPatientKey,
+        canonicalPatientId: canonicalIdentity.canonicalPatientId
+      },
+      siblingDrafts: sameDateDrafts
+    });
     const upserted = await feeStore.upsertSidecarCalculationDraft({
       ...normalized,
       orgId: context.session.orgId,
@@ -302,6 +339,7 @@ async function routeFeeApiRequest(input = {}) {
       sourceRevisionHash,
       sourceSurfaces: normalized.sourceSurfaces || null,
       structuredSourceFacts,
+      sameHouseholdVisitContext,
       encounterDetails,
       facilitySnapshot: facilitySnapshot(facility, now),
       departmentSnapshot: department ? departmentSnapshot(department, now) : null,
@@ -315,7 +353,6 @@ async function routeFeeApiRequest(input = {}) {
       lastCalculatedByMemberId: context.session.memberId,
       expiresAt: sidecarDraftExpiry(now, input.processEnv || process.env)
     });
-    const draftStore = sidecarDraftCalculationStore(feeStore, canonicalIdentity);
     try {
       const calculation = await calculateFeeSessionNow({
         context,
@@ -442,6 +479,7 @@ async function routeFeeApiRequest(input = {}) {
       clinicalText: sidecarDraft.clinicalText,
       sourceSurfaces: sidecarDraft.sourceSurfaces,
       structuredSourceFacts: sidecarDraft.structuredSourceFacts,
+      sameHouseholdVisitContext: sidecarDraft.sameHouseholdVisitContext,
       orders: sidecarDraft.orders,
       diagnoses: sidecarDraft.diagnoses,
       diagnosesSource: sidecarDraft.diagnosesSource,
@@ -2146,6 +2184,20 @@ function sidecarDraftCalculationStore(feeStore, canonicalIdentity = {}) {
     listBillingHistoryEventsForPatient: (orgId, unusedPatientId, options) => (
       canonicalPatientId && typeof feeStore.listBillingHistoryEventsForPatient === "function"
         ? feeStore.listBillingHistoryEventsForPatient(orgId, canonicalPatientId, options)
+        : []
+    ),
+    listStandingBillingProfilesForPatient: (orgId, facilityId, unusedPatientId) => (
+      canonicalPatientId && typeof feeStore.listStandingBillingProfilesForPatient === "function"
+        ? feeStore.listStandingBillingProfilesForPatient(
+            orgId,
+            facilityId,
+            canonicalPatientId
+          )
+        : []
+    ),
+    listSidecarDraftsForServiceDate: (orgId, options) => (
+      typeof feeStore.listSidecarDraftsForServiceDate === "function"
+        ? feeStore.listSidecarDraftsForServiceDate(orgId, options)
         : []
     ),
     saveExtractionSnapshot: (...args) => feeStore.saveExtractionSnapshot(...args),
@@ -7841,10 +7893,14 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
       hasExplicitClaimContext: isPlainObject(baseSession.claimContext) || isPlainObject(calculationInput.claimContext)
     }
   );
+  const preparedWithSameHouseholdGovernance = applySameHouseholdVisitGovernance(
+    preparedWithAutomaticRules,
+    { session: baseSession }
+  );
   // Encounter variants run after generic outpatient rules so an unresolved
   // telephone encounter cannot fall back to an automatically-added revisit fee.
   const primaryPreparedWithoutStandingFacts = applyEncounterVariantToPreparation(
-    preparedWithAutomaticRules,
+    preparedWithSameHouseholdGovernance,
     {
       session: baseSession,
       priorSessions: combinedPriorSessions,
@@ -7878,9 +7934,13 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
       facilityStandardKeys: effectiveFacilityProfile.facilityStandardKeys
     })
   ));
+  const primaryPreparedWithVersionCoverage = applyFeeRuleVersionCoverageToPreparation(
+    primaryPrepared,
+    { serviceDate: baseSession.serviceDate }
+  );
   const shadowCalculations = await measureStage(stageTimings, "shadowCalculationPreparation", () => buildFeeCalculationShadowCalculations({
     input,
-    primaryPrepared,
+    primaryPrepared: primaryPreparedWithVersionCoverage,
     session: baseSession,
     calculationInput,
     feeCalculator,
@@ -7888,7 +7948,10 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
     priorSessions: combinedPriorSessions,
     clinicalText: baseSession.clinicalText || calculationInput.clinicalText || ""
   }));
-  const prepared = attachShadowCalculationsToPreparation(primaryPrepared, shadowCalculations);
+  const prepared = attachShadowCalculationsToPreparation(
+    primaryPreparedWithVersionCoverage,
+    shadowCalculations
+  );
 
   // #8: claimContext(リプレイ/契約)指定が無い通常算定では、受診履歴から
   // 同月・回数制限の判定材料を calculationOptions.history へ自動注入する。
@@ -8217,7 +8280,8 @@ async function loadStandingFeeFamilyCatalog(feeCalculator, serviceDate = "") {
     return current.value;
   }
   const value = await feeCalculator.standingFeeFamilies({
-    service_date: `${claimMonth}-01`
+    service_date: `${claimMonth}-01`,
+    additional_family_selectors: standingStructuredTriggerFamilySelectors()
   });
   const source = isPlainObject(value?.source) ? value.source : null;
   const normalized = {
@@ -8921,6 +8985,7 @@ function applyAutoBillingRulesToPreparation(prepared = {}, {
       ruleId: rule.ruleId,
       code: selectedCode,
       action: rule.action,
+      billingRole: rule.billingRole || "standard",
       sameBuilding,
       variant: hasSameBuildingVariant ? (sameBuilding ? "same_building" : "outside_same_building") : "default"
     });
@@ -9005,6 +9070,7 @@ function autoBillingRuleTraceEvents(applied = [], unresolvedVariants = [], encou
       ruleId: entry.ruleId,
       selectedCode: entry.code,
       action: entry.action,
+      billingRole: entry.billingRole,
       variant: entry.variant,
       encounterDetails: encounterDetails || null
     })),

@@ -103,6 +103,8 @@ export function auditMockActCoverageCase(testCase = {}, calculation = {}, mappin
       normalizedName,
       expectedCode: String(mapping?.code || "").trim() || null,
       candidateCodes: mappingCandidateCodes(mapping),
+      expectedPoints: nonNegativeNumber(mapping?.points),
+      expectedUnitAmountYen: nonNegativeNumber(mapping?.unit_amount_yen),
       billingScope: mappingBillingScope(mapping),
       billingScopeSource: String(mapping?.billing_scope_source || "").trim()
         || "conservative_default:missing_scope_metadata",
@@ -118,7 +120,12 @@ export function auditMockActCoverageCase(testCase = {}, calculation = {}, mappin
       matchedCode: match?.candidate?.code || null,
       matchedSourceType: match?.candidate?.sourceType || null,
       matchedCandidateKey: null,
-      matchedServiceDate: null
+      matchedServiceDate: null,
+      matchedAdoptionBlocked: null,
+      matchedRequiresSelection: null,
+      matchedPoints: null,
+      billableReady: false,
+      pointMatchStatus: "not_evaluated"
     };
   });
   const consumedCandidateKeys = new Set();
@@ -154,7 +161,10 @@ export function auditMockActCoverageCase(testCase = {}, calculation = {}, mappin
     gold,
     actual: {
       candidateCount: candidates.length,
+      candidateProposalCount: candidates.filter((candidate) => candidate.sourceType !== "calculated_line").length,
       falseProposalCount: falseProposals.length,
+      dangerousFalsePositiveCount: falseProposals
+        .filter((candidate) => candidate.sourceType === "calculated_line").length,
       falseProposals,
       candidateInventory: candidates.map(safeCandidate),
       consumedCandidateKeys: [...consumedCandidateKeys],
@@ -188,6 +198,10 @@ export function reconcileMockActCoverageRuns(runs = [], mappingRows = []) {
   for (const run of values) {
     run.metrics = summarizeCaseGold(run.gold);
     run.actual.falseProposalCount = asArray(run.actual.falseProposals).length;
+    run.actual.dangerousFalsePositiveCount = asArray(run.actual.falseProposals)
+      .filter((candidate) => candidate.sourceType === "calculated_line").length;
+    run.actual.candidateProposalCount = asArray(run.actual.candidateInventory)
+      .filter((candidate) => candidate.sourceType !== "calculated_line").length;
     run.actual.matchedCandidateKeyCount = run.gold.filter((item) => item.matchedCandidateKey).length;
   }
   return values;
@@ -205,7 +219,19 @@ export function summarizeMockActCoverage(runs = []) {
     claimAttributeCount: 0,
     patientChargeCount: 0,
     unknownCount: 0,
-    falseProposalCount: 0
+    falseProposalCount: 0,
+    dangerousFalsePositiveCount: 0,
+    billableReadyCount: 0,
+    conditionalCandidateCount: 0,
+    expectedMappedPointLineCount: 0,
+    expectedPointTotal: 0,
+    billableReadyExpectedPointLineCount: 0,
+    billableReadyExpectedPointTotal: 0,
+    detectedBillableReadyPointTotal: 0,
+    pointMatchedLineCount: 0,
+    pointMismatchCount: 0,
+    candidateProposalCount: 0,
+    matchedCandidateProposalCount: 0
   };
   const byScope = {
     per_visit: emptyBillableTotals(),
@@ -234,12 +260,25 @@ export function summarizeMockActCoverage(runs = []) {
     }
   }
   const matchedBillableCount = totals.confirmedCount + totals.candidateCount;
+  const candidatePrecision = ratio(
+    totals.matchedCandidateProposalCount,
+    totals.candidateProposalCount
+  );
   return {
     ...totals,
     matchedBillableCount,
+    actCoverageMatchedCount: matchedBillableCount,
+    actCoverageRecall: ratio(matchedBillableCount, totals.billableCount),
     billableMatchRate: ratio(matchedBillableCount, totals.billableCount),
+    billableReadyMatchRate: ratio(totals.billableReadyCount, totals.billableCount),
     confirmedBillableRate: ratio(totals.confirmedCount, totals.billableCount),
     commentDetectionRate: ratio(totals.commentDetectedCount, totals.commentCount),
+    candidatePrecision,
+    pointTotalsComparable: totals.billableReadyExpectedPointLineCount > 0,
+    pointTotalsMatch: totals.billableReadyExpectedPointLineCount > 0
+      && totals.pointMismatchCount === 0
+      && totals.pointMatchedLineCount === totals.billableReadyExpectedPointLineCount
+      && totals.detectedBillableReadyPointTotal === totals.billableReadyExpectedPointTotal,
     byScope: Object.fromEntries(
       Object.entries(byScope).map(([key, value]) => [key, finalizeBillableTotals(value)])
     ),
@@ -304,6 +343,25 @@ function normalizeCalculationCandidates(calculation = {}) {
       || ""
     ).trim(),
     adoptionBlocked: candidate?.adoptionBlocked === true,
+    requiresSelection: candidate?.requiresSelection === true
+      || candidate?.selectionRequired === true
+      || candidate?.codeSelectionRequired === true
+      || (
+        !String(candidate?.code || candidate?.candidateLine?.code || "").trim()
+        && uniqueStrings(candidate?.codeCandidates || candidate?.candidateLine?.codeCandidates).length > 0
+      ),
+    points: nonNegativeNumber(
+      candidate?.points
+      ?? candidate?.candidateLine?.points
+      ?? candidate?.potentialPoints
+    ),
+    totalPoints: nonNegativeNumber(
+      candidate?.estimatedTotalPoints
+      ?? candidate?.totalPoints
+      ?? candidate?.candidateLine?.totalPoints
+      ?? candidate?.potentialPoints
+      ?? candidate?.points
+    ),
     quantity: positiveInteger(
       candidate?.quantity
       ?? candidate?.candidateLine?.quantity
@@ -396,6 +454,11 @@ function applyCandidateMatch(gold, candidate, serviceDate) {
   gold.matchedSourceType = candidate.sourceType || null;
   gold.matchedCandidateKey = candidate.candidateKey;
   gold.matchedServiceDate = serviceDate || null;
+  gold.matchedAdoptionBlocked = candidate.adoptionBlocked === true;
+  gold.matchedRequiresSelection = candidate.requiresSelection === true;
+  gold.matchedPoints = nonNegativeNumber(candidate.totalPoints ?? candidate.points);
+  gold.billableReady = candidateIsBillableReady(candidate);
+  gold.pointMatchStatus = pointMatchStatus(gold);
 }
 
 function reconcilePatientMonthGroup(group, mappingIndex) {
@@ -414,6 +477,11 @@ function reconcilePatientMonthGroup(group, mappingIndex) {
       item.matchedSourceType = null;
       item.matchedCandidateKey = null;
       item.matchedServiceDate = null;
+      item.matchedAdoptionBlocked = null;
+      item.matchedRequiresSelection = null;
+      item.matchedPoints = null;
+      item.billableReady = false;
+      item.pointMatchStatus = "not_evaluated";
       monthlyGold.push({ run, item });
     }
   }
@@ -521,7 +589,17 @@ function summarizeCaseGold(gold = []) {
     commentDetectedCount: 0,
     claimAttributeCount: 0,
     patientChargeCount: 0,
-    unknownCount: 0
+    unknownCount: 0,
+    billableReadyCount: 0,
+    conditionalCandidateCount: 0,
+    expectedMappedPointLineCount: 0,
+    expectedPointTotal: 0,
+    billableReadyExpectedPointLineCount: 0,
+    billableReadyExpectedPointTotal: 0,
+    detectedBillableReadyPointTotal: 0,
+    pointMatchedLineCount: 0,
+    pointMismatchCount: 0,
+    matchedCandidateProposalCount: 0
   };
   for (const item of gold) {
     if (item.actionClass === "billable_line") {
@@ -529,6 +607,29 @@ function summarizeCaseGold(gold = []) {
       if (item.matchStatus === "confirmed") metrics.confirmedCount += 1;
       else if (item.matchStatus === "candidate") metrics.candidateCount += 1;
       else metrics.missingCount += 1;
+      if (item.billableReady) {
+        metrics.billableReadyCount += 1;
+      } else if (item.matchStatus === "candidate") {
+        metrics.conditionalCandidateCount += 1;
+      }
+      if (item.matchStatus === "candidate") {
+        metrics.matchedCandidateProposalCount += 1;
+      }
+      if (item.expectedPoints !== null) {
+        metrics.expectedMappedPointLineCount += 1;
+        metrics.expectedPointTotal += item.expectedPoints;
+        if (item.billableReady) {
+          metrics.billableReadyExpectedPointLineCount += 1;
+          metrics.billableReadyExpectedPointTotal += item.expectedPoints;
+          if (item.pointMatchStatus === "match") {
+            metrics.pointMatchedLineCount += 1;
+            metrics.detectedBillableReadyPointTotal += item.matchedPoints;
+          } else {
+            metrics.pointMismatchCount += 1;
+            metrics.detectedBillableReadyPointTotal += item.matchedPoints || 0;
+          }
+        }
+      }
     } else if (item.actionClass === "claim_comment") {
       metrics.commentCount += 1;
       if (item.matchStatus === "comment_detected") metrics.commentDetectedCount += 1;
@@ -550,8 +651,11 @@ function safeCandidate(candidate = {}) {
     sourceType: candidate.sourceType,
     code: candidate.code || null,
     codeCandidates: candidate.codeCandidates,
-    normalizedName: normalizeMockActionName(candidate.name),
+    normalizedName: normalizeMockActionName(candidate.name || candidate.normalizedName),
     adoptionBlocked: candidate.adoptionBlocked,
+    requiresSelection: candidate.requiresSelection === true,
+    points: nonNegativeNumber(candidate.points),
+    totalPoints: nonNegativeNumber(candidate.totalPoints),
     billingScope: candidate.billingScope === "per_month" ? "per_month" : "per_visit",
     unitIndex: positiveInteger(candidate.unitIndex) || 1,
     originalQuantity: positiveInteger(candidate.originalQuantity) || 1
@@ -567,7 +671,8 @@ function emptyBillableTotals() {
     billableCount: 0,
     confirmedCount: 0,
     candidateCount: 0,
-    missingCount: 0
+    missingCount: 0,
+    billableReadyCount: 0
   };
 }
 
@@ -576,6 +681,7 @@ function addBillableOutcome(target, item) {
   if (item.matchStatus === "confirmed") target.confirmedCount += 1;
   else if (item.matchStatus === "candidate") target.candidateCount += 1;
   else target.missingCount += 1;
+  if (item.billableReady) target.billableReadyCount += 1;
 }
 
 function finalizeBillableTotals(value) {
@@ -584,13 +690,44 @@ function finalizeBillableTotals(value) {
     ...value,
     matchedBillableCount,
     billableMatchRate: ratio(matchedBillableCount, value.billableCount),
+    actCoverageRecall: ratio(matchedBillableCount, value.billableCount),
+    billableReadyMatchRate: ratio(value.billableReadyCount, value.billableCount),
     confirmedBillableRate: ratio(value.confirmedCount, value.billableCount)
   };
+}
+
+function candidateIsBillableReady(candidate = {}) {
+  return Boolean(
+    candidate.code
+    && candidate.adoptionBlocked !== true
+    && candidate.requiresSelection !== true
+  );
+}
+
+function pointMatchStatus(gold = {}) {
+  if (gold.expectedPoints === null) {
+    return "not_mapped";
+  }
+  if (!gold.billableReady) {
+    return gold.matchStatus === "missing" ? "missing" : "conditional";
+  }
+  if (gold.matchedPoints === null) {
+    return "missing_actual";
+  }
+  return Number(gold.matchedPoints) === Number(gold.expectedPoints) ? "match" : "mismatch";
 }
 
 function positiveInteger(value) {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function nonNegativeNumber(value) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
 function asArray(value) {

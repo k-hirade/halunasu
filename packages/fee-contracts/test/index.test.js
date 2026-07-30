@@ -707,6 +707,31 @@ test("normalizes structured facility standards and drops unused policy fields", 
   assert.equal(normalized.initialRevisitPolicy.priorHistoryBehavior, undefined);
 });
 
+test("normalizes auto-billing roles used by encounter governance", () => {
+  const normalized = validateUpdateFeeSettingsInput({
+    facilityId: "fac_001",
+    autoBillingRules: [{
+      ruleId: "home_visit",
+      code: "114001110",
+      action: "confirm",
+      billingRole: "home_visit_basic",
+      settings: ["home_visit"]
+    }]
+  });
+
+  assert.equal(normalized.autoBillingRules[0].billingRole, "home_visit_basic");
+  assert.throws(
+    () => validateUpdateFeeSettingsInput({
+      facilityId: "fac_001",
+      autoBillingRules: [{
+        code: "114001110",
+        billingRole: "mock_patient_1009"
+      }]
+    }),
+    /autoBillingRules\.billingRole/u
+  );
+});
+
 test("normalizes effective-dated facility service schedules", () => {
   const normalized = validateUpdateFeeSettingsInput({
     facilityId: "fac_001",

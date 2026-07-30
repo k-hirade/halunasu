@@ -69,6 +69,8 @@ playwright-report/
 .nyc_output/
 **/.nyc_output/
 *coverage/
+!data/tests/fee-mock-act-coverage/
+!data/tests/fee-mock-act-coverage/manual-action-map-overrides.json
 artifacts/
 data/tests/**/reports/
 data/tests/**/tmp/

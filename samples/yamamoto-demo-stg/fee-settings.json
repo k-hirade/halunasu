@@ -1,6 +1,7 @@
 {
   "schemaVersion": 1,
   "effectiveFrom": "2026-06-01",
+  "facilityStandardsConfirmed": false,
   "sidecarPatientAutoProvision": true,
   "historyPolicy": {
     "externalHistoryEnabled": false,
@@ -65,7 +66,115 @@
       "status": "active",
       "claimStartDate": "2026-06-01",
       "effectiveTo": "",
-      "acceptanceNumber": ""
+      "acceptanceNumber": "DEMO"
+    },
+    {
+      "key": "jikan_gai_taio_taisei_1",
+      "name": "時間外対応加算1（デモ施設設定・実施設の届出確認には使用不可）",
+      "status": "active",
+      "claimStartDate": "2026-06-01",
+      "effectiveTo": "",
+      "acceptanceNumber": "DEMO"
+    },
+    {
+      "key": "3001",
+      "name": "時間外対応加算1 施設基準コード（デモ施設設定）",
+      "status": "active",
+      "claimStartDate": "2026-06-01",
+      "effectiveTo": "",
+      "acceptanceNumber": "DEMO"
+    },
+    {
+      "key": "houkatsuteki_shien_kasan",
+      "name": "包括的支援加算（デモ施設設定）",
+      "status": "active",
+      "claimStartDate": "2026-06-01",
+      "effectiveTo": "",
+      "acceptanceNumber": "DEMO"
+    },
+    {
+      "key": "zaitaku_iryo_joho_renkei_kasan",
+      "name": "在宅医療情報連携加算（デモ施設設定）",
+      "status": "active",
+      "claimStartDate": "2026-06-01",
+      "effectiveTo": "",
+      "acceptanceNumber": "DEMO"
+    },
+    {
+      "key": "zaitaku_iko_soki_kasan",
+      "name": "在宅移行早期加算（デモ施設設定）",
+      "status": "active",
+      "claimStartDate": "2026-06-01",
+      "effectiveTo": "",
+      "acceptanceNumber": "DEMO"
+    },
+    {
+      "key": "3055",
+      "name": "機能強化型在宅療養支援診療所等（デモ施設設定）",
+      "status": "active",
+      "claimStartDate": "2026-06-01",
+      "effectiveTo": "",
+      "acceptanceNumber": "DEMO"
+    },
+    {
+      "key": "3057",
+      "name": "在宅療養支援診療所等・病床有（デモ施設設定）",
+      "status": "active",
+      "claimStartDate": "2026-06-01",
+      "effectiveTo": "",
+      "acceptanceNumber": "DEMO"
+    },
+    {
+      "key": "4248",
+      "name": "在宅医療充実体制加算（デモ施設設定）",
+      "status": "active",
+      "claimStartDate": "2026-06-01",
+      "effectiveTo": "",
+      "acceptanceNumber": "DEMO"
+    },
+    {
+      "key": "3771",
+      "name": "在宅データ提出加算 施設基準コード（デモ施設設定）",
+      "status": "active",
+      "claimStartDate": "2026-06-01",
+      "effectiveTo": "",
+      "acceptanceNumber": "DEMO"
+    },
+    {
+      "key": "4307",
+      "name": "外来・在宅ベースアップ評価料（1）施設基準コード（デモ施設設定）",
+      "status": "active",
+      "claimStartDate": "2026-06-01",
+      "effectiveTo": "",
+      "acceptanceNumber": "DEMO"
+    },
+    {
+      "key": "818",
+      "name": "検体検査管理加算（2）（デモ施設設定）",
+      "status": "active",
+      "claimStartDate": "2026-06-01",
+      "effectiveTo": "",
+      "acceptanceNumber": "DEMO"
+    }
+  ],
+  "facilityServiceSchedules": [
+    {
+      "scheduleId": "yamamoto-demo-standard-hours",
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "",
+      "timezone": "Asia/Tokyo",
+      "weeklyHours": {
+        "monday": [{"start": "09:00", "end": "18:00"}],
+        "tuesday": [{"start": "09:00", "end": "18:00"}],
+        "wednesday": [{"start": "09:00", "end": "18:00"}],
+        "thursday": [{"start": "09:00", "end": "18:00"}],
+        "friday": [{"start": "09:00", "end": "18:00"}],
+        "saturday": [{"start": "09:00", "end": "12:00"}],
+        "sunday": []
+      },
+      "holidayDates": [],
+      "specialHours": [],
+      "status": "active"
     }
   ],
   "autoBillingRules": [
@@ -77,6 +186,7 @@
       "sameBuildingCode": "114030310",
       "status": "active",
       "action": "confirm",
+      "billingRole": "home_visit_basic",
       "settings": ["home_visit"],
       "requiredFacilityStandardKey": "",
       "potentialPoints": 0,
@@ -90,6 +200,7 @@
       "sameBuildingCode": "180726010",
       "status": "active",
       "action": "confirm",
+      "billingRole": "home_visit_baseup",
       "settings": ["home_visit"],
       "requiredFacilityStandardKey": "base_up_hyoka_1",
       "potentialPoints": 0,

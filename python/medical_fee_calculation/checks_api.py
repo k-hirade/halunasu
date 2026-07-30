@@ -270,6 +270,93 @@ def standing_fee_families(payload: dict[str, Any]) -> dict[str, Any]:
                     }
                 )
 
+        additional_selectors = _standing_family_selectors(
+            payload.get("additional_family_selectors")
+            or payload.get("additionalFamilySelectors")
+        )
+        for selector in additional_selectors:
+            hierarchy = selector["hierarchy"]
+            additional_rows = conn.execute(
+                """
+                SELECT
+                    code,
+                    short_name,
+                    base_name,
+                    points,
+                    inout_applicability,
+                    facility_standard_codes,
+                    chapter,
+                    part,
+                    alpha_part,
+                    section,
+                    branch,
+                    item
+                FROM medical_procedures
+                WHERE source_id = ?
+                  AND chapter = ?
+                  AND part = ?
+                  AND UPPER(alpha_part) = ?
+                  AND section = ?
+                  AND branch = ?
+                  AND (effective_from IS NULL OR effective_from <= ?)
+                  AND (effective_to IS NULL OR effective_to >= ?)
+                ORDER BY item, code
+                """,
+                (
+                    int(procedure_source["id"]),
+                    hierarchy["chapter"],
+                    hierarchy["part"],
+                    hierarchy["alphaPart"],
+                    hierarchy["section"],
+                    hierarchy["branch"],
+                    service_date,
+                    service_date,
+                ),
+            ).fetchall()
+            for row in additional_rows:
+                name = str(row["short_name"] or "").strip()
+                family_name = strip_parenthetical_qualifiers(name).strip() or name
+                if _normalize_standing_name(family_name) != _normalize_standing_name(selector["name"]):
+                    continue
+                family_key = "|".join(
+                    [
+                        hierarchy["chapter"],
+                        hierarchy["part"],
+                        hierarchy["alphaPart"],
+                        hierarchy["section"],
+                        hierarchy["branch"],
+                        _normalize_standing_name(family_name),
+                    ]
+                )
+                family_id = "fee_family_" + hashlib.sha256(family_key.encode("utf-8")).hexdigest()[:24]
+                family = grouped.setdefault(
+                    family_id,
+                    {
+                        "familyId": family_id,
+                        "name": family_name,
+                        "hierarchy": hierarchy,
+                        "aliases": set(),
+                        "variants": {},
+                    },
+                )
+                family["aliases"].update(_standing_aliases(name))
+                family["aliases"].update(_standing_aliases(family_name))
+                code = str(row["code"] or "").strip()
+                family["variants"].setdefault(
+                    code,
+                    {
+                        "code": code,
+                        "name": name,
+                        "baseName": str(row["base_name"] or "").strip(),
+                        "points": float(row["points"] or 0),
+                        "inoutApplicability": str(row["inout_applicability"] or "").strip(),
+                        "facilityStandardCodes": _split_master_codes(row["facility_standard_codes"]),
+                        "item": str(row["item"] or "").strip(),
+                        "aliases": sorted(_standing_aliases(name)),
+                        "frequencyLimits": [],
+                    },
+                )
+
         families: list[dict[str, Any]] = []
         for family in grouped.values():
             variants = sorted(family["variants"].values(), key=lambda value: value["code"])
@@ -295,6 +382,7 @@ def standing_fee_families(payload: dict[str, Any]) -> dict[str, Any]:
                 "frequencySourceId": int(frequency_source["id"]),
                 "frequencyVersion": str(frequency_source["source_version"] or ""),
                 "frequencyChecksum": str(frequency_source["checksum_sha256"] or ""),
+                "additionalFamilySelectorCount": len(additional_selectors),
             },
         }
     finally:
@@ -308,6 +396,38 @@ def _frequency_limit_count(raw_row_json: Any) -> int | None:
     except (TypeError, ValueError, json.JSONDecodeError):
         return None
     return count if count > 0 else None
+
+
+def _standing_family_selectors(value: Any) -> list[dict[str, Any]]:
+    selectors: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str, str, str, str]] = set()
+    for raw in value if isinstance(value, list) else []:
+        if not isinstance(raw, dict) or not isinstance(raw.get("hierarchy"), dict):
+            continue
+        hierarchy = raw["hierarchy"]
+        name = str(raw.get("name") or "").strip()
+        normalized = {
+            "chapter": str(hierarchy.get("chapter") or "").strip(),
+            "part": str(hierarchy.get("part") or "").strip(),
+            "alphaPart": str(hierarchy.get("alphaPart") or hierarchy.get("alpha_part") or "").strip().upper(),
+            "section": str(hierarchy.get("section") or "").strip(),
+            "branch": str(hierarchy.get("branch") or "").strip(),
+        }
+        key = (
+            name,
+            normalized["chapter"],
+            normalized["part"],
+            normalized["alphaPart"],
+            normalized["section"],
+            normalized["branch"],
+        )
+        if not name or not all(normalized.values()) or key in seen:
+            continue
+        seen.add(key)
+        selectors.append({"name": name, "hierarchy": normalized})
+        if len(selectors) >= 64:
+            break
+    return selectors
 
 
 def _standing_aliases(name: str) -> set[str]:

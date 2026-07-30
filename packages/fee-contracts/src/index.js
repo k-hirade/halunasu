@@ -87,6 +87,11 @@ const FACILITY_SERVICE_SCHEDULE_WEEKDAYS = Object.freeze([
 // 恒常算定ルールの動作: confirm=算定入力へ自動追加(エンジンがマスタ照合・制約チェック),
 // candidate=承認待ち候補として提示(合計に入らない)。
 export const feeAutoBillingRuleActions = Object.freeze(["confirm", "candidate"]);
+export const feeAutoBillingRuleRoles = Object.freeze([
+  "standard",
+  "home_visit_basic",
+  "home_visit_baseup"
+]);
 export const feeReceiptScopes = Object.freeze(["service_date", "monthly"]);
 export const feeReceiptValidationSeverities = Object.freeze(["error", "warning", "off"]);
 const defaultReceiptValidationSeverity = Object.freeze({
@@ -1042,6 +1047,11 @@ function normalizeAutoBillingRules(input) {
         sameBuildingCode: optionalString(value.sameBuildingCode ?? value.same_building_code) || "",
         sameBuildingTitle: optionalString(value.sameBuildingTitle ?? value.same_building_title) || "",
         action: optionalEnum(value.action, feeAutoBillingRuleActions, "autoBillingRules.action") || "candidate",
+        billingRole: optionalEnum(
+          value.billingRole ?? value.billing_role,
+          feeAutoBillingRuleRoles,
+          "autoBillingRules.billingRole"
+        ) || "standard",
         settings,
         requiredFacilityStandardKey: optionalString(value.requiredFacilityStandardKey ?? value.required_facility_standard_key) || "",
         potentialPoints: Number(value.potentialPoints ?? value.potential_points ?? 0) || 0,

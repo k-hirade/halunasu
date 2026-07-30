@@ -372,6 +372,8 @@ test("normalizes external calculation results", () => {
       code: "112007950",
       candidateOnly: true,
       reviewRequired: true,
+      adoptionBlocked: true,
+      adoptionBlockReason: "同日同一世帯の2人目候補は自動採用しません。",
       status: "needs_review"
     }],
     rawResult: { rows: Array.from({ length: 10 }, (_, index) => ({ index })) }
@@ -393,6 +395,11 @@ test("normalizes external calculation results", () => {
   assert.equal(calculation.lineItems[0].reviewRequired, true);
   assert.equal(calculation.candidateProposals[0].candidateOnly, true);
   assert.equal(calculation.candidateProposals[0].reviewRequired, true);
+  assert.equal(calculation.candidateProposals[0].adoptionBlocked, true);
+  assert.equal(
+    calculation.candidateProposals[0].adoptionBlockReason,
+    "同日同一世帯の2人目候補は自動採用しません。"
+  );
   assert.equal(calculation.candidateProposals[0].status, "needs_review");
   assert.equal(calculation.coverage.reviewRequired, true);
   assert.equal(updated.status, "needs_review");
@@ -1062,6 +1069,65 @@ test("keeps rejected candidate proposals visible so they can be approved later",
   assert.equal(buildReceiptDraft(rejected).totalPoints, 75);
   assert.equal(receiptDraft.totalPoints, 115);
   assert.equal(receiptDraft.lines.some((line) => line.sourceProposalId === "reversible_addon"), true);
+});
+
+test("keeps adoption-blocked proposals visible but never includes them in the total", () => {
+  const session = buildFeeSession({
+    orgId: "org_123",
+    createdByMemberId: "member_1",
+    patientId: "patient_1",
+    facilityId: "facility_1",
+    serviceDate: "2026-06-07"
+  }, {
+    feeSessionId: "fee_adoption_blocked_proposal",
+    now: "2026-06-07T00:00:00.000Z"
+  });
+  const calculated = applyCalculationResult(session, {
+    lineItems: [],
+    candidateProposals: [{
+      proposalId: "same_household_second_visit",
+      title: "同一世帯2人目の再診料候補",
+      reason: "同日同一世帯の2人目として確認が必要です。",
+      potentialPoints: 76,
+      adoptionBlocked: true,
+      adoptionBlockReason: "2人目の基本料は人手確認が必要です。",
+      candidateLine: {
+        code: "112007410",
+        name: "再診料",
+        orderType: "basic",
+        points: 76,
+        totalPoints: 76,
+        status: "candidate",
+        source: "same_household_second_visit"
+      }
+    }]
+  }, {
+    calculationId: "calc_adoption_blocked_proposal",
+    now: "2026-06-07T00:01:00.000Z"
+  });
+  const workbench = buildCandidateWorkbench(calculated);
+  const proposal = workbench.proposals[0];
+  const approved = applyReviewDecision(calculated, proposal.reviewItemId, {
+    status: "approved"
+  }, {
+    now: "2026-06-07T00:02:00.000Z"
+  });
+  const receiptDraft = buildReceiptDraft(approved, {
+    now: "2026-06-07T00:03:00.000Z"
+  });
+
+  assert.equal(calculated.calculationResult.candidateProposals[0].adoptionBlocked, true);
+  assert.equal(
+    calculated.calculationResult.candidateProposals[0].adoptionBlockReason,
+    "2人目の基本料は人手確認が必要です。"
+  );
+  assert.equal(proposal.adoptionBlocked, true);
+  assert.equal(proposal.canAdopt, false);
+  assert.equal(receiptDraft.totalPoints, 0);
+  assert.equal(
+    receiptDraft.lines.some((line) => line.sourceProposalId === "same_household_second_visit"),
+    false
+  );
 });
 
 test("preserves clinical event specimen and review issue policy metadata", () => {

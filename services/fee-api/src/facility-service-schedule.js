@@ -20,6 +20,10 @@ const WEEKDAY_KEYS = Object.freeze([
 const RULES_BY_ID = new Map(
   ARTIFACT.rules.map((rule) => [String(rule.ruleId || ""), rule])
 );
+const CORE_BASIC_RULE_IDS = Object.freeze([
+  "basic_initial",
+  "basic_revisit"
+]);
 
 export function encounterBasicFeeMetadata() {
   return {
@@ -33,6 +37,50 @@ export function encounterBasicFeeMetadata() {
 
 export function encounterBasicFeeRule(ruleId = "") {
   return RULES_BY_ID.get(String(ruleId || "").trim()) || null;
+}
+
+export function encounterBasicFeeCoverage(serviceDate = "") {
+  const date = normalizeDate(serviceDate);
+  const coreRules = CORE_BASIC_RULE_IDS
+    .map((ruleId) => RULES_BY_ID.get(ruleId))
+    .filter(Boolean);
+  const availableFrom = coreRules
+    .map((rule) => normalizeDate(rule.effectiveFrom))
+    .filter(Boolean)
+    .sort()[0] || null;
+  const availableTo = coreRules
+    .map((rule) => normalizeDate(rule.effectiveTo))
+    .filter(Boolean)
+    .sort()
+    .at(-1) || null;
+  if (!date) {
+    return {
+      status: "invalid_service_date",
+      serviceDate: null,
+      revision: ARTIFACT.revision,
+      availableFrom,
+      availableTo,
+      missingRuleIds: [...CORE_BASIC_RULE_IDS]
+    };
+  }
+
+  const activeRuleIds = coreRules
+    .filter((rule) => (
+      normalizeDate(rule.effectiveFrom) <= date
+      && normalizeDate(rule.effectiveTo) >= date
+    ))
+    .map((rule) => rule.ruleId);
+  const missingRuleIds = CORE_BASIC_RULE_IDS
+    .filter((ruleId) => !activeRuleIds.includes(ruleId));
+  return {
+    status: missingRuleIds.length ? "unavailable" : "available",
+    serviceDate: date,
+    revision: ARTIFACT.revision,
+    availableFrom,
+    availableTo,
+    activeRuleIds,
+    missingRuleIds
+  };
 }
 
 export function timeAddonRule({ timeClass = "", feeKind = "" } = {}) {

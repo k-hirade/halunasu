@@ -669,6 +669,86 @@ test("Firestore keeps sidecar drafts isolated and adopts exactly once in one tra
   assert.equal(docs.get("organizations/org_123/sidecar_calculation_drafts/sidecar_001").lifecycleStatus, "adopted");
 });
 
+test("MemoryFeeStore lists same-date sidecar drafts within the organization and facility", () => {
+  let counter = 0;
+  const store = new MemoryFeeStore({
+    now: () => new Date("2026-07-30T00:00:00.000Z"),
+    idFactory: (prefix) => `${prefix}_${String(++counter).padStart(3, "0")}`
+  });
+  const base = {
+    orgId: "org_123",
+    contractVersion: "v1",
+    externalSourceSystem: "homis",
+    idempotencyKeyHash: "a".repeat(64),
+    sourceRevisionHash: "b".repeat(64),
+    encounterTypeSource: "user",
+    extractionProof: { domMutationDetected: false },
+    facilityId: "fac_123",
+    serviceDate: "2026-07-30",
+    setting: "home_visit",
+    clinicalText: "同一世帯として同日に訪問。",
+    createdByMemberId: "mem_123"
+  };
+  store.upsertSidecarCalculationDraft({
+    ...base,
+    sidecarDraftId: "sidecar_001",
+    sidecarPatientKey: "patient_001",
+    externalPatientId: "1001",
+    sourceRecordId: "record-001",
+    receptionTime: "14:30"
+  });
+  store.upsertSidecarCalculationDraft({
+    ...base,
+    sidecarDraftId: "sidecar_002",
+    sidecarPatientKey: "patient_002",
+    externalPatientId: "1002",
+    sourceRecordId: "record-002",
+    receptionTime: "14:45"
+  });
+  store.upsertSidecarCalculationDraft({
+    ...base,
+    sidecarDraftId: "sidecar_other_facility",
+    sidecarPatientKey: "patient_003",
+    externalPatientId: "1003",
+    sourceRecordId: "record-003",
+    facilityId: "fac_other"
+  });
+
+  const drafts = store.listSidecarDraftsForServiceDate("org_123", {
+    serviceDate: "2026-07-30",
+    facilityId: "fac_123",
+    excludeDraftId: "sidecar_002"
+  });
+
+  assert.deepEqual(drafts.map((draft) => draft.sidecarDraftId), ["sidecar_001"]);
+});
+
+test("Firestore same-day lookup filters facility, date, and lifecycle before applying its limit", async () => {
+  const calls = [];
+  const store = new FirestoreFeeStore({ db: {} });
+  store.orgCollection = () => recordingSidecarDraftCollection(calls);
+
+  const drafts = await store.listSidecarDraftsForServiceDate("org_123", {
+    serviceDate: "2026-07-30",
+    facilityId: "fac_123",
+    excludeDraftId: "sidecar_current",
+    limit: 200
+  });
+
+  assert.deepEqual(drafts.map((draft) => draft.sidecarDraftId), ["sidecar_sibling"]);
+  assert.deepEqual(calls, [[
+    { kind: "where", field: "facilityId", operator: "==", value: "fac_123" },
+    { kind: "where", field: "serviceDate", operator: "==", value: "2026-07-30" },
+    {
+      kind: "where",
+      field: "lifecycleStatus",
+      operator: "in",
+      value: ["draft", "adopted"]
+    },
+    { kind: "limit", value: 201 }
+  ]]);
+});
+
 test("Firestore mutation fails closed when transactions are unavailable", async () => {
   const store = new FirestoreFeeStore({ db: {} });
   await assert.rejects(
@@ -801,6 +881,43 @@ function recordingMonthlyCollection(calls) {
             createdAt: "2026-06-01T00:00:00.000Z"
           })
         }]
+      };
+    }
+  });
+  return createQuery();
+}
+
+function recordingSidecarDraftCollection(calls) {
+  const createQuery = (steps = []) => ({
+    where(field, operator, value) {
+      return createQuery([...steps, { kind: "where", field, operator, value }]);
+    },
+    limit(value) {
+      return createQuery([...steps, { kind: "limit", value }]);
+    },
+    async get() {
+      calls.push(steps);
+      return {
+        docs: [
+          {
+            data: () => ({
+              sidecarDraftId: "sidecar_current",
+              facilityId: "fac_123",
+              serviceDate: "2026-07-30",
+              lifecycleStatus: "draft",
+              receptionTime: "14:45"
+            })
+          },
+          {
+            data: () => ({
+              sidecarDraftId: "sidecar_sibling",
+              facilityId: "fac_123",
+              serviceDate: "2026-07-30",
+              lifecycleStatus: "adopted",
+              receptionTime: "14:30"
+            })
+          }
+        ]
       };
     }
   });

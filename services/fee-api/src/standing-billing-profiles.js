@@ -749,11 +749,23 @@ function standingStructuredTriggerProposal({
   family = {},
   trigger = {},
   matchedFacts = [],
-  parentFamilyIds = []
+  parentFamilyIds = [],
+  humanVerifiableConditions = [],
+  unresolvedConditions = []
 } = {}) {
   const proposalId = `standing_structured_${trigger.triggerId}_${family.familyId}`;
   const dependent = trigger.ruleKind === "dependent_addon";
   const deviceManagement = trigger.ruleKind === "device_management";
+  const variants = asArray(family.variants);
+  const singleVariant = variants.length === 1 ? variants[0] : null;
+  const humanConditions = [
+    ...asArray(humanVerifiableConditions),
+    ...asArray(unresolvedConditions)
+  ];
+  const conditionInstructions = humanConditions
+    .map((condition) => String(condition?.instruction || "").trim())
+    .filter(Boolean);
+  const confirmWithNote = trigger.failureMode === "confirm_with_note";
   return {
     proposalId,
     title: `${family.name}の算定対象確認`,
@@ -762,15 +774,21 @@ function standingStructuredTriggerProposal({
       : deviceManagement
         ? "機器・処方・病名の構造化情報が、この指導管理料ファミリの確認条件に一致しました。"
         : "当日の構造化情報が、定期的な訪問診療と医学管理を要件とする管理料ファミリの確認条件に一致しました。",
-    conditionText: dependent
+    conditionText: [
+      dependent
       ? "確認候補です。親管理料の採用、当月の実施内容、施設基準、月内算定履歴を確認してから採用してください。"
       : "確認候補です。当月の指導管理実施、対象病名、施設基準、回数上限、患者に合う算定区分を確認し、人が承認してください。",
+      ...conditionInstructions
+    ].join(" "),
     basis: "standing_structured_trigger_candidate",
     evidence: "",
     actionType: "confirm_required",
-    potentialPoints: 0,
-    code: "",
-    codeCandidates: asArray(family.variants).map((variant) => String(variant?.code || "")).filter(Boolean),
+    potentialPoints: singleVariant ? Number(singleVariant.points || 0) : 0,
+    code: singleVariant ? String(singleVariant.code || "") : "",
+    codeCandidates: singleVariant
+      ? undefined
+      : variants.map((variant) => String(variant?.code || "")).filter(Boolean),
+    requiresSelection: variants.length > 1,
     orderType: "procedure",
     source: "standing_fact_lane",
     standingFamilyId: String(family.familyId || ""),
@@ -779,13 +797,18 @@ function standingStructuredTriggerProposal({
     sortOrder: 37,
     candidateOnly: true,
     reviewRequired: true,
+    adoptionBlocked: confirmWithNote,
+    adoptionBlockReason: confirmWithNote ? "human_verification_required" : undefined,
+    humanVerifiableConditions: humanConditions,
     candidateLine: null,
     standingTrigger: {
       triggerId: trigger.triggerId,
       ruleKind: trigger.ruleKind,
       version: trigger.version,
       source: trigger.source,
-      matchedFacts: asArray(matchedFacts)
+      matchedFacts: asArray(matchedFacts),
+      failureMode: trigger.failureMode,
+      humanVerifiableConditions: humanConditions
     }
   };
 }

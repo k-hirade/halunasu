@@ -9894,6 +9894,200 @@ test("sidecar auto-provisions an unlinked patient without changing the canonical
   });
 });
 
+test("sidecar calculation forwards the canonical patient to W1c and returns its review candidate", async () => {
+  const stores = createStores();
+  const standingFamily = {
+    familyId: "family_home_management_sidecar_e2e",
+    name: "在医総管",
+    aliases: ["在医総管", "在宅時医学総合管理料"],
+    hierarchy: {
+      chapter: "2",
+      part: "02",
+      alphaPart: "C",
+      section: "002",
+      branch: "00"
+    },
+    variants: [{
+      code: "114100001",
+      name: "在医総管（テスト区分）",
+      points: 5000,
+      frequencyLimits: [{ windowMonths: 1, maxCount: 1 }]
+    }]
+  };
+  stores.feeCalculator.standingFeeFamilies = async () => ({
+    families: [standingFamily],
+    source: {
+      sourceType: "test_standing_family_catalog",
+      sourceVersion: "2026-06"
+    }
+  });
+  const originalListProfiles = stores.feeStore
+    .listStandingBillingProfilesForPatient
+    .bind(stores.feeStore);
+  let standingLookup = null;
+  stores.feeStore.listStandingBillingProfilesForPatient = (
+    orgId,
+    facilityId,
+    canonicalPatientId
+  ) => {
+    standingLookup = { orgId, facilityId, canonicalPatientId };
+    return originalListProfiles(orgId, facilityId, canonicalPatientId);
+  };
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "定期訪問", confidence: "high" },
+    diagnoses: [{
+      name: "慢性呼吸不全",
+      status: "confirmed",
+      evidence: "慢性呼吸不全"
+    }],
+    clinical_events: [{
+      type: "management",
+      billing_domain: "home_care",
+      name: "在宅療養管理",
+      action_status: "performed",
+      temporal_relation: "current_visit",
+      source_origin: "own_clinic_record",
+      provider_ownership: "own_clinic",
+      result_assertion: "not_applicable",
+      certainty: "explicit",
+      section: "P",
+      evidence: "在宅療養計画に基づく管理と指導を実施した。",
+      search_queries: ["在宅療養管理"]
+    }],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+  const body = sidecarCalculationBody();
+  const response = await request(
+    stores,
+    "POST",
+    "/v1/integrations/sidecar/calculate",
+    {
+      ...body,
+      serviceDate: "2026-06-25",
+      residenceType: "private",
+      clinicalText: "A: 慢性呼吸不全。P: 在宅療養計画に基づく管理と指導を実施した。"
+    },
+    await signedSidecarHeaders(stores),
+    sidecarRequestOptions({
+      clinicalFactsExtractor,
+      processEnv: { FEE_STANDING_FACTS: "true" }
+    })
+  );
+
+  assert.equal(response.statusCode, 201);
+  const storedDraft = stores.feeStore.getSidecarCalculationDraft(
+    "org_001",
+    response.body.sidecarDraft.sidecarDraftId
+  );
+  assert.deepEqual(standingLookup, {
+    orgId: "org_001",
+    facilityId: "fac_001",
+    canonicalPatientId: storedDraft.canonicalPatientId
+  });
+  const w1c = storedDraft.calculationResult.candidateProposals.find(
+    (proposal) => proposal.basis === "standing_structured_trigger_candidate"
+  );
+  assert.ok(w1c, JSON.stringify(storedDraft.calculationResult.candidateProposals, null, 2));
+  assert.match(w1c.proposalId, /^standing_structured_c002_home_management_review_candidate_/);
+  assert.equal(w1c.code, "114100001");
+  assert.equal(w1c?.candidateOnly, true);
+  assert.equal(w1c?.reviewRequired, true);
+  assert.ok(response.body.sidecarDraft.calculation.candidates.some(
+    (candidate) => candidate.candidateId === w1c.proposalId
+  ));
+});
+
+test("sidecar calculation compares same-date sibling drafts and blocks the second household visit", async () => {
+  const stores = createStores();
+  const sidecarHeaders = await signedSidecarHeaders(stores);
+  const baseBody = sidecarCalculationBody();
+  const clinicalFactsExtractor = async () => ({
+    visit_type: { kind: "revisit", evidence: "定期訪問", confidence: "high" },
+    diagnoses: [],
+    clinical_events: [],
+    excluded_events: [],
+    missing_information: [],
+    review_flags: []
+  });
+  const calculate = (overrides) => request(
+    stores,
+    "POST",
+    "/v1/integrations/sidecar/calculate",
+    {
+      ...baseBody,
+      serviceDate: "2026-06-26",
+      setting: "home_visit",
+      sameBuilding: false,
+      singleBuildingPatientCount: 1,
+      ...overrides,
+      extractionProof: {
+        ...baseBody.extractionProof,
+        patientIdBefore: overrides.externalPatientId,
+        patientIdAfter: overrides.externalPatientId,
+        sourceRecordIdBefore: overrides.sourceRecordId,
+        sourceRecordIdAfter: overrides.sourceRecordId
+      }
+    },
+    sidecarHeaders,
+    sidecarRequestOptions({
+      clinicalFactsExtractor,
+      processEnv: { FEE_STANDING_FACTS: "false" }
+    })
+  );
+  const first = await calculate({
+    externalPatientId: "household_patient_1",
+    sourceRecordId: "household-record-1",
+    sourceRecordDisplayId: "household-patient-1",
+    receptionTime: "14:30",
+    clinicalText: "S）妻と同日訪問。\nP）次月も同一世帯の妻と併せて定期訪問予定。"
+  });
+  const second = await calculate({
+    externalPatientId: "household_patient_2",
+    sourceRecordId: "household-record-2",
+    sourceRecordDisplayId: "household-patient-2",
+    receptionTime: "14:45",
+    clinicalText: "S）夫と同日訪問。\nP）次月も同一世帯の夫と併せて定期訪問予定。"
+  });
+
+  assert.equal(first.statusCode, 201);
+  assert.equal(second.statusCode, 201);
+  const firstDraft = stores.feeStore.getSidecarCalculationDraft(
+    "org_001",
+    first.body.sidecarDraft.sidecarDraftId
+  );
+  const secondDraft = stores.feeStore.getSidecarCalculationDraft(
+    "org_001",
+    second.body.sidecarDraft.sidecarDraftId
+  );
+  assert.equal(firstDraft.sameHouseholdVisitContext.status, "awaiting_counterpart");
+  assert.equal(secondDraft.sameHouseholdVisitContext.status, "second_visit");
+  assert.equal(secondDraft.sameHouseholdVisitContext.counterpartDraftId, firstDraft.sidecarDraftId);
+  assert.equal(
+    secondDraft.calculationResult.lineItems.some((line) => (
+      ["114001110", "180725910"].includes(line.code)
+    )),
+    false
+  );
+  assert.deepEqual(
+    secondDraft.calculationResult.candidateProposals
+      .filter((proposal) => proposal.basis === "same_household_second_visit_review_candidate")
+      .map((proposal) => proposal.code)
+      .sort(),
+    ["112007410", "112011010", "112015770", "112016070", "180725810"].sort()
+  );
+  const blockedProposals = secondDraft.calculationResult.candidateProposals
+    .filter((proposal) => proposal.basis === "same_household_second_visit_review_candidate");
+  assert.equal(blockedProposals.length, 5);
+  assert.equal(blockedProposals.every((proposal) => proposal.adoptionBlocked === true), true);
+  assert.equal(blockedProposals.every((proposal) => Boolean(proposal.adoptionBlockReason)), true);
+  const responseCandidates = second.body.sidecarDraft.calculation.candidates
+    .filter((candidate) => blockedProposals.some((proposal) => proposal.proposalId === candidate.candidateId));
+  assert.equal(responseCandidates.length, 5);
+  assert.equal(responseCandidates.every((candidate) => candidate.adoptionBlocked === true), true);
+});
+
 test("sidecar auto-provision remains fail-closed for ambiguous and unavailable lookups", async () => {
   for (const lookupMode of ["ambiguous", "unavailable"]) {
     const stores = createStores();

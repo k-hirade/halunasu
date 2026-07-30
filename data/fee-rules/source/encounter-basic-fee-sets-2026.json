@@ -30,6 +30,12 @@
       "procedureName": "再診料"
     },
     {
+      "ruleId": "revisit_outpatient_management_addon",
+      "category": "management_addon",
+      "feeKind": "revisit",
+      "procedureName": "外来管理加算"
+    },
+    {
       "ruleId": "basic_telephone_revisit",
       "category": "basic_fee",
       "feeKind": "revisit",
@@ -118,6 +124,13 @@
       "feeKind": "revisit",
       "requiredFacilityStandardKey": "meisaisho_hakko_taisei",
       "procedureName": "明細書発行体制等加算"
+    },
+    {
+      "ruleId": "facility_base_up_revisit",
+      "category": "facility_addon",
+      "feeKind": "revisit",
+      "requiredFacilityStandardKey": "base_up_hyoka_1",
+      "procedureName": "外来・在宅ベースアップ評価料（１）２（再診時等）"
     }
   ]
 }

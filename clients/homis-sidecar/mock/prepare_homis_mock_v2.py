@@ -4,18 +4,15 @@
 from __future__ import annotations
 
 import argparse
+from datetime import date
 from pathlib import Path
+import re
 
 
-DATE_REPLACEMENTS = (
-    ("2025年1月", "2026年6月"),
-    ("2024年12月", "2026年5月"),
-    ("2025-01", "2026-06"),
-    ("2024-12", "2026-05"),
-    # These instruction periods extend beyond the target month and need the same 17-month shift.
-    ("2025-06-19", "2026-11-19"),
-    ("2025-07-05", "2026-12-05"),
-)
+DEFAULT_TARGET_MONTH = "2026-06"
+ORIGINAL_TARGET_MONTH = "2025-01"
+BASELINE_PREPARED_TARGET_MONTH = "2026-06"
+ORIGINAL_EXTENSION_DATES = ("2025-06-19", "2025-07-05")
 
 RENDER_DATE_ANCHOR = '    karte_dates = [iso for (iso, y, m, v) in vdesc]\n'
 RENDER_RECORD_BLOCK = '''    date_occurrences = {}
@@ -87,28 +84,57 @@ def required_files(root: Path) -> dict[str, Path]:
     return files
 
 
-def prepare_dates(source: str) -> str:
-    result = source
-    for old, new in DATE_REPLACEMENTS:
-        result = result.replace(old, new)
+def prepare_dates(source: str, target_month: str = DEFAULT_TARGET_MONTH) -> str:
+    target_year, target_number = parse_claim_month(target_month)
+    if target_month != BASELINE_PREPARED_TARGET_MONTH and any(
+        marker in source
+        for marker in (
+            f"{target_year:04d}-{target_number:02d}",
+            f"{target_year}年{target_number}月",
+        )
+    ):
+        return source
+    previous_year, previous_number = add_months(target_year, target_number, -1)
+    target_delta = month_index(target_year, target_number) - month_index(2025, 1)
+    replacements = [
+        *month_replacements(2025, 1, target_year, target_number),
+        *month_replacements(2026, 6, target_year, target_number),
+        *month_replacements(2024, 12, previous_year, previous_number),
+        *month_replacements(2026, 5, previous_year, previous_number),
+    ]
+    for source_date in ORIGINAL_EXTENSION_DATES:
+        target_date = shifted_iso_date(source_date, target_delta)
+        replacements.extend((
+            (source_date, target_date),
+            (shifted_iso_date(source_date, 17), target_date),
+        ))
+    return atomic_token_replace(source, replacements)
+
+
+def prepare_patients(source: str, target_month: str = DEFAULT_TARGET_MONTH) -> str:
+    target_year, target_number = parse_claim_month(target_month)
+    previous_year, previous_number = add_months(target_year, target_number, -1)
+    result = prepare_dates(source, target_month)
+    constants = {
+        "TARGET_YEAR": target_year,
+        "TARGET_MONTH": target_number,
+        "PREV_YEAR": previous_year,
+        "PREV_MONTH": previous_number,
+    }
+    for name, value in constants.items():
+        result, count = re.subn(
+            rf"(?m)^{name}\s*=\s*\d+\s*$",
+            f"{name} = {value}",
+            result,
+            count=1,
+        )
+        if count != 1:
+            raise SystemExit(f"missing mock date constant: {name}")
     return result
 
 
-def prepare_patients(source: str) -> str:
-    result = prepare_dates(source)
-    constants = (
-        ("TARGET_YEAR = 2025", "TARGET_YEAR = 2026"),
-        ("TARGET_MONTH = 1", "TARGET_MONTH = 6"),
-        ("PREV_YEAR = 2024", "PREV_YEAR = 2026"),
-        ("PREV_MONTH = 12", "PREV_MONTH = 5"),
-    )
-    for old, new in constants:
-        result = result.replace(old, new)
-    return result
-
-
-def prepare_render(source: str) -> str:
-    result = prepare_dates(source)
+def prepare_render(source: str, target_month: str = DEFAULT_TARGET_MONTH) -> str:
+    result = prepare_dates(source, target_month)
     if "karte_record_ids = []" not in result:
         result = replace_once(result, RENDER_DATE_ANCHOR, RENDER_DATE_ANCHOR + RENDER_RECORD_BLOCK)
     if 'data-record-id="{E(karte_record_ids[0])}"' not in result:
@@ -130,13 +156,23 @@ def replace_once(source: str, old: str, new: str) -> str:
     return source.replace(old, new, 1)
 
 
-def validate_prepared_sources(sources: dict[Path, str]) -> None:
+def validate_prepared_sources(
+    sources: dict[Path, str],
+    target_month: str = DEFAULT_TARGET_MONTH,
+) -> None:
     combined = "\n".join(sources.values())
     for stale in ("2025年1月", "2024年12月", '"2025-01"', '"2024-12"'):
         if stale in combined:
             raise SystemExit(f"stale target period remains: {stale}")
+    target_year, target_number = parse_claim_month(target_month)
+    previous_year, previous_number = add_months(target_year, target_number, -1)
     patients = next(value for path, value in sources.items() if path.name == "patients.py")
-    for expected in ("TARGET_YEAR = 2026", "TARGET_MONTH = 6", "PREV_YEAR = 2026", "PREV_MONTH = 5"):
+    for expected in (
+        f"TARGET_YEAR = {target_year}",
+        f"TARGET_MONTH = {target_number}",
+        f"PREV_YEAR = {previous_year}",
+        f"PREV_MONTH = {previous_number}",
+    ):
         if expected not in patients:
             raise SystemExit(f"missing prepared date constant: {expected}")
     render = next(value for path, value in sources.items() if path.name == "render.py")
@@ -145,6 +181,73 @@ def validate_prepared_sources(sources: dict[Path, str]) -> None:
         raise SystemExit("render.py does not expose immutable chart record IDs")
     if 'el.setAttribute("data-record-id"' not in javascript:
         raise SystemExit("homis.js does not update immutable chart record IDs")
+
+
+def parse_claim_month(value: str) -> tuple[int, int]:
+    match = re.fullmatch(r"(\d{4})-(\d{2})", str(value or ""))
+    if not match:
+        raise SystemExit("target month must use YYYY-MM")
+    year, month = int(match.group(1)), int(match.group(2))
+    if month < 1 or month > 12:
+        raise SystemExit("target month is invalid")
+    return year, month
+
+
+def month_index(year: int, month: int) -> int:
+    return year * 12 + month - 1
+
+
+def add_months(year: int, month: int, delta: int) -> tuple[int, int]:
+    value = month_index(year, month) + delta
+    return value // 12, value % 12 + 1
+
+
+def shifted_iso_date(value: str, delta_months: int) -> str:
+    source = date.fromisoformat(value)
+    year, month = add_months(source.year, source.month, delta_months)
+    return date(year, month, source.day).isoformat()
+
+
+def month_replacements(
+    source_year: int,
+    source_month: int,
+    target_year: int,
+    target_month: int,
+) -> list[tuple[str, str]]:
+    result = [
+        (
+            f"{source_year:04d}-{source_month:02d}",
+            f"{target_year:04d}-{target_month:02d}",
+        ),
+        (
+            f"{source_year}年{source_month}月",
+            f"{target_year}年{target_month}月",
+        ),
+    ]
+    if source_year >= 2019 and target_year >= 2019:
+        result.append(
+            (
+                f"令和{source_year - 2018}年{source_month}月",
+                f"令和{target_year - 2018}年{target_month}月",
+            )
+        )
+    return result
+
+
+def atomic_token_replace(
+    source: str,
+    replacements: list[tuple[str, str]],
+) -> str:
+    result = source
+    placeholders: list[tuple[str, str]] = []
+    for index, (old_value, new_value) in enumerate(replacements):
+        placeholder = f"__HALUNASU_PERIOD_{index}__"
+        if old_value in result:
+            result = result.replace(old_value, placeholder)
+            placeholders.append((placeholder, new_value))
+    for placeholder, new_value in placeholders:
+        result = result.replace(placeholder, new_value)
+    return result
 
 
 if __name__ == "__main__":

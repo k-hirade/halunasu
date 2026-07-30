@@ -67,6 +67,7 @@ export function applySidecarDraftInput(current = {}, input = {}, options = {}) {
       clinicalText: input.clinicalText,
       sourceSurfaces: input.sourceSurfaces,
       structuredSourceFacts: input.structuredSourceFacts,
+      sameHouseholdVisitContext: input.sameHouseholdVisitContext,
       orders: input.orders,
       diagnoses: input.diagnoses,
       diagnosesSource: input.diagnoses?.length ? "manual" : null,
@@ -93,6 +94,9 @@ export function applySidecarDraftInput(current = {}, input = {}, options = {}) {
     encounterTypeSource: input.encounterTypeSource,
     sourceSurfaces: input.sourceSurfaces || current.sourceSurfaces || null,
     structuredSourceFacts: input.structuredSourceFacts || current.structuredSourceFacts || null,
+    sameHouseholdVisitContext: input.sameHouseholdVisitContext
+      || current.sameHouseholdVisitContext
+      || null,
     extractionProof: input.extractionProof || null,
     lastCalculatedByMemberId: input.lastCalculatedByMemberId || current.lastCalculatedByMemberId,
     expiresAt: input.expiresAt || current.expiresAt || null,

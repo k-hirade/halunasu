@@ -76,6 +76,9 @@ export function buildFeeSession(input = {}, options = {}) {
     sourceRecordId: input.sourceRecordId || null,
     sourceSurfaces: isPlainObject(input.sourceSurfaces) ? input.sourceSurfaces : null,
     structuredSourceFacts: isPlainObject(input.structuredSourceFacts) ? input.structuredSourceFacts : null,
+    sameHouseholdVisitContext: isPlainObject(input.sameHouseholdVisitContext)
+      ? input.sameHouseholdVisitContext
+      : null,
     calculationResult: input.calculationResult || null,
     calculationSummary: input.calculationSummary || null,
     latestCalculationId: null,
@@ -125,6 +128,11 @@ export function applyFeeSessionPatch(current = {}, patch = {}, options = {}) {
       structuredSourceFacts: hasOwn(patch, "structuredSourceFacts") && isPlainObject(patch.structuredSourceFacts)
         ? patch.structuredSourceFacts
         : undefined,
+      sameHouseholdVisitContext: hasOwn(patch, "sameHouseholdVisitContext")
+        ? isPlainObject(patch.sameHouseholdVisitContext)
+          ? patch.sameHouseholdVisitContext
+          : null
+        : undefined,
       orders: hasOwn(patch, "orders") ? patch.orders : undefined,
       diagnoses: hasOwn(patch, "diagnoses") ? patch.diagnoses : undefined,
       diagnosesSource: hasOwn(patch, "diagnosesSource") ? patch.diagnosesSource || null : undefined,
@@ -171,6 +179,7 @@ export function applyFeeSessionPatch(current = {}, patch = {}, options = {}) {
     "inpatientBasicDays",
     "inpatient_basic_days",
     "clinicalText",
+    "sameHouseholdVisitContext",
     "orders",
     "diagnoses",
     "diagnosesSource",
@@ -2280,6 +2289,9 @@ function normalizeCandidateProposal(item = {}, index = 0) {
   const reviewRequired = hasOwn(item, "reviewRequired") || hasOwn(item, "review_required")
     ? (item.reviewRequired ?? item.review_required) === true
     : null;
+  const adoptionBlocked = hasOwn(item, "adoptionBlocked") || hasOwn(item, "adoption_blocked")
+    ? (item.adoptionBlocked ?? item.adoption_blocked) === true
+    : null;
 
   return compactObject({
     proposalId: String(proposalId),
@@ -2300,6 +2312,8 @@ function normalizeCandidateProposal(item = {}, index = 0) {
     status: item.status || null,
     candidateOnly,
     reviewRequired,
+    adoptionBlocked,
+    adoptionBlockReason: item.adoptionBlockReason || item.adoption_block_reason || null,
     monthlyLimit: isPlainObject(item.monthlyLimit || item.monthly_limit)
       ? item.monthlyLimit || item.monthly_limit
       : null,
@@ -2786,7 +2800,8 @@ function proposalDecision(proposal = {}, decisions = {}) {
 }
 
 function proposalIncludedInTotal(proposal = {}, decisions = {}) {
-  return proposalDecision(proposal, decisions)?.status === "approved"
+  return proposal.adoptionBlocked !== true
+    && proposalDecision(proposal, decisions)?.status === "approved"
     && isPlainObject(proposal.candidateLine)
     && Number(proposal.potentialPoints || proposal.candidateLine?.totalPoints || 0) > 0;
 }
@@ -2866,11 +2881,15 @@ function normalizeCandidateActionItem(item = {}) {
         : [];
   const potentialPoints = proposal?.potentialPoints || proposalPotentialPoints(item, displayTitle, displayReason);
   const hasCandidateLine = isPlainObject(proposal?.candidateLine) || isPlainObject(item.lineItem);
+  const adoptionBlocked = proposal?.adoptionBlocked === true;
   const reviewOnly = isReviewOnlyPolicy({ issueCode, policy });
-  const actionType = reviewOnly
+  const actionType = reviewOnly || adoptionBlocked
     ? "not_billable_now"
     : proposal?.actionType || (hasCandidateLine && potentialPoints > 0 ? "adoptable" : "confirm_required");
-  const canAdopt = actionType === "adoptable" && hasCandidateLine && Number(potentialPoints || 0) > 0;
+  const canAdopt = !adoptionBlocked
+    && actionType === "adoptable"
+    && hasCandidateLine
+    && Number(potentialPoints || 0) > 0;
   const issueCategory = issueCategoryForActionItem(item, { displayTitle, displayReason, conditionText, issueCode, policy });
   return {
     reviewItemId: item.reviewItemId,
@@ -2885,6 +2904,8 @@ function normalizeCandidateActionItem(item = {}) {
     pointsLabel: pointsLabelForPotential(potentialPoints),
     potentialPoints,
     actionType,
+    adoptionBlocked,
+    adoptionBlockReason: proposal?.adoptionBlockReason || null,
     nextActionLabel: canAdopt
       ? `算定する +${Number(potentialPoints || 0).toLocaleString()}点`
       : actionType === "select_required"

@@ -39,6 +39,77 @@ def patient_residence_type(patient: dict) -> str:
     return "facility" if patient.get("is_facility") else "private"
 
 
+def prescription_rows(blocks: object) -> list[str]:
+    rows: list[str] = []
+    if not isinstance(blocks, list) or not blocks:
+        return ["（処方なし・Do）"]
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        rows.append(
+            " ".join(
+                value
+                for value in (
+                    str(block.get("rp") or "").strip(),
+                    str(block.get("type") or "").strip(),
+                    "カルテ入力",
+                )
+                if value
+            )
+        )
+        rows.extend(
+            str(line).strip()
+            for line in block.get("lines", [])
+            if str(line).strip()
+        )
+    return rows
+
+
+def document_rows(documents: object) -> list[dict]:
+    rows: list[dict] = []
+    if not isinstance(documents, list):
+        return rows
+    for document in documents:
+        if not isinstance(document, dict) or not document.get("kind"):
+            continue
+        period = document.get("period")
+        if isinstance(period, (tuple, list)) and len(period) == 2:
+            period_text = f"{period[0]} - {period[1]}"
+        else:
+            period_text = str(period or "")
+        rows.append(
+            {
+                "kind": str(document.get("kind") or ""),
+                "period": period_text,
+                "writtenDate": str(document.get("written") or ""),
+                "status": "作成済",
+            }
+        )
+    return rows
+
+
+def current_chart_surface_raw(patient: dict, visit: dict, month: str) -> dict:
+    visit_dates = sorted(
+        f"{month}-{int(entry['day']):02d}"
+        for entry in patient.get("visits", {}).get(month, [])
+        if entry.get("day")
+    )
+    devices = [
+        str(value).strip()
+        for value in patient.get("devices", [])
+        if str(value).strip()
+    ]
+    return {
+        "careInsuranceText": str(patient.get("kaigo") or ""),
+        "visitingNurseText": str(patient.get("houkan") or ""),
+        "deviceManagementText": "\n".join(devices) or "（在宅医療機器の登録なし）",
+        "prescriptionRows": prescription_rows(visit.get("shohou")),
+        "patientStartDate": str(patient.get("start_date") or "") or None,
+        "calendarMonth": month,
+        "calendarVisitDates": visit_dates,
+    }
+
+
 def export_cases(mock_root: Path, claim_month: str | None) -> dict:
     cases = []
     for patient in load_patients(mock_root):
@@ -74,6 +145,12 @@ def export_cases(mock_root: Path, claim_month: str | None) -> dict:
                         for action in visit.get("action_list", [])
                         if str(action).strip()
                     ],
+                    "sourceSurfaceRaw": {
+                        "currentChart": current_chart_surface_raw(patient, visit, month),
+                        "documents": {
+                            "rows": document_rows(patient.get("docs")),
+                        },
+                    },
                 })
     return {
         "schemaVersion": "mock-homis-act-coverage-cases-v1",

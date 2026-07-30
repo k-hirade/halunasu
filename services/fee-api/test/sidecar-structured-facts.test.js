@@ -96,6 +96,25 @@ test("keeps unknown values separate from an unavailable documents surface", () =
   });
 });
 
+test("normalizes an artificial nose as its own device fact", () => {
+  const facts = normalizeSidecarStructuredFacts({
+    sourceSurfaces: {
+      currentChart: {
+        status: "ok",
+        raw: {
+          deviceManagementText: "気管切開カニューレ 複管 8.0mm（人工鼻使用）"
+        }
+      },
+      documents: { status: "ok", raw: { rows: [] } }
+    }
+  });
+
+  assert.deepEqual(facts.devices.map((device) => device.type), [
+    "tracheostomy_cannula",
+    "artificial_nose"
+  ]);
+});
+
 test("normalizes first-wave material device attributes without inferring missing values", () => {
   const facts = normalizeSidecarStructuredFacts({
     sourceSurfaces: {

@@ -12,6 +12,7 @@ from prepare_homis_mock_v2 import (
     prepare_patients,
     prepare_render as prepare_v2_render,
     required_files,
+    validate_prepared_sources,
 )
 
 
@@ -53,17 +54,28 @@ def main() -> int:
     parser.add_argument("mock_root", type=Path)
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--target-month", default="2026-07")
     args = parser.parse_args()
     if args.apply and args.check:
         parser.error("choose either --apply or --check")
 
     files = required_files(args.mock_root)
     transformed = {
-        files["patients"]: prepare_patients(files["patients"].read_text(encoding="utf-8")),
-        files["readme"]: prepare_dates(files["readme"].read_text(encoding="utf-8")),
-        files["render"]: prepare_render(files["render"].read_text(encoding="utf-8")),
+        files["patients"]: prepare_patients(
+            files["patients"].read_text(encoding="utf-8"),
+            args.target_month,
+        ),
+        files["readme"]: prepare_dates(
+            files["readme"].read_text(encoding="utf-8"),
+            args.target_month,
+        ),
+        files["render"]: prepare_render(
+            files["render"].read_text(encoding="utf-8"),
+            args.target_month,
+        ),
         files["javascript"]: prepare_javascript(files["javascript"].read_text(encoding="utf-8")),
     }
+    validate_prepared_sources(transformed, args.target_month)
     validate_v3_sources(transformed)
     changed = [path for path, value in transformed.items() if path.read_text(encoding="utf-8") != value]
     if args.check:
@@ -80,8 +92,8 @@ def main() -> int:
     return 0
 
 
-def prepare_render(source: str) -> str:
-    result = prepare_v2_render(source)
+def prepare_render(source: str, target_month: str = "2026-07") -> str:
+    result = prepare_v2_render(source, target_month)
     if "single_building_patient_counts =" not in result:
         result = replace_once(result, RENDER_DATE_ANCHOR, RENDER_DATE_ANCHOR + RENDER_COUNTS)
     if "data-single-building-patient-count" not in result:

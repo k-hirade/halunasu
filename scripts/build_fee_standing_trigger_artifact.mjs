@@ -17,7 +17,11 @@ const ALLOWED_OPERATORS = new Set([
   "gte",
   "not_contains"
 ]);
-const ALLOWED_FAILURE_MODES = new Set(["silent", "sensor_warning"]);
+const ALLOWED_FAILURE_MODES = new Set([
+  "confirm_with_note",
+  "silent",
+  "sensor_warning"
+]);
 const ALLOWED_RULE_KINDS = new Set([
   "dependent_addon",
   "device_management",
@@ -29,7 +33,7 @@ const source = JSON.parse(await readFile(SOURCE_PATH, "utf8"));
 validateSource(source);
 
 const payload = {
-  schemaVersion: "fee-standing-structured-trigger-artifact-v2",
+  schemaVersion: "fee-standing-structured-trigger-artifact-v3",
   revision: source.revision,
   effectiveFrom: source.effectiveFrom,
   verifiedAt: source.verifiedAt,
@@ -55,7 +59,7 @@ if (args.has("--check")) {
 }
 
 function validateSource(value) {
-  if (value?.schemaVersion !== "fee-standing-structured-trigger-source-v1") {
+  if (value?.schemaVersion !== "fee-standing-structured-trigger-source-v2") {
     throw new TypeError("unsupported standing trigger source schema");
   }
   if (!/^\d{4}-\d{2}-\d{2}$/u.test(String(value.effectiveFrom || ""))) {
@@ -104,6 +108,17 @@ function validateSource(value) {
     if (!ALLOWED_FAILURE_MODES.has(String(trigger.failureMode || ""))) {
       throw new TypeError(`${triggerId} has an unsupported failureMode`);
     }
+    const humanVerifiableConditions = array(trigger.humanVerifiableConditions);
+    if (
+      trigger.failureMode === "confirm_with_note"
+      && !humanVerifiableConditions.length
+    ) {
+      throw new TypeError(`${triggerId} requires humanVerifiableConditions`);
+    }
+    for (const condition of humanVerifiableConditions) {
+      required(condition.conditionId, `${triggerId}.humanVerifiableConditions.conditionId`);
+      required(condition.instruction, `${triggerId}.humanVerifiableConditions.instruction`);
+    }
     if (ruleKind === "dependent_addon") {
       if (!array(trigger.parentFamilySelectors).length) {
         throw new TypeError(`${triggerId} requires parentFamilySelectors`);
@@ -111,12 +126,17 @@ function validateSource(value) {
       trigger.parentFamilySelectors.forEach((selector, index) => (
         validateFamilySelector(selector, `${triggerId}.parentFamilySelectors[${index}]`)
       ));
-      required(
-        trigger.requiredFacilityStandardKey,
-        `${triggerId}.requiredFacilityStandardKey`
-      );
-      if (trigger.scope !== "per_month") {
-        throw new TypeError(`${triggerId}.scope must be per_month`);
+      if (
+        trigger.failureMode !== "confirm_with_note"
+        || trigger.requiredFacilityStandardKey !== undefined
+      ) {
+        required(
+          trigger.requiredFacilityStandardKey,
+          `${triggerId}.requiredFacilityStandardKey`
+        );
+      }
+      if (!["per_month", "per_visit"].includes(trigger.scope)) {
+        throw new TypeError(`${triggerId}.scope must be per_month or per_visit`);
       }
     } else if (
       trigger.parentFamilySelectors !== undefined

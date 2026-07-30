@@ -152,10 +152,18 @@ billing_enabled() {
 secret_exists() {
   local project="$1"
   local secret="$2"
+  local output
   if [[ "${APPLY}" != "true" ]]; then
     return 0
   fi
-  gcloud secrets describe "${secret}" --project "${project}" --quiet >/dev/null 2>&1
+  if output="$(gcloud secrets describe "${secret}" --project "${project}" --quiet 2>&1)"; then
+    return 0
+  fi
+  if printf '%s' "${output}" | grep -Eqi 'NOT_FOUND|not found'; then
+    return 1
+  fi
+  echo "Unable to verify secret ${project}/${secret}: ${output}" >&2
+  exit 1
 }
 
 deploy_service() {

@@ -1,6 +1,7 @@
 const DEVICE_DEFINITIONS = Object.freeze([
   { type: "ventilator", pattern: /(?:人工呼吸器|TPPV|NPPV)/u },
   { type: "tracheostomy_cannula", pattern: /(?:気管切開|気管カニューレ|カニューレ)/u },
+  { type: "artificial_nose", pattern: /人工鼻/u },
   { type: "oxygen_concentrator", pattern: /酸素濃縮装置/u },
   { type: "oxygen_cylinder", pattern: /酸素ボンベ/u },
   { type: "oxygen_demand_valve", pattern: /デマンドバルブ/u },
