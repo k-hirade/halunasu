@@ -90,12 +90,13 @@ export function auditMockActCoverageCase(testCase = {}, calculation = {}, mappin
     String(testCase.caseId || "")
   );
   const notices = normalizeCalculationNotices(calculation);
+  const standingLane = normalizeStandingLaneDiagnostics(calculation);
   const gold = (Array.isArray(testCase.actionList) ? testCase.actionList : []).map((actionName, index) => {
     const normalizedName = normalizeMockActionName(actionName);
     const mapping = mappingIndex.get(normalizedName) || null;
     const actionClass = classifyMockAction(actionName, mapping);
     const match = actionClass === "claim_comment"
-        ? matchClaimComment(actionName, notices)
+        ? matchClaimComment(actionName, notices, mapping)
         : null;
     return {
       actionIndex: index + 1,
@@ -118,6 +119,8 @@ export function auditMockActCoverageCase(testCase = {}, calculation = {}, mappin
                 : "missing"
       ),
       matchedCode: match?.candidate?.code || null,
+      matchedCommentCode: match?.commentCode || null,
+      matchedCommentStatus: match?.commentStatus || null,
       matchedSourceType: match?.candidate?.sourceType || null,
       matchedCandidateKey: null,
       matchedServiceDate: null,
@@ -158,6 +161,7 @@ export function auditMockActCoverageCase(testCase = {}, calculation = {}, mappin
     serviceDate: String(testCase.serviceDate || ""),
     setting: String(testCase.setting || ""),
     clinicalTextSha256: sha256(String(testCase.clinicalText || "")),
+    standingLane,
     gold,
     actual: {
       candidateCount: candidates.length,
@@ -210,12 +214,15 @@ export function reconcileMockActCoverageRuns(runs = [], mappingRows = []) {
 export function summarizeMockActCoverage(runs = []) {
   const totals = {
     caseCount: 0,
+    rateLimitRetryCount: 0,
     billableCount: 0,
     confirmedCount: 0,
     candidateCount: 0,
     missingCount: 0,
     commentCount: 0,
     commentDetectedCount: 0,
+    commentGeneratedCount: 0,
+    commentInputRequiredCount: 0,
     claimAttributeCount: 0,
     patientChargeCount: 0,
     unknownCount: 0,
@@ -244,7 +251,12 @@ export function summarizeMockActCoverage(runs = []) {
       if (key === "caseCount") {
         continue;
       }
-      totals[key] += Number(run?.metrics?.[key] ?? run?.actual?.[key] ?? 0);
+      totals[key] += Number(
+        run?.metrics?.[key]
+        ?? run?.actual?.[key]
+        ?? run?.[key]
+        ?? 0
+      );
     }
     for (const item of asArray(run?.gold)) {
       if (item.actionClass !== "billable_line") {
@@ -284,8 +296,76 @@ export function summarizeMockActCoverage(runs = []) {
     ),
     byClaimMonth: Object.fromEntries(
       Object.entries(byClaimMonth).map(([key, value]) => [key, finalizeBillableTotals(value)])
-    )
+    ),
+    standingLane: summarizeStandingLaneDiagnostics(runs)
   };
+}
+
+export function summarizeMockActCoverageRepetitions(repetitions = []) {
+  const values = Array.isArray(repetitions) ? repetitions : [];
+  const completed = values.filter((entry) => entry.status === "complete" && entry.summary);
+  const latest = completed.at(-1)?.summary || values.at(-1)?.summary || {};
+  const rateLimitRetryCount = values.reduce(
+    (total, entry) => total + Number(entry?.summary?.rateLimitRetryCount || 0),
+    0
+  );
+  const outputHashes = completed.map((entry) => entry.outputSha256).filter(Boolean);
+  const repeatCoverageComplete = values.length > 0 && completed.length === values.length;
+  const deterministicOutputs = repeatCoverageComplete
+    && completed.length >= 2
+    && outputHashes.length === completed.length
+    && new Set(outputHashes).size === 1;
+  const acceptance = completed.map((entry) => ({
+    repeatIndex: entry.repeatIndex,
+    actCoveragePassed: entry.summary.actCoverageRecall === 1,
+    dangerousFalsePositivePassed: entry.summary.dangerousFalsePositiveCount === 0,
+    commentDetectionPassed: entry.summary.commentCount === 0
+      || entry.summary.commentDetectionRate === 1,
+    pointTotalsPassed: entry.summary.pointTotalsMatch === true
+  }));
+  return {
+    ...latest,
+    rateLimitRetryCount,
+    repeatCount: values.length,
+    completedRepeatCount: completed.length,
+    repeatCoverageComplete,
+    deterministicOutputs,
+    allAcceptanceChecksPassed: deterministicOutputs
+      && acceptance.length === values.length
+      && acceptance.every((entry) => (
+        entry.actCoveragePassed
+        && entry.dangerousFalsePositivePassed
+        && entry.commentDetectionPassed
+        && entry.pointTotalsPassed
+      )),
+    repeatAcceptance: acceptance
+  };
+}
+
+export function resolveRateLimitRetryDelayMs(
+  retryAfter,
+  {
+    attempt = 0,
+    baseDelayMs = 5_000,
+    maxDelayMs = 60_000,
+    nowMs = Date.now()
+  } = {}
+) {
+  const normalizedAttempt = Math.max(0, Number(attempt) || 0);
+  const normalizedBase = Math.max(0, Number(baseDelayMs) || 0);
+  const normalizedMax = Math.max(normalizedBase, Number(maxDelayMs) || 0);
+  const raw = String(retryAfter || "").trim();
+  if (raw) {
+    const seconds = Number(raw);
+    if (Number.isFinite(seconds) && seconds >= 0) {
+      return Math.min(normalizedMax, Math.ceil(seconds * 1_000));
+    }
+    const retryAt = Date.parse(raw);
+    if (Number.isFinite(retryAt)) {
+      return Math.min(normalizedMax, Math.max(0, retryAt - nowMs));
+    }
+  }
+  return Math.min(normalizedMax, normalizedBase * (2 ** normalizedAttempt));
 }
 
 export function parseCsv(text = "") {
@@ -378,11 +458,163 @@ function normalizeCalculationNotices(calculation = {}) {
       ...(Array.isArray(source?.warnings) ? source.warnings : []),
       ...(Array.isArray(source?.reviewIssues) ? source.reviewIssues : [])
     ];
-  return values.map((notice) => (
-    typeof notice === "string"
-      ? notice
-      : [notice?.title, notice?.messageForStaff, notice?.message].filter(Boolean).join(" ")
-  )).map(normalizeMockActionName).filter(Boolean);
+  const candidateComments = asArray(source?.candidates).flatMap((candidate) => (
+    asArray(candidate?.comments).map((comment) => ({
+      kind: "attached_comment",
+      targetCode: candidate?.code || comment?.targetCode || null,
+      comment
+    }))
+  ));
+  const seen = new Set();
+  return [...values, ...candidateComments].map((notice) => {
+    if (typeof notice === "string") {
+      return {
+        kind: "legacy",
+        targetCode: null,
+        commentCode: null,
+        commentStatus: null,
+        normalizedTexts: [normalizeMockActionName(notice)].filter(Boolean)
+      };
+    }
+    const comment = notice?.comment && typeof notice.comment === "object"
+      ? notice.comment
+      : null;
+    return {
+      kind: String(notice?.kind || "legacy"),
+      targetCode: String(notice?.targetCode || comment?.targetCode || "").trim() || null,
+      commentCode: String(comment?.commentCode || notice?.commentCode || "").trim() || null,
+      commentStatus: String(comment?.status || notice?.commentStatus || "").trim() || null,
+      normalizedTexts: [
+        comment?.name,
+        comment?.text,
+        notice?.shortText,
+        notice?.detailText,
+        notice?.title,
+        notice?.messageForStaff,
+        notice?.message
+      ].map(normalizeMockActionName).filter(Boolean)
+    };
+  }).filter((notice) => {
+    const key = [
+      notice.kind,
+      notice.targetCode,
+      notice.commentCode,
+      notice.commentStatus,
+      notice.normalizedTexts.join("|")
+    ].join(":");
+    if (!notice.normalizedTexts.length || seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function normalizeStandingLaneDiagnostics(calculation = {}) {
+  const source = calculation?.sidecarDraft?.calculation || calculation?.calculation || calculation;
+  const standingLane = source?.metrics?.standingLane;
+  if (!standingLane || typeof standingLane !== "object" || Array.isArray(standingLane)) {
+    return null;
+  }
+  const perTrigger = asArray(standingLane?.structuredTriggers?.perTrigger).map((entry) => ({
+    triggerId: String(entry?.triggerId || ""),
+    ruleKind: String(entry?.ruleKind || ""),
+    reason: String(entry?.reason || ""),
+    missingFacts: uniqueStrings(entry?.missingFacts),
+    ...(Number.isInteger(entry?.familyMatchCount)
+      ? { familyMatchCount: entry.familyMatchCount }
+      : {})
+  })).filter((entry) => entry.triggerId && entry.reason);
+  return {
+    disabledReason: standingLane.disabledReason || null,
+    familyCount: nonNegativeNumber(standingLane.familyCount) || 0,
+    additionalSelectorResolvedCount: nonNegativeNumber(
+      standingLane.additionalSelectorResolvedCount
+    ) || 0,
+    structuredTriggers: {
+      reasonCounts: normalizeCountMap(standingLane?.structuredTriggers?.reasonCounts),
+      perTrigger
+    },
+    factsSummary: normalizeStandingFactsSummary(standingLane.factsSummary)
+  };
+}
+
+function normalizeStandingFactsSummary(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return {
+    residenceType: String(value.residenceType || "") || null,
+    plannedHomeVisit: value.plannedHomeVisit === true,
+    activeDiagnosisCount: nonNegativeNumber(value.activeDiagnosisCount) || 0,
+    currentManagementOrCounselingCount: nonNegativeNumber(
+      value.currentManagementOrCounselingCount
+    ) || 0,
+    currentManagementEventCount: nonNegativeNumber(
+      value.currentManagementEventCount
+    ) || 0,
+    currentManagementStandingMentionCount: nonNegativeNumber(
+      value.currentManagementStandingMentionCount
+    ) || 0,
+    currentManagementTextSignalCount: nonNegativeNumber(
+      value.currentManagementTextSignalCount
+    ) || 0,
+    currentLongitudinalPlanSignalCount: nonNegativeNumber(
+      value.currentLongitudinalPlanSignalCount
+    ) || 0,
+    standingMentionCount: nonNegativeNumber(value.standingMentionCount) || 0,
+    deviceFactCount: nonNegativeNumber(value.deviceFactCount) || 0,
+    eventCount: nonNegativeNumber(value.eventCount) || 0,
+    currentOwnEventCount: nonNegativeNumber(value.currentOwnEventCount) || 0,
+    eventTypeCounts: normalizeCountMap(value.eventTypeCounts),
+    actionStatusCounts: normalizeCountMap(value.actionStatusCounts),
+    temporalRelationCounts: normalizeCountMap(value.temporalRelationCounts),
+    providerOwnershipCounts: normalizeCountMap(value.providerOwnershipCounts)
+  };
+}
+
+function summarizeStandingLaneDiagnostics(runs = []) {
+  const values = asArray(runs).map((run) => run?.standingLane).filter(Boolean);
+  const reasonCounts = {};
+  const missingFactCounts = {};
+  const disabledReasonCounts = {};
+  for (const lane of values) {
+    if (lane.disabledReason) {
+      incrementCount(disabledReasonCounts, lane.disabledReason);
+    }
+    for (const trigger of asArray(lane?.structuredTriggers?.perTrigger)) {
+      incrementCount(reasonCounts, trigger.reason);
+      for (const fact of asArray(trigger.missingFacts)) {
+        incrementCount(missingFactCounts, fact);
+      }
+    }
+  }
+  return {
+    observedRunCount: values.length,
+    missingRunCount: asArray(runs).length - values.length,
+    disabledReasonCounts,
+    reasonCounts,
+    missingFactCounts
+  };
+}
+
+function normalizeCountMap(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([key, count]) => [String(key || ""), nonNegativeNumber(count) || 0])
+      .filter(([key]) => key)
+      .sort(([left], [right]) => left.localeCompare(right))
+  );
+}
+
+function incrementCount(target, key) {
+  const normalized = String(key || "").trim();
+  if (normalized) {
+    target[normalized] = Number(target[normalized] || 0) + 1;
+  }
 }
 
 function expandCalculationCandidateUnits(candidates, mappingRows, caseId) {
@@ -564,11 +796,28 @@ function candidateSourceRank(sourceType) {
   return sourceType === "calculated_line" ? 2 : 1;
 }
 
-function matchClaimComment(actionName, notices) {
+function matchClaimComment(actionName, notices, mapping = null) {
   const normalized = normalizeMockActionName(actionName);
   const stem = normalized.replace(/\{date\}|\{count\}|\{dates\}/gu, "");
-  const found = notices.some((notice) => notice.includes(stem) || stem.includes(notice));
-  return found ? { status: "comment_detected", candidate: null } : null;
+  const expectedCommentCode = String(mapping?.comment_code || mapping?.commentCode || "").trim();
+  const found = notices.find((notice) => {
+    if (expectedCommentCode && notice.commentCode === expectedCommentCode) {
+      return true;
+    }
+    return notice.normalizedTexts.some((text) => (
+      text.includes(stem) || stem.includes(text)
+    ));
+  });
+  return found
+    ? {
+      status: "comment_detected",
+      candidate: null,
+      commentCode: found.commentCode,
+      commentStatus: ["generated", "input_required"].includes(found.commentStatus)
+        ? found.commentStatus
+        : "legacy_detected"
+    }
+    : null;
 }
 
 function mappingCandidateCodes(mapping = {}) {
@@ -587,6 +836,8 @@ function summarizeCaseGold(gold = []) {
     missingCount: 0,
     commentCount: 0,
     commentDetectedCount: 0,
+    commentGeneratedCount: 0,
+    commentInputRequiredCount: 0,
     claimAttributeCount: 0,
     patientChargeCount: 0,
     unknownCount: 0,
@@ -632,7 +883,14 @@ function summarizeCaseGold(gold = []) {
       }
     } else if (item.actionClass === "claim_comment") {
       metrics.commentCount += 1;
-      if (item.matchStatus === "comment_detected") metrics.commentDetectedCount += 1;
+      if (item.matchStatus === "comment_detected") {
+        metrics.commentDetectedCount += 1;
+        if (item.matchedCommentStatus === "generated") {
+          metrics.commentGeneratedCount += 1;
+        } else if (item.matchedCommentStatus === "input_required") {
+          metrics.commentInputRequiredCount += 1;
+        }
+      }
     } else if (item.actionClass === "claim_attribute") {
       metrics.claimAttributeCount += 1;
     } else if (item.actionClass === "patient_charge") {

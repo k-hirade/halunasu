@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import {
   isFutureOrOrderOnlyClinicalServiceContext,
+  isNegatedClinicalServiceContext,
   isPastOrExternalClinicalServiceContext,
   normalizeClinicalPredicateText,
   splitClinicalEvidenceClauses
@@ -32,6 +33,58 @@ export function standingStructuredTriggerFamilySelectors() {
   return dedupeBy(selectors, (selector) => canonicalJson(selector));
 }
 
+export function standingStructuredFamilyCatalogDiagnostics(families = []) {
+  const selectors = standingStructuredTriggerFamilySelectors();
+  return {
+    familyCount: asArray(families).length,
+    additionalSelectorCount: selectors.length,
+    additionalSelectorResolvedCount: selectors.filter((selector) => (
+      asArray(families).filter((family) => standingFamilyMatchesSelector(family, selector)).length === 1
+    )).length
+  };
+}
+
+export function standingStructuredFactsSummary(structuredFacts = {}, {
+  clinicalEvents = []
+} = {}) {
+  const events = asArray(clinicalEvents);
+  const currentOwnEvents = events.filter(isCurrentOwnStructuredClinicalEvent);
+  return {
+    residenceType: valueAtPath(structuredFacts, "encounter.residenceType") || null,
+    plannedHomeVisit: valueAtPath(structuredFacts, "encounter.plannedHomeVisit") === true,
+    activeDiagnosisCount: finiteCountOrZero(
+      valueAtPath(structuredFacts, "clinical.activeDiagnosisCount")
+    ),
+    currentManagementOrCounselingCount: finiteCountOrZero(
+      valueAtPath(structuredFacts, "clinical.currentManagementOrCounselingCount")
+    ),
+    currentManagementEventCount: finiteCountOrZero(
+      valueAtPath(structuredFacts, "clinical.currentManagementEventCount")
+    ),
+    currentManagementStandingMentionCount: finiteCountOrZero(
+      valueAtPath(structuredFacts, "clinical.currentManagementStandingMentionCount")
+    ),
+    currentManagementTextSignalCount: finiteCountOrZero(
+      valueAtPath(structuredFacts, "clinical.currentManagementTextSignalCount")
+    ),
+    currentLongitudinalPlanSignalCount: finiteCountOrZero(
+      valueAtPath(structuredFacts, "clinical.currentLongitudinalPlanSignalCount")
+    ),
+    standingMentionCount: finiteCountOrZero(
+      valueAtPath(structuredFacts, "clinical.standingMentionCount")
+    ),
+    deviceFactCount: finiteCountOrZero(
+      valueAtPath(structuredFacts, "clinical.deviceFactCount")
+    ),
+    eventCount: events.length,
+    currentOwnEventCount: currentOwnEvents.length,
+    eventTypeCounts: enumCounts(events.map(structuredClinicalEventType)),
+    actionStatusCounts: enumCounts(events.map(structuredClinicalEventActionStatus)),
+    temporalRelationCounts: enumCounts(events.map(structuredClinicalEventTemporalRelation)),
+    providerOwnershipCounts: enumCounts(events.map(structuredClinicalEventProviderOwnership))
+  };
+}
+
 export function buildStandingStructuredFacts({
   prepared = {},
   session = {},
@@ -43,11 +96,22 @@ export function buildStandingStructuredFacts({
     ? session.encounterDetails
     : {};
   const events = asArray(prepared.clinicalEvents);
+  const standingMentions = asArray(prepared.standingMentions);
   const diagnoses = uniqueStructuredDiagnoses([
     ...asArray(session.diagnoses),
     ...asArray(prepared.diagnoses)
   ]);
   const currentEvents = events.filter(isCurrentOwnStructuredClinicalEvent);
+  const currentManagementEvents = events.filter(isCurrentOwnStructuredManagementEvent);
+  const currentManagementStandingMentions = standingMentions.filter(
+    isCurrentManagementStandingMention
+  );
+  const currentManagementTextSignalCount = currentManagementOrCounselingTextSignalCount(
+    session.clinicalText || prepared.clinicalText || ""
+  );
+  const currentLongitudinalPlanSignalCount = currentLongitudinalManagementPlanSignalCount(
+    session.clinicalText || prepared.clinicalText || ""
+  );
   const calculationOptions = isPlainObject(prepared.calculationOptions)
     ? prepared.calculationOptions
     : {};
@@ -114,10 +178,19 @@ export function buildStandingStructuredFacts({
     clinical: {
       activeDiagnosisCount: diagnoses.size,
       activeDiagnosisNames: [...diagnoses].sort(),
-      currentManagementOrCounselingCount: currentEvents.filter((event) => (
-        ["management", "counseling"].includes(structuredClinicalEventType(event))
-        && ["performed", "instruction_only"].includes(structuredClinicalEventActionStatus(event))
-      )).length,
+      // The three sources may describe the same clause. Use the strongest
+      // observed count so duplicate extraction paths cannot inflate the fact.
+      currentManagementOrCounselingCount: Math.max(
+        currentManagementEvents.length,
+        currentManagementStandingMentions.length,
+        currentManagementTextSignalCount,
+        currentLongitudinalPlanSignalCount
+      ),
+      currentManagementEventCount: currentManagementEvents.length,
+      currentManagementStandingMentionCount: currentManagementStandingMentions.length,
+      currentManagementTextSignalCount,
+      currentLongitudinalPlanSignalCount,
+      standingMentionCount: standingMentions.length,
       medicationFactCount: currentEvents.filter((event) => (
         structuredClinicalEventType(event) === "medication"
       )).length + structuredOptionEntryCount(calculationOptions, [
@@ -178,9 +251,24 @@ export function evaluateStandingStructuredTriggers({
   const sensorWarnings = [];
   const reasonCounts = {};
   const matchedCountsByKind = {};
+  const perTrigger = [];
   const availableParentIds = new Set(uniqueStrings(availableParentFamilyIds));
   const countReason = (reason) => {
     reasonCounts[reason] = Number(reasonCounts[reason] || 0) + 1;
+  };
+  const recordTrigger = (trigger, reason, detail = {}) => {
+    perTrigger.push({
+      triggerId: String(trigger?.triggerId || ""),
+      ruleKind: String(trigger?.ruleKind || ""),
+      reason,
+      missingFacts: uniqueStrings(detail.missingFacts),
+      ...(Number.isInteger(detail.familyMatchCount)
+        ? { familyMatchCount: detail.familyMatchCount }
+        : {}),
+      ...(detail.unresolvedConditionIds?.length
+        ? { unresolvedConditionIds: uniqueStrings(detail.unresolvedConditionIds) }
+        : {})
+    });
   };
 
   const orderedTriggers = asArray(ARTIFACT.triggers).sort((left, right) => (
@@ -201,6 +289,7 @@ export function evaluateStandingStructuredTriggers({
           familyMatchCount: familyMatches.length
         });
       }
+      recordTrigger(trigger, reason, { familyMatchCount: familyMatches.length });
       continue;
     }
     const family = familyMatches[0];
@@ -214,6 +303,7 @@ export function evaluateStandingStructuredTriggers({
         .filter((familyId) => availableParentIds.has(familyId));
       if (!parentFamilyIds.length) {
         countReason("parent_family_missing");
+        recordTrigger(trigger, "parent_family_missing");
         continue;
       }
       const facilityKey = String(trigger.requiredFacilityStandardKey || "");
@@ -229,6 +319,7 @@ export function evaluateStandingStructuredTriggers({
           });
         } else {
           countReason("facility_standard_missing");
+          recordTrigger(trigger, "facility_standard_missing");
           continue;
         }
       }
@@ -238,21 +329,31 @@ export function evaluateStandingStructuredTriggers({
       passed: factConditionPasses(condition, structuredFacts)
     }));
     if (factResults.some((result) => !result.passed)) {
+      const missingFacts = factResults
+        .filter((result) => !result.passed)
+        .map((result) => result.fact);
       countReason("required_positive_fact_missing");
       if (trigger.failureMode === "sensor_warning") {
         sensorWarnings.push({
           triggerId: trigger.triggerId,
           reason: "required_positive_fact_missing",
-          missingFacts: factResults.filter((result) => !result.passed).map((result) => result.fact)
+          missingFacts
         });
       }
+      recordTrigger(trigger, "required_positive_fact_missing", { missingFacts });
       continue;
     }
-    countReason("matched");
+    const matchedReason = unresolvedConditions.length
+      ? "matched_with_conditions"
+      : "matched";
+    countReason(matchedReason);
     matchedCountsByKind[trigger.ruleKind] = Number(
       matchedCountsByKind[trigger.ruleKind] || 0
     ) + 1;
     availableParentIds.add(String(family.familyId || ""));
+    recordTrigger(trigger, matchedReason, {
+      unresolvedConditionIds: unresolvedConditions.map((condition) => condition.conditionId)
+    });
     matches.push({
       trigger,
       family,
@@ -272,7 +373,8 @@ export function evaluateStandingStructuredTriggers({
       matchedCount: matches.length,
       matchedCountsByKind,
       sensorWarningCount: sensorWarnings.length,
-      reasonCounts
+      reasonCounts,
+      perTrigger
     }
   };
 }
@@ -391,6 +493,23 @@ function isCurrentOwnStructuredClinicalEvent(event = {}) {
   return providerOwnership === "own_clinic";
 }
 
+function isCurrentOwnStructuredManagementEvent(event = {}) {
+  if (!["management", "counseling"].includes(structuredClinicalEventType(event))) {
+    return false;
+  }
+  if (!["performed", "instruction_only", "unknown", ""].includes(
+    structuredClinicalEventActionStatus(event)
+  )) {
+    return false;
+  }
+  if (!["current_visit", "same_day_but_unknown"].includes(
+    structuredClinicalEventTemporalRelation(event)
+  )) {
+    return false;
+  }
+  return structuredClinicalEventProviderOwnership(event) === "own_clinic";
+}
+
 function structuredClinicalEventType(event = {}) {
   return String(event?.type || event?.eventType || event?.event_type || "").trim();
 }
@@ -401,6 +520,104 @@ function structuredClinicalEventActionStatus(event = {}) {
 
 function structuredClinicalEventBillingDomain(event = {}) {
   return String(event?.billingDomain || event?.billing_domain || "").trim();
+}
+
+function structuredClinicalEventTemporalRelation(event = {}) {
+  return String(
+    event?.temporalRelation
+    || event?.temporal_relation
+    || event?.dateRelation
+    || event?.date_relation
+    || ""
+  ).trim();
+}
+
+function structuredClinicalEventProviderOwnership(event = {}) {
+  return String(
+    event?.providerOwnership
+    || event?.provider_ownership
+    || ""
+  ).trim();
+}
+
+function isCurrentManagementStandingMention(mention = {}) {
+  const status = String(mention?.status || "").trim();
+  if (!["continued", "changed"].includes(status)) {
+    return false;
+  }
+  const target = String(mention?.target || "").trim();
+  const text = String(mention?.text || "").trim();
+  const clauses = text
+    ? splitClinicalEvidenceClauses(text).map((clause) => clause?.text || "")
+    : [];
+  const values = clauses.length ? clauses : [target];
+  return uniqueStrings(values).some((value) => {
+    const normalized = normalizeClinicalPredicateText(value);
+    return Boolean(normalized)
+      && !isNegatedClinicalServiceContext(normalized)
+      && !isPastOrExternalClinicalServiceContext(normalized)
+      && !isFutureOrOrderOnlyClinicalServiceContext(normalized)
+      && !/(?:先週|前週|昨日|一昨日|昨年|前年|次月|翌月|来月|次週|翌週|来週|次年度|翌年度)/u.test(normalized)
+      && /(?:管理|指導|療養|連携|ケア|支援|情報共有|共有|調整|フォロー)/u.test(normalized);
+  });
+}
+
+function currentManagementOrCounselingTextSignalCount(value = "") {
+  return splitClinicalEvidenceClauses(value).filter((clause) => {
+    const normalized = normalizeClinicalPredicateText(clause?.text || "");
+    if (!normalized
+      || isNegatedClinicalServiceContext(normalized)
+      || isPastOrExternalClinicalServiceContext(normalized)
+      || isFutureOrOrderOnlyClinicalServiceContext(normalized)
+      || /(?:算定|請求|点数|レセプト|施設基準).{0,20}(?:説明|指導|確認|検討)|(?:説明|指導|確認|検討).{0,20}(?:算定|請求|点数|レセプト|施設基準)/u.test(normalized)
+      || /(?:説明|指導|助言|確認|傾聴|相談|連携|共有|調整|支援)(?:は|を)?(?:せず|しない|していない|なし)|注意(?:を)?促(?:さず|していない|していません)/u.test(normalized)) {
+      return false;
+    }
+    return /(?:再)?(?:説明|指導(?!管理料)|助言|確認|傾聴|相談|連携|情報共有|共有|調整|支援)(?:(?:を|し|して|した|する|継続|済み|あり)|[。．.!！?？]|$)|注意(?:を)?促(?:し|して|した|す|した。|す。)/u.test(normalized);
+  }).length;
+}
+
+function currentLongitudinalManagementPlanSignalCount(value = "") {
+  const clauses = splitClinicalEvidenceClauses(value).map((clause) => (
+    normalizeClinicalPredicateText(clause?.text || "")
+  )).filter(Boolean);
+  const currentClauses = clauses.filter((text) => (
+    !isNegatedClinicalServiceContext(text)
+    && !isPastOrExternalClinicalServiceContext(text)
+    && !/(?:継続|維持|管理|フォロー|見直(?:し|す))(?:は|を)?(?:しない|せず|していない|なし)/u.test(text)
+  ));
+  const hasCurrentAssessment = currentClauses.some((text) => (
+    /^A[)）]/u.test(text)
+    && /(?:安定|不変|改善|増悪|維持|コントロール|経過|状態|所見|症状|診断)/u.test(text)
+  ));
+  const hasCurrentPlan = currentClauses.some((text) => (
+    /^P[)）]/u.test(text)
+    && !isFutureOrOrderOnlyClinicalServiceContext(text)
+    && /(?:継続|維持|経過観察|フォロー|変更|調整|見直し)/u.test(text)
+  ));
+  const hasFollowupPlan = clauses.some((text) => (
+    !isNegatedClinicalServiceContext(text)
+    && !isPastOrExternalClinicalServiceContext(text)
+    && /(?:次回|次月|来月|次週|来週|今後|後日)/u.test(text)
+    && /(?:訪問|再評価|評価|見直(?:し|す)|確認|フォロー|診察|受診|経過)/u.test(text)
+  ));
+  return hasCurrentAssessment && hasCurrentPlan && hasFollowupPlan ? 1 : 0;
+}
+
+function enumCounts(values = []) {
+  const counts = {};
+  for (const value of values) {
+    const key = String(value || "").trim() || "missing";
+    counts[key] = Number(counts[key] || 0) + 1;
+  }
+  return Object.fromEntries(
+    Object.entries(counts).sort(([left], [right]) => left.localeCompare(right))
+  );
+}
+
+function finiteCountOrZero(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
 }
 
 function structuredOptionEntryCount(options = {}, keys = []) {

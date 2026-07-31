@@ -6,7 +6,9 @@ import {
   normalizeMockActionName,
   parseCsv,
   reconcileMockActCoverageRuns,
-  summarizeMockActCoverage
+  resolveRateLimitRetryDelayMs,
+  summarizeMockActCoverage,
+  summarizeMockActCoverageRepetitions
 } from "./fee-mock-act-coverage.mjs";
 
 test("classifies mock action-list rows into the five evaluation classes", () => {
@@ -93,6 +95,10 @@ test("audits calculated lines, proposals, comments, and patient charges separate
   assert.equal(run.metrics.confirmedCount, 1);
   assert.equal(run.metrics.candidateCount, 1);
   assert.equal(run.metrics.commentDetectedCount, 1);
+  assert.equal(
+    run.gold.find((item) => item.actionClass === "claim_comment").matchedCommentStatus,
+    "legacy_detected"
+  );
   assert.equal(run.metrics.patientChargeCount, 1);
   assert.equal(run.actual.falseProposalCount, 1);
   assert.equal(Object.hasOwn(run, "clinicalText"), false);
@@ -100,6 +106,155 @@ test("audits calculated lines, proposals, comments, and patient charges separate
   const summary = summarizeMockActCoverage([run]);
   assert.equal(summary.billableMatchRate, 1);
   assert.equal(summary.commentDetectionRate, 1);
+});
+
+test("uses structured generated and input-required comments without changing comment recall", () => {
+  const run = auditMockActCoverageCase({
+    caseId: "structured-comments",
+    patientId: "1004",
+    serviceDate: "2026-06-25",
+    setting: "home_visit",
+    clinicalText: "synthetic chart",
+    actionList: [
+      "訪問診療年月日（在宅患者訪問診療料（１））；令和 8年 6月25日",
+      "頻回な在宅患者訪問診療を行った必要性（在宅患者訪問診療料（１））"
+    ]
+  }, {
+    candidates: [{
+      sourceType: "calculated_line",
+      code: "114030310",
+      name: "在宅患者訪問診療料（１）１（同一建物居住者）",
+      comments: [
+        {
+          commentCode: "850100095",
+          name: "訪問診療年月日（在宅患者訪問診療料（１））",
+          status: "generated",
+          text: "訪問診療年月日（在宅患者訪問診療料（１））；令和 8年 6月25日"
+        },
+        {
+          commentCode: "830100088",
+          name: "頻回な在宅患者訪問診療を行った必要性（在宅患者訪問診療料（１））",
+          status: "input_required",
+          text: ""
+        }
+      ]
+    }],
+    notices: []
+  }, [
+    {
+      sample_action_name: "訪問診療年月日（在宅患者訪問診療料（１））；令和 8年 6月25日",
+      action_class: "claim_comment",
+      comment_code: "850100095"
+    },
+    {
+      sample_action_name: "頻回な在宅患者訪問診療を行った必要性（在宅患者訪問診療料（１））",
+      action_class: "claim_comment",
+      comment_code: "830100088"
+    }
+  ]);
+
+  assert.equal(run.metrics.commentCount, 2);
+  assert.equal(run.metrics.commentDetectedCount, 2);
+  assert.equal(run.metrics.commentGeneratedCount, 1);
+  assert.equal(run.metrics.commentInputRequiredCount, 1);
+  assert.deepEqual(
+    run.gold.map((item) => item.matchedCommentStatus),
+    ["generated", "input_required"]
+  );
+  const summary = summarizeMockActCoverage([run]);
+  assert.equal(summary.commentDetectionRate, 1);
+  assert.equal(summary.commentGeneratedCount, 1);
+  assert.equal(summary.commentInputRequiredCount, 1);
+});
+
+test("collects PHI-free standing-lane reasons and missing facts", () => {
+  const run = auditMockActCoverageCase({
+    caseId: "standing-diagnostics",
+    patientId: "1001",
+    serviceDate: "2026-06-01",
+    setting: "home_visit",
+    clinicalText: "synthetic",
+    actionList: []
+  }, {
+    sidecarDraft: {
+      calculation: {
+        candidates: [],
+        notices: [],
+        metrics: {
+          standingLane: {
+            disabledReason: null,
+            familyCount: 231,
+            additionalSelectorResolvedCount: 19,
+            structuredTriggers: {
+              reasonCounts: {
+                required_positive_fact_missing: 1
+              },
+              perTrigger: [{
+                triggerId: "c002_home_management_review_candidate",
+                ruleKind: "standing_family",
+                reason: "required_positive_fact_missing",
+                missingFacts: ["clinical.currentManagementOrCounselingCount"]
+              }]
+            },
+            factsSummary: {
+              residenceType: "private",
+              plannedHomeVisit: true,
+              activeDiagnosisCount: 1,
+              currentManagementOrCounselingCount: 0,
+              currentManagementEventCount: 0,
+              currentManagementStandingMentionCount: 0,
+              currentManagementTextSignalCount: 0,
+              currentLongitudinalPlanSignalCount: 0,
+              standingMentionCount: 0,
+              deviceFactCount: 0,
+              eventCount: 1,
+              currentOwnEventCount: 0,
+              eventTypeCounts: { counseling: 1 },
+              actionStatusCounts: { instruction_only: 1 },
+              temporalRelationCounts: { unknown: 1 },
+              providerOwnershipCounts: { own_clinic: 1 }
+            }
+          }
+        }
+      }
+    }
+  });
+
+  assert.equal(run.standingLane.familyCount, 231);
+  assert.equal(
+    run.standingLane.factsSummary.currentManagementOrCounselingCount,
+    0
+  );
+  assert.deepEqual(
+    {
+      event: run.standingLane.factsSummary.currentManagementEventCount,
+      mention: run.standingLane.factsSummary.currentManagementStandingMentionCount,
+      text: run.standingLane.factsSummary.currentManagementTextSignalCount,
+      plan: run.standingLane.factsSummary.currentLongitudinalPlanSignalCount
+    },
+    {
+      event: 0,
+      mention: 0,
+      text: 0,
+      plan: 0
+    }
+  );
+  assert.deepEqual(
+    run.standingLane.structuredTriggers.perTrigger[0].missingFacts,
+    ["clinical.currentManagementOrCounselingCount"]
+  );
+  const summary = summarizeMockActCoverage([run]);
+  assert.deepEqual(summary.standingLane, {
+    observedRunCount: 1,
+    missingRunCount: 0,
+    disabledReasonCounts: {},
+    reasonCounts: {
+      required_positive_fact_missing: 1
+    },
+    missingFactCounts: {
+      "clinical.currentManagementOrCounselingCount": 1
+    }
+  });
 });
 
 test("parses quoted CSV mapping rows", () => {
@@ -364,4 +519,80 @@ test("point totals compare the same billable-ready scope on both sides", () => {
   assert.equal(summary.billableReadyExpectedPointTotal, 720);
   assert.equal(summary.detectedBillableReadyPointTotal, 720);
   assert.equal(summary.pointTotalsMatch, true);
+});
+
+test("honors Retry-After and otherwise uses bounded exponential backoff", () => {
+  assert.equal(resolveRateLimitRetryDelayMs("12", {
+    attempt: 0,
+    baseDelayMs: 5_000,
+    maxDelayMs: 60_000
+  }), 12_000);
+  assert.equal(resolveRateLimitRetryDelayMs(
+    "Thu, 01 Jan 2026 00:00:09 GMT",
+    {
+      nowMs: Date.parse("Thu, 01 Jan 2026 00:00:00 GMT"),
+      baseDelayMs: 5_000,
+      maxDelayMs: 60_000
+    }
+  ), 9_000);
+  assert.equal(resolveRateLimitRetryDelayMs("", {
+    attempt: 1,
+    baseDelayMs: 5_000,
+    maxDelayMs: 60_000
+  }), 10_000);
+  assert.equal(resolveRateLimitRetryDelayMs("", {
+    attempt: 10,
+    baseDelayMs: 5_000,
+    maxDelayMs: 60_000
+  }), 60_000);
+});
+
+test("does not report determinism when only part of the requested repeats completed", () => {
+  const passingSummary = {
+    actCoverageRecall: 1,
+    dangerousFalsePositiveCount: 0,
+    commentCount: 0,
+    commentDetectionRate: null,
+    pointTotalsMatch: true
+  };
+  const summary = summarizeMockActCoverageRepetitions([
+    {
+      repeatIndex: 1,
+      status: "complete",
+      summary: passingSummary,
+      outputSha256: "same"
+    },
+    {
+      repeatIndex: 2,
+      status: "running",
+      summary: passingSummary
+    }
+  ]);
+
+  assert.equal(summary.repeatCoverageComplete, false);
+  assert.equal(summary.deterministicOutputs, false);
+  assert.equal(summary.allAcceptanceChecksPassed, false);
+  assert.equal(summary.repeatAcceptance[0].commentDetectionPassed, true);
+});
+
+test("accepts two complete identical repeats when no comment rows exist", () => {
+  const passingSummary = {
+    rateLimitRetryCount: 1,
+    actCoverageRecall: 1,
+    dangerousFalsePositiveCount: 0,
+    commentCount: 0,
+    commentDetectionRate: null,
+    pointTotalsMatch: true
+  };
+  const summary = summarizeMockActCoverageRepetitions([1, 2].map((repeatIndex) => ({
+    repeatIndex,
+    status: "complete",
+    summary: passingSummary,
+    outputSha256: "same"
+  })));
+
+  assert.equal(summary.repeatCoverageComplete, true);
+  assert.equal(summary.deterministicOutputs, true);
+  assert.equal(summary.allAcceptanceChecksPassed, true);
+  assert.equal(summary.rateLimitRetryCount, 2);
 });

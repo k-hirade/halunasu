@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "fee-sidecar-selection-axes-source-v1",
+  "revision": "2026-07-31.1",
+  "effectiveFrom": "2026-06-01",
+  "sources": [
+    {
+      "title": "診療行為マスター（令和8年6月版）",
+      "url": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_01.files/s_ALL20260605.zip"
+    },
+    {
+      "title": "令和8年度診療報酬改定関連通知",
+      "url": "https://www.mhlw.go.jp/stf/newpage_67729.html"
+    }
+  ],
+  "familySelectors": [
+    {
+      "name": "在医総管",
+      "hierarchy": { "chapter": "2", "part": "02", "alphaPart": "C", "section": "002", "branch": "00" }
+    },
+    {
+      "name": "施医総管",
+      "hierarchy": { "chapter": "2", "part": "02", "alphaPart": "C", "section": "002", "branch": "02" }
+    }
+  ],
+  "facilityClassRules": [
+    { "value": "enhanced_support", "requiredAnyStandardKeys": ["3055"], "label": "機能強化型在支診等" },
+    { "value": "support", "requiredAnyStandardKeys": ["3168", "3169"], "label": "在支診等" }
+  ],
+  "bedRules": [
+    { "value": true, "requiredAnyStandardKeys": ["3057", "3058"], "label": "病床あり" }
+  ],
+  "axisQuestions": {
+    "specialDisease": "厚生労働大臣が定める疾病等に該当しますか",
+    "reduced": "減算区分に該当しますか",
+    "specialProvision": "注8・注14の特例に該当しますか"
+  }
+}

@@ -94,6 +94,25 @@ class RuntimeFeatureProfileTest(unittest.TestCase):
         self.assertEqual(values["FEE_CONTEXT_CLASSIFIER_MODE_STG"], "off")
         self.assertEqual(values["FEE_SPAN_DETECTOR_MODE_STG"], "shadow")
 
+    def test_prod_auxiliary_recheck_is_openai_primary_and_facility_scoped(self) -> None:
+        values = load_profile(
+            "prod-openai-primary-span-recheck",
+            environment="prod",
+            profile_root=Path("configs/runtime-feature-profiles"),
+        )
+        self.assertEqual(
+            values["FEE_CLINICAL_EXTRACTION_STRATEGY_PROD"],
+            "openai_primary",
+        )
+        self.assertEqual(values["FEE_EXTRACTION_COVERAGE_MODE_PROD"], "verify")
+        self.assertEqual(values["FEE_LINKER_MODE_PROD"], "off")
+        self.assertEqual(values["FEE_CONTEXT_CLASSIFIER_MODE_PROD"], "off")
+        self.assertEqual(values["FEE_SPAN_DETECTOR_MODE_PROD"], "shadow")
+        self.assertEqual(
+            values["FEE_EXTRACTION_COVERAGE_FACILITY_ALLOWLIST_PROD"],
+            "fac_2bcdca3277860182a6de2a8287",
+        )
+
     def test_auxiliary_recheck_control_differs_only_by_mode_and_profile_name(self) -> None:
         root = Path("configs/runtime-feature-profiles")
         active = load_profile(

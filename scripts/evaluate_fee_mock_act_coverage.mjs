@@ -10,7 +10,9 @@ import {
   normalizeMockActionName,
   parseCsv,
   reconcileMockActCoverageRuns,
-  summarizeMockActCoverage
+  resolveRateLimitRetryDelayMs,
+  summarizeMockActCoverage,
+  summarizeMockActCoverageRepetitions
 } from "./lib/fee-mock-act-coverage.mjs";
 import {
   createStaticSidecarEvaluatorAuth,
@@ -38,6 +40,9 @@ const defaults = {
   expectedExtractionCoverageMode: "verify",
   expectedStandingFacts: "true",
   repeat: 1,
+  maxRateLimitRetries: 4,
+  rateLimitBackoffMs: 5_000,
+  rateLimitMaxBackoffMs: 60_000,
   timeoutMs: 180_000
 };
 
@@ -130,6 +135,13 @@ const result = {
     route: "/v1/integrations/sidecar/calculate",
     actionListUsedAsCalculationInput: false,
     persistedRawClinicalText: false,
+    rateLimitRetry: {
+      statusCode: 429,
+      maxRetries: args.maxRateLimitRetries,
+      baseDelayMs: args.rateLimitBackoffMs,
+      maxDelayMs: args.rateLimitMaxBackoffMs,
+      retryAfterPreferred: true
+    },
     actionClasses: [
       "billable_line",
       "claim_comment",
@@ -160,36 +172,49 @@ try {
       );
       const body = sidecarBody(item, sidecarOptions);
       const credentials = await sidecarAuth.credentials();
-      const response = await requestJson(`${args.feeBaseUrl}/v1/integrations/sidecar/calculate`, {
-        method: "POST",
-        body,
-        timeoutMs: args.timeoutMs,
-        headers: {
-          authorization: `Bearer ${credentials.accessToken}`,
-          origin: `chrome-extension://${extensionId}`,
-          "x-sidecar-code-verifier": credentials.verifier
+      const response = await requestJsonWithRateLimitRetry(
+        `${args.feeBaseUrl}/v1/integrations/sidecar/calculate`,
+        {
+          method: "POST",
+          body,
+          timeoutMs: args.timeoutMs,
+          headers: {
+            authorization: `Bearer ${credentials.accessToken}`,
+            origin: `chrome-extension://${extensionId}`,
+            "x-sidecar-code-verifier": credentials.verifier
+          }
+        },
+        {
+          label: item.caseId,
+          maxRetries: args.maxRateLimitRetries,
+          baseDelayMs: args.rateLimitBackoffMs,
+          maxDelayMs: args.rateLimitMaxBackoffMs
         }
-      });
+      );
       assertResponse(response, item.caseId);
       repetition.runs.push({
         repeatIndex,
+        rateLimitRetryCount: response.rateLimitRetryCount,
         ...auditMockActCoverageCase(item, response.body, mappingRows)
       });
       reconcileMockActCoverageRuns(repetition.runs, mappingRows);
       repetition.summary = summarizeMockActCoverage(repetition.runs);
       result.runs = result.repetitions.flatMap((entry) => entry.runs);
-      result.summary = summarizeRepetitions(result.repetitions);
+      result.summary = summarizeMockActCoverageRepetitions(result.repetitions);
       persist(outputDir, result);
     }
     repetition.status = "complete";
     reconcileMockActCoverageRuns(repetition.runs, mappingRows);
     repetition.summary = summarizeMockActCoverage(repetition.runs);
     repetition.outputSha256 = coverageOutputSha256(repetition.runs);
+    result.runs = result.repetitions.flatMap((entry) => entry.runs);
+    result.summary = summarizeMockActCoverageRepetitions(result.repetitions);
+    persist(outputDir, result);
   }
   result.status = "complete";
   result.completedAt = new Date().toISOString();
   result.runs = result.repetitions.flatMap((entry) => entry.runs);
-  result.summary = summarizeRepetitions(result.repetitions);
+  result.summary = summarizeMockActCoverageRepetitions(result.repetitions);
 } catch (error) {
   result.status = "failed";
   result.failedAt = new Date().toISOString();
@@ -369,6 +394,8 @@ function persist(outputDir, payload) {
       `- billableReadyMatchRate: ${formatPercent(payload.summary?.billableReadyMatchRate)}`,
       `- confirmedBillableRate: ${formatPercent(payload.summary?.confirmedBillableRate)}`,
       `- commentDetectionRate: ${formatPercent(payload.summary?.commentDetectionRate)}`,
+      `- commentGeneratedCount: ${payload.summary?.commentGeneratedCount ?? 0}`,
+      `- commentInputRequiredCount: ${payload.summary?.commentInputRequiredCount ?? 0}`,
       `- falseProposalCount: ${payload.summary?.falseProposalCount ?? 0}`,
       `- dangerousFalsePositiveCount: ${payload.summary?.dangerousFalsePositiveCount ?? 0}`,
       `- candidatePrecision: ${formatPercent(payload.summary?.candidatePrecision)}`,
@@ -376,11 +403,19 @@ function persist(outputDir, payload) {
       `- billableReadyExpectedPointTotal: ${payload.summary?.billableReadyExpectedPointTotal ?? 0}`,
       `- detectedBillableReadyPointTotal: ${payload.summary?.detectedBillableReadyPointTotal ?? 0}`,
       `- pointTotalsMatch: ${payload.summary?.pointTotalsMatch === true}`,
+      `- completedRepeatCount: ${payload.summary?.completedRepeatCount ?? 0}/${payload.summary?.repeatCount ?? payload.repeatCount ?? 1}`,
+      `- repeatCoverageComplete: ${payload.summary?.repeatCoverageComplete === true}`,
       `- deterministicOutputs: ${payload.summary?.deterministicOutputs === true}`,
+      `- rateLimitRetryCount: ${payload.summary?.rateLimitRetryCount ?? 0}`,
+      `- standingLaneObservedRuns: ${payload.summary?.standingLane?.observedRunCount ?? 0}`,
+      `- standingLaneDisabledReasons: ${formatCountMap(payload.summary?.standingLane?.disabledReasonCounts)}`,
+      `- standingLaneTopReasons: ${formatCountMap(payload.summary?.standingLane?.reasonCounts)}`,
+      `- standingLaneTopMissingFacts: ${formatCountMap(payload.summary?.standingLane?.missingFactCounts)}`,
       "",
       "行為欄は評価専用であり、算定APIへの入力には使用していません。",
       "患者名とカルテ本文は保存せず、本文はSHA-256のみを記録しています。",
       "採用不可・区分未確定の候補はactCoverageRecallには含めますが、billableReadyMatchRateと点数合計には含めません。",
+      "コメント検知は構造化comments/noticesのtargetCode・commentCode・statusを優先します。generatedとinput_requiredはいずれも義務検知として数え、状態別件数を別記します。",
       ""
     ].join("\n")
   );
@@ -403,10 +438,35 @@ async function requestJson(url, options = {}) {
     const text = await response.text();
     return {
       statusCode: response.status,
+      retryAfter: response.headers.get("retry-after") || "",
       body: text ? JSON.parse(text) : null
     };
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+async function requestJsonWithRateLimitRetry(url, options = {}, retryOptions = {}) {
+  const maxRetries = Number(retryOptions.maxRetries) || 0;
+  let retryCount = 0;
+  while (true) {
+    const response = await requestJson(url, options);
+    if (response.statusCode !== 429 || retryCount >= maxRetries) {
+      return {
+        ...response,
+        rateLimitRetryCount: retryCount
+      };
+    }
+    const delayMs = resolveRateLimitRetryDelayMs(response.retryAfter, {
+      attempt: retryCount,
+      baseDelayMs: retryOptions.baseDelayMs,
+      maxDelayMs: retryOptions.maxDelayMs
+    });
+    retryCount += 1;
+    process.stdout.write(
+      `[rate-limit] ${retryOptions.label || "request"}: retry ${retryCount}/${maxRetries} in ${delayMs}ms\n`
+    );
+    await sleep(delayMs);
   }
 }
 
@@ -437,35 +497,6 @@ function validateRuntimePreflight(ready, options) {
       `standing facts must be ${expectedStandingFacts}, got ${actualStandingFacts}`
     );
   }
-}
-
-function summarizeRepetitions(repetitions) {
-  const completed = repetitions.filter((entry) => entry.status === "complete" && entry.summary);
-  const latest = completed.at(-1)?.summary || repetitions.at(-1)?.summary || {};
-  const outputHashes = completed.map((entry) => entry.outputSha256).filter(Boolean);
-  const acceptance = completed.map((entry) => ({
-    repeatIndex: entry.repeatIndex,
-    actCoveragePassed: entry.summary.actCoverageRecall === 1,
-    dangerousFalsePositivePassed: entry.summary.dangerousFalsePositiveCount === 0,
-    commentDetectionPassed: entry.summary.commentDetectionRate === 1,
-    pointTotalsPassed: entry.summary.pointTotalsMatch === true
-  }));
-  return {
-    ...latest,
-    repeatCount: repetitions.length,
-    completedRepeatCount: completed.length,
-    deterministicOutputs: completed.length > 0
-      && outputHashes.length === completed.length
-      && new Set(outputHashes).size === 1,
-    allAcceptanceChecksPassed: completed.length > 0
-      && acceptance.every((entry) => (
-        entry.actCoveragePassed
-        && entry.dangerousFalsePositivePassed
-        && entry.commentDetectionPassed
-        && entry.pointTotalsPassed
-      )),
-    repeatAcceptance: acceptance
-  };
 }
 
 function coverageOutputSha256(runs) {
@@ -588,8 +619,32 @@ function parseArgs(argv) {
   }
   parsed.timeoutMs = Number(parsed.timeoutMs || defaults.timeoutMs);
   parsed.repeat = Number(parsed.repeat || defaults.repeat);
+  parsed.maxRateLimitRetries = Number(
+    parsed.maxRateLimitRetries ?? defaults.maxRateLimitRetries
+  );
+  parsed.rateLimitBackoffMs = Number(
+    parsed.rateLimitBackoffMs ?? defaults.rateLimitBackoffMs
+  );
+  parsed.rateLimitMaxBackoffMs = Number(
+    parsed.rateLimitMaxBackoffMs ?? defaults.rateLimitMaxBackoffMs
+  );
   if (!Number.isInteger(parsed.repeat) || parsed.repeat < 1 || parsed.repeat > 10) {
     throw new Error("--repeat must be an integer from 1 to 10");
+  }
+  if (
+    !Number.isInteger(parsed.maxRateLimitRetries)
+    || parsed.maxRateLimitRetries < 0
+    || parsed.maxRateLimitRetries > 10
+  ) {
+    throw new Error("--max-rate-limit-retries must be an integer from 0 to 10");
+  }
+  if (
+    !Number.isFinite(parsed.rateLimitBackoffMs)
+    || parsed.rateLimitBackoffMs < 0
+    || !Number.isFinite(parsed.rateLimitMaxBackoffMs)
+    || parsed.rateLimitMaxBackoffMs < parsed.rateLimitBackoffMs
+  ) {
+    throw new Error("--rate-limit backoff values must be non-negative and max must be >= base");
   }
   return parsed;
 }
@@ -610,8 +665,15 @@ function printHelp() {
     + "  --claim-months LIST           comma-separated months (default 2026-06,2026-07)\n"
     + "  --action-map-overrides PATH   reviewed manual mapping overrides\n"
     + "  --repeat N                    repeat the full matrix for stability (default 1)\n"
+    + "  --max-rate-limit-retries N    bounded HTTP 429 retries (default 4)\n"
+    + "  --rate-limit-backoff-ms N     fallback retry delay (default 5000)\n"
+    + "  --rate-limit-max-backoff-ms N maximum fallback delay (default 60000)\n"
     + "  --output-dir PATH             report directory\n"
   );
+}
+
+function sleep(delayMs) {
+  return new Promise((resolve) => setTimeout(resolve, delayMs));
 }
 
 async function createSidecarAuth(options, extensionId) {
@@ -696,7 +758,20 @@ function dateStamp(value) {
 }
 
 function formatPercent(value) {
+  if (value === null || value === undefined || value === "") {
+    return "n/a";
+  }
   return Number.isFinite(Number(value)) ? `${(Number(value) * 100).toFixed(2)}%` : "n/a";
+}
+
+function formatCountMap(value) {
+  const entries = Object.entries(value && typeof value === "object" ? value : {})
+    .sort((left, right) => Number(right[1] || 0) - Number(left[1] || 0)
+      || String(left[0]).localeCompare(String(right[0])))
+    .slice(0, 8);
+  return entries.length
+    ? entries.map(([key, count]) => `${key}=${count}`).join(", ")
+    : "none";
 }
 
 function asArray(value) {

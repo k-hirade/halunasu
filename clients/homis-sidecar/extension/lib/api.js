@@ -1,11 +1,15 @@
 (function registerSidecarApi(global) {
   "use strict";
 
-  const PLATFORM_BASE_URL = "https://platform-api-stg-lp2t3inhza-an.a.run.app";
-  const FEE_BASE_URL = "https://fee-api-stg-wmfrwcpzkq-an.a.run.app";
-  const APPROVAL_BASE_URL = "https://fee.stg.halunasu.com/settings/sidecar-approvals";
-  const DEVICE_ID_KEY = "halunasuSidecarDeviceId";
-  const GRANT_ID_KEY = "halunasuSidecarGrantId";
+  const configuration = validateConfiguration(global.HalunasuSidecarConfig);
+  const PLATFORM_BASE_URL = configuration.platformBaseUrl;
+  const FEE_BASE_URL = configuration.feeBaseUrl;
+  const APPROVAL_BASE_URL = configuration.approvalBaseUrl;
+  const STORAGE_PREFIX = `halunasuSidecar:${configuration.environment}`;
+  const DEVICE_ID_KEY = `${STORAGE_PREFIX}:deviceId`;
+  const GRANT_ID_KEY = `${STORAGE_PREFIX}:grantId`;
+  const LEGACY_DEVICE_ID_KEY = "halunasuSidecarDeviceId";
+  const LEGACY_GRANT_ID_KEY = "halunasuSidecarGrantId";
   let pendingAuthorization = null;
   let currentAccess = null;
 
@@ -57,6 +61,7 @@
   }
 
   async function connectWithStoredGrant() {
+    await migrateLegacyStgStorage();
     const stored = await storageGet([GRANT_ID_KEY]);
     if (!stored[GRANT_ID_KEY]) {
       return null;
@@ -130,6 +135,7 @@
   }
 
   async function getOrCreateDeviceId() {
+    await migrateLegacyStgStorage();
     const stored = await storageGet([DEVICE_ID_KEY]);
     if (stored[DEVICE_ID_KEY]) {
       return stored[DEVICE_ID_KEY];
@@ -196,10 +202,69 @@
     return chrome.storage.local.remove(keys);
   }
 
+  async function migrateLegacyStgStorage() {
+    if (configuration.environment !== "stg") {
+      return;
+    }
+    const stored = await storageGet([
+      DEVICE_ID_KEY,
+      GRANT_ID_KEY,
+      LEGACY_DEVICE_ID_KEY,
+      LEGACY_GRANT_ID_KEY
+    ]);
+    const migration = {};
+    if (!stored[DEVICE_ID_KEY] && stored[LEGACY_DEVICE_ID_KEY]) {
+      migration[DEVICE_ID_KEY] = stored[LEGACY_DEVICE_ID_KEY];
+    }
+    if (!stored[GRANT_ID_KEY] && stored[LEGACY_GRANT_ID_KEY]) {
+      migration[GRANT_ID_KEY] = stored[LEGACY_GRANT_ID_KEY];
+    }
+    if (Object.keys(migration).length > 0) {
+      await storageSet(migration);
+    }
+    if (stored[LEGACY_DEVICE_ID_KEY] || stored[LEGACY_GRANT_ID_KEY]) {
+      await storageRemove([LEGACY_DEVICE_ID_KEY, LEGACY_GRANT_ID_KEY]);
+    }
+  }
+
+  function validateConfiguration(value) {
+    const input = value && typeof value === "object" ? value : {};
+    const environment = String(input.environment || "").trim();
+    if (!["stg", "prod"].includes(environment)) {
+      throw new Error("HOMISサイドカーの実行環境設定が不正です。");
+    }
+    const platformBaseUrl = secureOrigin(input.platformBaseUrl, "Platform API");
+    const feeBaseUrl = secureOrigin(input.feeBaseUrl, "Fee API");
+    const approvalBaseUrl = secureUrl(input.approvalBaseUrl, "承認ページ");
+    return Object.freeze({
+      environment,
+      platformBaseUrl,
+      feeBaseUrl,
+      approvalBaseUrl
+    });
+  }
+
+  function secureOrigin(value, label) {
+    const url = new URL(String(value || ""));
+    if (url.protocol !== "https:" || url.pathname !== "/" || url.search || url.hash) {
+      throw new Error(`${label}のURL設定が不正です。`);
+    }
+    return url.origin;
+  }
+
+  function secureUrl(value, label) {
+    const url = new URL(String(value || ""));
+    if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) {
+      throw new Error(`${label}のURL設定が不正です。`);
+    }
+    return url.toString().replace(/\/$/u, "");
+  }
+
   global.HalunasuSidecarApi = Object.freeze({
     calculate,
     clearGrant,
     connectWithStoredGrant,
+    environment: configuration.environment,
     pollDeviceAuthorization,
     startDeviceAuthorization
   });

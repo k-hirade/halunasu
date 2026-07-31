@@ -112,7 +112,44 @@ test("sidecar calculation cannot persist confirmed lines and cannot recalculate 
       totalPoints: 890,
       status: "confirmed",
       reviewRequired: false
-    }]
+    }],
+    reviewIssues: [{
+      reviewIssueId: "coverage_1",
+      issueCode: "line_coverage_gap",
+      severity: "warning",
+      messageForStaff: "未確認の行為があります。",
+      sidecarDisplay: {
+        fragments: ["創傷処置を実施"],
+        fragmentHashes: ["a".repeat(64), "invalid"]
+      }
+    }],
+    metrics: {
+      standingLane: {
+        disabledReason: null,
+        familyCount: 231
+      },
+      autoBillingRules: {
+        appliedCount: 1,
+        applied: [{
+          ruleId: "home_visit",
+          code: "114001110",
+          action: "confirm",
+          billingRole: "home_visit_base",
+          sameBuilding: false,
+          variant: "outside_same_building",
+          clinicalText: "must not persist"
+        }]
+      },
+      sameHouseholdVisit: {
+        status: "first_visit",
+        replacementCandidateCount: 0,
+        suppressedCodeCount: 0,
+        counterpartDraftId: "must_not_persist"
+      },
+      untrustedMetric: {
+        clinicalText: "must not persist"
+      }
+    }
   }, {
     calculationId: "sidecar_calc_001",
     now: new Date("2026-07-18T00:01:00.000Z")
@@ -125,7 +162,72 @@ test("sidecar calculation cannot persist confirmed lines and cannot recalculate 
   assert.equal(calculated.status, "needs_review");
   assert.equal(calculated.calculationResult.lineItems[0].status, "candidate");
   assert.equal(calculated.calculationResult.lineItems[0].reviewRequired, true);
+  assert.deepEqual(calculated.calculationResult.metrics, {
+    standingLane: {
+      disabledReason: null,
+      familyCount: 231
+    },
+    autoBillingRules: {
+      applied: [{
+        ruleId: "home_visit",
+        code: "114001110",
+        action: "confirm",
+        billingRole: "home_visit_base",
+        sameBuilding: false,
+        variant: "outside_same_building"
+      }],
+      appliedCount: 1
+    },
+    sameHouseholdVisit: {
+      status: "first_visit",
+      replacementCandidateCount: 0,
+      suppressedCodeCount: 0
+    }
+  });
+  assert.deepEqual(calculated.calculationResult.reviewIssues[0].sidecarDisplay, {
+    fragments: ["創傷処置を実施"],
+    fragmentHashes: ["a".repeat(64)]
+  });
   assert.equal(adopted.lifecycleStatus, "adopted");
   assert.equal(adopted.adoptedFeeSessionId, "fee_001");
   assert.throws(() => applySidecarCalculationResult(adopted, { provider: "test" }), /cannot be recalculated/);
+});
+
+test("calculation revision and set diff detect simultaneous additions and removals", () => {
+  const draft = buildSidecarCalculationDraft(draftInput(), {
+    now: new Date("2026-07-18T00:00:00.000Z")
+  });
+  const first = applySidecarCalculationResult(draft, {
+    provider: "test",
+    status: "completed",
+    totalPoints: 100,
+    lineItems: [{ lineId: "line_a", code: "100000001", name: "候補A", quantity: 1 }],
+    warnings: ["警告A"],
+    reviewIssues: []
+  }, {
+    calculationId: "calc_1",
+    now: new Date("2026-07-18T00:01:00.000Z")
+  });
+  const second = applySidecarCalculationResult(first, {
+    provider: "test",
+    status: "completed",
+    totalPoints: 100,
+    lineItems: [{ lineId: "line_b", code: "100000002", name: "候補B", quantity: 1 }],
+    warnings: ["警告B"],
+    reviewIssues: []
+  }, {
+    calculationId: "calc_2",
+    now: new Date("2026-07-18T00:02:00.000Z")
+  });
+
+  assert.equal(first.sourceRevision, 1);
+  assert.equal(first.calculationRevision, 1);
+  assert.equal(first.calculationDiff, null);
+  assert.equal(second.sourceRevision, 1);
+  assert.equal(second.calculationRevision, 2);
+  assert.deepEqual(second.calculationDiff, {
+    candidates: { addedCount: 1, removedCount: 1 },
+    notices: { addedCount: 1, removedCount: 1 },
+    pointDelta: 0
+  });
 });

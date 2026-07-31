@@ -9503,6 +9503,8 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
   assert.equal(first.body.sidecarDraft.candidateOnly, true);
   assert.equal(first.body.sidecarDraft.calculation.candidateOnly, true);
   assert.equal(first.body.sidecarDraft.calculation.status, "needs_review");
+  assert.equal(first.body.sidecarDraft.calculationRevision, 1);
+  assert.equal(first.body.sidecarDraft.calculationDiff, null);
   assert.ok(first.body.sidecarDraft.calculation.candidates.length > 0);
   assert.ok(first.body.sidecarDraft.calculation.candidates.every((candidate) => (
     candidate.candidateOnly === true && candidate.status === "needs_review"
@@ -9515,6 +9517,9 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
     .find((candidate) => candidate.candidateId === "ambiguous_home_oxygen");
   assert.deepEqual(ambiguousCandidate.codeCandidates, ["114009210", "114009310"]);
   assert.equal(ambiguousCandidate.requiresSelection, true);
+  assert.equal(ambiguousCandidate.zone, "selection_required");
+  assert.equal(ambiguousCandidate.billingEligibility, "review_required");
+  assert.equal(ambiguousCandidate.selectionResolution, "insufficient");
   assert.equal(ambiguousCandidate.estimatedTotalPoints, 0);
   assert.deepEqual(ambiguousCandidate.display, {
     stem: "在宅酸素療法指導管理料",
@@ -9562,6 +9567,8 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
   assert.equal(second.statusCode, 200);
   assert.equal(second.body.sidecarDraft.sidecarDraftId, firstDraftId);
   assert.equal(second.body.sidecarDraft.sourceRevision, 2);
+  assert.equal(second.body.sidecarDraft.calculationRevision, 2);
+  assert.ok(second.body.sidecarDraft.calculationDiff);
   assert.deepEqual(second.body.sidecarDraft.encounterDetails, {
     sameBuilding: true,
     sameBuildingSource: "user",
@@ -9772,6 +9779,89 @@ test("sidecar notices deduplicate warning and review issue paths and honor encou
   assert.ok(calculation.notices.length < calculation.warnings.length + calculation.reviewIssues.length);
 });
 
+test("sidecar response attaches generated and required comments to their candidate", async () => {
+  const stores = createStores();
+  stores.feeCalculator.calculate = async () => ({
+    provider: "test_fee_engine",
+    source: "test",
+    status: "completed",
+    totalPoints: 215,
+    lineItems: [{
+      lineId: "visit_fee",
+      code: "114030310",
+      name: "在宅患者訪問診療料（１）１（同一建物居住者）",
+      orderType: "procedure",
+      points: 215,
+      quantity: 1,
+      totalPoints: 215
+    }],
+    warnings: [
+      "Required comment candidate: 114030310 在宅患者訪問診療料 needs 850100094 必要性を認めた診療年月日（在宅患者訪問診療料（１））",
+      "Required comment candidate: 114030310 在宅患者訪問診療料 needs 850100095 訪問診療年月日（在宅患者訪問診療料（１））",
+      "Required comment candidate: 114030310 在宅患者訪問診療料 needs 830100088 頻回な在宅患者訪問診療を行った必要性（在宅患者訪問診療料（１））"
+    ],
+    metrics: {
+      autoBillingRules: {
+        appliedCount: 1,
+        applied: [{
+          ruleId: "home_visit",
+          code: "114030310",
+          action: "confirm",
+          billingRole: "home_visit_base",
+          sameBuilding: true,
+          variant: "same_building"
+        }]
+      }
+    }
+  });
+  const headers = await signedSidecarHeaders(stores);
+  const body = {
+    ...sidecarCalculationBody(),
+    sameBuilding: true,
+    sameBuildingSource: "dom",
+    singleBuildingPatientCount: 6
+  };
+  const response = await request(
+    stores,
+    "POST",
+    "/v1/integrations/sidecar/calculate",
+    body,
+    headers,
+    sidecarRequestOptions()
+  );
+
+  assert.equal(response.statusCode, 201);
+  const calculation = response.body.sidecarDraft.calculation;
+  const visit = calculation.candidates.find((candidate) => candidate.code === "114030310");
+  assert.ok(visit);
+  assert.ok(visit.badges.includes("facility_rule"));
+  assert.deepEqual(
+    visit.comments
+      .map((comment) => [comment.commentCode, comment.status])
+      .sort((left, right) => left[0].localeCompare(right[0])),
+    [
+      ["830100088", "input_required"],
+      ["850100094", "generated"],
+      ["850100095", "generated"]
+    ]
+  );
+  assert.ok(visit.comments.find((comment) => comment.commentCode === "850100095").text.includes(
+    "令和 8年 5月28日"
+  ));
+  assert.equal(
+    calculation.notices.filter((notice) => notice.kind === "attached_comment").length,
+    3
+  );
+  assert.equal(calculation.notices.every((notice) => (
+    ["required", "recommended", "reference"].includes(notice.attentionLevel)
+  )), true);
+  assert.equal(
+    calculation.notices.filter((notice) => notice.checklist === true).length,
+    1
+  );
+  assert.equal(calculation.warnings.length >= 3, true);
+});
+
 test("sidecar auto-provisions an unlinked patient without changing the canonical history key", async () => {
   const stores = createStores();
   const sidecarHeaders = await signedSidecarHeaders(stores);
@@ -9894,7 +9984,7 @@ test("sidecar auto-provisions an unlinked patient without changing the canonical
   });
 });
 
-test("sidecar calculation forwards the canonical patient to W1c and returns its review candidate", async () => {
+test("sidecar calculation forwards v15 management-continuation facts to W1c", async () => {
   const stores = createStores();
   const standingFamily = {
     familyId: "family_home_management_sidecar_e2e",
@@ -9933,30 +10023,30 @@ test("sidecar calculation forwards the canonical patient to W1c and returns its 
     standingLookup = { orgId, facilityId, canonicalPatientId };
     return originalListProfiles(orgId, facilityId, canonicalPatientId);
   };
-  const clinicalFactsExtractor = async () => ({
+  const clinicalFactsExtractor = async ({ preprocessedLines = [] } = {}) => ({
     visit_type: { kind: "revisit", evidence: "定期訪問", confidence: "high" },
     diagnoses: [{
       name: "慢性呼吸不全",
       status: "confirmed",
       evidence: "慢性呼吸不全"
     }],
-    clinical_events: [{
-      type: "management",
-      billing_domain: "home_care",
-      name: "在宅療養管理",
-      action_status: "performed",
-      temporal_relation: "current_visit",
-      source_origin: "own_clinic_record",
-      provider_ownership: "own_clinic",
-      result_assertion: "not_applicable",
-      certainty: "explicit",
-      section: "P",
-      evidence: "在宅療養計画に基づく管理と指導を実施した。",
-      search_queries: ["在宅療養管理"]
+    clinical_events: [],
+    standing_mentions: [{
+      line_id: preprocessedLines.find((line) => (
+        String(line?.text || "").includes("在宅療養管理")
+      ))?.lineId,
+      target: "在宅療養管理",
+      status: "continued"
     }],
     excluded_events: [],
     missing_information: [],
-    review_flags: []
+    review_flags: [],
+    line_review: preprocessedLines.map((line) => ({
+      line_id: line.lineId,
+      line_role: String(line?.text || "").includes("在宅療養管理")
+        ? "management_continuation"
+        : "none"
+    }))
   });
   const body = sidecarCalculationBody();
   const response = await request(
@@ -9967,7 +10057,7 @@ test("sidecar calculation forwards the canonical patient to W1c and returns its 
       ...body,
       serviceDate: "2026-06-25",
       residenceType: "private",
-      clinicalText: "A: 慢性呼吸不全。P: 在宅療養計画に基づく管理と指導を実施した。"
+      clinicalText: "A: 慢性呼吸不全。P: 訪問看護と連携し在宅療養管理を継続。"
     },
     await signedSidecarHeaders(stores),
     sidecarRequestOptions({
@@ -9994,9 +10084,36 @@ test("sidecar calculation forwards the canonical patient to W1c and returns its 
   assert.equal(w1c.code, "114100001");
   assert.equal(w1c?.candidateOnly, true);
   assert.equal(w1c?.reviewRequired, true);
+  assert.equal(storedDraft.calculationResult.metrics.standingLane.disabledReason, null);
+  assert.equal(storedDraft.calculationResult.metrics.standingLane.familyCount, 1);
+  assert.equal(
+    storedDraft.calculationResult.metrics.standingLane.factsSummary
+      .currentManagementOrCounselingCount,
+    1
+  );
+  assert.equal(
+    storedDraft.calculationResult.metrics.standingLane.factsSummary
+      .currentManagementEventCount,
+    0
+  );
+  assert.equal(
+    storedDraft.calculationResult.metrics.standingLane.factsSummary
+      .currentManagementStandingMentionCount,
+    1
+  );
+  assert.equal(
+    storedDraft.calculationResult.metrics.standingLane.structuredTriggers.perTrigger
+      .find((entry) => entry.triggerId === "c002_home_management_review_candidate")
+      ?.reason,
+    "matched"
+  );
   assert.ok(response.body.sidecarDraft.calculation.candidates.some(
     (candidate) => candidate.candidateId === w1c.proposalId
   ));
+  assert.deepEqual(
+    response.body.sidecarDraft.calculation.metrics.standingLane,
+    storedDraft.calculationResult.metrics.standingLane
+  );
 });
 
 test("sidecar calculation compares same-date sibling drafts and blocks the second household visit", async () => {
@@ -11172,10 +11289,14 @@ test("施設恒常算定ルール: 届出キー・confirm/candidate・在宅受�
   assert.ok(facilityProposal, "施設ルール候補が提示される");
   assert.equal(facilityProposal.basis, "facility_auto_billing_rule");
   assert.ok(calculation.body.calculationResult.warnings.some((warning) => warning.includes("在宅区分の算定方針")));
-  // confirmで自動追加した明細は出所が警告として明示される
-  assert.ok(calculation.body.calculationResult.warnings.some((warning) => (
-    warning.includes("施設恒常算定ルール") && warning.includes("114001110")
+  // confirmで自動追加した明細の出所は構造化メトリクスへ保持し、自由文警告を増やさない。
+  assert.ok(!calculation.body.calculationResult.warnings.some((warning) => (
+    warning.includes("施設恒常算定ルール")
   )));
+  assert.deepEqual(
+    calculation.body.calculationResult.metrics.autoBillingRules.applied.map((entry) => entry.code),
+    ["114001110", "114057970"]
+  );
   // 在宅区分ではMI-003(基本診療料なし)を指摘しない
   assert.ok(!calculation.body.calculationResult.reviewIssues.some((issue) => issue.ruleId === "MI-003"));
 });

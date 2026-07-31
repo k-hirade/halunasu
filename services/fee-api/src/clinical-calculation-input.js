@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import {
   FEE_CLINICAL_FACTS_PROMPT_VERSION,
   extractFeeClinicalFactsWithOpenAi,
@@ -14,7 +15,8 @@ import {
   isNegatedClinicalServiceContext as isSharedNegatedClinicalServiceContext,
   isPastOrExternalClinicalServiceContext,
   normalizeClinicalPredicateText,
-  resolveClinicalServiceMentionScope
+  resolveClinicalServiceMentionScope,
+  splitClinicalEvidenceClauses
 } from "../../../packages/fee-contracts/src/index.js";
 import {
   FEE_CONCEPT_REGISTRY_VERSION,
@@ -2237,6 +2239,10 @@ async function inferStructuredClinicalCalculationOptions({
       const unresolvedCount = finalCoverage.gapSignals.length
         + recoveryPlan.omittedSpanCount;
       const unresolvedMessage = `カルテ内に抽出結果へ反映されていない可能性のある診療行為が${unresolvedCount}件あります。`;
+      const sidecarDisplay = sidecarDisplayFragments([
+        ...finalCoverage.gapSignals.map((signal) => signal?.detectedPhrase),
+        ...initialCoverage.gapSignals.map((signal) => signal?.detectedPhrase)
+      ]);
       converted.reviewIssues = [
         ...asArray(converted.reviewIssues),
         withReviewTopic({
@@ -2250,7 +2256,8 @@ async function inferStructuredClinicalCalculationOptions({
           messageForStaff: unresolvedMessage,
           evidence: "",
           requiredInput: "当日実施、予定、過去・他院情報の区別",
-          source: "auxiliary_extraction_coverage"
+          source: "auxiliary_extraction_coverage",
+          sidecarDisplay
         }, "extraction_coverage_check")
       ];
       converted.reviewWarnings = [...asArray(converted.reviewWarnings), unresolvedMessage];
@@ -3042,7 +3049,10 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
       messageForStaff: `抽出漏れの可能性: 算定対象の記載と判定された行がイベント化されていません(${lineLabels})。該当行の行為を確認し、必要なら算定候補へ追加してください。`,
       evidence: uncoveredBillableLines.map((line) => line.text).join(" / ").slice(0, 200),
       requiredInput: "該当行の行為内容、実施有無、標準コード",
-      source: "line_coverage_gate"
+      source: "line_coverage_gate",
+      sidecarDisplay: sidecarDisplayFragments(
+        uncoveredBillableLines.map((line) => line.text)
+      )
     }, "extraction_coverage_check");
     reviewIssues.push(coverageIssue);
     reviewWarnings.push(coverageIssue.messageForStaff);
@@ -3655,7 +3665,11 @@ async function convertAuxiliaryRecheckClinicalEventToCandidate({
         messageForStaff: message,
         evidence: String(event?.evidence || "").slice(0, 200),
         requiredInput: "当日実施、予定、過去・他院情報の区別",
-        source: "openai_auxiliary_recheck"
+        source: "openai_auxiliary_recheck",
+        sidecarDisplay: sidecarDisplayFragments([
+          event?.evidence,
+          clinicalEventName(event)
+        ])
       }, "extraction_coverage_check")
     ];
     result.reviewWarnings = [...asArray(result.reviewWarnings), message];
@@ -4168,7 +4182,12 @@ function managementContinuationOnlyText(value = "") {
   if (!text) {
     return false;
   }
-  return /(?:管理|療法|治療|処方|投薬|吸引|人工呼吸|酸素|カニューレ|機器|指導).{0,20}(?:継続中|継続|維持|管理中|変わらず|引き続き)|(?:継続中|継続|維持|管理中|変わらず|引き続き).{0,20}(?:管理|療法|治療|処方|投薬|吸引|人工呼吸|酸素|カニューレ|機器|指導)/u.test(text);
+  const standingTarget = "(?:管理|療法|治療|療養|ケア|支援|連携|情報共有|訪問看護|リハビリ|処方|投薬|吸引|人工呼吸|酸素|カニューレ|機器|指導)";
+  const continuation = "(?:継続中|継続|維持|管理中|変わらず|引き続き)";
+  return new RegExp(
+    `${standingTarget}.{0,20}${continuation}|${continuation}.{0,20}${standingTarget}`,
+    "u"
+  ).test(text);
 }
 
 function hasCurrentPerformedActPredicate(value = "") {
@@ -5110,29 +5129,36 @@ function standingMentionsForLane(facts = {}, preprocessing = null) {
 }
 
 export function deterministicStandingContinuationMentions(preprocessing = null) {
-  const mentions = asArray(preprocessing?.lines).map((line) => {
+  const mentions = asArray(preprocessing?.lines).flatMap((line) => {
     const text = String(line?.text || "").trim();
-    const normalized = normalizeClinicalPredicateText(text);
-    if (!text
-      || !managementContinuationOnlyText(normalized)
-      || hasCurrentPerformedActPredicate(normalized)
-      || isNegatedClinicalServiceContext(normalized)
-      || isStandingContinuationExplicitlyAbsent(normalized)
-      || isFutureOrOrderOnlyContext(normalized)
-      || isPastOrExternalClinicalServiceContext(normalized)) {
-      return null;
+    if (!text) {
+      return [];
     }
-    const target = deterministicStandingContinuationTarget(text);
-    if (!target) {
-      return null;
-    }
-    return {
-      lineId: String(line?.lineId || "").trim(),
-      target,
-      status: "continued",
-      text
-    };
-  }).filter(Boolean);
+    const clauses = splitClinicalEvidenceClauses(text);
+    return (clauses.length ? clauses : [{ text }]).map((clause) => {
+      const clauseText = String(clause?.text || "").trim();
+      const normalized = normalizeClinicalPredicateText(clauseText);
+      if (!clauseText
+        || !managementContinuationOnlyText(normalized)
+        || hasCurrentPerformedActPredicate(normalized)
+        || isNegatedClinicalServiceContext(normalized)
+        || isStandingContinuationExplicitlyAbsent(normalized)
+        || isFutureOrOrderOnlyContext(normalized)
+        || isPastOrExternalClinicalServiceContext(normalized)) {
+        return null;
+      }
+      const target = deterministicStandingContinuationTarget(clauseText);
+      if (!target) {
+        return null;
+      }
+      return {
+        lineId: String(line?.lineId || "").trim(),
+        target,
+        status: "continued",
+        text: clauseText
+      };
+    }).filter(Boolean);
+  });
   return normalizeStandingMentionsForLane(mentions);
 }
 
@@ -5140,6 +5166,9 @@ function isStandingContinuationExplicitlyAbsent(value = "") {
   const text = normalizeClinicalPredicateText(value);
   if (!text) {
     return false;
+  }
+  if (/継続(?:は|を)?(?:しない|せず|していない|していません|なし)/u.test(text)) {
+    return true;
   }
   const subject = "(?:管理|療法|治療|処方|投薬|吸引|人工呼吸|酸素|カニューレ|機器|指導)";
   const absent = "(?:なし|無し|不要|未導入|未使用|未装着|未施行|未実施|中止|終了)";
@@ -11519,6 +11548,19 @@ function uniqueObjects(values = []) {
 
 function uniqueStrings(values = []) {
   return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
+}
+
+function sidecarDisplayFragments(values = []) {
+  const fragments = uniqueStrings(values)
+    .map((value) => value.replace(/\s+/gu, " ").trim().slice(0, 80))
+    .filter(Boolean)
+    .slice(0, 16);
+  return {
+    fragments,
+    fragmentHashes: fragments.map((value) => (
+      crypto.createHash("sha256").update(value).digest("hex")
+    ))
+  };
 }
 
 function normalizeReviewWarnings(values = []) {

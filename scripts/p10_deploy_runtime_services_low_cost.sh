@@ -25,6 +25,9 @@ RUNTIME_FEATURE_PROFILE="${RUNTIME_FEATURE_PROFILE:-}"
 STG_HOMIS_SIDECAR_ENABLED_DEFAULT="true"
 STG_HOMIS_SIDECAR_EXTENSION_IDS_DEFAULT="nhbmaniknlcaaelpaoogepmkhphmmjof"
 STG_HOMIS_SIDECAR_SELECTOR_CONTRACTS_DEFAULT="homis-mock-v4,homis-mock-v3,homis-mock-v2"
+PROD_HOMIS_SIDECAR_ENABLED_DEFAULT="true"
+PROD_HOMIS_SIDECAR_EXTENSION_IDS_DEFAULT="nhbmaniknlcaaelpaoogepmkhphmmjof"
+PROD_HOMIS_SIDECAR_SELECTOR_CONTRACTS_DEFAULT="homis-mock-v4,homis-mock-v3,homis-mock-v2"
 
 load_runtime_feature_profile() {
   if [[ -z "${RUNTIME_FEATURE_PROFILE}" ]]; then
@@ -379,9 +382,9 @@ deploy_env() {
     fee_whitebox_thresholds_path="${FEE_WHITEBOX_THRESHOLDS_PATH_STG:-${fee_whitebox_thresholds_path}}"
     fee_extraction_feedback_hmac_key_version="${FEE_EXTRACTION_FEEDBACK_HMAC_KEY_VERSION_STG:-${fee_extraction_feedback_hmac_key_version}}"
   else
-    sidecar_enabled="${HOMIS_SIDECAR_ENABLED_PROD:-${sidecar_enabled:-false}}"
-    sidecar_allowed_extension_ids="${HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS_PROD:-${sidecar_allowed_extension_ids}}"
-    sidecar_allowed_selector_contract_versions="${HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS_PROD:-${sidecar_allowed_selector_contract_versions}}"
+    sidecar_enabled="${HOMIS_SIDECAR_ENABLED_PROD:-${sidecar_enabled:-${PROD_HOMIS_SIDECAR_ENABLED_DEFAULT}}}"
+    sidecar_allowed_extension_ids="${HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS_PROD:-${sidecar_allowed_extension_ids:-${PROD_HOMIS_SIDECAR_EXTENSION_IDS_DEFAULT}}}"
+    sidecar_allowed_selector_contract_versions="${HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS_PROD:-${sidecar_allowed_selector_contract_versions:-${PROD_HOMIS_SIDECAR_SELECTOR_CONTRACTS_DEFAULT}}}"
     sidecar_revoked_device_ids="${HOMIS_SIDECAR_REVOKED_DEVICE_IDS_PROD:-${sidecar_revoked_device_ids}}"
     sidecar_draft_retention_days="${HOMIS_SIDECAR_DRAFT_RETENTION_DAYS_PROD:-${sidecar_draft_retention_days}}"
     sidecar_grant_ttl_hours="${HOMIS_SIDECAR_GRANT_TTL_HOURS_PROD:-${sidecar_grant_ttl_hours}}"

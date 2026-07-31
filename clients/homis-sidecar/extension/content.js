@@ -55,6 +55,7 @@
       }
       return {
         ...extraction,
+        extractedAt: new Date().toISOString(),
         identityBefore,
         identityAfter,
         previewFingerprint: await proof.previewFingerprint(extraction)

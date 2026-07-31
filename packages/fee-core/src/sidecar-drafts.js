@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   applyCalculationResult,
   applyFeeSessionPatch,
@@ -38,6 +39,9 @@ export function buildSidecarCalculationDraft(input = {}, options = {}) {
     canonicalPatientResolutionStatus: input.canonicalPatientResolutionStatus || "not_linked",
     canonicalPatientLookupCompleteness: input.canonicalPatientLookupCompleteness || "complete",
     sourceRevision: 1,
+    calculationRevision: 0,
+    calculationSnapshot: null,
+    calculationDiff: null,
     encounterTypeSource: requiredString(input.encounterTypeSource, "encounterTypeSource"),
     extractionProof: input.extractionProof || null,
     lastCalculatedByMemberId: input.createdByMemberId,
@@ -109,12 +113,91 @@ export function applySidecarCalculationResult(current = {}, calculationResult = 
     throw conflictError("adopted sidecar draft cannot be recalculated");
   }
   const updated = applyCalculationResult(current, candidateOnlyCalculationResult(calculationResult), options);
+  const calculationSnapshot = buildSidecarCalculationSnapshot(updated.calculationResult);
+  const calculationRevision = Number(current.calculationRevision || 0) + 1;
   return {
     ...updated,
     lifecycleStatus: "draft",
     candidateOnly: true,
+    calculationRevision,
+    calculationSnapshot,
+    calculationDiff: calculationRevision > 1
+      ? diffSidecarCalculationSnapshots(current.calculationSnapshot, calculationSnapshot)
+      : null,
     reviewDecisions: {}
   };
+}
+
+function buildSidecarCalculationSnapshot(calculation = {}) {
+  const candidateKeys = [
+    ...(Array.isArray(calculation.lineItems) ? calculation.lineItems : []).map((line) => stableDigest([
+      "line",
+      line?.lineId,
+      line?.code,
+      line?.name,
+      line?.quantity
+    ])),
+    ...(Array.isArray(calculation.candidateProposals) ? calculation.candidateProposals : []).map((proposal) => stableDigest([
+      "proposal",
+      proposal?.proposalId || proposal?.candidateId,
+      proposal?.code,
+      ...(Array.isArray(proposal?.codeCandidates) ? [...proposal.codeCandidates].sort() : []),
+      proposal?.name || proposal?.title
+    ])),
+    ...(Array.isArray(calculation.reviewIssues) ? calculation.reviewIssues : [])
+      .filter((issue) => [
+        "auxiliary_extraction_unresolved",
+        "line_coverage_gap",
+        "line_review_incomplete",
+        "empty_clinical_extraction"
+      ].includes(String(issue?.issueCode || "")))
+      .map((issue) => stableDigest(["sensor", issue?.reviewIssueId, issue?.issueCode]))
+  ].sort();
+  const noticeKeys = [
+    ...(Array.isArray(calculation.reviewIssues) ? calculation.reviewIssues : []).map((issue) => stableDigest([
+      "issue",
+      issue?.reviewIssueId,
+      issue?.issueCode,
+      issue?.topicCode,
+      issue?.messageForStaff || issue?.message || issue?.title
+    ])),
+    ...(Array.isArray(calculation.warnings) ? calculation.warnings : []).map((warning) => stableDigest([
+      "warning",
+      typeof warning === "string" ? warning : warning?.messageForStaff || warning?.message || warning?.title
+    ]))
+  ].sort();
+  return {
+    candidateKeys: [...new Set(candidateKeys)],
+    noticeKeys: [...new Set(noticeKeys)],
+    totalPoints: Number(calculation.totalPoints || 0)
+  };
+}
+
+function diffSidecarCalculationSnapshots(previous = null, current = null) {
+  const previousSnapshot = previous && typeof previous === "object" ? previous : {};
+  const currentSnapshot = current && typeof current === "object" ? current : {};
+  const candidateDiff = diffStableKeySets(previousSnapshot.candidateKeys, currentSnapshot.candidateKeys);
+  const noticeDiff = diffStableKeySets(previousSnapshot.noticeKeys, currentSnapshot.noticeKeys);
+  return {
+    candidates: candidateDiff,
+    notices: noticeDiff,
+    pointDelta: Number(currentSnapshot.totalPoints || 0) - Number(previousSnapshot.totalPoints || 0)
+  };
+}
+
+function diffStableKeySets(previousValues = [], currentValues = []) {
+  const previous = new Set(Array.isArray(previousValues) ? previousValues : []);
+  const current = new Set(Array.isArray(currentValues) ? currentValues : []);
+  return {
+    addedCount: [...current].filter((value) => !previous.has(value)).length,
+    removedCount: [...previous].filter((value) => !current.has(value)).length
+  };
+}
+
+function stableDigest(parts = []) {
+  return createHash("sha256")
+    .update(parts.map((part) => String(part ?? "").normalize("NFKC").trim()).join("\u001f"))
+    .digest("hex");
 }
 
 function candidateOnlyCalculationResult(calculationResult = {}) {

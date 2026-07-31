@@ -17,10 +17,12 @@ const enabled = process.env.HOMIS_SIDECAR_E2E === "1"
   && requiredEnvironment.every((name) => process.env[name]);
 
 test("patient 1006 can authorize, auto-read, and calculate through the side panel", {
-  skip: enabled ? false : "Set HOMIS_SIDECAR_E2E=1 and STG credential environment variables"
+  skip: enabled ? false : "Set HOMIS_SIDECAR_E2E=1 and sidecar credential environment variables"
 }, async () => {
   const here = path.dirname(fileURLToPath(import.meta.url));
-  const extensionPath = path.resolve(here, "../extension");
+  const extensionPath = process.env.HOMIS_SIDECAR_E2E_EXTENSION_DIR
+    ? resolveExtensionPath(here, process.env.HOMIS_SIDECAR_E2E_EXTENSION_DIR)
+    : path.resolve(here, "../extension");
   const profilePath = path.join(os.tmpdir(), `homis-sidecar-e2e-${crypto.randomUUID()}`);
   const context = await chromium.launchPersistentContext(profilePath, {
     channel: "chromium",
@@ -38,8 +40,10 @@ test("patient 1006 can authorize, auto-read, and calculate through the side pane
     await mockPage.locator("#pdetail_karte[data-record-id]").waitFor();
 
     const extensionId = "nhbmaniknlcaaelpaoogepmkhphmmjof";
-    const panel = await context.newPage();
-    await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+    const panel = await openExtensionPage(
+      context,
+      `chrome-extension://${extensionId}/sidepanel.html`
+    );
     await panel.getByRole("button", { name: "接続を開始" }).click();
     await panel.locator("#device-code").filter({ hasText: /[A-Z2-9]{4}-[A-Z2-9]{4}/ }).waitFor();
     const approvalUrl = await panel.locator("#approval-link").getAttribute("href");
@@ -50,13 +54,14 @@ test("patient 1006 can authorize, auto-read, and calculate through the side pane
     await approvalPage.locator("#organizationCode").fill(process.env.HOMIS_SIDECAR_E2E_ORG_CODE);
     await approvalPage.locator("#loginId").fill(process.env.HOMIS_SIDECAR_E2E_LOGIN_ID);
     await approvalPage.locator("#password").fill(process.env.HOMIS_SIDECAR_E2E_PASSWORD);
-    await approvalPage.getByRole("button", { name: "ログイン" }).click();
+    await approvalPage.getByRole("button", { name: "ログイン", exact: true }).click();
     await approvalPage.locator("#mfaCode").fill(totp(process.env.HOMIS_SIDECAR_E2E_TOTP_SECRET));
     await approvalPage.getByRole("button", { name: "確認", exact: true }).click();
     await approvalPage.getByRole("heading", { name: "HOMIS連携端末" }).waitFor();
     await approvalPage.getByRole("button", { name: "承認", exact: true }).click();
 
     await panel.locator("#connection-badge").filter({ hasText: "接続済み" }).waitFor({ timeout: 30_000 });
+    await mockPage.bringToFront();
     await panel.locator("#preview-patient").filter({ hasText: "1006" }).waitFor();
     assert.equal(await panel.locator('input[name="setting"][value="home_visit"]').isChecked(), true);
     assert.match(await panel.locator("#setting-copy").textContent(), /画面の.+定期.+定期訪問/);
@@ -85,6 +90,16 @@ test("patient 1006 can authorize, auto-read, and calculate through the side pane
     assert.match(await panel.locator("#total-points").textContent(), /\d[\d,]*点/);
     const rows = panel.locator(".candidate-row").filter({ hasNotText: "候補はありません" });
     assert.ok(await rows.count() >= 1);
+    assert.equal(await panel.locator(".candidate-context-badge").count(), 0);
+    assert.equal(await panel.locator(".candidate-comment").count(), 0);
+    assert.match(await panel.locator("#checklist-count").textContent(), /^\d+件$/u);
+    await panel.locator("#detail-log-button").click();
+    await panel.locator("#detail-log-section").waitFor({ state: "visible" });
+    assert.ok(await panel.locator("#detail-log .detail-log-row").count() >= 1);
+    const detailLogText = (await panel.locator("#detail-log .detail-log-row").allTextContents()).join("\n");
+    assert.match(detailLogText, /施設ルール|レセプトコメント|コメント/u);
+    await panel.locator("#detail-log-back-button").click();
+    await panel.locator("#result-section").waitFor({ state: "visible" });
   } finally {
     await context.close();
     await rm(profilePath, { recursive: true, force: true });
@@ -114,4 +129,36 @@ function decodeBase32(value) {
     bytes.push(Number.parseInt(bits.slice(index, index + 8), 2));
   }
   return Buffer.from(bytes);
+}
+
+function resolveExtensionPath(here, configuredPath) {
+  return path.isAbsolute(configuredPath)
+    ? configuredPath
+    : path.resolve(here, "../../..", configuredPath);
+}
+
+async function openExtensionPage(context, url) {
+  const deadline = Date.now() + 10_000;
+  let lastError;
+
+  while (Date.now() < deadline) {
+    const page = await context.newPage();
+
+    try {
+      const response = await page.goto(url);
+      assert.equal(response?.status(), 200);
+      return page;
+    } catch (error) {
+      lastError = error;
+      await page.close().catch(() => {});
+
+      if (!String(error?.message || "").includes("ERR_BLOCKED_BY_CLIENT")) {
+        throw error;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+
+  throw lastError || new Error(`Unable to open extension page: ${url}`);
 }

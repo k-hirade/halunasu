@@ -65,6 +65,8 @@ import { applyEncounterVariantToPreparation } from "./encounter-variants.js";
 import { buildStandingBillingLane } from "./standing-billing-profiles.js";
 import {
   buildStandingStructuredFacts,
+  standingStructuredFactsSummary,
+  standingStructuredFamilyCatalogDiagnostics,
   standingStructuredTriggerFamilySelectors
 } from "./standing-structured-triggers.js";
 import { applyCandidateProposalGovernance } from "./candidate-proposal-governance.js";
@@ -89,6 +91,8 @@ import {
   extractionFeedbackMode,
   extractionFeedbackReadiness
 } from "./extraction-feedback.js";
+import { buildSidecarNoticePresentation } from "./sidecar-notice-view.js";
+import { narrowSidecarCandidateSelection } from "./sidecar-selection-narrowing.js";
 
 const PRODUCT_ID = "fee";
 const SIDECAR_PRODUCT_ID = productIds.homisSidecar;
@@ -2240,7 +2244,9 @@ function sidecarCalculationResponse(sidecarDraft = {}) {
     quantity: Number(line.quantity || 1),
     estimatedTotalPoints: Number(line.totalPoints || 0),
     status: "needs_review",
-    candidateOnly: true
+    candidateOnly: true,
+    basis: line.basis || null,
+    source: line.source || null
   }));
   const proposalCandidates = (Array.isArray(calculation.candidateProposals) ? calculation.candidateProposals : []).map((proposal) => {
     const codeCandidates = [...new Set((Array.isArray(proposal.codeCandidates) ? proposal.codeCandidates : [])
@@ -2265,6 +2271,10 @@ function sidecarCalculationResponse(sidecarDraft = {}) {
       name: proposal.name || proposal.title || null,
       display: buildFeeCandidateDisplay(displayName, { proposal: true }),
       orderType: proposal.orderType || null,
+      basis: proposal.basis || null,
+      source: proposal.source || null,
+      reason: proposal.reason || null,
+      evidence: proposal.evidence || null,
       points: Number(proposal.points || proposal.potentialPoints || 0),
       quantity: Number(proposal.quantity || 1),
       estimatedTotalPoints: Number(proposal.totalPoints || proposal.potentialPoints || proposal.points || 0),
@@ -2272,6 +2282,43 @@ function sidecarCalculationResponse(sidecarDraft = {}) {
       candidateOnly: true
     };
   });
+  const presentation = buildSidecarNoticePresentation({
+    warnings,
+    reviewIssues,
+    calculation,
+    candidates: [...lineCandidates, ...proposalCandidates],
+    serviceDate: sidecarDraft.serviceDate || "",
+    occurredAt: sidecarDraft.updatedAt || sidecarDraft.createdAt || null
+  });
+  const selectionContext = calculation.metrics?.sidecarSelectionContext || {
+    singleBuildingPatientCount: sidecarDraft.encounterDetails?.singleBuildingPatientCount || null,
+    setting: sidecarDraft.encounterDetails?.visitKind || sidecarDraft.setting || "",
+    specialDiseaseStatus: "unknown"
+  };
+  const candidates = presentation.candidates.map((candidate) => {
+    const billingEligibility = candidate.sourceType === "calculated_line"
+      ? "included"
+      : candidate.adoptionBlocked === true
+        ? "blocked"
+        : "review_required";
+    const selectionNarrowing = candidate.requiresSelection
+      ? narrowSidecarCandidateSelection(candidate, selectionContext)
+      : null;
+    return {
+      ...candidate,
+      billingEligibility,
+      zone: candidate.sourceType === "calculated_line"
+        ? "included"
+        : candidate.adoptionBlocked === true
+          ? "blocked"
+          : candidate.requiresSelection && selectionNarrowing?.selectionResolution !== "exact"
+            ? "selection_required"
+            : "review_required",
+      selectionResolution: selectionNarrowing?.selectionResolution || null,
+      selectionNarrowing
+    };
+  });
+  const decisionCandidateCount = candidates.filter((candidate) => candidate.zone !== "included").length;
   return {
     contractVersion: SIDECAR_CONTRACT_VERSION,
     sidecarDraft: {
@@ -2282,148 +2329,34 @@ function sidecarCalculationResponse(sidecarDraft = {}) {
       encounterDetails: sidecarDraft.encounterDetails || null,
       sourceRecordDisplayId: sidecarDraft.sourceRecordDisplayId || null,
       sourceRevision: Number(sidecarDraft.sourceRevision || 1),
+      calculationRevision: Number(sidecarDraft.calculationRevision || 0),
+      calculationDiff: sidecarDraft.calculationDiff || null,
       calculation: {
         status: "needs_review",
         candidateOnly: true,
         estimatedTotalPoints: Number(calculation.totalPoints || 0),
-        candidates: uniqueSidecarCandidates([...lineCandidates, ...proposalCandidates]),
-        notices: sidecarCalculationNotices({ warnings, reviewIssues }),
+        decisionCandidateCount,
+        candidates,
+        notices: presentation.notices,
         warnings,
-        reviewIssues
+        reviewIssues,
+        metrics: {
+          ...(isPlainObject(calculation.metrics?.standingLane)
+            ? { standingLane: calculation.metrics.standingLane }
+            : {}),
+          ...(isPlainObject(calculation.metrics?.autoBillingRules)
+            ? { autoBillingRules: calculation.metrics.autoBillingRules }
+            : {}),
+          ...(isPlainObject(calculation.metrics?.sameHouseholdVisit)
+            ? { sameHouseholdVisit: calculation.metrics.sameHouseholdVisit }
+            : {}),
+          ...(isPlainObject(calculation.metrics?.sidecarSelectionContext)
+            ? { sidecarSelectionContext: calculation.metrics.sidecarSelectionContext }
+            : {})
+        }
       }
     }
   };
-}
-
-function sidecarCalculationNotices({ warnings = [], reviewIssues = [] } = {}) {
-  const notices = [];
-  const seenKeys = new Set();
-  const structuredMessageKeys = new Set();
-
-  for (const issue of reviewIssues) {
-    if (!issue || typeof issue !== "object") {
-      continue;
-    }
-    const messageForStaff = sidecarNoticeMessage(issue);
-    if (!messageForStaff) {
-      continue;
-    }
-    const messageKey = normalizeSidecarNoticeText(messageForStaff);
-    const deduplicationKey = sidecarReviewIssueDeduplicationKey(issue, messageKey);
-    if (seenKeys.has(deduplicationKey)) {
-      continue;
-    }
-    seenKeys.add(deduplicationKey);
-    structuredMessageKeys.add(messageKey);
-    notices.push({
-      ...issue,
-      noticeId: issue.reviewIssueId || sidecarNoticeId(deduplicationKey),
-      sourceType: "review_issue",
-      severity: normalizeSidecarNoticeSeverity(issue.severity, "warning"),
-      messageForStaff
-    });
-  }
-
-  for (const warning of warnings) {
-    const messageForStaff = sidecarNoticeMessage(warning);
-    if (!messageForStaff) {
-      continue;
-    }
-    const messageKey = normalizeSidecarNoticeText(messageForStaff);
-    if (structuredMessageKeys.has(messageKey)) {
-      continue;
-    }
-    const deduplicationKey = `warning|${messageKey}`;
-    if (seenKeys.has(deduplicationKey)) {
-      continue;
-    }
-    seenKeys.add(deduplicationKey);
-    notices.push({
-      noticeId: sidecarNoticeId(deduplicationKey),
-      sourceType: "warning",
-      issueCode: null,
-      topicCode: null,
-      relatedClinicalEventId: null,
-      severity: "warning",
-      messageForStaff
-    });
-  }
-
-  return notices.sort((left, right) => (
-    sidecarNoticeSeverityOrder(left.severity) - sidecarNoticeSeverityOrder(right.severity)
-    || String(left.topicCode || left.issueCode || "").localeCompare(
-      String(right.topicCode || right.issueCode || ""),
-      "ja"
-    )
-    || String(left.noticeId || "").localeCompare(String(right.noticeId || ""))
-  ));
-}
-
-function sidecarReviewIssueDeduplicationKey(issue = {}, normalizedMessage = "") {
-  const topic = String(issue.topicCode || issue.reviewTopic || "").trim();
-  const issueCode = String(issue.issueCode || "").trim();
-  const target = String(
-    issue.relatedClinicalEventId
-    || issue.clinicalEventId
-    || issue.sourceFactId
-    || issue.targetId
-    || issue.candidateId
-    || ""
-  ).trim();
-  if (topic) {
-    return `topic|${topic}|${target || normalizedMessage}`;
-  }
-  return `issue|${issueCode || "unclassified"}|${target}|${normalizedMessage}`;
-}
-
-function sidecarNoticeMessage(notice) {
-  if (typeof notice === "string") {
-    return notice.trim();
-  }
-  return String(
-    notice?.messageForStaff
-    || notice?.message
-    || notice?.reason
-    || notice?.title
-    || ""
-  ).trim();
-}
-
-function normalizeSidecarNoticeText(value = "") {
-  return String(value || "")
-    .normalize("NFKC")
-    .replace(/\s+/gu, " ")
-    .trim();
-}
-
-function normalizeSidecarNoticeSeverity(value, fallback = "info") {
-  const severity = String(value || "").trim().toLowerCase();
-  return ["critical", "error", "warning", "info"].includes(severity) ? severity : fallback;
-}
-
-function sidecarNoticeSeverityOrder(value) {
-  return {
-    critical: 0,
-    error: 1,
-    warning: 2,
-    info: 3
-  }[normalizeSidecarNoticeSeverity(value)] ?? 4;
-}
-
-function sidecarNoticeId(value = "") {
-  return `notice_${crypto.createHash("sha256").update(String(value || "")).digest("hex").slice(0, 20)}`;
-}
-
-function uniqueSidecarCandidates(candidates = []) {
-  const seen = new Set();
-  return candidates.filter((candidate) => {
-    const key = [candidate.sourceType, candidate.candidateId, candidate.code, candidate.name].join(":");
-    if (seen.has(key)) {
-      return false;
-    }
-    seen.add(key);
-    return true;
-  });
 }
 
 function sidecarDraftSummaryView(sidecarDraft = {}) {
@@ -2435,6 +2368,7 @@ function sidecarDraftSummaryView(sidecarDraft = {}) {
     externalPatientId: sidecarDraft.externalPatientId,
     sourceRecordId: sidecarDraft.sourceRecordId,
     sourceRevision: Number(sidecarDraft.sourceRevision || 1),
+    calculationRevision: Number(sidecarDraft.calculationRevision || 0),
     adoptedFeeSessionId: sidecarDraft.adoptedFeeSessionId || null,
     createdAt: sidecarDraft.createdAt || null,
     updatedAt: sidecarDraft.updatedAt || null,
@@ -5533,6 +5467,18 @@ async function calculatePreparedFeeSessionNow({
       feeSessionId,
       addSessionReviewWarnings(calculationSession, {
         ...calculationResult,
+        metrics: {
+          ...(isPlainObject(calculationResult.metrics) ? calculationResult.metrics : {}),
+          ...(isPlainObject(prepared.metrics?.standingLane)
+            ? { standingLane: prepared.metrics.standingLane }
+            : {}),
+          ...(isPlainObject(prepared.metrics?.autoBillingRules)
+            ? { autoBillingRules: prepared.metrics.autoBillingRules }
+            : {}),
+          ...(isPlainObject(prepared.metrics?.sameHouseholdVisit)
+            ? { sameHouseholdVisit: prepared.metrics.sameHouseholdVisit }
+            : {})
+        },
         candidateProposals: uniqueCandidateProposals([
           ...(Array.isArray(calculationResult.candidateProposals) ? calculationResult.candidateProposals : []),
           ...(Array.isArray(prepared.candidateProposals) ? prepared.candidateProposals : [])
@@ -7187,6 +7133,9 @@ function buildFeeCalculationPerformanceSnapshot({
   const reviewIssues = Array.isArray(calculationResult.reviewIssues) ? calculationResult.reviewIssues : [];
   const warnings = Array.isArray(calculationResult.warnings) ? calculationResult.warnings : [];
   const claimCheckIssueCount = reviewIssues.filter((issue) => issue?.source === "claim_check").length;
+  const standingLane = isPlainObject(prepared?.metrics?.standingLane)
+    ? prepared.metrics.standingLane
+    : null;
 
   return compactObject({
     schemaVersion: 1,
@@ -7298,6 +7247,7 @@ function buildFeeCalculationPerformanceSnapshot({
       externalHistoryReason: patientHistory.externalHistoryReason || null,
       extractionSnapshotReason: patientHistory.extractionSnapshotReason || null
     }),
+    ...(standingLane ? { standingLane } : {}),
     openAiUsage: usage,
     openAiCache: openAiCacheSummary(usage),
     counts: compactObject({
@@ -7909,6 +7859,10 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
       facilityStandardKeys: effectiveFacilityProfile.facilityStandardKeys
     }
   );
+  const currentMonthEncounterCount = countCurrentMonthEncounters(
+    baseSession,
+    priorSessionsResult.sessions
+  );
   const primaryPreparedWithStandingFacts = await measureStage(stageTimings, "standingFactLane", () => (
     applyStandingFactsToPreparation(primaryPreparedWithoutStandingFacts, {
       enabled: feeStandingFactsEnabled(input.processEnv || process.env),
@@ -7918,15 +7872,20 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
       session: baseSession,
       feeSettings,
       historyCompleteness,
-      currentMonthEncounterCount: countCurrentMonthEncounters(
-        baseSession,
-        priorSessionsResult.sessions
-      ),
+      currentMonthEncounterCount,
       facilityStandardKeys: effectiveFacilityProfile.facilityStandardKeys
     })
   ));
+  const primaryPreparedWithSelectionContext = applySidecarSelectionContextToPreparation(
+    primaryPreparedWithStandingFacts,
+    {
+      session: baseSession,
+      facilityProfile: effectiveFacilityProfile,
+      currentMonthEncounterCount
+    }
+  );
   const primaryPrepared = await measureStage(stageTimings, "candidateProposalGovernance", () => (
-    applyCandidateProposalGovernanceToPreparation(primaryPreparedWithStandingFacts, {
+    applyCandidateProposalGovernanceToPreparation(primaryPreparedWithSelectionContext, {
       feeCalculator,
       feeSettings,
       serviceDate: baseSession.serviceDate,
@@ -8129,6 +8088,30 @@ function countCurrentMonthEncounters(session = {}, priorSessions = []) {
   }).length;
 }
 
+function applySidecarSelectionContextToPreparation(prepared = {}, {
+  session = {},
+  facilityProfile = {},
+  currentMonthEncounterCount = null
+} = {}) {
+  if (session.sourceSystem !== "homis_sidecar") {
+    return prepared;
+  }
+  return {
+    ...prepared,
+    metrics: {
+      ...(prepared.metrics || {}),
+      sidecarSelectionContext: {
+        facilityStandardKeys: uniqueStrings(facilityProfile.facilityStandardKeys),
+        facilityStandardKeysSource: facilityProfile.facilityStandardKeysSource || facilityProfile.source || "",
+        currentMonthEncounterCount,
+        singleBuildingPatientCount: Number(session.encounterDetails?.singleBuildingPatientCount || 0) || null,
+        setting: session.encounterDetails?.visitKind || session.setting || "",
+        specialDiseaseStatus: "unknown"
+      }
+    }
+  };
+}
+
 async function applyStandingFactsToPreparation(prepared = {}, {
   enabled = false,
   feeStore,
@@ -8140,7 +8123,17 @@ async function applyStandingFactsToPreparation(prepared = {}, {
   currentMonthEncounterCount = null,
   facilityStandardKeys = []
 } = {}) {
-  const disabled = (reason) => ({
+  let standingLaneDiagnostics = {
+    disabledReason: null,
+    familyCount: 0,
+    additionalSelectorResolvedCount: 0,
+    structuredTriggers: {
+      reasonCounts: {},
+      perTrigger: []
+    },
+    factsSummary: null
+  };
+  const disabled = (reason, diagnostics = standingLaneDiagnostics) => ({
     ...prepared,
     standingStatusTransitions: [],
     metrics: {
@@ -8151,6 +8144,10 @@ async function applyStandingFactsToPreparation(prepared = {}, {
         proposedCount: 0,
         suspendedCount: 0,
         reasons: { [reason]: 1 }
+      },
+      standingLane: {
+        ...diagnostics,
+        disabledReason: reason
       }
     }
   });
@@ -8181,6 +8178,29 @@ async function applyStandingFactsToPreparation(prepared = {}, {
       ),
       loadStandingFeeFamilyCatalog(feeCalculator, session.serviceDate)
     ]);
+    const structuredFacts = buildStandingStructuredFacts({
+      prepared,
+      session,
+      facilityStandardKeys,
+      historyCompleteness,
+      confirmedHistoryCodes: uniqueStrings(
+        asArrayValue(profiles).flatMap((profile) => [
+          ...asArrayValue(profile?.latestConfirmedCodes)
+            .map((entry) => entry?.code || entry),
+          ...asArrayValue(profile?.confirmedLineCodes)
+        ])
+      )
+    });
+    const catalogDiagnostics = standingStructuredFamilyCatalogDiagnostics(
+      catalog?.families
+    );
+    standingLaneDiagnostics = {
+      ...standingLaneDiagnostics,
+      ...catalogDiagnostics,
+      factsSummary: standingStructuredFactsSummary(structuredFacts, {
+        clinicalEvents: prepared.clinicalEvents
+      })
+    };
     const lane = buildStandingBillingLane({
       profiles,
       catalog,
@@ -8192,25 +8212,20 @@ async function applyStandingFactsToPreparation(prepared = {}, {
         encounterDetails: session.encounterDetails || null,
         currentMonthEncounterCount,
         facilityStandardKeys,
-        structuredFacts: buildStandingStructuredFacts({
-          prepared,
-          session,
-          facilityStandardKeys,
-          historyCompleteness,
-          confirmedHistoryCodes: uniqueStrings(
-            asArrayValue(profiles).flatMap((profile) => [
-              ...asArrayValue(profile?.latestConfirmedCodes)
-                .map((entry) => entry?.code || entry),
-              ...asArrayValue(profile?.confirmedLineCodes)
-            ])
-          )
-        }),
+        structuredFacts,
         procedureCodes: uniqueStrings([
           ...asArrayValue(prepared.calculationOptions?.procedure_codes),
           ...asArrayValue(prepared.calculationOptions?.procedureCodes)
         ])
       }
     });
+    standingLaneDiagnostics = {
+      ...standingLaneDiagnostics,
+      structuredTriggers: {
+        reasonCounts: lane.trace?.structuredTriggers?.reasonCounts || {},
+        perTrigger: asArrayValue(lane.trace?.structuredTriggers?.perTrigger)
+      }
+    };
     const clinicalExtraction = isPlainObject(prepared.clinicalExtraction)
       ? {
         ...prepared.clinicalExtraction,
@@ -8245,18 +8260,21 @@ async function applyStandingFactsToPreparation(prepared = {}, {
           ...lane.metrics,
           profileCount: Array.isArray(profiles) ? profiles.length : 0,
           catalogFamilyCount: Array.isArray(catalog?.families) ? catalog.families.length : 0
-        }
+        },
+        standingLane: standingLaneDiagnostics
       }
     };
   } catch (error) {
+    const disabledReason = standingLaneDisabledReason(error);
     logFeeApiError(error, {
       stage: "standingFactLane",
       orgId,
       facilityId,
-      canonicalPatientId
+      canonicalPatientId,
+      disabledReason
     });
     return {
-      ...disabled("lane_unavailable"),
+      ...disabled(disabledReason),
       reviewWarnings: uniqueStrings([
         ...(Array.isArray(prepared.reviewWarnings) ? prepared.reviewWarnings : []),
         "恒常算定履歴を確認できなかったため、月次管理料の継続候補は表示していません。"
@@ -8283,6 +8301,16 @@ async function loadStandingFeeFamilyCatalog(feeCalculator, serviceDate = "") {
     service_date: `${claimMonth}-01`,
     additional_family_selectors: standingStructuredTriggerFamilySelectors()
   });
+  if (!isPlainObject(value) || !Array.isArray(value.families)) {
+    const error = new Error("standing fee family catalog response is invalid");
+    error.code = "standing_catalog_invalid";
+    throw error;
+  }
+  if (!value.families.length) {
+    const error = new Error("standing fee family catalog is empty");
+    error.code = "standing_catalog_empty";
+    throw error;
+  }
   const source = isPlainObject(value?.source) ? value.source : null;
   const normalized = {
     ...value,
@@ -8296,6 +8324,17 @@ async function loadStandingFeeFamilyCatalog(feeCalculator, serviceDate = "") {
     value: normalized
   });
   return normalized;
+}
+
+function standingLaneDisabledReason(error) {
+  const code = String(error?.code || "").trim();
+  if (["standing_catalog_invalid", "standing_catalog_empty"].includes(code)) {
+    return code;
+  }
+  if (error?.name === "MedicalFeeWorkerUnavailableError") {
+    return "calculator_worker_unavailable";
+  }
+  return "lane_unavailable";
 }
 
 async function recordStandingProfilesFromApprovedSession({
@@ -8950,7 +8989,6 @@ function applyAutoBillingRulesToPreparation(prepared = {}, {
   const applied = [];
   const unresolvedVariants = [];
   const confirmCodes = [];
-  const confirmWarnings = [];
   const candidateProposals = [];
   for (const rule of rules) {
     if (!rule?.code || String(rule.status || "active") !== "active") {
@@ -8991,9 +9029,6 @@ function applyAutoBillingRulesToPreparation(prepared = {}, {
     });
     if (rule.action === "confirm") {
       confirmCodes.push(selectedCode);
-      confirmWarnings.push(
-        `施設恒常算定ルール: ${selectedTitle}(${selectedCode})を施設設定に基づき算定へ自動追加しました。今回の受診での実施事実と算定要件を確認してください。`
-      );
     } else {
       candidateProposals.push({
         proposalId: `facility_rule_${rule.ruleId}_${selectedCode}`,
@@ -9038,10 +9073,8 @@ function applyAutoBillingRulesToPreparation(prepared = {}, {
       ...(Array.isArray(prepared.candidateProposals) ? prepared.candidateProposals : []),
       ...candidateProposals
     ],
-    // confirmで自動追加した明細は、確認画面で出所が分かるよう警告として明示する。
     reviewWarnings: [
       ...(Array.isArray(prepared.reviewWarnings) ? prepared.reviewWarnings : []),
-      ...confirmWarnings,
       ...unresolvedWarnings
     ],
     clinicalExtraction: appendClinicalExtractionTrace(

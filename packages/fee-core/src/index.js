@@ -306,12 +306,63 @@ export function normalizeCalculationResult(session = {}, calculation = {}, optio
     evidence: normalizeEvidence(calculation.evidence || []),
     inputCodes: Array.isArray(calculation.inputCodes) ? calculation.inputCodes : calculation.input_codes || [],
     candidateCodes: Array.isArray(calculation.candidateCodes) ? calculation.candidateCodes : calculation.candidate_codes || [],
+    metrics: normalizeCalculationMetrics(calculation.metrics),
     rawResult: options.includeRawResult === true && isPlainObject(calculation.rawResult)
       ? calculation.rawResult
       : undefined,
     generatedAt: now,
     schemaVersion: 1
   });
+}
+
+function normalizeCalculationMetrics(metrics) {
+  const normalized = {};
+  if (isPlainObject(metrics?.standingLane)) {
+    normalized.standingLane = metrics.standingLane;
+  }
+  if (isPlainObject(metrics?.autoBillingRules)) {
+    normalized.autoBillingRules = {
+      applied: (Array.isArray(metrics.autoBillingRules.applied)
+        ? metrics.autoBillingRules.applied
+        : []).map((entry) => ({
+        ruleId: String(entry?.ruleId || ""),
+        code: String(entry?.code || ""),
+        action: String(entry?.action || ""),
+        billingRole: String(entry?.billingRole || ""),
+        sameBuilding: typeof entry?.sameBuilding === "boolean" ? entry.sameBuilding : null,
+        variant: String(entry?.variant || "")
+      })).filter((entry) => entry.ruleId && entry.code),
+      appliedCount: Number(metrics.autoBillingRules.appliedCount || 0)
+    };
+  }
+  if (isPlainObject(metrics?.sameHouseholdVisit)) {
+    normalized.sameHouseholdVisit = {
+      status: String(metrics.sameHouseholdVisit.status || ""),
+      replacementCandidateCount: Number(metrics.sameHouseholdVisit.replacementCandidateCount || 0),
+      suppressedCodeCount: Number(metrics.sameHouseholdVisit.suppressedCodeCount || 0)
+    };
+  }
+  if (isPlainObject(metrics?.sidecarSelectionContext)) {
+    normalized.sidecarSelectionContext = {
+      facilityStandardKeys: uniqueStrings(metrics.sidecarSelectionContext.facilityStandardKeys),
+      facilityStandardKeysSource: String(metrics.sidecarSelectionContext.facilityStandardKeysSource || ""),
+      currentMonthEncounterCount: finiteNumberOrNull(metrics.sidecarSelectionContext.currentMonthEncounterCount),
+      singleBuildingPatientCount: finiteNumberOrNull(metrics.sidecarSelectionContext.singleBuildingPatientCount),
+      setting: String(metrics.sidecarSelectionContext.setting || ""),
+      specialDiseaseStatus: ["eligible", "not_eligible", "unknown"].includes(
+        String(metrics.sidecarSelectionContext.specialDiseaseStatus || "")
+      ) ? String(metrics.sidecarSelectionContext.specialDiseaseStatus) : "unknown"
+    };
+  }
+  return Object.keys(normalized).length ? normalized : undefined;
+}
+
+function finiteNumberOrNull(value) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
 }
 
 export function buildCalculationSummary(calculation = {}) {
@@ -1533,6 +1584,23 @@ function ukeWarekiParts(ymd) {
   return { gengo: era.code, yy: ukePad2(year - era.base), mm: ukePad2(month), dd: ukePad2(day) };
 }
 
+export function formatJapaneseReceiptDate(ymd) {
+  const parts = ukeWarekiParts(ymd);
+  if (!parts) {
+    return "";
+  }
+  const eraName = {
+    5: "令和",
+    4: "平成",
+    3: "昭和",
+    2: "大正",
+    1: "明治"
+  }[parts.gengo];
+  return eraName
+    ? `${eraName} ${Number(parts.yy)}年 ${Number(parts.mm)}月${Number(parts.dd)}日`
+    : "";
+}
+
 // 請求年月/診療年月: 元号区分 + YYMM(5桁)
 function ukeWarekiYearMonth(yearMonth) {
   const parts = ukeWarekiParts(`${String(yearMonth || "").slice(0, 7)}-01`);
@@ -2536,6 +2604,7 @@ function normalizeReviewIssues(items) {
         relatedCandidateId: item.relatedCandidateId || item.related_candidate_id || null,
         evidence: item.evidence || null,
         source: item.source || null,
+        sidecarDisplay: normalizeSidecarDisplay(item.sidecarDisplay || item.sidecar_display),
         assessmentRisk: isPlainObject(item.assessmentRisk || item.assessment_risk) ? item.assessmentRisk || item.assessment_risk : null,
         bodyLateralityCheck: isPlainObject(item.bodyLateralityCheck || item.body_laterality_check) ? item.bodyLateralityCheck || item.body_laterality_check : null,
         policy: isPlainObject(item.policy) ? item.policy : null,
@@ -2544,6 +2613,28 @@ function normalizeReviewIssues(items) {
     })
     .filter((item) => item && item.messageForStaff)
     .slice(0, 120);
+}
+
+function normalizeSidecarDisplay(value) {
+  if (!isPlainObject(value)) {
+    return null;
+  }
+  const fragments = [...new Set(
+    (Array.isArray(value.fragments) ? value.fragments : [])
+      .map((entry) => String(entry || "").replace(/\s+/gu, " ").trim().slice(0, 80))
+      .filter(Boolean)
+  )].slice(0, 16);
+  const fragmentHashes = [...new Set(
+    (Array.isArray(value.fragmentHashes || value.fragment_hashes)
+      ? value.fragmentHashes || value.fragment_hashes
+      : [])
+      .map((entry) => String(entry || "").trim().toLowerCase())
+      .filter((entry) => /^[a-f0-9]{64}$/u.test(entry))
+  )].slice(0, 16);
+  if (!fragments.length && !fragmentHashes.length) {
+    return null;
+  }
+  return { fragments, fragmentHashes };
 }
 
 function normalizeCalculationCoverage(coverage, lineItems, warnings) {

@@ -54,6 +54,18 @@ test("side panel does not hide chart or calculation results behind disclosure wi
   assert.doesNotMatch(panel, /createElement\(\s*["'](?:details|summary)["']\s*\)/);
 });
 
+test("side panel keeps clinical text and raw selection codes out of presentation", async () => {
+  const [html, panel, content] = await Promise.all([
+    readFile(path.join(extensionDir, "sidepanel.html"), "utf8"),
+    readFile(path.join(extensionDir, "sidepanel.js"), "utf8"),
+    readFile(path.join(extensionDir, "content.js"), "utf8")
+  ]);
+  assert.doesNotMatch(html, /preview-text|カルテ本文/u);
+  assert.doesNotMatch(panel, /codeCandidates\s*\.\s*join/u);
+  assert.doesNotMatch(panel, /severityOrder|ISSUE_SEVERITY/u);
+  assert.match(content, /extractedAt:\s*new Date\(\)\.toISOString\(\)/u);
+});
+
 async function sourceFiles(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
   const nested = await Promise.all(entries.map(async (entry) => {

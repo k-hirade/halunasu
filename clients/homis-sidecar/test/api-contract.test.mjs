@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const panelSource = await readFile(path.resolve(here, "../extension/sidepanel.js"), "utf8");
 const apiSource = await readFile(path.resolve(here, "../extension/lib/api.js"), "utf8");
+const environmentSource = await readFile(path.resolve(here, "../extension/lib/environment.js"), "utf8");
 
 test("calculate request snapshot keeps the v1 sidecar boundary", () => {
   for (const field of [
@@ -22,8 +23,16 @@ test("calculate request snapshot keeps the v1 sidecar boundary", () => {
 });
 
 test("only the revocable grant and public device id enter extension storage", () => {
-  const storageKeys = [...apiSource.matchAll(/const\s+([A-Z_]+)_KEY\s*=/g)].map((match) => match[1]).sort();
-  assert.deepEqual(storageKeys, ["DEVICE_ID", "GRANT_ID"]);
+  assert.match(apiSource, /halunasuSidecar:\$\{configuration\.environment\}/);
+  assert.match(apiSource, /LEGACY_DEVICE_ID_KEY/);
+  assert.match(apiSource, /LEGACY_GRANT_ID_KEY/);
   assert.doesNotMatch(apiSource, /storageSet\([^)]*accessToken/s);
   assert.doesNotMatch(apiSource, /storageSet\([^)]*verifier/s);
+});
+
+test("API endpoints come from validated build-time environment config", () => {
+  assert.match(apiSource, /validateConfiguration\(global\.HalunasuSidecarConfig\)/);
+  assert.doesNotMatch(apiSource, /platform-api-(?:stg|prod)-/);
+  assert.doesNotMatch(apiSource, /fee-api-(?:stg|prod)-/);
+  assert.match(environmentSource, /environment: "stg"/);
 });

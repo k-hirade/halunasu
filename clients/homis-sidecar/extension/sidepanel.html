@@ -38,10 +38,7 @@
           <div><dt>診療日</dt><dd id="preview-date"></dd></div>
           <div><dt>カルテID</dt><dd id="preview-record"></dd></div>
         </dl>
-        <div class="soap-preview">
-          <strong class="preview-label">カルテ本文</strong>
-          <pre id="preview-text"></pre>
-        </div>
+        <p class="preview-read-status" id="preview-read-status"></p>
       </div>
       <fieldset class="setting-control" id="setting-control" disabled>
         <legend>受診区分</legend>
@@ -98,26 +95,55 @@
         <h2 id="result-heading">算定案</h2>
       </div>
       <div class="result-summary-bar">
-        <strong class="total-points" id="total-points"></strong>
+        <div class="result-primary-metric">
+          <span>算定案に含まれる点数</span>
+          <strong class="total-points" id="total-points"></strong>
+        </div>
         <span class="candidate-badge">承認前</span>
       </div>
+      <div class="result-secondary-metrics">
+        <span>判断が必要 <strong id="decision-count">0件</strong></span>
+        <span class="calculation-diff" id="calculation-diff" hidden></span>
+      </div>
       <p class="muted result-meta" id="revision-copy"></p>
-      <div class="result-group">
-        <h3>明細からの候補</h3>
+      <div class="result-group" id="included-group">
+        <h3>算定案に含まれる</h3>
         <div class="candidate-list" id="line-candidates"></div>
       </div>
-      <div class="result-group">
-        <h3>追加提案</h3>
+      <div class="result-group" id="review-group">
+        <h3>要確認</h3>
         <div class="candidate-list" id="proposal-candidates"></div>
       </div>
-      <div class="result-group issue-group">
-        <h3>警告・確認事項 <span id="issue-count"></span></h3>
-        <div class="issue-list" id="issues"></div>
+      <div class="result-group" id="selection-group">
+        <h3>要選択</h3>
+        <div class="candidate-list" id="selection-candidates"></div>
       </div>
+      <div class="result-group" id="blocked-group">
+        <h3>採用不可</h3>
+        <div class="candidate-list" id="blocked-candidates"></div>
+      </div>
+      <div class="result-group checklist-group">
+        <h3>確認チェックリスト <span id="checklist-count"></span></h3>
+        <div class="checklist-list" id="checklist"></div>
+        <div class="checklist-overflow" id="checklist-overflow" hidden>
+          <span id="checklist-overflow-copy"></span>
+          <button class="button secondary compact" id="detail-log-button" type="button">詳細ログを開く</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel-section detail-log-section" id="detail-log-section" aria-labelledby="detail-log-heading" hidden>
+      <div class="section-heading detail-log-heading">
+        <h2 id="detail-log-heading">詳細ログ <span id="detail-log-count"></span></h2>
+        <button class="button secondary compact" id="detail-log-back-button" type="button">算定案へ戻る</button>
+      </div>
+      <p class="muted">算定案の作成時に記録された確認情報です。</p>
+      <div class="detail-log-list" id="detail-log"></div>
     </section>
 
     <p class="status-message" id="status-message" aria-live="polite"></p>
   </main>
+  <script src="lib/environment.js"></script>
   <script src="lib/api.js"></script>
   <script src="sidepanel.js"></script>
 </body>

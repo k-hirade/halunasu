@@ -1,38 +1,45 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import {
   buildStandingStructuredFacts,
   evaluateStandingStructuredTriggers,
+  standingStructuredFactsSummary,
+  standingStructuredFamilyCatalogDiagnostics,
   standingStructuredTriggerArtifactMetadata,
   standingStructuredTriggerFamilySelectors
 } from "../src/standing-structured-triggers.js";
 
-const HOME_MANAGEMENT_FAMILY = Object.freeze({
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const snapshotPath = path.join(
+  repoRoot,
+  "data/tests/fee-standing-family-catalog-snapshot-2026-06.json"
+);
+const realMasterPath = path.join(
+  repoRoot,
+  "python/data/master/standard-master.sqlite"
+);
+const CATALOG_SNAPSHOT = JSON.parse(readFileSync(snapshotPath, "utf8"));
+
+const HOME_MANAGEMENT_FAMILY = Object.freeze(family({
   familyId: "fee_family_home_management",
   name: "在医総管",
-  hierarchy: {
-    chapter: "2",
-    part: "02",
-    alphaPart: "C",
-    section: "002",
-    branch: "00"
-  },
-  variants: [{ code: "114000001", name: "在医総管（区分例）" }]
-});
+  section: "002",
+  branch: "00",
+  code: "114000001"
+}));
 
-const FACILITY_MANAGEMENT_FAMILY = Object.freeze({
+const FACILITY_MANAGEMENT_FAMILY = Object.freeze(family({
   familyId: "fee_family_facility_management",
   name: "施医総管",
-  hierarchy: {
-    chapter: "2",
-    part: "02",
-    alphaPart: "C",
-    section: "002",
-    branch: "02"
-  },
-  variants: [{ code: "114000002", name: "施医総管（区分例）" }]
-});
+  section: "002",
+  branch: "02",
+  code: "114000002"
+}));
 
 function structuredFacts(overrides = {}) {
   return {
@@ -60,6 +67,65 @@ test("standing trigger artifact is versioned and integrity checked on import", (
   assert.match(metadata.sourceDefinitionSha256, /^[a-f0-9]{64}$/u);
 });
 
+test("standing trigger selectors match the versioned real-master snapshot", () => {
+  assert.equal(CATALOG_SNAPSHOT.schemaVersion, "fee-standing-family-catalog-snapshot-v1");
+  assert.equal(CATALOG_SNAPSHOT.selectorCount, standingStructuredTriggerFamilySelectors().length);
+  assert.equal(CATALOG_SNAPSHOT.resolvedSelectorCount, CATALOG_SNAPSHOT.selectorCount);
+  assert.deepEqual(
+    CATALOG_SNAPSHOT.selectorResults
+      .filter((entry) => entry.matchCount !== 1),
+    []
+  );
+});
+
+test("real master catalog produces the C002 trigger with the runtime fact contract", {
+  skip: !existsSync(realMasterPath)
+}, () => {
+  const command = spawnSync("python3", [
+    path.join(repoRoot, "scripts/export_fee_standing_family_snapshot.py"),
+    "--master-db",
+    realMasterPath,
+    "--stdout"
+  ], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      PYTHONPATH: "python:."
+    },
+    maxBuffer: 20 * 1024 * 1024
+  });
+  assert.equal(command.status, 0, command.stderr || command.stdout);
+  const liveCatalog = JSON.parse(command.stdout);
+  assert.equal(liveCatalog.resolvedSelectorCount, liveCatalog.selectorCount);
+  assert.deepEqual(liveCatalog.source, CATALOG_SNAPSHOT.source);
+  assert.deepEqual(liveCatalog.selectorResults, CATALOG_SNAPSHOT.selectorResults);
+  assert.deepEqual(liveCatalog.families, CATALOG_SNAPSHOT.families);
+
+  const facts = buildStandingStructuredFacts({
+    session: {
+      setting: "home_visit",
+      encounterDetails: { residenceType: "private" },
+      diagnoses: [{ name: "慢性心不全", status: "active" }]
+    },
+    prepared: {
+      clinicalEvents: [{
+        type: "counseling",
+        actionStatus: "instruction_only",
+        temporalRelation: "current_visit",
+        providerOwnership: "own_clinic"
+      }]
+    }
+  });
+  const result = evaluateStandingStructuredTriggers({
+    families: liveCatalog.families,
+    structuredFacts: facts
+  });
+  assert.ok(result.matches.some((match) => (
+    match.trigger.triggerId === "c002_home_management_review_candidate"
+  )), JSON.stringify(result.diagnostics, null, 2));
+});
+
 test("structured triggers select the exact C002 family from positive facts", () => {
   const result = evaluateStandingStructuredTriggers({
     families: [HOME_MANAGEMENT_FAMILY, FACILITY_MANAGEMENT_FAMILY],
@@ -75,6 +141,12 @@ test("structured triggers select the exact C002 family from positive facts", () 
     "clinical.activeDiagnosisCount",
     "clinical.currentManagementOrCounselingCount"
   ]);
+  assert.equal(
+    result.diagnostics.perTrigger.find((entry) => (
+      entry.triggerId === "c002_home_management_review_candidate"
+    ))?.reason,
+    "matched"
+  );
 });
 
 test("facility residence selects C002-2 while outpatient and medication-only facts stay silent", () => {
@@ -105,6 +177,12 @@ test("facility residence selects C002-2 while outpatient and medication-only fac
     })
   });
   assert.equal(medicationOnly.matches.length, 0);
+  assert.deepEqual(
+    medicationOnly.diagnostics.perTrigger.find((entry) => (
+      entry.triggerId === "c002_home_management_review_candidate"
+    ))?.missingFacts,
+    ["clinical.currentManagementOrCounselingCount"]
+  );
 });
 
 test("builds positive facts only from current own-clinic structured events", () => {
@@ -185,6 +263,258 @@ test("builds positive facts only from current own-clinic structured events", () 
     visitingNurseWeeklyCount: null,
     ictCoordination: null
   });
+  assert.deepEqual(
+    standingStructuredFactsSummary(facts, {
+      clinicalEvents: [
+        {
+          type: "management",
+          actionStatus: "performed",
+          temporalRelation: "current_visit",
+          providerOwnership: "own_clinic"
+        },
+        {
+          type: "management",
+          actionStatus: "planned",
+          temporalRelation: "future",
+          providerOwnership: "own_clinic"
+        }
+      ]
+    }),
+    {
+      residenceType: "private",
+      plannedHomeVisit: true,
+      activeDiagnosisCount: 1,
+      currentManagementOrCounselingCount: 1,
+      currentManagementEventCount: 1,
+      currentManagementStandingMentionCount: 0,
+      currentManagementTextSignalCount: 0,
+      currentLongitudinalPlanSignalCount: 0,
+      standingMentionCount: 0,
+      deviceFactCount: 1,
+      eventCount: 2,
+      currentOwnEventCount: 1,
+      eventTypeCounts: { management: 2 },
+      actionStatusCounts: { performed: 1, planned: 1 },
+      temporalRelationCounts: { current_visit: 1, future: 1 },
+      providerOwnershipCounts: { own_clinic: 2 }
+    }
+  );
+  assert.deepEqual(
+    standingStructuredFamilyCatalogDiagnostics([
+      HOME_MANAGEMENT_FAMILY,
+      FACILITY_MANAGEMENT_FAMILY
+    ]),
+    {
+      familyCount: 2,
+      additionalSelectorCount: CATALOG_SNAPSHOT.selectorCount,
+      additionalSelectorResolvedCount: 2
+    }
+  );
+});
+
+test("v15 management-continuation mentions satisfy W1c without treating medication-only text as management", () => {
+  const current = buildStandingStructuredFacts({
+    session: {
+      setting: "home_visit",
+      encounterDetails: { residenceType: "private" },
+      diagnoses: [{ name: "慢性心不全", status: "active" }]
+    },
+    prepared: {
+      clinicalEvents: [],
+      standingMentions: [{
+        lineId: "P1",
+        target: "在宅療養",
+        status: "continued",
+        text: "訪問看護と連携し在宅療養を継続。次回は2週後の定期訪問予定。"
+      }, {
+        lineId: "P2",
+        target: "現行処方",
+        status: "continued",
+        text: "現行処方を継続。"
+      }, {
+        lineId: "P3",
+        target: "在宅療養管理",
+        status: "stopped",
+        text: "在宅療養管理を終了。"
+      }, {
+        lineId: "P4",
+        target: "次月の在宅療養管理",
+        status: "continued",
+        text: "次月から在宅療養管理を継続する予定。"
+      }]
+    }
+  });
+
+  assert.equal(current.clinical.currentManagementEventCount, 0);
+  assert.equal(current.clinical.currentManagementStandingMentionCount, 1);
+  assert.equal(current.clinical.currentManagementOrCounselingCount, 1);
+  assert.equal(current.clinical.standingMentionCount, 4);
+  assert.ok(evaluateStandingStructuredTriggers({
+    families: [HOME_MANAGEMENT_FAMILY, FACILITY_MANAGEMENT_FAMILY],
+    structuredFacts: current
+  }).matches.some((match) => (
+    match.trigger.triggerId === "c002_home_management_review_candidate"
+  )));
+
+  const medicationOnly = buildStandingStructuredFacts({
+    session: {
+      setting: "home_visit",
+      encounterDetails: { residenceType: "private" },
+      diagnoses: [{ name: "高血圧症", status: "active" }]
+    },
+    prepared: {
+      standingMentions: [{
+        lineId: "P1",
+        target: "現行処方",
+        status: "continued",
+        text: "現行処方を継続。"
+      }]
+    }
+  });
+  assert.equal(medicationOnly.clinical.currentManagementOrCounselingCount, 0);
+  assert.equal(evaluateStandingStructuredTriggers({
+    families: [HOME_MANAGEMENT_FAMILY, FACILITY_MANAGEMENT_FAMILY],
+    structuredFacts: medicationOnly
+  }).matches.length, 0);
+});
+
+test("explicit current counseling text recovers the W1c positive fact without billing-name or non-current noise", () => {
+  const current = buildStandingStructuredFacts({
+    session: {
+      setting: "home_visit",
+      encounterDetails: { residenceType: "private" },
+      diagnoses: [{ name: "パーキンソン病", status: "active" }],
+      clinicalText: [
+        "A）パーキンソン病は安定。",
+        "P）起立時はゆっくり動作するよう家族へ指導。",
+        "転倒予防について訪問看護と情報共有。"
+      ].join("\n")
+    }
+  });
+  assert.equal(current.clinical.currentManagementTextSignalCount, 2);
+  assert.equal(current.clinical.currentManagementOrCounselingCount, 2);
+  assert.ok(evaluateStandingStructuredTriggers({
+    families: [HOME_MANAGEMENT_FAMILY, FACILITY_MANAGEMENT_FAMILY],
+    structuredFacts: current
+  }).matches.some((match) => (
+    match.trigger.triggerId === "c002_home_management_review_candidate"
+  )));
+
+  for (const clinicalText of [
+    "前回、家族へ療養上の注意を説明した。",
+    "次回、家族へ療養上の注意を説明する予定。",
+    "本日は説明せず、次回に持ち越した。",
+    "特定疾患療養管理料の算定可否を確認。",
+    "現行処方を継続。"
+  ]) {
+    const nonCurrent = buildStandingStructuredFacts({
+      session: {
+        setting: "home_visit",
+        encounterDetails: { residenceType: "private" },
+        diagnoses: [{ name: "慢性疾患", status: "active" }],
+        clinicalText
+      }
+    });
+    assert.equal(
+      nonCurrent.clinical.currentManagementTextSignalCount,
+      0,
+      clinicalText
+    );
+  }
+});
+
+test("current advice and a complete longitudinal SOAP plan recover W1c without accepting medication-only Do", () => {
+  const advice = buildStandingStructuredFacts({
+    session: {
+      setting: "home_visit",
+      encounterDetails: { residenceType: "private" },
+      diagnoses: [{ name: "起立性低血圧", status: "active" }],
+      clinicalText: [
+        "A）起立性低血圧は継続。",
+        "P）起立性低血圧に注意を促し、次回訪問で症状を再評価。"
+      ].join("\n")
+    }
+  });
+  assert.equal(advice.clinical.currentManagementTextSignalCount, 1);
+  assert.equal(advice.clinical.currentManagementOrCounselingCount, 1);
+
+  for (const clinicalText of [
+    [
+      "A）高血圧症・変形性膝関節症は安定。",
+      "P）現行処方を継続。次月も定期訪問予定。"
+    ].join("\n"),
+    [
+      "A）多発性硬化症は安定。神経因性疼痛はコントロール中。",
+      "P）現行処方を継続。次回、内服内容と眠気を見直す方針。"
+    ].join("\n")
+  ]) {
+    const facts = buildStandingStructuredFacts({
+      session: {
+        setting: "home_visit",
+        encounterDetails: { residenceType: "private" },
+        diagnoses: [{ name: "慢性疾患", status: "active" }],
+        clinicalText
+      }
+    });
+    assert.equal(facts.clinical.currentLongitudinalPlanSignalCount, 1, clinicalText);
+    assert.equal(facts.clinical.currentManagementOrCounselingCount, 1, clinicalText);
+  }
+
+  for (const clinicalText of [
+    "P）現行処方を継続。",
+    "A）高血圧症は安定。P）現行処方を継続。",
+    "A）高血圧症は安定。P）次回から処方を継続する予定。",
+    "A）高血圧症は安定。P）現行処方は継続しない。次回訪問予定。",
+    "前回は高血圧症が安定。前回の処方を継続し、次回訪問予定。"
+  ]) {
+    const facts = buildStandingStructuredFacts({
+      session: {
+        setting: "home_visit",
+        encounterDetails: { residenceType: "private" },
+        diagnoses: [{ name: "高血圧症", status: "active" }],
+        clinicalText
+      }
+    });
+    assert.equal(facts.clinical.currentLongitudinalPlanSignalCount, 0, clinicalText);
+  }
+});
+
+test("current own-clinic management events with unknown action status stay candidate-only eligible", () => {
+  const facts = buildStandingStructuredFacts({
+    session: {
+      setting: "home_visit",
+      encounterDetails: { residenceType: "private" },
+      diagnoses: [{ name: "がん性疼痛", status: "active" }]
+    },
+    prepared: {
+      clinicalEvents: [{
+        type: "management",
+        actionStatus: "unknown",
+        temporalRelation: "current_visit",
+        providerOwnership: "own_clinic"
+      }, {
+        type: "management",
+        actionStatus: "unknown",
+        temporalRelation: "future",
+        providerOwnership: "own_clinic"
+      }, {
+        type: "management",
+        actionStatus: "unknown",
+        temporalRelation: "current_visit",
+        providerOwnership: "other_provider"
+      }]
+    }
+  });
+
+  assert.equal(facts.clinical.currentManagementEventCount, 1);
+  assert.equal(facts.clinical.currentManagementOrCounselingCount, 1);
+  const match = evaluateStandingStructuredTriggers({
+    families: [HOME_MANAGEMENT_FAMILY, FACILITY_MANAGEMENT_FAMILY],
+    structuredFacts: facts
+  }).matches.find((entry) => (
+    entry.trigger.triggerId === "c002_home_management_review_candidate"
+  ));
+  assert.ok(match);
 });
 
 test("typed device facts create management candidates without inventing absent devices", () => {
@@ -481,16 +811,18 @@ function family({
   branch = "00",
   code
 }) {
+  const snapshot = CATALOG_SNAPSHOT.families.find((entry) => (
+    entry.name === name
+    && entry.hierarchy?.chapter === "2"
+    && entry.hierarchy?.part === part
+    && entry.hierarchy?.alphaPart === alphaPart
+    && entry.hierarchy?.section === section
+    && entry.hierarchy?.branch === branch
+  ));
+  assert.ok(snapshot, `standing family is absent from real-master snapshot: ${name}`);
   return {
-    familyId,
-    name,
-    hierarchy: {
-      chapter: "2",
-      part,
-      alphaPart,
-      section,
-      branch
-    },
+    ...structuredClone(snapshot),
+    familyId: familyId || snapshot.familyId,
     variants: [{ code, name, points: 100 }]
   };
 }

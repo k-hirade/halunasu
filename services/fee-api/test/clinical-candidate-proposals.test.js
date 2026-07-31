@@ -452,10 +452,13 @@ test("限定再確認が失敗しても初回OpenAI候補を保持し計算を�
   const initialProposal = prep.candidateProposals.find((item) => item.code === "180000710");
   assert.ok(initialProposal);
   assert.notEqual(initialProposal.source, "openai_auxiliary_recheck");
-  assert.equal(
-    prep.reviewIssues.some((item) => item.issueCode === "auxiliary_extraction_unresolved"),
-    true
-  );
+  const unresolved = prep.reviewIssues.find((item) => (
+    item.issueCode === "auxiliary_extraction_unresolved"
+  ));
+  assert.ok(unresolved);
+  assert.deepEqual(unresolved.sidecarDisplay.fragments, ["創傷処置"]);
+  assert.match(unresolved.sidecarDisplay.fragmentHashes[0], /^[a-f0-9]{64}$/u);
+  assert.equal(JSON.stringify(prep.metrics).includes("創傷処置"), false);
 });
 
 test("Span検出器が利用不能でも追加OpenAI呼び出しをせず初回結果を保持する", async (t) => {
@@ -1192,7 +1195,7 @@ test("v15管理継続行: LLMがstanding mentionを落としても決定論で�
   assert.equal(lane.candidateProposals[0].basis, "standing_mention_first_month_candidate");
 });
 
-test("v15管理継続の決定論復元: 予定・過去/他院・中止検討・当日実施は対象外にする", () => {
+test("v15管理継続の決定論復元: 節ごとに予定・過去/他院・中止・当日実施を除外する", () => {
   const cases = [
     {
       text: "P）在宅酸素療法は変更なく継続中。",
@@ -1212,11 +1215,19 @@ test("v15管理継続の決定論復元: 予定・過去/他院・中止検討�
     },
     {
       text: "P）在宅酸素療法なし、呼吸管理を継続。",
-      expectedTargets: []
+      expectedTargets: ["呼吸管理"]
     },
     {
       text: "O）人工呼吸器の設定変更を実施し、管理を継続した。",
+      expectedTargets: ["管理"]
+    },
+    {
+      text: "P）在宅療養管理は継続しない。",
       expectedTargets: []
+    },
+    {
+      text: "P）現行処方を継続。体重管理を指導。訪問看護と連携し在宅療養を継続。",
+      expectedTargets: ["現行処方", "訪問看護と連携し在宅療養"]
     }
   ];
 

@@ -68,6 +68,7 @@ downloading the model again.
 
 | Profile | Purpose |
 | --- | --- |
+| `prod-openai-primary-span-recheck` | PROD Yamamoto demo: OpenAI-primary extraction with one bounded Span-triggered OpenAI recheck |
 | `stg-openai-primary-span-recheck` | OpenAI-primary extraction with one bounded Span-triggered OpenAI recheck for the Yamamoto STG facility |
 | `stg-openai-primary-span-control` | Matching OpenAI-primary STG control with coverage recheck disabled |
 | `stg-longitudinal` | Extraction memo and standing-fact measurements |
@@ -76,8 +77,10 @@ downloading the model again.
 | `stg-whitebox-three-lane-shadow` | Isolated WX1/WX2/WX3 shadow |
 | `stg-full-validation` | Cross-feature STG regression with all accepted STG features |
 
-These profiles are STG-only. They do not define or enable a PROD white-box
-runtime.
+The only PROD profile is `prod-openai-primary-span-recheck`. It keeps OpenAI
+authoritative and limits the auxiliary Span recheck to the explicitly
+allowlisted Yamamoto demo facility. The white-box experiment profiles remain
+STG-only and cannot be enabled in PROD.
 
 `stg-openai-primary-span-recheck` is the active auxiliary-recheck path. Its
 coverage mode is `verify`: a threshold-passing Span detection that is absent
