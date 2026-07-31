@@ -16,6 +16,7 @@ test("extension has no server-internal imports or sensitive input surface", asyn
   assert.doesNotMatch(source, /#action_list|\.koui-area|\.koui-item/u);
   assert.doesNotMatch(source, /type=["']password["']/i);
   assert.doesNotMatch(source, /\.innerHTML\s*=/);
+  assert.doesNotMatch(source, /shirobon\.net/i);
   assert.match(source, /candidateOnly|承認前/);
 });
 
@@ -63,6 +64,12 @@ test("side panel keeps clinical text and raw selection codes out of presentation
   assert.doesNotMatch(html, /preview-text|カルテ本文/u);
   assert.doesNotMatch(panel, /codeCandidates\s*\.\s*join/u);
   assert.doesNotMatch(panel, /severityOrder|ISSUE_SEVERITY/u);
+  assert.doesNotMatch(panel, /createCodeReference|https?:\/\//u);
+  assert.doesNotMatch(panel, /要選択|区分選択/u);
+  assert.match(panel, /function createCodeLabel/u);
+  assert.equal((panel.match(/\.href\s*=/gu) || []).length, 1);
+  assert.match(panel, /elements\["approval-link"\]\.href\s*=/u);
+  assert.doesNotMatch(html, /要選択|採用不可|blocked-candidates/u);
   assert.match(content, /extractedAt:\s*new Date\(\)\.toISOString\(\)/u);
 });
 

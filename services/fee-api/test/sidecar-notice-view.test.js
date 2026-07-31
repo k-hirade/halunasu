@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   SIDECAR_NOTICE_KINDS,
+  SIDECAR_SUPPRESSED_CONDITIONAL_COMMENT_RULES,
   buildSidecarNoticePresentation
 } from "../src/sidecar-notice-view.js";
 
@@ -112,16 +113,6 @@ test("sidecar notices become candidate comments, badges, checklist rows, and sen
       .sort((left, right) => left[0].localeCompare(right[0])),
     [
       [
-        "830100088",
-        "input_required",
-        ""
-      ],
-      [
-        "850100094",
-        "generated",
-        "必要性を認めた診療年月日（在宅患者訪問診療料（１））；令和 8年 6月25日"
-      ],
-      [
         "850100095",
         "generated",
         "訪問診療年月日（在宅患者訪問診療料（１））；令和 8年 6月25日"
@@ -136,16 +127,19 @@ test("sidecar notices become candidate comments, badges, checklist rows, and sen
   const checklist = presentation.notices.filter((notice) => notice.checklist);
   assert.deepEqual(
     checklist.map((notice) => notice.shortText).sort(),
-    [
-      "同一患家2人目の算定差替えを確認",
-      "頻回訪問の必要性コメントを記入"
-    ].sort()
+    ["同一患家2人目の算定差替えを確認"]
   );
   const generated = presentation.notices.filter((notice) => (
     notice.kind === "attached_comment" && notice.comment.status === "generated"
   ));
-  assert.equal(generated.length, 2);
+  assert.equal(generated.length, 1);
   assert.equal(generated.every((notice) => notice.targetCode === VISIT_CODE), true);
+  assert.equal(
+    presentation.notices.some((notice) => ["830100088", "850100094"].includes(
+      notice?.comment?.commentCode
+    )),
+    false
+  );
 
   const sensorCandidates = presentation.candidates.filter((candidate) => (
     candidate.sourceSubtype === "sensor_candidate"
@@ -155,6 +149,14 @@ test("sidecar notices become candidate comments, badges, checklist rows, and sen
     candidate.adoptionBlocked && candidate.estimatedTotalPoints === 0
   )), true);
   assert.equal(
+    presentation.notices
+      .filter((notice) => notice.kind === "sensor_candidate" || sensorCandidates.some((candidate) => (
+        candidate.candidateId === notice.candidateId
+      )))
+      .every((notice) => notice.audience === "admin" && notice.checklist === false),
+    true
+  );
+  assert.equal(
     presentation.notices.find((notice) => notice.kind === "facility_config").checklist,
     false
   );
@@ -162,6 +164,53 @@ test("sidecar notices become candidate comments, badges, checklist rows, and sen
     presentation.notices.find((notice) => notice.kind === "suppressed_explanation").placement,
     "detail"
   );
+});
+
+test("conditional frequent-home-visit comments have sourced suppression metadata", () => {
+  assert.deepEqual(
+    SIDECAR_SUPPRESSED_CONDITIONAL_COMMENT_RULES.map((rule) => rule.commentCode).sort(),
+    ["830100088", "850100094"]
+  );
+  assert.equal(
+    SIDECAR_SUPPRESSED_CONDITIONAL_COMMENT_RULES.every((rule) => (
+      rule.reasonCode === "frequent_home_visit_condition_not_evaluated"
+      && rule.note.includes("要求しない")
+      && rule.source.url.startsWith("https://www.mhlw.go.jp/")
+      && rule.source.reference.includes(rule.commentCode)
+    )),
+    true
+  );
+});
+
+test("blocked candidates stay in the API while their notices are admin detail only", () => {
+  const presentation = buildSidecarNoticePresentation({
+    candidates: [{
+      candidateId: "blocked_candidate",
+      sourceType: "proposal",
+      code: "199999999",
+      name: "施設基準未確認候補",
+      adoptionBlocked: true,
+      badges: ["adoption_blocked"],
+      comments: [{
+        commentCode: "899999999",
+        name: "確認コメント",
+        status: "input_required",
+        text: ""
+      }]
+    }]
+  });
+
+  assert.equal(presentation.candidates.length, 1);
+  assert.equal(presentation.candidates[0].adoptionBlocked, true);
+  const candidateNotices = presentation.notices.filter((notice) => (
+    notice.candidateId === "blocked_candidate"
+  ));
+  assert.equal(candidateNotices.length, 2);
+  assert.equal(candidateNotices.every((notice) => (
+    notice.audience === "admin"
+    && notice.placement === "detail"
+    && notice.checklist === false
+  )), true);
 });
 
 test("facility configuration is actionable only when the visit has a related lab act", () => {

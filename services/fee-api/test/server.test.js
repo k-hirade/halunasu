@@ -9779,7 +9779,7 @@ test("sidecar notices deduplicate warning and review issue paths and honor encou
   assert.ok(calculation.notices.length < calculation.warnings.length + calculation.reviewIssues.length);
 });
 
-test("sidecar response attaches generated and required comments to their candidate", async () => {
+test("sidecar response attaches only unconditional generated comments to their candidate", async () => {
   const stores = createStores();
   stores.feeCalculator.calculate = async () => ({
     provider: "test_fee_engine",
@@ -9839,25 +9839,27 @@ test("sidecar response attaches generated and required comments to their candida
     visit.comments
       .map((comment) => [comment.commentCode, comment.status])
       .sort((left, right) => left[0].localeCompare(right[0])),
-    [
-      ["830100088", "input_required"],
-      ["850100094", "generated"],
-      ["850100095", "generated"]
-    ]
+    [["850100095", "generated"]]
   );
   assert.ok(visit.comments.find((comment) => comment.commentCode === "850100095").text.includes(
     "令和 8年 5月28日"
   ));
   assert.equal(
     calculation.notices.filter((notice) => notice.kind === "attached_comment").length,
-    3
+    1
   );
   assert.equal(calculation.notices.every((notice) => (
     ["required", "recommended", "reference"].includes(notice.attentionLevel)
   )), true);
   assert.equal(
     calculation.notices.filter((notice) => notice.checklist === true).length,
-    1
+    0
+  );
+  assert.equal(
+    calculation.notices.some((notice) => ["830100088", "850100094"].includes(
+      notice?.comment?.commentCode
+    )),
+    false
   );
   assert.equal(calculation.warnings.length >= 3, true);
 });
@@ -10203,6 +10205,8 @@ test("sidecar calculation compares same-date sibling drafts and blocks the secon
     .filter((candidate) => blockedProposals.some((proposal) => proposal.proposalId === candidate.candidateId));
   assert.equal(responseCandidates.length, 5);
   assert.equal(responseCandidates.every((candidate) => candidate.adoptionBlocked === true), true);
+  assert.equal(responseCandidates.every((candidate) => candidate.zone === "blocked"), true);
+  assert.equal(second.body.sidecarDraft.calculation.decisionCandidateCount >= 5, true);
 });
 
 test("sidecar auto-provision remains fail-closed for ambiguous and unavailable lookups", async () => {

@@ -42,7 +42,7 @@
     "calculate-button",
     "result-section", "total-points", "decision-count", "calculation-diff", "revision-copy",
     "included-group", "line-candidates", "review-group", "proposal-candidates",
-    "selection-group", "selection-candidates", "blocked-group", "blocked-candidates",
+    "selection-group", "selection-candidates",
     "checklist-count", "checklist", "checklist-overflow", "checklist-overflow-copy",
     "detail-log-button", "detail-log-section", "detail-log-count", "detail-log",
     "detail-log-back-button", "status-message"
@@ -400,10 +400,10 @@
     const candidates = (Array.isArray(calculation.candidates) ? calculation.candidates : [])
       .map((candidate) => normalizeCandidateZone(candidate));
     elements["total-points"].textContent = `${Number(calculation.estimatedTotalPoints || 0).toLocaleString("ja-JP")}点`;
-    elements["decision-count"].textContent = `${Number(
-      calculation.decisionCandidateCount
-      ?? candidates.filter((candidate) => candidate.zone !== "included").length
-    ).toLocaleString("ja-JP")}件`;
+    const visibleDecisionCount = candidates.filter((candidate) => (
+      ["review_required", "selection_required"].includes(candidate.zone)
+    )).length;
+    elements["decision-count"].textContent = `${visibleDecisionCount.toLocaleString("ja-JP")}件`;
     elements["revision-copy"].textContent = [
       lastCalculationContext
         ? `患者${lastCalculationContext.externalPatientId} / ${lastCalculationContext.serviceDate} / ${lastCalculationContext.settingLabel} / ${lastCalculationContext.sameBuildingLabel}`
@@ -414,7 +414,6 @@
     renderCandidateGroup("included-group", "line-candidates", candidates.filter((item) => item.zone === "included"));
     renderCandidateGroup("review-group", "proposal-candidates", candidates.filter((item) => item.zone === "review_required"));
     renderCandidateGroup("selection-group", "selection-candidates", candidates.filter((item) => item.zone === "selection_required"));
-    renderCandidateGroup("blocked-group", "blocked-candidates", candidates.filter((item) => item.zone === "blocked"));
     const notices = Array.isArray(calculation.notices) ? calculation.notices : null;
     const detailNotices = notices
       ? sortReviewIssues(notices)
@@ -423,7 +422,10 @@
           ...sortReviewIssues(Array.isArray(calculation.reviewIssues) ? calculation.reviewIssues : [])
         ];
     const checklist = notices
-      ? detailNotices.filter((notice) => notice?.checklist === true)
+      ? detailNotices.filter((notice) => (
+          notice?.checklist === true
+          && !noticeTargetsBlockedCandidate(notice, candidates)
+        ))
       : detailNotices;
     const visibleChecklist = checklist.slice(0, CHECKLIST_LIMIT);
     elements["checklist-count"].textContent = `${checklist.length}件`;
@@ -489,25 +491,23 @@
       const display = candidate.display && typeof candidate.display === "object"
         ? candidate.display
         : null;
-      name.textContent = display?.stem || candidate.name || candidate.code || "名称未確定";
-      const points = document.createElement("span");
-      points.className = "candidate-points";
       const exactOption = candidate.selectionResolution === "exact"
         ? candidate.selectionNarrowing?.remainingOptions?.[0]
         : null;
-      points.textContent = candidate.sourceSubtype === "sensor_candidate"
-        ? "要確認"
-        : candidate.requiresSelection && !exactOption
-          ? "要選択"
-          : `${Number(exactOption?.points ?? candidate.estimatedTotalPoints ?? 0).toLocaleString("ja-JP")}点`;
+      const stem = display?.stem || candidate.name || candidate.code || "名称未確定";
+      name.textContent = exactOption?.qualifierLabel
+        ? appendQualifierLabel(stem, exactOption.qualifierLabel)
+        : stem;
+      const points = document.createElement("span");
+      points.className = "candidate-points";
+      points.textContent = candidatePointLabel(candidate, exactOption);
       header.append(name, points);
       row.append(header);
 
       const meta = document.createElement("div");
       meta.className = "candidate-meta";
       const qualifierText = [
-        display?.stem && display.qualifier ? display.qualifier : "",
-        exactOption ? "要確認（区分確定済み）" : ""
+        !exactOption && display?.stem && display.qualifier ? display.qualifier : ""
       ].filter(Boolean).join("・");
       if (qualifierText) {
         const qualifier = document.createElement("span");
@@ -515,7 +515,7 @@
         qualifier.textContent = qualifierText;
         meta.append(qualifier);
       }
-      meta.append(createCodeReference(candidate.code || exactOption?.code || null));
+      meta.append(createCodeLabel(candidate.code || exactOption?.code || null));
       if (meta.childElementCount) {
         row.append(meta);
       }
@@ -537,17 +537,91 @@
     return { ...candidate, zone: "review_required" };
   }
 
-  function createCodeReference(code) {
+  function noticeTargetsBlockedCandidate(notice, candidates) {
+    if (["adoption_blocked", "sensor_candidate"].includes(String(notice?.badge || notice?.kind || ""))) {
+      return true;
+    }
+    const blocked = candidates.filter((candidate) => candidate.zone === "blocked");
+    const candidateId = String(notice?.candidateId || "").trim();
+    if (candidateId && blocked.some((candidate) => String(candidate?.candidateId || "") === candidateId)) {
+      return true;
+    }
+    const targetCode = String(notice?.targetCode || "").trim();
+    return Boolean(
+      targetCode
+      && blocked.some((candidate) => String(candidate?.code || "") === targetCode)
+      && !candidates.some((candidate) => (
+        candidate.zone !== "blocked" && String(candidate?.code || "") === targetCode
+      ))
+    );
+  }
+
+  function candidatePointLabel(candidate, exactOption) {
+    if (exactOption) {
+      return `${formatPoints(exactOption.points ?? candidate.estimatedTotalPoints ?? candidate.points ?? 0)}点`;
+    }
+    if (candidate.requiresSelection) {
+      const narrowing = candidate.selectionNarrowing || {};
+      const count = Math.max(0, Number(
+        narrowing.remainingOptionCount
+        ?? narrowing.remainingOptions?.length
+        ?? candidate.codeCandidates?.length
+        ?? 0
+      ));
+      const range = selectionPointRange(narrowing);
+      if (range) {
+        const pointLabel = range.min === range.max
+          ? `${formatPoints(range.min)}点`
+          : `${formatPoints(range.min)}〜${formatPoints(range.max)}点`;
+        return `${pointLabel}（残り${count.toLocaleString("ja-JP")}区分）`;
+      }
+      const fallback = finiteNumber(candidate.estimatedTotalPoints ?? candidate.points);
+      return fallback === null
+        ? `点数未確定（残り${count.toLocaleString("ja-JP")}区分）`
+        : `${formatPoints(fallback)}点（残り${count.toLocaleString("ja-JP")}区分）`;
+    }
+    return `${formatPoints(candidate.estimatedTotalPoints ?? candidate.points ?? 0)}点`;
+  }
+
+  function selectionPointRange(narrowing) {
+    const explicitMinimum = finiteNumber(narrowing?.pointRange?.min);
+    const explicitMaximum = finiteNumber(narrowing?.pointRange?.max);
+    if (explicitMinimum !== null && explicitMaximum !== null) {
+      return {
+        min: Math.min(explicitMinimum, explicitMaximum),
+        max: Math.max(explicitMinimum, explicitMaximum)
+      };
+    }
+    const values = (Array.isArray(narrowing?.remainingOptions) ? narrowing.remainingOptions : [])
+      .map((option) => finiteNumber(option?.points))
+      .filter((value) => value !== null);
+    return values.length ? { min: Math.min(...values), max: Math.max(...values) } : null;
+  }
+
+  function finiteNumber(value) {
+    if (value === null || value === undefined || value === "") return null;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+  }
+
+  function formatPoints(value) {
+    return Number(value || 0).toLocaleString("ja-JP");
+  }
+
+  function appendQualifierLabel(stem, qualifierLabel) {
+    const normalizedQualifier = String(qualifierLabel || "")
+      .trim()
+      .replace(/^[（(]\s*/u, "")
+      .replace(/\s*[）)]$/u, "");
+    if (!normalizedQualifier || String(stem).includes(normalizedQualifier)) return String(stem);
+    return `${stem}（${normalizedQualifier}）`;
+  }
+
+  function createCodeLabel(code) {
     const normalized = String(code || "").trim();
-    const detail = document.createElement(normalized ? "a" : "span");
+    const detail = document.createElement("span");
     detail.className = "candidate-code";
     detail.textContent = normalized || "コード未確定";
-    if (normalized) {
-      detail.href = `https://shirobon.net/?s=${encodeURIComponent(normalized)}`;
-      detail.target = "_blank";
-      detail.rel = "noopener noreferrer";
-      detail.title = "しろぼんねっとで確認";
-    }
     return detail;
   }
 
@@ -598,7 +672,7 @@
         label.textContent = option.qualifierLabel || "区分名未設定";
         const optionPoints = document.createElement("strong");
         optionPoints.textContent = `${Number(option.points || 0).toLocaleString("ja-JP")}点`;
-        optionRow.append(label, optionPoints, createCodeReference(option.code));
+        optionRow.append(label, optionPoints, createCodeLabel(option.code));
         optionList.append(optionRow);
       }
       container.append(optionList);

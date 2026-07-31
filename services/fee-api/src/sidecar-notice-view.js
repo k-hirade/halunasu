@@ -12,8 +12,34 @@ export const SIDECAR_NOTICE_KINDS = Object.freeze([
   "detail_log"
 ]);
 
+export const SIDECAR_SUPPRESSED_CONDITIONAL_COMMENT_RULES = Object.freeze([
+  Object.freeze({
+    commentCode: "830100088",
+    reasonCode: "frequent_home_visit_condition_not_evaluated",
+    note: "頻回訪問に該当する場合だけ必要なコメントであり、該当条件の決定論判定が未実装のためサイドカーでは要求しない。",
+    source: Object.freeze({
+      title: "令和8年度 診療報酬請求書等の記載要領等について（令和8年6月1日適用）",
+      url: "https://www.mhlw.go.jp/content/12400000/001697746.pdf",
+      reference: "別添1 レセプト電算処理システム用コード 830100088"
+    })
+  }),
+  Object.freeze({
+    commentCode: "850100094",
+    reasonCode: "frequent_home_visit_condition_not_evaluated",
+    note: "頻回訪問の必要性を認めた診療年月日であり、頻回訪問の該当条件を判定できないためサイドカーでは要求しない。",
+    source: Object.freeze({
+      title: "令和8年度 診療報酬請求書等の記載要領等について（令和8年6月1日適用）",
+      url: "https://www.mhlw.go.jp/content/12400000/001697746.pdf",
+      reference: "別添1 レセプト電算処理システム用コード 850100094"
+    })
+  })
+]);
+
+const SUPPRESSED_CONDITIONAL_COMMENT_CODES = new Set(
+  SIDECAR_SUPPRESSED_CONDITIONAL_COMMENT_RULES.map((rule) => rule.commentCode)
+);
+
 const GENERATED_DATE_COMMENT_CODES = new Set([
-  "850100094",
   "850100095"
 ]);
 
@@ -39,8 +65,9 @@ export function buildSidecarNoticePresentation({
   });
   const sensorCandidates = buildSidecarSensorCandidates(notices, decoratedCandidates);
   const allCandidates = uniqueSidecarCandidates([...decoratedCandidates, ...sensorCandidates]);
-  const detailNotices = candidateDetailNotices(allCandidates, notices, occurredAt);
-  const allNotices = [...notices, ...detailNotices].map((notice, index) => ({
+  const presentationNotices = normalizeBlockedCandidateNotices(notices, allCandidates);
+  const detailNotices = candidateDetailNotices(allCandidates, presentationNotices, occurredAt);
+  const allNotices = [...presentationNotices, ...detailNotices].map((notice, index) => ({
     ...notice,
     sequence: index + 1
   }));
@@ -78,14 +105,17 @@ export function buildSidecarCalculationNotices({
     }
     seenKeys.add(deduplicationKey);
     structuredMessageKeys.add(messageKey);
-    notices.push(classifySidecarNotice({
+    const classifiedNotice = classifySidecarNotice({
       ...issue,
       noticeId: issue.reviewIssueId || sidecarNoticeId(deduplicationKey),
       sourceType: "review_issue",
       severity: normalizeSidecarNoticeSeverity(issue.severity, "warning"),
       messageForStaff: detailText,
       detailText
-    }, context));
+    }, context);
+    if (classifiedNotice) {
+      notices.push(classifiedNotice);
+    }
   }
 
   for (const warning of asArray(warnings)) {
@@ -102,7 +132,7 @@ export function buildSidecarCalculationNotices({
       continue;
     }
     seenKeys.add(deduplicationKey);
-    notices.push(classifySidecarNotice({
+    const classifiedNotice = classifySidecarNotice({
       noticeId: sidecarNoticeId(deduplicationKey),
       sourceType: "warning",
       issueCode: null,
@@ -111,7 +141,10 @@ export function buildSidecarCalculationNotices({
       severity: "warning",
       messageForStaff: detailText,
       detailText
-    }, context));
+    }, context);
+    if (classifiedNotice) {
+      notices.push(classifiedNotice);
+    }
   }
 
   return notices
@@ -186,7 +219,7 @@ export function decorateSidecarCandidates(candidates = [], {
       comments: uniqueComments([
         ...asArray(candidate?.comments),
         ...(commentsByCode.get(code) || [])
-      ])
+      ]).filter((comment) => !isSuppressedConditionalComment(comment?.commentCode))
     };
   });
 }
@@ -217,7 +250,7 @@ function candidateDetailNotices(candidates = [], notices = [], occurredAt = null
         attentionLevel: badgeAttentionLevel(badge),
         shortText: badgeDetailText(badge),
         detailText: badgeDetailText(badge),
-        audience: "clinician",
+        audience: candidate?.adoptionBlocked === true ? "admin" : "clinician",
         placement: "detail",
         checklist: false,
         badge,
@@ -225,6 +258,7 @@ function candidateDetailNotices(candidates = [], notices = [], occurredAt = null
       });
     }
     for (const comment of asArray(candidate?.comments)) {
+      if (isSuppressedConditionalComment(comment?.commentCode)) continue;
       const key = [
         targetCode || "",
         candidateId || "",
@@ -240,6 +274,7 @@ function candidateDetailNotices(candidates = [], notices = [], occurredAt = null
       ));
       if (hasNotice) continue;
       const required = comment?.status === "input_required";
+      const blocked = candidate?.adoptionBlocked === true;
       result.push({
         noticeId: sidecarNoticeId(`candidate-comment|${candidateId || targetCode}|${comment?.commentCode}|${comment?.status}`),
         sourceType: "candidate_metadata",
@@ -250,15 +285,37 @@ function candidateDetailNotices(candidates = [], notices = [], occurredAt = null
         attentionLevel: required ? "recommended" : "reference",
         shortText: required ? `${comment?.name || "レセプトコメント"}を記入` : `${comment?.name || "レセプトコメント"}を作成済み`,
         detailText: comment?.text || comment?.name || "レセプトコメントを確認してください。",
-        audience: "clinician",
-        placement: required ? "candidate_checklist" : "detail",
-        checklist: required,
+        audience: blocked ? "admin" : "clinician",
+        placement: blocked ? "detail" : required ? "candidate_checklist" : "detail",
+        checklist: blocked ? false : required,
         comment,
         occurredAt
       });
     }
   }
   return result;
+}
+
+function normalizeBlockedCandidateNotices(notices = [], candidates = []) {
+  const blockedCandidates = asArray(candidates).filter((candidate) => candidate?.adoptionBlocked === true);
+  const visibleCodes = new Set(asArray(candidates)
+    .filter((candidate) => candidate?.adoptionBlocked !== true)
+    .map((candidate) => String(candidate?.code || "").trim())
+    .filter(Boolean));
+  return asArray(notices).map((notice) => {
+    const candidateId = String(notice?.candidateId || "").trim();
+    const targetCode = String(notice?.targetCode || "").trim();
+    const blocked = notice?.kind === "sensor_candidate"
+      || (candidateId && blockedCandidates.some((candidate) => (
+        String(candidate?.candidateId || "") === candidateId
+      )))
+      || (targetCode && !visibleCodes.has(targetCode) && blockedCandidates.some((candidate) => (
+        String(candidate?.code || "") === targetCode
+      )));
+    return blocked
+      ? { ...notice, audience: "admin", placement: "detail", checklist: false }
+      : notice;
+  });
 }
 
 function badgeAttentionLevel(badge) {
@@ -270,7 +327,7 @@ function badgeAttentionLevel(badge) {
 function badgeDetailText(badge) {
   return {
     facility_rule: "施設の恒常算定ルールに基づく候補です。",
-    requires_selection: "算定区分の選択が必要です。",
+    requires_selection: "算定区分の確認が必要です。",
     adoption_blocked: "算定要件が未確定のため採用できません。",
     same_household_first: "同一患家の1人目として扱われています。",
     same_household_second: "同一患家の2人目として算定差替えの確認が必要です。",
@@ -334,6 +391,9 @@ function classifySidecarNotice(notice, context) {
   const targetCode = sidecarNoticeTargetCode(notice, detailText);
   const requiredComment = parseRequiredComment(detailText, context.serviceDate);
   if (requiredComment) {
+    if (requiredComment.suppressed === true) {
+      return null;
+    }
     return classified(notice, {
       kind: "attached_comment",
       targetCode: requiredComment.targetCode,
@@ -431,8 +491,8 @@ function classifySidecarNotice(notice, context) {
       kind: "sensor_candidate",
       targetCode,
       shortText: "未確認の行為をマスター検索で確認",
-      audience: "clinician",
-      placement: "proposal",
+      audience: "admin",
+      placement: "detail",
       checklist: false,
       sensor: sensorNoticeDetails(notice, detailText)
     });
@@ -462,6 +522,13 @@ function parseRequiredComment(detailText, serviceDate) {
   const targetCode = match[1];
   const commentCode = match[3];
   const name = String(match[4] || "").trim().replace(/[；;]\s*$/u, "");
+  if (isSuppressedConditionalComment(commentCode)) {
+    return {
+      commentCode,
+      targetCode,
+      suppressed: true
+    };
+  }
   const formattedDate = formatJapaneseReceiptDate(serviceDate);
   const generated = GENERATED_DATE_COMMENT_CODES.has(commentCode) && Boolean(formattedDate);
   return {
@@ -475,18 +542,16 @@ function parseRequiredComment(detailText, serviceDate) {
 }
 
 function requiredCommentShortName(commentCode, name) {
-  if (commentCode === "830100088") {
-    return "頻回訪問の必要性コメント";
-  }
-  if (commentCode === "850100094") {
-    return "必要性を認めた診療年月日";
-  }
   if (commentCode === "850100095") {
     return "訪問診療年月日";
   }
   return String(name || "レセプトコメント")
     .replace(/[（(].*$/u, "")
     .trim() || "レセプトコメント";
+}
+
+function isSuppressedConditionalComment(commentCode) {
+  return SUPPRESSED_CONDITIONAL_COMMENT_CODES.has(String(commentCode || "").trim());
 }
 
 function sidecarNoticeTargetCode(notice, detailText) {
