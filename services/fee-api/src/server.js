@@ -2296,7 +2296,10 @@ function sidecarCalculationResponse(sidecarDraft = {}) {
     specialDiseaseStatus: "unknown"
   };
   const candidates = presentation.candidates.map((candidate) => {
-    const billingEligibility = candidate.sourceType === "calculated_line"
+    const facilityRuleConfirmed = candidate.sourceType === "proposal"
+      && candidate.badges?.includes("facility_rule")
+      && Boolean(candidate.code);
+    const billingEligibility = candidate.sourceType === "calculated_line" || facilityRuleConfirmed
       ? "included"
       : candidate.adoptionBlocked === true
         ? "blocked"
@@ -2307,7 +2310,7 @@ function sidecarCalculationResponse(sidecarDraft = {}) {
     return {
       ...candidate,
       billingEligibility,
-      zone: candidate.sourceType === "calculated_line"
+      zone: candidate.sourceType === "calculated_line" || facilityRuleConfirmed
         ? "included"
         : candidate.adoptionBlocked === true
           ? "blocked"
@@ -2318,6 +2321,9 @@ function sidecarCalculationResponse(sidecarDraft = {}) {
       selectionNarrowing
     };
   });
+  const estimatedTotalPoints = candidates
+    .filter((candidate) => candidate.zone === "included")
+    .reduce((sum, candidate) => sum + Number(candidate.estimatedTotalPoints || 0), 0);
   const decisionCandidateCount = candidates.filter((candidate) => candidate.zone !== "included").length;
   return {
     contractVersion: SIDECAR_CONTRACT_VERSION,
@@ -2334,7 +2340,7 @@ function sidecarCalculationResponse(sidecarDraft = {}) {
       calculation: {
         status: "needs_review",
         candidateOnly: true,
-        estimatedTotalPoints: Number(calculation.totalPoints || 0),
+        estimatedTotalPoints,
         decisionCandidateCount,
         candidates,
         notices: presentation.notices,

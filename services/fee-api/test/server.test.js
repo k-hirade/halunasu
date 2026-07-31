@@ -9795,6 +9795,15 @@ test("sidecar response attaches only unconditional generated comments to their c
       quantity: 1,
       totalPoints: 215
     }],
+    candidateProposals: [{
+      proposalId: "facility_data_addon",
+      title: "在宅データ提出加算の算定確認",
+      code: "114057970",
+      orderType: "procedure",
+      potentialPoints: 50,
+      basis: "facility_auto_billing_rule",
+      source: "facility_auto_billing_rule"
+    }],
     warnings: [
       "Required comment candidate: 114030310 在宅患者訪問診療料 needs 850100094 必要性を認めた診療年月日（在宅患者訪問診療料（１））",
       "Required comment candidate: 114030310 在宅患者訪問診療料 needs 850100095 訪問診療年月日（在宅患者訪問診療料（１））",
@@ -9833,8 +9842,15 @@ test("sidecar response attaches only unconditional generated comments to their c
   assert.equal(response.statusCode, 201);
   const calculation = response.body.sidecarDraft.calculation;
   const visit = calculation.candidates.find((candidate) => candidate.code === "114030310");
+  const dataAddon = calculation.candidates.find((candidate) => candidate.code === "114057970");
   assert.ok(visit);
+  assert.ok(dataAddon);
   assert.ok(visit.badges.includes("facility_rule"));
+  assert.ok(dataAddon.badges.includes("facility_rule"));
+  assert.equal(dataAddon.zone, "included");
+  assert.equal(dataAddon.billingEligibility, "included");
+  assert.equal(calculation.estimatedTotalPoints, 265);
+  assert.equal(calculation.decisionCandidateCount, 0);
   assert.deepEqual(
     visit.comments
       .map((comment) => [comment.commentCode, comment.status])

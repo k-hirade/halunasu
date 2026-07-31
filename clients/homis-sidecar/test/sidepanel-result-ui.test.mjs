@@ -22,14 +22,15 @@ test("result UI hides blocked candidates and shows points for every visible sele
   const page = await openPanel(380);
   const result = await page.evaluate(() => {
     const included = document.querySelector("#line-candidates .candidate-row");
-    const review = document.querySelector("#proposal-candidates .candidate-row");
+    const includedNames = [...document.querySelectorAll("#line-candidates .candidate-row .candidate-name")]
+      .map((node) => node.textContent);
+    const reviewNames = [...document.querySelectorAll("#proposal-candidates .candidate-row .candidate-name")]
+      .map((node) => node.textContent);
     const exactSelection = [...document.querySelectorAll("#proposal-candidates .candidate-row")]
       .find((node) => node.querySelector(".candidate-name")?.textContent.startsWith("在宅患者訪問診療料（区分確定例）"));
     const selection = document.querySelector("#selection-candidates .candidate-row");
     const sixOptionSelection = [...document.querySelectorAll("#selection-candidates .candidate-row")]
       .find((node) => node.querySelector(".candidate-name")?.textContent === "特定疾患療養管理料");
-    const blockedDetail = [...document.querySelectorAll("#detail-log .detail-log-row")]
-      .find((node) => node.textContent.includes("算定要件が未確定です"));
     return {
       clinicalTextVisible: document.body.textContent.includes("非表示にすべき患者本文"),
       readStatus: document.querySelector("#preview-read-status").textContent,
@@ -38,33 +39,30 @@ test("result UI hides blocked candidates and shows points for every visible sele
         .map((node) => node.textContent),
       includedName: included.querySelector(".candidate-name").textContent,
       includedPoints: included.querySelector(".candidate-points").textContent,
-      reviewName: review.querySelector(".candidate-name").textContent,
+      includedNames,
+      reviewNames,
       exactSelectionName: exactSelection?.querySelector(".candidate-name")?.textContent,
       exactSelectionPoints: exactSelection?.querySelector(".candidate-points")?.textContent,
       exactSelectionQualifier: exactSelection?.querySelector(".candidate-qualifier")?.textContent || null,
       exactSelectionCode: exactSelection?.querySelector(".candidate-code")?.textContent,
-      selectionPoints: selection.querySelector(".candidate-points").textContent,
-      sixOptionSelectionPoints: sixOptionSelection?.querySelector(".candidate-points")?.textContent,
+      selectionPointsElement: selection.querySelector(".candidate-points") !== null,
+      selectionCodeElement: selection.querySelector(".candidate-code") !== null,
+      selectionNarrowingElement: selection.querySelector(".selection-narrowing") !== null,
+      sixOptionSelectionPointsElement: sixOptionSelection?.querySelector(".candidate-points") !== null,
       blockedCandidateCount: document.querySelectorAll(".candidate-row.zone-blocked").length,
-      blockedChecklistVisible: document.querySelector("#checklist")?.textContent.includes("算定要件が未確定です"),
-      blockedDetailAudience: blockedDetail?.querySelector(".detail-log-audience")?.textContent,
+      checklistSectionExists: document.querySelector("#checklist") !== null,
+      detailLogSectionExists: document.querySelector("#detail-log-section") !== null,
       cardBadgeCount: document.querySelectorAll(".candidate-context-badge").length,
       cardCommentCount: document.querySelectorAll(".candidate-comment").length,
+      totalPoints: document.querySelector("#total-points").textContent,
       decisionCount: document.querySelector("#decision-count").textContent,
       revision: document.querySelector("#revision-copy").textContent,
       diff: document.querySelector("#calculation-diff").textContent,
-      filterChips: [...selection.querySelectorAll(".selection-filter-chip")].map((node) => node.textContent),
-      optionLabels: [...selection.querySelectorAll(".selection-option-row > span:first-child")].map((node) => node.textContent),
-      optionPoints: [...selection.querySelectorAll(".selection-option-row > strong")].map((node) => node.textContent),
-      selectionRange: selection.querySelector(".selection-summary").textContent,
       rawCodeCandidateVisible: document.body.textContent.includes("900000001"),
       selectionStateLabelVisible: document.body.textContent.includes("要選択"),
+      remainingCountLabelVisible: /残り\d+区分/u.test(document.body.textContent),
       candidateCodeTag: included.querySelector(".candidate-code").tagName,
       candidateExternalLinkCount: document.querySelectorAll(".candidate-row a").length,
-      checklistAttention: [...document.querySelectorAll("#checklist .checklist-row")]
-        .map((node) => [...node.classList].find((name) => name.startsWith("attention-"))),
-      detailAttention: [...document.querySelectorAll("#detail-log .detail-log-row")]
-        .map((node) => [...node.classList].find((name) => name.startsWith("attention-"))),
       horizontalOverflow: document.documentElement.scrollWidth > window.innerWidth
     };
   });
@@ -74,43 +72,31 @@ test("result UI hides blocked candidates and shows points for every visible sele
   assert.deepEqual(result.zoneHeadings, ["算定案に含まれる", "要確認", "区分確認"]);
   assert.equal(result.includedName, "在宅患者訪問診療料");
   assert.equal(result.includedPoints, "890点");
-  assert.equal(result.reviewName, "在宅データ提出加算");
+  assert.deepEqual(result.includedNames, ["在宅患者訪問診療料", "在宅データ提出加算"]);
+  assert.equal(result.reviewNames.includes("在宅データ提出加算"), false);
   assert.equal(result.exactSelectionName, "在宅患者訪問診療料（区分確定例）（同一建物居住者）");
   assert.equal(result.exactSelectionPoints, "215点");
   assert.equal(result.exactSelectionQualifier, null);
   assert.equal(result.exactSelectionCode, "114030310");
-  assert.equal(result.selectionPoints, "1,685〜3,225点（残り2区分）");
+  assert.equal(result.selectionPointsElement, false);
+  assert.equal(result.selectionCodeElement, false);
+  assert.equal(result.selectionNarrowingElement, false);
+  assert.equal(result.sixOptionSelectionPointsElement, false);
   assert.equal(result.blockedCandidateCount, 0);
-  assert.equal(result.blockedChecklistVisible, false);
-  assert.equal(result.blockedDetailAudience, "管理者向け");
+  assert.equal(result.checklistSectionExists, false);
+  assert.equal(result.detailLogSectionExists, false);
   assert.equal(result.cardBadgeCount, 0);
   assert.equal(result.cardCommentCount, 0);
-  assert.equal(result.decisionCount, "4件");
+  assert.equal(result.totalPoints, "940点");
+  assert.equal(result.decisionCount, "3件");
   assert.match(result.revision, /再計算 2回目/u);
   assert.equal(result.diff, "前回から: 候補+1/−1・点数±0");
-  assert.deepEqual(result.filterChips, [
-    "施設類型 ✓ 機能強化型在支診等・病床あり",
-    "単一建物人数 ✓ 単一建物6名",
-    "当月訪問回数 ✓ 当月4回訪問",
-    "診療方法 ✓ 対面診療"
-  ]);
-  assert.deepEqual(result.optionLabels, ["難病等", "一般"]);
-  assert.deepEqual(result.optionPoints, ["3,225点", "1,685点"]);
-  assert.match(result.selectionRange, /1,685〜3,225点/u);
-  assert.equal(result.sixOptionSelectionPoints, "147〜225点（残り6区分）");
   assert.equal(result.rawCodeCandidateVisible, false);
   assert.equal(result.selectionStateLabelVisible, false);
+  assert.equal(result.remainingCountLabelVisible, false);
   assert.equal(result.candidateCodeTag, "SPAN");
   assert.equal(result.candidateExternalLinkCount, 0);
-  assert.deepEqual(result.checklistAttention, ["attention-required", "attention-recommended"]);
-  assert.deepEqual(result.detailAttention, ["attention-required", "attention-required", "attention-recommended", "attention-reference"]);
   assert.equal(result.horizontalOverflow, false);
-
-  await page.click("#detail-log-button");
-  assert.equal(await page.locator("#detail-log-section").isVisible(), true);
-  assert.equal(await page.locator("#detail-log .detail-log-row").count(), 4);
-  await page.click("#detail-log-back-button");
-  assert.equal(await page.locator("#result-section").isVisible(), true);
   await page.close();
 });
 
@@ -180,8 +166,8 @@ async function openPanel(width) {
               pointDelta: 0
             },
             calculation: {
-              estimatedTotalPoints: 890,
-              decisionCandidateCount: 5,
+              estimatedTotalPoints: 940,
+              decisionCandidateCount: 4,
               candidates: [
                 {
                   candidateId: "visit",
@@ -196,7 +182,8 @@ async function openPanel(width) {
                 {
                   candidateId: "data-addon",
                   sourceType: "proposal",
-                  zone: "review_required",
+                  zone: "included",
+                  billingEligibility: "included",
                   code: "114057970",
                   display: { stem: "在宅データ提出加算", qualifier: "(在医総管・施医総管)" },
                   estimatedTotalPoints: 50
