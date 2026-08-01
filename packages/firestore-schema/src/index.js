@@ -27,6 +27,7 @@ export const collections = Object.freeze({
   feeStandingBillingProfiles: "fee_standing_billing_profiles",
   feeMonthlyExclusionResolutions: "fee_monthly_exclusion_resolutions",
   sidecarCalculationDrafts: "sidecar_calculation_drafts",
+  sidecarAdoptionGuards: "sidecar_adoption_guards",
   referrals: "referrals"
 });
 
@@ -167,6 +168,10 @@ export function feeMonthlyExclusionResolutionPath(orgId, resolutionId) {
 
 export function sidecarCalculationDraftPath(orgId, sidecarDraftId) {
   return orgDocPath(orgId, collections.sidecarCalculationDrafts, sidecarDraftId, "sidecarDraftId");
+}
+
+export function sidecarAdoptionGuardPath(orgId, fingerprint) {
+  return orgDocPath(orgId, collections.sidecarAdoptionGuards, fingerprint, "fingerprint");
 }
 
 export function feeSettingsPath(orgId, facilityId = "default") {

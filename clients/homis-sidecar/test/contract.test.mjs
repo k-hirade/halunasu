@@ -9,7 +9,19 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const extensionDir = path.resolve(here, "../extension");
 const fixtureHtml = await readFile(path.join(here, "fixtures/patient-1006.html"), "utf8");
 const locationHref = "http://localhost:8899/homic/?pid=patient_detail&patient_id=1006";
+const RECORD_KEY_SEPARATOR = "\u001f";
 let browser;
+
+function recordKey(patientId, serviceDate, displayedChartId, receptionTime) {
+  return [
+    "homis-visible-record-v1",
+    "homis",
+    patientId,
+    serviceDate,
+    displayedChartId,
+    receptionTime
+  ].join(RECORD_KEY_SEPARATOR);
+}
 
 before(async () => {
   browser = await chromium.launch({ headless: true });
@@ -19,17 +31,17 @@ after(async () => {
   await browser?.close();
 });
 
-test("homis-mock-v3 remains backward compatible for the displayed chart", async () => {
+test("homis-mock-v5 derives the record key only from visible chart fields", async () => {
   const page = await contractPage();
-  const result = await page.evaluate((href) => (
-    globalThis.HalunasuSidecarContract.extractContractSnapshot(document, {
-      locationHref: href,
-      selectorContractVersion: "homis-mock-v3"
-    })
-  ), locationHref);
+  const result = await page.evaluate((href) => {
+    const { sourceSurfaces: _sourceSurfaces, ...value } = globalThis.HalunasuSidecarContract.extractContractSnapshot(document, {
+      locationHref: href
+    });
+    return value;
+  }, locationHref);
   assert.deepEqual(result, {
     externalPatientId: "1006",
-    sourceRecordId: "1006-20260624-01",
+    sourceRecordId: recordKey("1006", "2026-06-24", "10060624", "14:00"),
     sourceRecordDisplayId: "10060624",
     serviceDate: "2026-06-24",
     receptionTime: "14:00",
@@ -49,15 +61,15 @@ test("homis-mock-v3 remains backward compatible for the displayed chart", async 
     singleBuildingPatientCount: null,
     sameBuilding: false,
     sameBuildingSource: "dom",
-    selectorContractVersion: "homis-mock-v3",
-    requiredElementCount: 5,
-    matchedRequiredElementCount: 5,
+    selectorContractVersion: "homis-mock-v5",
+    requiredElementCount: 7,
+    matchedRequiredElementCount: 7,
     clinicalTextNodeCount: 4
   });
   await page.close();
 });
 
-test("homis-mock-v4 reads bounded current-chart facts without reading the action list", async () => {
+test("homis-mock-v5 reads bounded current-chart facts without reading the action list", async () => {
   const page = await contractPage();
   const result = await page.evaluate((href) => {
     const container = document.querySelector("#pdetail_karte");
@@ -115,7 +127,7 @@ test("homis-mock-v4 reads bounded current-chart facts without reading the action
       serialized: JSON.stringify(value)
     };
   }, locationHref);
-  assert.equal(result.version, "homis-mock-v4");
+  assert.equal(result.version, "homis-mock-v5");
   assert.deepEqual(result.currentChart, {
     status: "ok",
     patientId: "1006",
@@ -133,7 +145,7 @@ test("homis-mock-v4 reads bounded current-chart facts without reading the action
   await page.close();
 });
 
-test("homis-mock-v4 parses the separately fetched documents surface", async () => {
+test("homis-mock-v5 parses the separately fetched documents surface", async () => {
   const page = await browser.newPage();
   await page.setContent(`
     <div class="patient-id-line">患者名 1006 / 後期高齢者医療</div>
@@ -202,10 +214,10 @@ test("encounter type uses only explicit chart status labels and leaves unsupport
   await page.close();
 });
 
-test("homis-mock-v3 stops when the immutable record id is missing", async () => {
+test("homis-mock-v5 stops when the visible reception time is missing", async () => {
   const page = await contractPage();
   const result = await page.evaluate((href) => {
-    document.querySelector("#pdetail_karte").removeAttribute("data-record-id");
+    document.querySelector(".karte-date").textContent = "6/24(水)";
     try {
       globalThis.HalunasuSidecarContract.extractContractSnapshot(document, { locationHref: href });
       return null;
@@ -217,11 +229,11 @@ test("homis-mock-v3 stops when the immutable record id is missing", async () => 
       };
     }
   }, locationHref);
-  assert.deepEqual(result, { code: "selector_contract_mismatch", required: 5, matched: 4 });
+  assert.deepEqual(result, { code: "selector_contract_mismatch", required: 7, matched: 5 });
   await page.close();
 });
 
-test("homis-mock-v3 stops instead of calculating from an empty SOAP", async () => {
+test("homis-mock-v5 stops instead of calculating from an empty SOAP", async () => {
   const page = await contractPage();
   const result = await page.evaluate((href) => {
     document.querySelectorAll(".note-soap p:not(.karte-date)").forEach((node) => node.remove());
@@ -232,27 +244,27 @@ test("homis-mock-v3 stops instead of calculating from an empty SOAP", async () =
       return { code: error.code, matched: error.matchedRequiredElementCount };
     }
   }, locationHref);
-  assert.deepEqual(result, { code: "selector_contract_mismatch", matched: 4 });
+  assert.deepEqual(result, { code: "selector_contract_mismatch", matched: 6 });
   await page.close();
 });
 
-test("homis-mock-v3 derives the three-state same-building value without guessing", async () => {
+test("homis-mock-v5 derives the three-state same-building value from visible text", async () => {
   const page = await contractPage();
   const result = await page.evaluate((href) => {
     const contract = globalThis.HalunasuSidecarContract;
     const badge = document.querySelector(".patient-header .badge");
-    const container = document.querySelector("#pdetail_karte");
+    const meta = document.querySelector(".karte-meta .kv");
 
     badge.className = "badge facility";
     badge.textContent = "施設入居";
-    container.setAttribute("data-single-building-patient-count", "4");
+    meta.textContent = "カルテID：10060624　単一建物：4";
     const multiple = contract.extractContractSnapshot(document, { locationHref: href });
 
-    container.setAttribute("data-single-building-patient-count", "1");
+    meta.textContent = "カルテID：10060624　単一建物：1";
     const one = contract.extractContractSnapshot(document, { locationHref: href });
 
     badge.remove();
-    container.removeAttribute("data-single-building-patient-count");
+    meta.textContent = "カルテID：10060624";
     const unknown = contract.extractContractSnapshot(document, { locationHref: href });
 
     return {
@@ -279,15 +291,14 @@ test("homis-mock-v3 derives the three-state same-building value without guessing
   await page.close();
 });
 
-test("preview fingerprint changes when same-building determinant metadata changes", async () => {
+test("preview fingerprint changes when visible same-building text changes", async () => {
   const page = await contractPage();
   const result = await page.evaluate(async (href) => {
     const contract = globalThis.HalunasuSidecarContract;
     const proof = globalThis.HalunasuSidecarProof;
-    const container = document.querySelector("#pdetail_karte");
     const before = contract.extractContractSnapshot(document, { locationHref: href });
     const beforeFingerprint = await proof.previewFingerprint(before);
-    container.setAttribute("data-single-building-patient-count", "4");
+    document.querySelector(".karte-meta .kv").textContent = "カルテID：10060624　単一建物：4";
     const after = contract.extractContractSnapshot(document, { locationHref: href });
     return beforeFingerprint !== await proof.previewFingerprint(after);
   }, locationHref);
@@ -333,7 +344,8 @@ test("identity and preview proof reject a patient or chart switch", async () => 
     const proof = globalThis.HalunasuSidecarProof;
     const first = contract.extractContractSnapshot(document, { locationHref: href });
     const firstFingerprint = await proof.previewFingerprint(first);
-    document.querySelector("#pdetail_karte").setAttribute("data-record-id", "1006-20260624-02");
+    document.querySelector(".karte-meta .kv").textContent = "カルテID：10060625";
+    document.querySelector(".karte-date").textContent = "6/25(木)　14:00～";
     document.querySelector(".note-soap p:not(.karte-date)").textContent = "変更後のカルテ本文";
     const second = contract.extractContractSnapshot(document, { locationHref: href });
     return {
@@ -345,6 +357,45 @@ test("identity and preview proof reject a patient or chart switch", async () => 
     };
   }, locationHref);
   assert.deepEqual(result, { sameIdentity: false, samePreview: false });
+  await page.close();
+});
+
+test("body edits keep the record key but change the preview revision", async () => {
+  const page = await contractPage();
+  const result = await page.evaluate(async (href) => {
+    const contract = globalThis.HalunasuSidecarContract;
+    const proof = globalThis.HalunasuSidecarProof;
+    const before = contract.extractContractSnapshot(document, { locationHref: href });
+    const beforeFingerprint = await proof.previewFingerprint(before);
+    document.querySelector(".note-soap p:not(.karte-date)").textContent = "編集後のカルテ本文";
+    const after = contract.extractContractSnapshot(document, { locationHref: href });
+    return {
+      sameRecordKey: before.sourceRecordId === after.sourceRecordId,
+      samePreview: beforeFingerprint === await proof.previewFingerprint(after)
+    };
+  }, locationHref);
+  assert.deepEqual(result, { sameRecordKey: true, samePreview: false });
+  await page.close();
+});
+
+test("the visible record key distinguishes the same month and day in another year", async () => {
+  const page = await contractPage();
+  const result = await page.evaluate((href) => {
+    const contract = globalThis.HalunasuSidecarContract;
+    const before = contract.extractContractSnapshot(document, { locationHref: href });
+    document.querySelector(".cal-title").textContent = "2027年6月";
+    const after = contract.extractContractSnapshot(document, { locationHref: href });
+    return {
+      beforeDate: before.serviceDate,
+      afterDate: after.serviceDate,
+      sameRecordKey: before.sourceRecordId === after.sourceRecordId
+    };
+  }, locationHref);
+  assert.deepEqual(result, {
+    beforeDate: "2026-06-24",
+    afterDate: "2027-06-24",
+    sameRecordKey: false
+  });
   await page.close();
 });
 
@@ -374,7 +425,8 @@ test("content monitoring announces the initial chart and one debounced event aft
 
   await page.evaluate(() => {
     const container = document.querySelector("#pdetail_karte");
-    container.setAttribute("data-record-id", "1006-20260625-01");
+    container.querySelector(".karte-meta .kv").textContent = "カルテID：10060625";
+    container.querySelector(".karte-date").textContent = "6/25(木)　14:00～";
     container.querySelector(".rec-status").textContent = "診療記録　往診　「サンプル在宅クリニック」";
     container.querySelector(".note-soap p:not(.karte-date)").textContent = "切替後のカルテ本文";
   });
@@ -386,15 +438,59 @@ test("content monitoring announces the initial chart and one debounced event aft
       type: "halunasu:chart-state-changed",
       available: true,
       patientId: "1006",
-      sourceRecordId: "1006-20260624-01"
+      sourceRecordId: recordKey("1006", "2026-06-24", "10060624", "14:00")
     },
     {
       type: "halunasu:chart-state-changed",
       available: true,
       patientId: "1006",
-      sourceRecordId: "1006-20260625-01"
+      sourceRecordId: recordKey("1006", "2026-06-25", "10060625", "14:00")
     }
   ]);
+  await page.close();
+});
+
+test("a temporarily missing reception time retries and emits only the complete v5 record key", async () => {
+  const page = await browser.newPage();
+  await page.route("http://localhost:8899/**", (route) => route.fulfill({
+    contentType: "text/html; charset=utf-8",
+    body: fixtureHtml
+  }));
+  await page.goto(locationHref);
+  await page.addScriptTag({ path: path.join(extensionDir, "lib/contract.js") });
+  await page.addScriptTag({ path: path.join(extensionDir, "lib/proof.js") });
+  await page.evaluate(() => {
+    document.querySelector(".karte-date").textContent = "6/24(水)";
+    globalThis.__sidecarMessages = [];
+    globalThis.__sidecarListener = null;
+    globalThis.chrome = {
+      runtime: {
+        onMessage: {
+          addListener(listener) {
+            globalThis.__sidecarListener = listener;
+          }
+        },
+        sendMessage(message) {
+          globalThis.__sidecarMessages.push(message);
+          return Promise.resolve();
+        }
+      }
+    };
+  });
+  await page.addScriptTag({ path: path.join(extensionDir, "content.js") });
+  const response = await page.evaluate(() => new Promise((resolve) => {
+    setTimeout(() => {
+      document.querySelector(".karte-date").textContent = "6/24(水)　14:00～";
+    }, 20);
+    globalThis.__sidecarListener({ type: "halunasu:extract" }, {}, resolve);
+  }));
+
+  assert.equal(response.ok, true);
+  assert.equal(
+    response.sourceRecordId,
+    recordKey("1006", "2026-06-24", "10060624", "14:00")
+  );
+  assert.match(response.sourceRecordId, /\u001f14:00$/u);
   await page.close();
 });
 

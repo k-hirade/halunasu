@@ -4,7 +4,8 @@ import {
   applySidecarCalculationResult,
   applySidecarDraftInput,
   buildSidecarCalculationDraft,
-  markSidecarDraftAdopted
+  markSidecarDraftAdopted,
+  sidecarVisitAdoptionFingerprint
 } from "../src/sidecar-drafts.js";
 
 function draftInput(overrides = {}) {
@@ -29,6 +30,7 @@ function draftInput(overrides = {}) {
     extractionProof: { domMutationDetected: false },
     facilityId: "fac_001",
     serviceDate: "2026-07-18",
+    receptionTime: "14:30",
     setting: "home_visit",
     clinicalText: "O: 訪問診療を実施。",
     createdByMemberId: "mem_001",
@@ -65,6 +67,62 @@ test("sidecar draft revisions the same immutable record instead of creating a fe
   });
   assert.match(revised.clinicalText, /継続/);
   assert.throws(() => applySidecarDraftInput(current, draftInput({ sourceRecordId: "record-002" })), /identity mismatch/);
+});
+
+test("visit adoption fingerprint is independent of v4 and v5 source record keys", () => {
+  const v4 = buildSidecarCalculationDraft(draftInput({
+    sourceRecordId: "legacy-record-001",
+    contractVersion: "v1"
+  }));
+  const v5 = buildSidecarCalculationDraft(draftInput({
+    sidecarDraftId: "sidecar_002",
+    sourceRecordId: "homis-visible-record-v1\u001fhomis\u001f1001\u001f2026-07-18\u001f1001-0718\u001f14:30",
+    idempotencyKeyHash: "c".repeat(64)
+  }));
+  const session = {
+    canonicalPatientId: "patient_001",
+    patientId: "patient_001",
+    facilityId: "fac_001",
+    serviceDate: "2026-07-18",
+    receptionTime: "14:30",
+    setting: "home_visit"
+  };
+
+  assert.equal(
+    sidecarVisitAdoptionFingerprint(v4, session),
+    sidecarVisitAdoptionFingerprint(v5, session)
+  );
+  assert.notEqual(
+    sidecarVisitAdoptionFingerprint(v5, { ...session, receptionTime: "14:45" }),
+    sidecarVisitAdoptionFingerprint(v5, session)
+  );
+  assert.notEqual(
+    sidecarVisitAdoptionFingerprint(v5, { ...session, setting: "house_call" }),
+    sidecarVisitAdoptionFingerprint(v5, session)
+  );
+});
+
+test("visit adoption fingerprint fails closed with recovery guidance for an incomplete legacy draft", () => {
+  const legacyDraft = buildSidecarCalculationDraft(draftInput({
+    receptionTime: null
+  }));
+
+  assert.throws(
+    () => sidecarVisitAdoptionFingerprint(legacyDraft, {
+      canonicalPatientId: "patient_001",
+      facilityId: "fac_001",
+      serviceDate: "2026-07-18",
+      setting: "home_visit"
+    }),
+    (error) => {
+      assert.equal(error.name, "ConflictError");
+      assert.equal(error.statusCode, 409);
+      assert.equal(error.code, "SIDECAR_ADOPTION_VISIT_FINGERPRINT_INCOMPLETE");
+      assert.match(error.message, /新しい拡張機能でHOMIS画面を再読み取り/u);
+      assert.match(error.message, /算定案を再作成/u);
+      return true;
+    }
+  );
 });
 
 test("sidecar draft persists a same-building override as calculation input", () => {

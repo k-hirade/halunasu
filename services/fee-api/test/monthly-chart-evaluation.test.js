@@ -91,6 +91,45 @@ test("explicit encounter setting overrides chart labels but still derives compat
   assert.equal(plans[0].encounterDetails.singleBuildingPatientCount, 6);
 });
 
+test("monthly chart plan carries explicit inpatient admission context into each daily session", () => {
+  const [plan] = deriveMonthlyChartEncounterPlans({
+    patient: { admission_date: "2026-03-12" },
+    charts: [{
+      service_date: "2026-05-01",
+      visit_type: "入院",
+      status: "入院中",
+      inpatient_basic_days: 1
+    }]
+  });
+
+  assert.deepEqual(plan, {
+    serviceDate: "2026-05-01",
+    visitType: "入院",
+    setting: "inpatient",
+    visitKind: null,
+    encounterDetails: undefined,
+    admissionDate: "2026-03-12",
+    inpatientBasicDays: 1
+  });
+  assert.deepEqual(encounterPlanAuditRows([plan]), [{
+    serviceDate: "2026-05-01",
+    visitType: "入院",
+    setting: "inpatient",
+    visitKind: null,
+    sameBuilding: null,
+    singleBuildingPatientCount: null,
+    admissionDate: "2026-03-12",
+    inpatientBasicDays: 1
+  }]);
+});
+
+test("monthly chart plan rejects invalid inpatient day counts", () => {
+  assert.throws(() => deriveMonthlyChartEncounterPlans({
+    patient: { admission_date: "2026-03-12" },
+    charts: [{ service_date: "2026-05-01", visit_type: "入院", inpatient_basic_days: 32 }]
+  }), /inpatient_basic_days must be an integer from 1 to 31/u);
+});
+
 test("monthly chart metrics preserve empty extraction guard evidence and aggregate only triggered visits", () => {
   const recovered = sanitizeEmptyExtractionGuard({
     enabled: true,

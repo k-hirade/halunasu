@@ -37,7 +37,7 @@ test("patient 1006 can authorize, auto-read, and calculate through the side pane
       || "http://localhost:8899/homic/?pid=patient_detail&patient_id=1006";
     const mockPage = await context.newPage();
     await mockPage.goto(mockUrl);
-    await mockPage.locator("#pdetail_karte[data-record-id]").waitFor();
+    await mockPage.locator("#pdetail_karte .note-soap .karte-date").waitFor();
 
     const extensionId = "nhbmaniknlcaaelpaoogepmkhphmmjof";
     const panel = await openExtensionPage(
@@ -76,11 +76,11 @@ test("patient 1006 can authorize, auto-read, and calculate through the side pane
     const switchedMockUrl = new URL(mockUrl);
     switchedMockUrl.searchParams.set("patient_id", "1001");
     await mockPage.goto(switchedMockUrl.toString());
-    await mockPage.locator("#pdetail_karte[data-record-id]").waitFor();
+    await mockPage.locator("#pdetail_karte .note-soap .karte-date").waitFor();
     await panel.locator("#preview-patient").filter({ hasText: "1001" }).waitFor();
 
     await mockPage.goto(mockUrl);
-    await mockPage.locator("#pdetail_karte[data-record-id]").waitFor();
+    await mockPage.locator("#pdetail_karte .note-soap .karte-date").waitFor();
     await panel.locator("#preview-patient").filter({ hasText: "1006" }).waitFor();
     assert.equal(await panel.locator('input[name="setting"][value="home_visit"]').isChecked(), true);
     assert.equal(await panel.locator('input[name="same-building"][value="outside"]').isChecked(), true);

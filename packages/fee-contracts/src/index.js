@@ -345,10 +345,13 @@ function validateSidecarExtractionProof(value, expected) {
 }
 
 function validateSidecarSourceSurfaces(value, expected) {
-  const required = expected.selectorContractVersion === "homis-mock-v4";
+  const required = ["homis-mock-v4", "homis-mock-v5"].includes(expected.selectorContractVersion);
   if (value === undefined || value === null) {
     if (required) {
-      throw validationError("sourceSurfaces is required for homis-mock-v4", "sourceSurfaces");
+      throw validationError(
+        `sourceSurfaces is required for ${expected.selectorContractVersion}`,
+        "sourceSurfaces"
+      );
     }
     return undefined;
   }
@@ -367,7 +370,7 @@ function validateSidecarSourceSurfaces(value, expected) {
   });
   if (required && (!currentChart || !documents)) {
     throw validationError(
-      "currentChart and documents source surfaces are required for homis-mock-v4",
+      `currentChart and documents source surfaces are required for ${expected.selectorContractVersion}`,
       "sourceSurfaces"
     );
   }

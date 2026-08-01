@@ -247,6 +247,24 @@ export function markSidecarDraftAdopted(current = {}, feeSessionId, options = {}
   };
 }
 
+export function sidecarVisitAdoptionFingerprint(draft = {}, sessionInput = {}) {
+  const parts = [
+    sessionInput.facilityId || draft.facilityId,
+    sessionInput.canonicalPatientId || sessionInput.patientId || draft.canonicalPatientId || draft.patientId,
+    sessionInput.serviceDate || draft.serviceDate,
+    draft.sourceRecordDisplayId,
+    sessionInput.receptionTime || draft.receptionTime,
+    sessionInput.setting || draft.setting
+  ].map((value) => String(value || "").normalize("NFKC").trim());
+  if (parts.some((value) => !value)) {
+    throw conflictError(
+      "この算定案は受診識別情報が不足しているため採用できません。新しい拡張機能でHOMIS画面を再読み取りし、算定案を再作成してください。",
+      "SIDECAR_ADOPTION_VISIT_FINGERPRINT_INCOMPLETE"
+    );
+  }
+  return createHash("sha256").update(parts.join("\u001f")).digest("hex");
+}
+
 function assertSameSourceRecord(current, input) {
   const fields = [
     "sidecarDraftId",
@@ -277,9 +295,12 @@ function timestamp(value) {
   return date.toISOString();
 }
 
-function conflictError(message) {
+function conflictError(message, code = null) {
   const error = new Error(message);
   error.name = "ConflictError";
   error.statusCode = 409;
+  if (code) {
+    error.code = code;
+  }
   return error;
 }

@@ -690,7 +690,7 @@
       return "カルテ画面と接続できません。拡張機能とカルテ画面を再読み込みしてください。";
     }
     if (error.code === "selector_contract_mismatch") {
-      return "画面の形式が想定と異なります（契約 homis-mock-v4）。";
+      return "画面の形式が想定と異なります（契約 homis-mock-v5）。";
     }
     if (["preview_changed", "chart_changed_during_extraction"].includes(error.code)) {
       return "カルテが切り替わりました。画面を再読み取りしてください。";

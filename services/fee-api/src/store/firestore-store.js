@@ -11,7 +11,8 @@ import {
   applySidecarCalculationResult,
   applySidecarDraftInput,
   buildSidecarCalculationDraft,
-  markSidecarDraftAdopted
+  markSidecarDraftAdopted,
+  sidecarVisitAdoptionFingerprint
 } from "../../../../packages/fee-core/src/sidecar-drafts.js";
 import {
   collections,
@@ -22,6 +23,7 @@ import {
   feeStandingBillingProfilePath,
   feeSettingsPath,
   feeSessionPath,
+  sidecarAdoptionGuardPath,
   sidecarCalculationDraftPath,
   organizationPath
 } from "../../../../packages/firestore-schema/src/index.js";
@@ -233,6 +235,12 @@ export class FirestoreFeeStore {
         const existing = docDataOrNull(await transaction.get(this.doc(feeSessionPath(orgId, current.adoptedFeeSessionId))));
         return { sidecarDraft: current, feeSession: existing, alreadyAdopted: true };
       }
+      const visitFingerprint = sidecarVisitAdoptionFingerprint(current, sessionInput);
+      const adoptionGuardRef = this.doc(sidecarAdoptionGuardPath(orgId, visitFingerprint));
+      const existingGuard = docDataOrNull(await transaction.get(adoptionGuardRef));
+      if (existingGuard) {
+        throw conflictError("the displayed visit has already been adopted from another sidecar draft");
+      }
       const feeSession = sanitizeForFirestore(buildFeeSession(sessionInput, {
         feeSessionId: candidateFeeSessionId,
         now: this.timestamp()
@@ -251,6 +259,18 @@ export class FirestoreFeeStore {
       transaction.set(sessionRef, feeSession);
       transaction.set(this.sessionStatusViewDoc(orgId, feeSession.feeSessionId), sanitizeForFirestore(sessionStatusView(feeSession)));
       transaction.set(draftRef, adopted);
+      transaction.set(adoptionGuardRef, sanitizeForFirestore({
+        visitFingerprint,
+        sidecarDraftId,
+        adoptedFeeSessionId: feeSession.feeSessionId,
+        facilityId: feeSession.facilityId,
+        canonicalPatientId: feeSession.canonicalPatientId || feeSession.patientId,
+        serviceDate: feeSession.serviceDate,
+        sourceRecordDisplayId: current.sourceRecordDisplayId,
+        receptionTime: feeSession.receptionTime,
+        setting: feeSession.setting,
+        createdAt: this.timestamp()
+      }));
       return { sidecarDraft: adopted, feeSession, alreadyAdopted: false };
     });
   }

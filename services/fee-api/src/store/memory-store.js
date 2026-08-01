@@ -11,7 +11,8 @@ import {
   applySidecarCalculationResult,
   applySidecarDraftInput,
   buildSidecarCalculationDraft,
-  markSidecarDraftAdopted
+  markSidecarDraftAdopted,
+  sidecarVisitAdoptionFingerprint
 } from "../../../../packages/fee-core/src/sidecar-drafts.js";
 import {
   applyStandingBillingEvidence,
@@ -31,6 +32,7 @@ export class MemoryFeeStore {
     this.feeSettingsByOrg = new Map();
     this.billingHistoryByOrg = new Map();
     this.sidecarDraftsByOrg = new Map();
+    this.sidecarAdoptionGuardsByOrg = new Map();
     this.extractionSnapshotsByOrg = new Map();
     this.extractionFeedbackEventsByOrg = new Map();
     this.standingBillingProfilesByOrg = new Map();
@@ -160,6 +162,12 @@ export class MemoryFeeStore {
         alreadyAdopted: true
       };
     }
+    const visitFingerprint = sidecarVisitAdoptionFingerprint(current, sessionInput);
+    const adoptionGuards = this.sidecarAdoptionGuardsForOrg(orgId);
+    const existingGuard = adoptionGuards.get(visitFingerprint);
+    if (existingGuard) {
+      throw conflictError("the displayed visit has already been adopted from another sidecar draft");
+    }
     const feeSession = buildFeeSession(sessionInput, {
       feeSessionId: this.idFactory("fee"),
       now: this.timestamp()
@@ -172,6 +180,12 @@ export class MemoryFeeStore {
     });
     this.sessionsForOrg(orgId).set(feeSession.feeSessionId, feeSession);
     this.sidecarDraftsForOrg(orgId).set(sidecarDraftId, adopted);
+    adoptionGuards.set(visitFingerprint, {
+      visitFingerprint,
+      sidecarDraftId,
+      adoptedFeeSessionId: feeSession.feeSessionId,
+      createdAt: this.timestamp()
+    });
     return { sidecarDraft: adopted, feeSession, alreadyAdopted: false };
   }
 
@@ -765,6 +779,13 @@ export class MemoryFeeStore {
     return this.sidecarDraftsByOrg.get(orgId);
   }
 
+  sidecarAdoptionGuardsForOrg(orgId) {
+    if (!this.sidecarAdoptionGuardsByOrg.has(orgId)) {
+      this.sidecarAdoptionGuardsByOrg.set(orgId, new Map());
+    }
+    return this.sidecarAdoptionGuardsByOrg.get(orgId);
+  }
+
   extractionSnapshotsForOrg(orgId) {
     if (!this.extractionSnapshotsByOrg.has(orgId)) {
       this.extractionSnapshotsByOrg.set(orgId, new Map());
@@ -1024,6 +1045,13 @@ export function notFoundError(message) {
   const error = new Error(message);
   error.name = "NotFoundError";
   error.statusCode = 404;
+  return error;
+}
+
+function conflictError(message) {
+  const error = new Error(message);
+  error.name = "ConflictError";
+  error.statusCode = 409;
   return error;
 }
 

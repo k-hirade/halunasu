@@ -5,7 +5,16 @@ from scripts.mock_homis_build_action_map import (
     classify_nonbillable_action,
     normalize_action_name,
 )
-from scripts.export_mock_homis_evaluation_cases import patient_residence_type
+from scripts.export_mock_homis_evaluation_cases import (
+    build_visible_record_key,
+    patient_residence_type,
+)
+
+
+def test_visible_record_key_matches_homis_v5_contract() -> None:
+    assert build_visible_record_key("1004", "2026-07-25", "10040725", "14:00") == (
+        "homis-visible-record-v1\x1fhomis\x1f1004\x1f2026-07-25\x1f10040725\x1f14:00"
+    )
 
 
 class MockHomisBuildActionMapTest(unittest.TestCase):

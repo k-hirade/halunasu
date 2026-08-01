@@ -138,7 +138,7 @@ async function openPanel(width) {
       sameBuildingSource: "dom",
       singleBuildingPatientCount: 6,
       previewFingerprint: "preview-result-ui",
-      extractionProof: { selectorContractVersion: "homis-mock-v4" }
+      extractionProof: { selectorContractVersion: "homis-mock-v5" }
     };
     const codeCandidates = Array.from({ length: 175 }, (_, index) => String(900000001 + index));
     globalThis.chrome = {

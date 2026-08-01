@@ -11,6 +11,13 @@ import argparse
 import importlib.util
 import json
 from pathlib import Path
+import re
+import unicodedata
+
+
+RECORD_KEY_SEPARATOR = "\x1f"
+RECORD_KEY_VERSION = "homis-visible-record-v1"
+MAX_SOURCE_RECORD_ID_BYTES = 256
 
 
 def load_patients(mock_root: Path) -> list[dict]:
@@ -37,6 +44,43 @@ def visit_setting(visit_type: str) -> tuple[str, str | None]:
 
 def patient_residence_type(patient: dict) -> str:
     return "facility" if patient.get("is_facility") else "private"
+
+
+def build_visible_record_key(
+    patient_id: object,
+    service_date: object,
+    displayed_chart_id: object,
+    reception_time: object,
+) -> str:
+    values = [
+        normalize_record_component(RECORD_KEY_VERSION, 32),
+        normalize_record_component("homis", 16),
+        normalize_record_component(patient_id, 64),
+        normalize_record_component(service_date, 10),
+        normalize_record_component(displayed_chart_id, 96),
+        normalize_record_component(reception_time, 5),
+    ]
+    if any(not value for value in values):
+        raise ValueError("visible HOMIS record key is incomplete")
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", values[3]):
+        raise ValueError("service date must use YYYY-MM-DD")
+    if not re.fullmatch(r"\d{2}:\d{2}", values[5]):
+        raise ValueError("reception time must use HH:MM")
+    key = RECORD_KEY_SEPARATOR.join(values)
+    if len(key.encode("utf-8")) > MAX_SOURCE_RECORD_ID_BYTES:
+        raise ValueError("visible HOMIS record key is too long")
+    return key
+
+
+def normalize_record_component(value: object, maximum_length: int) -> str:
+    normalized = unicodedata.normalize("NFC", str(value or "")).strip()
+    if (
+        not normalized
+        or len(normalized) > maximum_length
+        or any(ord(character) < 32 or ord(character) == 127 for character in normalized)
+    ):
+        return ""
+    return normalized
 
 
 def prescription_rows(blocks: object) -> list[str]:
@@ -122,18 +166,26 @@ def export_cases(mock_root: Path, claim_month: str | None) -> dict:
                 setting, visit_kind = visit_setting(str(visit.get("type") or ""))
                 count = int(visit.get("tatemono") or patient.get("facility_count") or 1)
                 same_building = bool(patient.get("is_facility") or count > 1)
-                source_record_id = f"{patient['id']}-{service_date.replace('-', '')}"
+                reception_time = str(visit.get("time") or "")
+                displayed_chart_id = f"{patient['id']}{int(month[5:7]):02d}{day:02d}"
+                source_record_id = build_visible_record_key(
+                    patient["id"],
+                    service_date,
+                    displayed_chart_id,
+                    reception_time,
+                )
                 cases.append({
-                    "caseId": source_record_id,
+                    "caseId": f"{patient['id']}-{service_date}-{reception_time}",
                     "patientId": str(patient["id"]),
                     "serviceDate": service_date,
-                    "receptionTime": str(visit.get("time") or ""),
+                    "receptionTime": reception_time,
                     "setting": setting,
                     "visitKind": visit_kind,
                     "sameBuilding": same_building,
                     "singleBuildingPatientCount": count if same_building else 1,
                     "residenceType": patient_residence_type(patient),
                     "sourceRecordId": source_record_id,
+                    "sourceRecordDisplayId": displayed_chart_id,
                     "clinicalText": str(visit.get("soap") or ""),
                     "diagnoses": [
                         {"name": str(problem.get("name") or "")}

@@ -38,13 +38,11 @@
     try {
       await Promise.resolve();
       const extraction = contract.extractContractSnapshot(document, { locationHref: location.href });
-      if (extraction.selectorContractVersion === contract.VERSION) {
-        const documents = await fetchDocumentsSurface(identityBefore.patientId);
-        extraction.sourceSurfaces = await proof.sealSourceSurfaces({
-          ...extraction.sourceSurfaces,
-          documents
-        }, { observedAt: new Date().toISOString() });
-      }
+      const documents = await fetchDocumentsSurface(identityBefore.patientId);
+      extraction.sourceSurfaces = await proof.sealSourceSurfaces({
+        ...extraction.sourceSurfaces,
+        documents
+      }, { observedAt: new Date().toISOString() });
       await Promise.resolve();
       const identityAfter = contract.readIdentity(document, { locationHref: location.href });
       if (domMutationDetected || !proof.sameIdentity(identityBefore, identityAfter)) {
@@ -146,9 +144,7 @@
       chartObserver?.observe(observedContainer, {
         subtree: true,
         childList: true,
-        characterData: true,
-        attributes: true,
-        attributeFilter: ["data-record-id", "data-single-building-patient-count"]
+        characterData: true
       });
       changed = true;
     }

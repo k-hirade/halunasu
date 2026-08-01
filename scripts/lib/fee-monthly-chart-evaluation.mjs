@@ -1,6 +1,9 @@
 const encounterSettings = new Set(["outpatient", "inpatient", "home_visit", "house_call"]);
 
 const visitTypeSettings = new Map([
+  ["inpatient", "inpatient"],
+  ["入院", "inpatient"],
+  ["入院中", "inpatient"],
   ["定期", "home_visit"],
   ["定期訪問", "home_visit"],
   ["往診", "house_call"],
@@ -26,12 +29,14 @@ export function deriveMonthlyChartEncounterPlans({
     const setting = override || deriveEncounterSetting(chart, index);
     const visitKind = override ? null : deriveVisitKind(chart);
     const encounterDetails = deriveEncounterDetails(patient, setting, visitKind);
+    const inpatientContext = deriveInpatientContext(chart, patient, setting, index);
     return {
       serviceDate: String(chart?.service_date || "").trim(),
       visitType,
       setting,
       visitKind,
-      encounterDetails
+      encounterDetails,
+      ...inpatientContext
     };
   });
 }
@@ -43,7 +48,9 @@ export function encounterPlanAuditRows(plans = []) {
     setting: String(plan?.setting || ""),
     visitKind: plan?.visitKind || null,
     sameBuilding: plan?.encounterDetails?.sameBuilding ?? null,
-    singleBuildingPatientCount: plan?.encounterDetails?.singleBuildingPatientCount ?? null
+    singleBuildingPatientCount: plan?.encounterDetails?.singleBuildingPatientCount ?? null,
+    ...(plan?.admissionDate ? { admissionDate: plan.admissionDate } : {}),
+    ...(plan?.inpatientBasicDays ? { inpatientBasicDays: plan.inpatientBasicDays } : {})
   }));
 }
 
@@ -294,6 +301,35 @@ export function deriveVisitKind(chart = {}) {
   return values.some((value) => telephoneVisitTypes.has(value))
     ? "telephone_revisit"
     : null;
+}
+
+export function deriveInpatientContext(chart = {}, patient = {}, setting = "", index = 0) {
+  if (setting !== "inpatient") return {};
+
+  const admissionDate = String(
+    chart?.admission_date
+      || chart?.admissionDate
+      || patient?.admission_date
+      || patient?.admissionDate
+      || ""
+  ).trim();
+  if (admissionDate && !/^\d{4}-\d{2}-\d{2}$/u.test(admissionDate)) {
+    throw new Error(`chart ${index + 1} admission_date must use YYYY-MM-DD`);
+  }
+
+  const rawDays = chart?.inpatient_basic_days ?? chart?.inpatientBasicDays;
+  let inpatientBasicDays;
+  if (rawDays !== undefined && rawDays !== null && rawDays !== "") {
+    inpatientBasicDays = Number(rawDays);
+    if (!Number.isInteger(inpatientBasicDays) || inpatientBasicDays < 1 || inpatientBasicDays > 31) {
+      throw new Error(`chart ${index + 1} inpatient_basic_days must be an integer from 1 to 31`);
+    }
+  }
+
+  return {
+    ...(admissionDate ? { admissionDate } : {}),
+    ...(inpatientBasicDays ? { inpatientBasicDays } : {})
+  };
 }
 
 function normalizeEncounterSettingOverride(value) {

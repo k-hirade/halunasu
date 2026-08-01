@@ -616,12 +616,14 @@ test("Firestore keeps sidecar drafts isolated and adopts exactly once in one tra
     externalSourceSystem: "homis",
     externalPatientId: "1001",
     sourceRecordId: "record-001",
+    sourceRecordDisplayId: "10010718",
     idempotencyKeyHash: "a".repeat(64),
     sourceRevisionHash: "b".repeat(64),
     encounterTypeSource: "user",
     extractionProof: { domMutationDetected: false },
     facilityId: "fac_123",
     serviceDate: "2026-07-18",
+    receptionTime: "14:30",
     setting: "home_visit",
     clinicalText: "O: 訪問診療を実施。",
     createdByMemberId: "mem_123",
@@ -654,6 +656,7 @@ test("Firestore keeps sidecar drafts isolated and adopts exactly once in one tra
     patientId: "pat_123",
     facilityId: "fac_123",
     serviceDate: "2026-07-18",
+    receptionTime: "14:30",
     setting: "home_visit",
     clinicalText: storedDraft.clinicalText,
     createdByMemberId: "mem_123",
@@ -666,7 +669,182 @@ test("Firestore keeps sidecar drafts isolated and adopts exactly once in one tra
   assert.equal(adoptedAgain.alreadyAdopted, true);
   assert.equal(adoptedAgain.feeSession.feeSessionId, adopted.feeSession.feeSessionId);
   assert.equal([...docs.keys()].filter((path) => /\/fee_sessions\/[^/]+$/.test(path)).length, 1);
+  assert.equal([...docs.keys()].filter((path) => /\/sidecar_adoption_guards\/[^/]+$/.test(path)).length, 1);
   assert.equal(docs.get("organizations/org_123/sidecar_calculation_drafts/sidecar_001").lifecycleStatus, "adopted");
+});
+
+test("sidecar adoption guard blocks the same visit across record-key versions but permits another visit", async () => {
+  let counter = 0;
+  const docs = new Map();
+  const store = new FirestoreFeeStore({
+    db: fakeFirestoreDb(docs),
+    now: () => new Date("2026-07-18T00:00:00.000Z"),
+    idFactory: (prefix) => `${prefix}_${String(++counter).padStart(3, "0")}`
+  });
+  const baseDraft = {
+    orgId: "org_123",
+    sidecarPatientKey: "sidecar_patient_001",
+    contractVersion: "v1",
+    externalSourceSystem: "homis",
+    externalPatientId: "1001",
+    sourceRecordDisplayId: "10010718",
+    sourceRevisionHash: "b".repeat(64),
+    encounterTypeSource: "dom",
+    extractionProof: { domMutationDetected: false },
+    facilityId: "fac_123",
+    serviceDate: "2026-07-18",
+    receptionTime: "14:30",
+    setting: "home_visit",
+    clinicalText: "O: 訪問診療を実施。",
+    createdByMemberId: "mem_123",
+    expiresAt: "2026-08-17T00:00:00.000Z"
+  };
+  for (const [sidecarDraftId, sourceRecordId, idempotencyKeyHash, receptionTime, setting] of [
+    ["sidecar_v4", "legacy-record-001", "a".repeat(64), "14:30", "home_visit"],
+    ["sidecar_v5", "homis-visible-record-v1\u001fhomis\u001f1001", "c".repeat(64), "14:30", "home_visit"],
+    ["sidecar_other_time", "homis-visible-record-v1\u001fhomis\u001f1001-other-time", "d".repeat(64), "14:45", "home_visit"],
+    ["sidecar_house_call", "homis-visible-record-v1\u001fhomis\u001f1001-house-call", "e".repeat(64), "14:30", "house_call"]
+  ]) {
+    await store.upsertSidecarCalculationDraft({
+      ...baseDraft,
+      sidecarDraftId,
+      sourceRecordId,
+      idempotencyKeyHash,
+      receptionTime,
+      setting
+    });
+  }
+  const sessionInput = (receptionTime, setting = "home_visit") => ({
+    orgId: "org_123",
+    patientId: "pat_123",
+    canonicalPatientId: "pat_123",
+    facilityId: "fac_123",
+    serviceDate: "2026-07-18",
+    receptionTime,
+    setting,
+    clinicalText: "O: 訪問診療を実施。",
+    createdByMemberId: "mem_123",
+    sourceSystem: "homis_sidecar_adopted"
+  });
+
+  await store.adoptSidecarCalculationDraft("org_123", "sidecar_v4", sessionInput("14:30"));
+  await assert.rejects(
+    store.adoptSidecarCalculationDraft("org_123", "sidecar_v5", sessionInput("14:30")),
+    (error) => error.statusCode === 409 && /already been adopted/u.test(error.message)
+  );
+  const otherTime = await store.adoptSidecarCalculationDraft(
+    "org_123",
+    "sidecar_other_time",
+    sessionInput("14:45")
+  );
+  const houseCall = await store.adoptSidecarCalculationDraft(
+    "org_123",
+    "sidecar_house_call",
+    sessionInput("14:30", "house_call")
+  );
+  assert.equal(otherTime.alreadyAdopted, false);
+  assert.equal(houseCall.alreadyAdopted, false);
+  assert.equal([...docs.keys()].filter((path) => /\/sidecar_adoption_guards\/[^/]+$/.test(path)).length, 3);
+});
+
+test("MemoryFeeStore blocks the same adopted visit across record-key versions", () => {
+  let counter = 0;
+  const store = new MemoryFeeStore({
+    now: () => new Date("2026-07-18T00:00:00.000Z"),
+    idFactory: (prefix) => `${prefix}_${String(++counter).padStart(3, "0")}`
+  });
+  const baseDraft = {
+    orgId: "org_123",
+    sidecarPatientKey: "sidecar_patient_001",
+    contractVersion: "v1",
+    externalSourceSystem: "homis",
+    externalPatientId: "1001",
+    sourceRecordDisplayId: "10010718",
+    sourceRevisionHash: "b".repeat(64),
+    encounterTypeSource: "dom",
+    extractionProof: { domMutationDetected: false },
+    facilityId: "fac_123",
+    serviceDate: "2026-07-18",
+    receptionTime: "14:30",
+    setting: "home_visit",
+    clinicalText: "O: 訪問診療を実施。",
+    createdByMemberId: "mem_123"
+  };
+  store.upsertSidecarCalculationDraft({
+    ...baseDraft,
+    sidecarDraftId: "sidecar_v4",
+    sourceRecordId: "legacy-record-001",
+    idempotencyKeyHash: "a".repeat(64)
+  });
+  store.upsertSidecarCalculationDraft({
+    ...baseDraft,
+    sidecarDraftId: "sidecar_v5",
+    sourceRecordId: "homis-visible-record-v1\u001fhomis\u001f1001",
+    idempotencyKeyHash: "c".repeat(64)
+  });
+  const sessionInput = {
+    orgId: "org_123",
+    patientId: "pat_123",
+    canonicalPatientId: "pat_123",
+    facilityId: "fac_123",
+    serviceDate: "2026-07-18",
+    receptionTime: "14:30",
+    setting: "home_visit",
+    clinicalText: "O: 訪問診療を実施。",
+    createdByMemberId: "mem_123",
+    sourceSystem: "homis_sidecar_adopted"
+  };
+
+  store.adoptSidecarCalculationDraft("org_123", "sidecar_v4", sessionInput);
+  assert.throws(
+    () => store.adoptSidecarCalculationDraft("org_123", "sidecar_v5", sessionInput),
+    (error) => error.statusCode === 409 && /already been adopted/u.test(error.message)
+  );
+});
+
+test("MemoryFeeStore rejects an incomplete legacy visit with actionable recovery guidance", () => {
+  const store = new MemoryFeeStore({
+    now: () => new Date("2026-07-18T00:00:00.000Z"),
+    idFactory: (prefix) => `${prefix}_001`
+  });
+  store.upsertSidecarCalculationDraft({
+    orgId: "org_123",
+    sidecarDraftId: "sidecar_legacy_incomplete",
+    sidecarPatientKey: "sidecar_patient_001",
+    contractVersion: "v1",
+    externalSourceSystem: "homis",
+    externalPatientId: "1001",
+    sourceRecordId: "legacy-record-incomplete",
+    sourceRecordDisplayId: "10010718",
+    idempotencyKeyHash: "a".repeat(64),
+    sourceRevisionHash: "b".repeat(64),
+    encounterTypeSource: "dom",
+    extractionProof: { domMutationDetected: false },
+    facilityId: "fac_123",
+    serviceDate: "2026-07-18",
+    receptionTime: null,
+    setting: "home_visit",
+    clinicalText: "O: 訪問診療を実施。",
+    createdByMemberId: "mem_123"
+  });
+
+  assert.throws(
+    () => store.adoptSidecarCalculationDraft("org_123", "sidecar_legacy_incomplete", {
+      orgId: "org_123",
+      patientId: "pat_123",
+      canonicalPatientId: "pat_123",
+      facilityId: "fac_123",
+      serviceDate: "2026-07-18",
+      setting: "home_visit",
+      clinicalText: "O: 訪問診療を実施。",
+      createdByMemberId: "mem_123",
+      sourceSystem: "homis_sidecar_adopted"
+    }),
+    (error) => error.statusCode === 409
+      && error.code === "SIDECAR_ADOPTION_VISIT_FINGERPRINT_INCOMPLETE"
+      && /新しい拡張機能でHOMIS画面を再読み取り/u.test(error.message)
+      && /算定案を再作成/u.test(error.message)
+  );
 });
 
 test("MemoryFeeStore lists same-date sidecar drafts within the organization and facility", () => {

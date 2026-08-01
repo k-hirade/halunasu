@@ -1,10 +1,13 @@
 (function registerSidecarContract(global) {
   "use strict";
 
-  const VERSION = "homis-mock-v4";
-  const LEGACY_VERSION = "homis-mock-v3";
-  const SUPPORTED_VERSIONS = Object.freeze([VERSION, LEGACY_VERSION]);
-  const REQUIRED_ELEMENT_COUNT = 5;
+  const VERSION = "homis-mock-v5";
+  const SUPPORTED_VERSIONS = Object.freeze([VERSION]);
+  const SOURCE_SYSTEM = "homis";
+  const RECORD_KEY_VERSION = "homis-visible-record-v1";
+  const RECORD_KEY_SEPARATOR = "\u001f";
+  const MAX_SOURCE_RECORD_ID_BYTES = 256;
+  const REQUIRED_ELEMENT_COUNT = 7;
   const ENCOUNTER_TYPES = Object.freeze({
     "定期": "home_visit",
     "定期訪問": "home_visit",
@@ -20,11 +23,26 @@
 
   function readIdentity(documentRef, options = {}) {
     const href = options.locationHref || global.location?.href || "";
-    const patientId = new URL(href).searchParams.get("patient_id") || "";
+    const patientId = readPatientId(href);
     const container = documentRef.querySelector("#pdetail_karte");
+    const dateLabel = text(container?.querySelector(".note-soap .karte-date"));
+    const calendarTitle = text(documentRef.querySelector(".cal-title"));
+    const metaText = readChartMetaText(container);
+    const sourceRecordDisplayId = readDisplayedChartId(metaText);
+    const serviceDate = parseServiceDate(dateLabel, calendarTitle);
+    const receptionTime = readReceptionTime(dateLabel);
     return {
       patientId,
-      sourceRecordId: container?.getAttribute("data-record-id")?.trim() || ""
+      sourceRecordId: buildSourceRecordKey({
+        sourceSystem: SOURCE_SYSTEM,
+        patientId,
+        serviceDate,
+        sourceRecordDisplayId,
+        receptionTime
+      }),
+      sourceRecordDisplayId,
+      serviceDate,
+      receptionTime
     };
   }
 
@@ -40,8 +58,6 @@
     const container = documentRef.querySelector("#pdetail_karte");
     const dateElement = container?.querySelector(".note-soap .karte-date") || null;
     const dateLabel = text(dateElement);
-    const calendarTitle = text(documentRef.querySelector(".cal-title"));
-    const serviceDate = parseServiceDate(dateLabel, calendarTitle);
     const soapNodes = container
       ? [...container.querySelectorAll(".note-soap p")]
         .filter((node) => !node.classList.contains("karte-date") && text(node))
@@ -49,31 +65,32 @@
     const checks = [
       Boolean(identity.patientId),
       Boolean(container),
+      Boolean(identity.sourceRecordDisplayId),
+      Boolean(dateElement && identity.serviceDate),
+      Boolean(identity.receptionTime),
       Boolean(identity.sourceRecordId),
-      Boolean(dateElement && serviceDate),
       soapNodes.length >= 1
     ];
     const matchedRequiredElementCount = checks.filter(Boolean).length;
     if (matchedRequiredElementCount !== REQUIRED_ELEMENT_COUNT) {
       const error = new Error("画面の形式が想定と異なります");
       error.code = "selector_contract_mismatch";
+      error.retryable = true;
       error.contractVersion = selectorContractVersion;
       error.requiredElementCount = REQUIRED_ELEMENT_COUNT;
       error.matchedRequiredElementCount = matchedRequiredElementCount;
       throw error;
     }
 
-    const metaText = [...container.querySelectorAll(".karte-meta .kv")]
-      .map(text)
-      .join(" ");
+    const metaText = readChartMetaText(container);
     const residence = readResidenceDetails(documentRef, container, metaText);
     const encounter = readEncounterType(container);
     const snapshot = {
       externalPatientId: identity.patientId,
       sourceRecordId: identity.sourceRecordId,
-      sourceRecordDisplayId: (metaText.match(/カルテID：\s*([^\s]+)/) || [])[1] || "",
-      serviceDate,
-      receptionTime: (dateLabel.match(/(\d{1,2}:\d{2})/) || [])[1] || "",
+      sourceRecordDisplayId: identity.sourceRecordDisplayId,
+      serviceDate: identity.serviceDate,
+      receptionTime: identity.receptionTime,
       clinicalText: soapNodes.map(text).join("\n"),
       ...encounter,
       ...residence,
@@ -82,11 +99,9 @@
       matchedRequiredElementCount,
       clinicalTextNodeCount: soapNodes.length
     };
-    if (selectorContractVersion === VERSION) {
-      snapshot.sourceSurfaces = {
-        currentChart: readCurrentChartSurface(documentRef, container, identity.patientId)
-      };
-    }
+    snapshot.sourceSurfaces = {
+      currentChart: readCurrentChartSurface(documentRef, container, identity.patientId)
+    };
     return snapshot;
   }
 
@@ -172,9 +187,8 @@
   function readResidenceDetails(documentRef, container, metaText = "") {
     const facilityResidence = Boolean(documentRef.querySelector(".patient-header .badge.facility"));
     const privateResidence = Boolean(documentRef.querySelector(".patient-header .badge.home"));
-    const attributeValue = container?.getAttribute("data-single-building-patient-count") || "";
     const visibleValue = (String(metaText || "").match(/単一建物[：:]\s*(\d+)/u) || [])[1] || "";
-    const parsedCount = Number.parseInt(attributeValue || visibleValue, 10);
+    const parsedCount = Number.parseInt(visibleValue, 10);
     const singleBuildingPatientCount = Number.isInteger(parsedCount) && parsedCount > 0
       ? parsedCount
       : null;
@@ -208,15 +222,78 @@
       : "";
   }
 
+  function readPatientId(href) {
+    try {
+      return normalizeRecordComponent(new URL(href).searchParams.get("patient_id"), 64);
+    } catch {
+      return "";
+    }
+  }
+
+  function readChartMetaText(container) {
+    return container
+      ? [...container.querySelectorAll(".karte-meta .kv")].map(text).join(" ")
+      : "";
+  }
+
+  function readDisplayedChartId(metaText) {
+    return normalizeRecordComponent(
+      (String(metaText || "").match(/カルテID[：:]\s*([^\s]+)/u) || [])[1],
+      96
+    );
+  }
+
+  function readReceptionTime(dateLabel) {
+    const match = String(dateLabel || "").match(/(?:^|\s)(\d{1,2}):(\d{2})(?=\s|[~〜～]|$)/u);
+    if (!match) {
+      return "";
+    }
+    const hour = Number(match[1]);
+    const minute = Number(match[2]);
+    return hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59
+      ? `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`
+      : "";
+  }
+
+  function buildSourceRecordKey(input = {}) {
+    const values = [
+      normalizeRecordComponent(RECORD_KEY_VERSION, 32),
+      normalizeRecordComponent(input.sourceSystem || SOURCE_SYSTEM, 16),
+      normalizeRecordComponent(input.patientId, 64),
+      normalizeRecordComponent(input.serviceDate, 10),
+      normalizeRecordComponent(input.sourceRecordDisplayId, 96),
+      normalizeRecordComponent(input.receptionTime, 5)
+    ];
+    if (values.some((value) => !value)
+      || !/^\d{4}-\d{2}-\d{2}$/.test(values[3])
+      || !/^\d{2}:\d{2}$/.test(values[5])) {
+      return "";
+    }
+    const key = values.join(RECORD_KEY_SEPARATOR);
+    return new TextEncoder().encode(key).byteLength <= MAX_SOURCE_RECORD_ID_BYTES ? key : "";
+  }
+
+  function normalizeRecordComponent(value, maxLength) {
+    const normalized = String(value || "").normalize("NFC").trim();
+    return normalized
+      && normalized.length <= maxLength
+      && !/[\u0000-\u001f\u007f]/u.test(normalized)
+      ? normalized
+      : "";
+  }
+
   function text(node) {
     return String(node?.textContent || "").trim();
   }
 
   global.HalunasuSidecarContract = Object.freeze({
     VERSION,
-    LEGACY_VERSION,
     SUPPORTED_VERSIONS,
+    SOURCE_SYSTEM,
+    RECORD_KEY_VERSION,
+    RECORD_KEY_SEPARATOR,
     REQUIRED_ELEMENT_COUNT,
+    buildSourceRecordKey,
     extractContractSnapshot,
     readCurrentChartSurface,
     readDocumentsSurface,

@@ -1,19 +1,23 @@
-# homis-mock-v3 preparation
+# homis-mock-v5 preparation
 
-The external `mock_homis` demo is kept outside this package. Prepare a fresh copy of
-`mock_partner.zip` with the tracked, idempotent command below:
+The immutable, unmodified partner fixture is tracked under `fixture/`. Verify it and
+create the executable July 2026 mock with the v5 preparation command:
 
 ```bash
-python3 clients/homis-sidecar/mock/prepare_homis_mock_v3.py tmp/mock_homis \
+python3 clients/homis-sidecar/mock/prepare_homis_mock_v5.py \
+  --source clients/homis-sidecar/mock/fixture \
+  --output tmp/mock_homis \
   --target-month 2026-07 \
   --apply
-python3 clients/homis-sidecar/mock/prepare_homis_mock_v3.py tmp/mock_homis \
+python3 clients/homis-sidecar/mock/prepare_homis_mock_v5.py \
+  --source clients/homis-sidecar/mock/fixture \
+  --output tmp/mock_homis \
   --target-month 2026-07 \
   --check
 ```
 
-The preparation moves the synthetic target period to July 2026 (previous month June 2026),
-adds a stable `data-record-id` and `data-single-building-patient-count` to
-`#pdetail_karte`, and updates both whenever the visible chart changes. It fails closed when
-the expected mock source anchors are not present. The v2 script remains available for
-reproducing the previous selector contract only.
+The preparation moves the synthetic target period to July 2026 (previous month June
+2026) and shifts patient start/problem dates by the same offset. It does not alter the
+DOM or inject selector metadata. `fixture/SHA256SUMS` protects the upstream fixture.
+
+The v2 and v3 scripts remain frozen for reproducing their historical selector contracts.

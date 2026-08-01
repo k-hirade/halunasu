@@ -131,7 +131,15 @@ test("validates the sidecar v1 extraction and atomic identity contract", () => {
   assert.equal(Object.hasOwn(input, "sourceUrl"), false);
 });
 
-test("validates homis-mock-v4 multi-surface inputs and matching surface proofs", () => {
+test("validates homis-mock-v5 multi-surface inputs and matching surface proofs", () => {
+  const sourceRecordId = [
+    "homis-visible-record-v1",
+    "homis",
+    "1001",
+    "2026-07-18",
+    "10010718",
+    "14:30"
+  ].join("\u001f");
   const surfaceHash = `sha256-${"A".repeat(43)}`;
   const sourceSurfaces = {
     currentChart: {
@@ -162,7 +170,7 @@ test("validates homis-mock-v4 multi-surface inputs and matching surface proofs",
     facilityId: "fac_001",
     sourceSystem: "homis",
     externalPatientId: "1001",
-    sourceRecordId: "record-001",
+    sourceRecordId,
     serviceDate: "2026-07-18",
     setting: "home_visit",
     encounterTypeSource: "dom",
@@ -171,15 +179,15 @@ test("validates homis-mock-v4 multi-surface inputs and matching surface proofs",
     extractionProof: {
       patientIdBefore: "1001",
       patientIdAfter: "1001",
-      sourceRecordIdBefore: "record-001",
-      sourceRecordIdAfter: "record-001",
-      selectorContractVersion: "homis-mock-v4",
+      sourceRecordIdBefore: sourceRecordId,
+      sourceRecordIdAfter: sourceRecordId,
+      selectorContractVersion: "homis-mock-v5",
       extractedAt: "2026-07-18T01:00:00.000Z",
       domMutationDetected: false,
       contractValidationPassed: true,
       previewMatched: true,
-      requiredElementCount: 5,
-      matchedRequiredElementCount: 5,
+      requiredElementCount: 7,
+      matchedRequiredElementCount: 7,
       clinicalTextNodeCount: 1,
       surfaceProofs: {
         currentChart: {
@@ -199,6 +207,7 @@ test("validates homis-mock-v4 multi-surface inputs and matching surface proofs",
   });
 
   assert.equal(input.sourceSurfaces.currentChart.raw.calendarVisitDates[0], "2026-07-18");
+  assert.equal(input.sourceRecordId, sourceRecordId);
   assert.equal(input.sourceSurfaces.currentChart.raw.patientStartDate, "2026-05-01");
   assert.equal(input.sourceSurfaces.documents.unavailableReason, "timeout");
   assert.equal(input.extractionProof.surfaceProofs.documents.status, "unavailable");
@@ -223,6 +232,14 @@ test("validates homis-mock-v4 multi-surface inputs and matching surface proofs",
       }
     }
   }), /does not match sourceSurfaces/);
+  assert.throws(() => validateSidecarCalculationInput({
+    ...input,
+    sourceSurfaces: undefined,
+    extractionProof: {
+      ...input.extractionProof,
+      surfaceProofs: undefined
+    }
+  }), /sourceSurfaces is required for homis-mock-v5/);
 });
 
 test("validates three-state same-building sidecar inputs without treating unknown as outside", () => {

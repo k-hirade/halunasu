@@ -1,0 +1,160 @@
+/* 疑似HOMIS スタイル — 和文の在宅医療電子カルテ風 */
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
+  font-size: 13px; color: #1c2733; background: #eef1f5;
+}
+a { color: #1558b0; text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* トップバー */
+.topbar {
+  display: flex; align-items: center; gap: 12px;
+  background: linear-gradient(180deg, #1f6fb2, #175a94);
+  color: #fff; padding: 8px 16px; box-shadow: 0 1px 4px rgba(0,0,0,.25);
+}
+.topbar a { color: #fff; text-decoration: none; }
+.topbar .brand { font-weight: 700; font-size: 18px; letter-spacing: 1px; }
+.topbar .brand:hover { text-decoration: none; opacity: .85; }
+.topbar .brand-sub { font-size: 12px; opacity: .9; }
+.topbar-nav { margin-left: 18px; font-size: 13px; padding: 4px 12px; border: 1px solid rgba(255,255,255,.6);
+  border-radius: 4px; background: rgba(255,255,255,.12); }
+.topbar-nav:hover { background: rgba(255,255,255,.25); }
+.topbar-right { margin-left: auto; font-size: 12px; opacity: .95; }
+
+.page-main { padding: 14px 18px; max-width: 1400px; margin: 0 auto; }
+.page-head h1, .page-main h1 { font-size: 18px; margin: 6px 0 12px; }
+
+/* ログイン */
+.login-wrap { display: flex; justify-content: center; padding-top: 8vh; }
+.login-card { background: #fff; padding: 28px 34px; border-radius: 8px;
+  box-shadow: 0 4px 18px rgba(0,0,0,.12); width: 340px; }
+.login-card h1 { font-size: 20px; margin: 0 0 4px; }
+.login-note { color: #6b7684; font-size: 12px; margin: 0 0 16px; }
+.login-card label { display: block; margin-bottom: 12px; font-size: 12px; color: #48525e; }
+.login-card input { width: 100%; padding: 8px; margin-top: 4px; border: 1px solid #c6ccd4;
+  border-radius: 4px; font-size: 14px; }
+.login-card button, .search-bar button {
+  background: #1f6fb2; color: #fff; border: 0; padding: 9px 16px; border-radius: 4px;
+  cursor: pointer; font-size: 14px; }
+.login-card button { width: 100%; margin-top: 6px; }
+
+/* 患者一覧 */
+.search-bar { background: #fff; padding: 10px 12px; border: 1px solid #dbe0e6;
+  border-radius: 6px; margin-bottom: 10px; }
+.search-bar input[type=text] { padding: 7px 10px; border: 1px solid #c6ccd4; border-radius: 4px;
+  width: 220px; font-size: 14px; }
+.list-count { color: #6b7684; margin-bottom: 6px; }
+table { border-collapse: collapse; background: #fff; width: 100%; }
+.patient-list th, .patient-list td, .problem-list th, .problem-list td,
+.docs-table th, .docs-table td {
+  border: 1px solid #dbe0e6; padding: 7px 9px; text-align: left; }
+.patient-list thead th, .problem-list thead th, .docs-table thead th {
+  background: #eaf1f8; color: #33465a; font-weight: 600; }
+.patient-list tbody tr:hover { background: #f5f9ff; }
+.patient-list .pid { color: #6b7684; font-variant-numeric: tabular-nums; }
+.pname a { font-weight: 600; }
+
+/* 患者ヘッダ */
+.patient-header { background: #fff; border: 1px solid #dbe0e6; border-radius: 6px;
+  padding: 10px 14px; margin-bottom: 8px; }
+.patient-id-line { font-size: 16px; font-weight: 700; }
+.ph-sub { color: #6b7684; margin-top: 4px; }
+.badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px;
+  color: #fff; }
+.badge.facility { background: #b5651d; }
+.badge.home { background: #2e7d46; }
+
+/* タブ */
+.tab-nav { display: flex; gap: 2px; margin-bottom: 8px; }
+.tab-nav .tab { padding: 8px 18px; background: #dde4ec; border: 1px solid #cdd5df;
+  border-bottom: none; border-radius: 6px 6px 0 0; color: #37475a; cursor: pointer; }
+.tab-nav .tab.active { background: #fff; font-weight: 700; color: #14406e; }
+
+/* カルテ本体 */
+.content { background: #fff; border: 1px solid #dbe0e6; border-radius: 0 6px 6px 6px;
+  padding: 12px; }
+.karte-panel { display: flex; gap: 12px; }
+.karte-side { width: 240px; flex: none; }
+.pdetail-karte { flex: 1; min-width: 0; }
+
+.karte-head { border-bottom: 2px solid #1f6fb2; padding-bottom: 6px; margin-bottom: 8px; }
+.rec-status { font-size: 15px; font-weight: 700; color: #14406e; }
+.karte-meta { color: #56616e; margin-top: 3px; }
+.karte-meta .kv { margin-right: 16px; }
+
+.karte-body { display: flex; gap: 10px; }
+.col-left { width: 220px; flex: none; }
+.col-center { flex: 1; min-width: 0; }
+.col-right { width: 260px; flex: none; }
+.col-label { background: #eef3f8; border-left: 3px solid #1f6fb2; padding: 3px 8px;
+  font-weight: 600; color: #33465a; margin-bottom: 5px; font-size: 12px; }
+
+.kaigo-box, .houkan-box, .shougai-box, .device-box, .shohou-box { margin-bottom: 10px; }
+.kaigo-text { padding: 4px 8px; }
+.houkan-box { padding: 4px 8px; background: #fbfbf4; border: 1px dashed #d9d9b0; min-height: 20px; }
+.shougai-text, .device-text { padding: 4px 8px; background: #f7f9fb; border: 1px solid #e4e9ef;
+  min-height: 20px; }
+
+.karte-note { border: 1px solid #e0e6ec; border-radius: 4px; }
+.note-toolbar { background: #f2f5f9; padding: 4px 8px; font-size: 12px; color: #56616e;
+  border-bottom: 1px solid #e0e6ec; }
+.note-soap { padding: 8px 10px; line-height: 1.7; min-height: 160px; }
+.note-soap p { margin: 0 0 2px; }
+.note-soap .karte-date { font-weight: 700; color: #14406e; border-bottom: 1px dotted #b9c4d0;
+  padding-bottom: 3px; margin-bottom: 5px; }
+
+.shohou-table { font-size: 12px; }
+.shohou-table td { border: 1px solid #e4e9ef; padding: 3px 6px; }
+.shohou-table .rp-head td { background: #f1f5f9; font-weight: 600; }
+.shohou-table .empty { color: #97a1ac; }
+
+.koui-area { margin-top: 12px; border-top: 1px dashed #cdd5df; padding-top: 8px; }
+.koui-label { font-weight: 700; color: #33465a; margin-bottom: 4px; }
+#action_list { background: #fcfdf7; border: 1px solid #e6e6c8; }
+.koui-item { padding: 4px 10px; border-bottom: 1px dotted #e0e0c0; }
+.koui-item:last-child { border-bottom: none; }
+
+/* カレンダー */
+.calendar { border: 1px solid #dbe0e6; border-radius: 4px; margin-bottom: 10px; }
+.cal-head { display: flex; align-items: center; justify-content: space-between;
+  background: #1f6fb2; color: #fff; padding: 4px 10px; font-weight: 700; }
+.cal-prev, .cal-next { cursor: pointer; opacity: .85; }
+.calendar table { width: 100%; }
+.calendar th, .calendar td { border: 1px solid #e4e9ef; text-align: center; padding: 3px;
+  height: 30px; font-size: 12px; }
+.calendar th.sun, .calendar td.sun { color: #c0392b; }
+.calendar th.sat, .calendar td.sat { color: #1558b0; }
+.calendar td.visit { background: #dcefe0; }
+.calendar td.current { outline: 2px solid #e67e22; }
+.cal-day { cursor: pointer; display: inline-block; width: 100%; }
+.calendar td.visit .cal-day { font-weight: 700; }
+
+.dayflip { display: flex; flex-direction: column; gap: 6px; }
+.dayflip button { padding: 6px 8px; background: #eef3f8; border: 1px solid #c6ccd4;
+  border-radius: 4px; cursor: pointer; }
+.dayflip button:hover { background: #dde8f3; }
+.flip-cur { text-align: center; color: #14406e; font-weight: 700; }
+
+/* 基本情報 / 書類 / 予定 */
+.basic-info-panel .basic-table td, .vaddr-table td { border: 1px solid #dbe0e6; padding: 6px 9px; }
+.basic-table td:first-child, .vaddr-table td:first-child { background: #eef3f8; width: 130px;
+  color: #33465a; font-weight: 600; }
+.grid-inner { display: flex; gap: 16px; flex-wrap: wrap; }
+.basic-cols { flex: 1; min-width: 340px; }
+.visit-info-list { list-style: none; margin: 0; padding: 0; flex: 1; min-width: 340px; }
+.vinfo-label { font-weight: 700; color: #33465a; margin-bottom: 6px; }
+.panel { padding: 4px; }
+.panel h2 { font-size: 15px; margin: 4px 0 10px; color: #14406e; }
+.docs-panel { margin-top: 4px; }
+.docs-toolbar { background: #eef3f8; padding: 4px 8px; font-weight: 600; margin-bottom: 4px; }
+.pager { margin-top: 8px; }
+.pager a { display: inline-block; padding: 3px 9px; border: 1px solid #c6ccd4; margin-right: 3px;
+  border-radius: 3px; }
+.plan-pattern { font-size: 18px; font-weight: 700; color: #14406e; padding: 8px 0; }
+.plan-科 { color: #6b7684; }
+.plan-dates { margin-top: 10px; }
+.plan-chip { display: inline-block; background: #dcefe0; border: 1px solid #b6d8bf;
+  border-radius: 12px; padding: 2px 10px; margin: 2px; }
+.empty { color: #97a1ac; text-align: center; }

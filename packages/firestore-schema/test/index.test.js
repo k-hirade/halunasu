@@ -9,6 +9,7 @@ import {
   facilityPath,
   feeMonthlyExclusionResolutionPath,
   feeSessionPath,
+  sidecarAdoptionGuardPath,
   sidecarCalculationDraftPath,
   loginIdentityKey,
   loginIdentityPath,
@@ -61,6 +62,10 @@ test("builds platform document paths", () => {
     "organizations/org_123/sidecar_calculation_drafts/sidecar_456"
   );
   assert.equal(
+    sidecarAdoptionGuardPath("org_123", "a".repeat(64)),
+    `organizations/org_123/sidecar_adoption_guards/${"a".repeat(64)}`
+  );
+  assert.equal(
     referralPath("org_123", "ref_456"),
     "organizations/org_123/referrals/ref_456"
   );
@@ -95,6 +100,7 @@ test("exports canonical collection names", () => {
   assert.equal(collections.patientIdentifierIndex, "patient_identifier_index");
   assert.equal(collections.feeMonthlyExclusionResolutions, "fee_monthly_exclusion_resolutions");
   assert.equal(collections.sidecarCalculationDrafts, "sidecar_calculation_drafts");
+  assert.equal(collections.sidecarAdoptionGuards, "sidecar_adoption_guards");
   assert.equal(collections.sidecarDeviceAuthorizations, "sidecar_device_authorizations");
   assert.equal(collections.sidecarDeviceGrants, "sidecar_device_grants");
 });

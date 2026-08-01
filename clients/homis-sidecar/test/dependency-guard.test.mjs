@@ -14,6 +14,7 @@ test("extension has no server-internal imports or sensitive input surface", asyn
   assert.doesNotMatch(source, /(?:packages|services)\//);
   assert.doesNotMatch(source, /sourceUrl/);
   assert.doesNotMatch(source, /#action_list|\.koui-area|\.koui-item/u);
+  assert.doesNotMatch(source, /data-record-id|data-single-building-patient-count/u);
   assert.doesNotMatch(source, /type=["']password["']/i);
   assert.doesNotMatch(source, /\.innerHTML\s*=/);
   assert.doesNotMatch(source, /shirobon\.net/i);

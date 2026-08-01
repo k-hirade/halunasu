@@ -382,6 +382,8 @@ async function runRepetition({
       claimMonth,
       setting: encounterPlan.setting,
       encounterDetails: encounterPlan.encounterDetails,
+      admissionDate: encounterPlan.admissionDate,
+      inpatientBasicDays: encounterPlan.inpatientBasicDays,
       clinicalText: String(chart.clinical_text || ""),
       sourceSystem: `fee_monthly_chart_e2e:${runId}:r${repeatIndex}`
     });

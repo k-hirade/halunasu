@@ -1,0 +1,4 @@
+# 疑似電子カルテ（HOMIS互換）サーバの依存関係
+# インストール: pip install -r requirements.txt
+fastapi>=0.100
+uvicorn>=0.23

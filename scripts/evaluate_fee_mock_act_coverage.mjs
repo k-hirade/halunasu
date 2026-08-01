@@ -33,7 +33,7 @@ const defaults = {
   mfaCode: process.env.FEE_E2E_MFA_CODE || "",
   facilityId: "fac_9fe275b29feebb03bfeb9410f7",
   departmentId: "dep_00d6c56dcd8b4d65acf0d8f2ab",
-  selectorContractVersion: "homis-mock-v4",
+  selectorContractVersion: "homis-mock-v5",
   claimMonth: "",
   claimMonths: "2026-06,2026-07",
   expectedClinicalExtractionStrategy: "openai_primary",
@@ -241,7 +241,7 @@ function sidecarBody(item, options) {
     sourceSystem: "homis",
     externalPatientId: item.patientId,
     sourceRecordId: item.sourceRecordId,
-    sourceRecordDisplayId: item.caseId,
+    sourceRecordDisplayId: item.sourceRecordDisplayId,
     serviceDate: item.serviceDate,
     ...(item.receptionTime ? { receptionTime: item.receptionTime } : {}),
     setting: item.setting,
@@ -268,8 +268,8 @@ function sidecarBody(item, options) {
       domMutationDetected: false,
       contractValidationPassed: true,
       previewMatched: true,
-      requiredElementCount: 5,
-      matchedRequiredElementCount: 5,
+      requiredElementCount: 7,
+      matchedRequiredElementCount: 7,
       clinicalTextNodeCount: Math.max(1, String(item.clinicalText || "").split(/\n/u).length),
       surfaceProofs: Object.fromEntries(
         Object.entries(sourceSurfaces).map(([name, surface]) => [name, {
@@ -653,6 +653,7 @@ function printHelp() {
   process.stdout.write(
     "Usage: npm run eval:fee-mock-act-coverage -- [options]\n"
     + "  --dry-run                     classify all mock actions without calling STG\n"
+    + "  --mock-root PATH               prepared homis-mock-v5 root (default tmp/mock_homis)\n"
     + "  --organization-code ID         STG organization (default yamamoto-demo-stg)\n"
     + "  --login-id ID                  STG approver login (default yamamoto-admin)\n"
     + "  --password-file PATH           STG approver password file\n"
