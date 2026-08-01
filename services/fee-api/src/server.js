@@ -2340,6 +2340,7 @@ function sidecarCalculationResponse(sidecarDraft = {}) {
       calculation: {
         status: "needs_review",
         candidateOnly: true,
+        pricingBasis: isPlainObject(calculation.pricingBasis) ? calculation.pricingBasis : null,
         estimatedTotalPoints,
         decisionCandidateCount,
         candidates,
@@ -7743,6 +7744,11 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
     orgId: input.orgId || baseSession.orgId,
     session: baseSession
   }));
+  const pricingContext = await measureStage(stageTimings, "pricingContext", () => resolveFeePricingContext({
+    feeCalculator,
+    feeSettings,
+    serviceDate: baseSession.serviceDate
+  }));
   // 施設基準は有効期間付きの fee設定(facilityStandards)を唯一の算定根拠とする。
   // platform施設のキーは日付を持たない平坦なリストのため、設定が未登録の施設の
   // 移行用フォールバックに限定する(和集合にすると失効済み届出が算定へ混入する)。
@@ -7752,7 +7758,7 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
     ...facilityProfile,
     facilityStandardKeysSource: hasDatedFacilityStandards ? "fee_settings_effective_dated" : facilityProfile.source,
     facilityStandardKeys: hasDatedFacilityStandards
-      ? activeFacilityStandardKeysFromFeeSettings(feeSettings, baseSession.serviceDate)
+      ? activeFacilityStandardKeysFromFeeSettings(feeSettings, pricingContext.masterLookupDate)
       : uniqueStrings(Array.isArray(facilityProfile.facilityStandardKeys) ? facilityProfile.facilityStandardKeys : [])
   };
   const priorSessionsResult = await measureStage(stageTimings, "patientHistory", () => loadPriorFeeSessionsForPatient({
@@ -7835,11 +7841,13 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
       emptyExtractionRetryEnabled,
       clinicalExtractionStrategy,
       extractionCoverage,
+      pricingContext,
       historyCompleteness: memoHistoryCompleteness,
       clinicalFactsExtractor: input.clinicalFactsExtractor
     }));
+  const preparedWithPricingContext = applyPricingContextToPreparation(legacy, pricingContext);
   const preparedWithAutomaticRules = applyAutoBillingRulesToPreparation(
-    applyFacilityProfileToPreparation(legacy, effectiveFacilityProfile, {
+    applyFacilityProfileToPreparation(preparedWithPricingContext, effectiveFacilityProfile, {
       clinicalText: baseSession.clinicalText || calculationInput.clinicalText || ""
     }),
     {
@@ -7862,7 +7870,8 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
       priorSessions: combinedPriorSessions,
       historyCompleteness,
       feeSettings,
-      facilityStandardKeys: effectiveFacilityProfile.facilityStandardKeys
+      facilityStandardKeys: effectiveFacilityProfile.facilityStandardKeys,
+      pricingContext
     }
   );
   const currentMonthEncounterCount = countCurrentMonthEncounters(
@@ -7879,7 +7888,8 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
       feeSettings,
       historyCompleteness,
       currentMonthEncounterCount,
-      facilityStandardKeys: effectiveFacilityProfile.facilityStandardKeys
+      facilityStandardKeys: effectiveFacilityProfile.facilityStandardKeys,
+      pricingContext
     })
   ));
   const primaryPreparedWithSelectionContext = applySidecarSelectionContextToPreparation(
@@ -7895,13 +7905,14 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
       feeCalculator,
       feeSettings,
       serviceDate: baseSession.serviceDate,
+      masterLookupDate: pricingContext.masterLookupDate,
       session: baseSession,
       facilityStandardKeys: effectiveFacilityProfile.facilityStandardKeys
     })
   ));
   const primaryPreparedWithVersionCoverage = applyFeeRuleVersionCoverageToPreparation(
     primaryPrepared,
-    { serviceDate: baseSession.serviceDate }
+    { serviceDate: baseSession.serviceDate, pricingContext }
   );
   const shadowCalculations = await measureStage(stageTimings, "shadowCalculationPreparation", () => buildFeeCalculationShadowCalculations({
     input,
@@ -7911,6 +7922,7 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
     feeCalculator,
     facilityProfile: effectiveFacilityProfile,
     priorSessions: combinedPriorSessions,
+    pricingContext,
     clinicalText: baseSession.clinicalText || calculationInput.clinicalText || ""
   }));
   const prepared = attachShadowCalculationsToPreparation(
@@ -7980,6 +7992,7 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
     shadowCalculations: Array.isArray(prepared.shadowCalculations) ? prepared.shadowCalculations : [],
     metrics: {
       ...(prepared.metrics || {}),
+      pricingBasis: pricingContext,
       patientHistory: {
         priorSessionCount: priorSessionsResult.sessions.length,
         externalHistoryEventCount: priorBillingHistoryResult.events.length,
@@ -8004,6 +8017,7 @@ async function applyCandidateProposalGovernanceToPreparation(prepared = {}, {
   feeCalculator,
   feeSettings = {},
   serviceDate = "",
+  masterLookupDate = "",
   session = {},
   facilityStandardKeys = []
 } = {}) {
@@ -8022,7 +8036,7 @@ async function applyCandidateProposalGovernanceToPreparation(prepared = {}, {
         act_codes: proposalCodes,
         drug_codes: [],
         disease_codes: [],
-        service_date: serviceDate,
+        service_date: masterLookupDate || serviceDate,
         claim_month: String(serviceDate || "").slice(0, 7)
       });
       const envelope = isPlainObject(lookup?.actExclusionRules)
@@ -8127,7 +8141,8 @@ async function applyStandingFactsToPreparation(prepared = {}, {
   feeSettings = null,
   historyCompleteness = "unknown",
   currentMonthEncounterCount = null,
-  facilityStandardKeys = []
+  facilityStandardKeys = [],
+  pricingContext = null
 } = {}) {
   let standingLaneDiagnostics = {
     disabledReason: null,
@@ -8182,7 +8197,10 @@ async function applyStandingFactsToPreparation(prepared = {}, {
         facilityId,
         canonicalPatientId
       ),
-      loadStandingFeeFamilyCatalog(feeCalculator, session.serviceDate)
+      loadStandingFeeFamilyCatalog(
+        feeCalculator,
+        pricingContext?.masterLookupDate || session.serviceDate
+      )
     ]);
     const structuredFacts = buildStandingStructuredFacts({
       prepared,
@@ -8658,6 +8676,7 @@ async function buildFeeCalculationShadowCalculations({
   feeCalculator,
   facilityProfile = {},
   priorSessions = [],
+  pricingContext = null,
   clinicalText = ""
 } = {}) {
   if (!feeCalculationShadowModeEnabled(input)) {
@@ -8674,9 +8693,14 @@ async function buildFeeCalculationShadowCalculations({
       openAiReasoningEffort: "none",
       openAiTimeoutMs: 0,
       priorSessions,
+      pricingContext,
       clinicalFactsExtractor: null
     });
-    const shadowPrepared = applyFacilityProfileToPreparation(shadowBase, facilityProfile, { clinicalText });
+    const shadowPrepared = applyFacilityProfileToPreparation(
+      applyPricingContextToPreparation(shadowBase, pricingContext || {}),
+      facilityProfile,
+      { clinicalText }
+    );
     return [buildFeeCalculationShadowRecord({
       primaryPrepared,
       shadowPrepared,
@@ -8952,6 +8976,84 @@ async function loadFeeSettingsForCalculation({ feeStore, orgId, session = {} } =
     ? await feeStore.getFeeSettings(orgId, "default")
     : null;
   return defaultSettings || defaultFeeSettings({ facilityId });
+}
+
+async function resolveFeePricingContext({ feeCalculator, feeSettings = {}, serviceDate = "" } = {}) {
+  const originalServiceDate = String(serviceDate || "").slice(0, 10);
+  const mode = String(feeSettings?.pricingPolicy?.mode || "service_date").trim();
+  if (mode === "service_date") {
+    return {
+      mode,
+      serviceDate: originalServiceDate,
+      masterLookupDate: originalServiceDate,
+      masterVersion: null,
+      historicalReproduction: true
+    };
+  }
+  if (mode !== "current_master") {
+    const error = new Error(`Unsupported fee pricing mode: ${mode}`);
+    error.name = "ValidationError";
+    error.statusCode = 400;
+    throw error;
+  }
+  if (typeof feeCalculator?.masterMetadata !== "function") {
+    const error = new Error("Current-master pricing requires fee master metadata.");
+    error.name = "ConfigurationError";
+    error.statusCode = 503;
+    throw error;
+  }
+  const metadata = await feeCalculator.masterMetadata();
+  const source = asArrayValue(metadata?.sources).find(
+    (entry) => String(entry?.sourceType || "") === "medical_procedure_master"
+  );
+  const masterLookupDate = isoDateFromMasterSource(source);
+  if (!source || !masterLookupDate) {
+    const error = new Error(
+      "Current-master pricing requires a medical procedure master with a dated version or publication date."
+    );
+    error.name = "ConfigurationError";
+    error.statusCode = 503;
+    throw error;
+  }
+  return {
+    mode,
+    serviceDate: originalServiceDate,
+    masterLookupDate,
+    masterVersion: String(source.sourceVersion || source.publishedAt || "").trim() || null,
+    historicalReproduction: false
+  };
+}
+
+function isoDateFromMasterSource(source = {}) {
+  for (const value of [source?.sourceVersion, source?.publishedAt]) {
+    const match = String(value || "").match(/^(\d{4}-\d{2}-\d{2})/u);
+    if (match) {
+      return match[1];
+    }
+  }
+  return "";
+}
+
+function applyPricingContextToPreparation(prepared = {}, pricingContext = {}) {
+  const pricing = {
+    mode: pricingContext.mode || "service_date",
+    master_lookup_date: pricingContext.masterLookupDate || pricingContext.serviceDate || "",
+    master_version: pricingContext.masterVersion || null
+  };
+  return {
+    ...prepared,
+    calculationOptions: {
+      ...(isPlainObject(prepared.calculationOptions) ? prepared.calculationOptions : {}),
+      pricing
+    },
+    calculationOptionsAutoKeys: Array.isArray(prepared.calculationOptionsAutoKeys)
+      ? prepared.calculationOptionsAutoKeys
+      : [],
+    metrics: {
+      ...(prepared.metrics || {}),
+      pricingBasis: pricingContext
+    }
+  };
 }
 
 // fee設定の施設基準届出のうち、算定日に有効なもののキーを返す。
@@ -9326,6 +9428,29 @@ function buildCalculationInputForSession(session = {}, input = {}, prepared = {}
     };
   }
 
+  // Pricing is facility policy resolved from the loaded master. A caller must
+  // not be able to switch the pricing date or claim historical reproduction.
+  if (isPlainObject(preparedOptions?.pricing)) {
+    calculationInput.calculationOptions = {
+      ...(isPlainObject(calculationInput.calculationOptions)
+        ? calculationInput.calculationOptions
+        : {}),
+      pricing: preparedOptions.pricing
+    };
+  }
+
+  // Facility pricing policy is server-resolved. Explicit claim contexts must
+  // not bypass it, but their original encounter date remains untouched.
+  if (
+    isPlainObject(calculationInput.claimContext)
+    && isPlainObject(preparedOptions?.pricing)
+  ) {
+    calculationInput.claimContext = {
+      ...calculationInput.claimContext,
+      pricing: preparedOptions.pricing
+    };
+  }
+
   return calculationInput;
 }
 
@@ -9369,6 +9494,9 @@ function buildFeeCalculationInputSnapshot({
     insuranceSnapshot: session.insuranceSnapshot || null,
     claimContext: isPlainObject(calculationInputForSession.claimContext) ? calculationInputForSession.claimContext : null,
     calculationOptions: options,
+    pricingBasis: isPlainObject(prepared.metrics?.pricingBasis)
+      ? prepared.metrics.pricingBasis
+      : null,
     calculationOptionsSource: session.calculationOptionsSource || prepared.calculationOptionsSource || null,
     calculationOptionsAutoKeys: Array.isArray(session.calculationOptionsAutoKeys)
       ? session.calculationOptionsAutoKeys

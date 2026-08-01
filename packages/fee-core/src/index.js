@@ -300,6 +300,7 @@ export function normalizeCalculationResult(session = {}, calculation = {}, optio
     inputSnapshot: isPlainObject(calculation.inputSnapshot || calculation.input_snapshot)
       ? calculation.inputSnapshot || calculation.input_snapshot
       : undefined,
+    pricingBasis: normalizePricingBasis(calculation.pricingBasis || calculation.pricing_basis),
     warnings,
     coverage,
     messages: Array.isArray(calculation.messages) ? calculation.messages : [],
@@ -312,6 +313,25 @@ export function normalizeCalculationResult(session = {}, calculation = {}, optio
       : undefined,
     generatedAt: now,
     schemaVersion: 1
+  });
+}
+
+function normalizePricingBasis(value) {
+  if (!isPlainObject(value)) {
+    return undefined;
+  }
+
+  const mode = String(value.mode || "").trim();
+  if (!["service_date", "current_master"].includes(mode)) {
+    return undefined;
+  }
+
+  return compactObject({
+    mode,
+    serviceDate: optionalString(value.serviceDate ?? value.service_date),
+    masterLookupDate: optionalString(value.masterLookupDate ?? value.master_lookup_date),
+    masterVersion: optionalString(value.masterVersion ?? value.master_version),
+    historicalReproduction: mode === "service_date"
   });
 }
 

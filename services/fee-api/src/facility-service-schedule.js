@@ -110,29 +110,33 @@ export function facilityDerivedAddonRules({
 export function classifyFacilityServiceTime({
   receptionTime = "",
   serviceDate = "",
+  scheduleEffectiveDate = "",
   feeSettings = {}
 } = {}) {
   const time = normalizeTime(receptionTime);
   const date = normalizeDate(serviceDate);
+  const effectiveDate = normalizeDate(scheduleEffectiveDate) || date;
   if (!time || !date) {
     return {
       status: "invalid_input",
       timeClass: null,
       scheduleId: null,
       receptionTime: time,
-      serviceDate: date
+      serviceDate: date,
+      scheduleEffectiveDate: effectiveDate
     };
   }
 
   const activeSchedules = asArray(feeSettings?.facilityServiceSchedules)
-    .filter((schedule) => scheduleIsActiveOnDate(schedule, date));
+    .filter((schedule) => scheduleIsActiveOnDate(schedule, effectiveDate));
   if (!activeSchedules.length) {
     return {
       status: "schedule_missing",
       timeClass: null,
       scheduleId: null,
       receptionTime: time,
-      serviceDate: date
+      serviceDate: date,
+      scheduleEffectiveDate: effectiveDate
     };
   }
   if (activeSchedules.length > 1) {
@@ -142,6 +146,7 @@ export function classifyFacilityServiceTime({
       scheduleId: null,
       receptionTime: time,
       serviceDate: date,
+      scheduleEffectiveDate: effectiveDate,
       matchingScheduleIds: activeSchedules.map((schedule) => schedule.scheduleId)
     };
   }
@@ -167,6 +172,7 @@ export function classifyFacilityServiceTime({
       scheduleId: schedule.scheduleId,
       receptionTime: time,
       serviceDate: date,
+      scheduleEffectiveDate: effectiveDate,
       timezone: schedule.timezone || "Asia/Tokyo",
       source: "weekly_hours"
     };
@@ -180,6 +186,7 @@ export function classifyFacilityServiceTime({
     scheduleId: schedule.scheduleId,
     receptionTime: time,
     serviceDate: date,
+    scheduleEffectiveDate: effectiveDate,
     timezone: schedule.timezone || "Asia/Tokyo",
     source: specialHours
       ? "special_hours"

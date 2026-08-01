@@ -352,6 +352,91 @@ test("creates Platform patients and product-owned fee sessions", async () => {
   assert.ok(auditEvents.some((event) => event.eventType === "fee.review_items_decided"));
 });
 
+test("current-master pricing preserves the original service date in calculator input", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  stores.feeStore.updateFeeSettings("org_001", "fac_001", {
+    facilityId: "fac_001",
+    pricingPolicy: { mode: "current_master" }
+  });
+  let observed = null;
+  const calculate = stores.feeCalculator.calculate.bind(stores.feeCalculator);
+  stores.feeCalculator.calculate = async (session, input) => {
+    observed = { session, input };
+    const result = await calculate(session, input);
+    const pricing = input.calculationOptions.pricing;
+    return {
+      ...result,
+      pricingBasis: {
+        mode: pricing.mode,
+        serviceDate: session.serviceDate,
+        masterLookupDate: pricing.master_lookup_date,
+        masterVersion: pricing.master_version,
+        historicalReproduction: false
+      }
+    };
+  };
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "過去日 換算"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    departmentId: "dep_001",
+    serviceDate: "2025-01-15",
+    clinicalText: "定期診察を実施。",
+    claimContext: {
+      record_id: "historical-current-master",
+      encounter: {
+        service_date: "2025-01-15",
+        is_outpatient: true
+      },
+      procedure_codes: ["113012810"],
+      pricing: {
+        mode: "service_date",
+        master_lookup_date: "2025-01-15",
+        master_version: "untrusted"
+      }
+    }
+  }, headers);
+  const response = await request(
+    stores,
+    "POST",
+    `/v1/fee/sessions/${session.body.feeSession.feeSessionId}/calculate`,
+    {
+      calculationOptions: {
+        pricing: {
+          mode: "service_date",
+          master_lookup_date: "2025-01-15",
+          master_version: "untrusted"
+        }
+      }
+    },
+    headers
+  );
+
+  assert.equal(response.statusCode, 201);
+  assert.equal(observed.session.serviceDate, "2025-01-15");
+  assert.deepEqual(observed.input.calculationOptions.pricing, {
+    mode: "current_master",
+    master_lookup_date: "2026-06-15",
+    master_version: "2026-06-15"
+  });
+  assert.equal(observed.input.claimContext.encounter.service_date, "2025-01-15");
+  assert.deepEqual(observed.input.claimContext.pricing, {
+    mode: "current_master",
+    master_lookup_date: "2026-06-15",
+    master_version: "2026-06-15"
+  });
+  assert.deepEqual(response.body.calculationResult.pricingBasis, {
+    mode: "current_master",
+    serviceDate: "2025-01-15",
+    masterLookupDate: "2026-06-15",
+    masterVersion: "2026-06-15",
+    historicalReproduction: false
+  });
+});
+
 test("calculates fee sessions inline outside test env", async () => {
   const stores = createStores();
   const headers = await signedBearerHeaders(stores.platformStore);
@@ -10004,6 +10089,10 @@ test("sidecar auto-provisions an unlinked patient without changing the canonical
 
 test("sidecar calculation forwards v15 management-continuation facts to W1c", async () => {
   const stores = createStores();
+  stores.feeStore.updateFeeSettings("org_001", "fac_001", {
+    facilityId: "fac_001",
+    pricingPolicy: { mode: "current_master" }
+  });
   const standingFamily = {
     familyId: "family_home_management_sidecar_e2e",
     name: "在医総管",
@@ -10022,13 +10111,17 @@ test("sidecar calculation forwards v15 management-continuation facts to W1c", as
       frequencyLimits: [{ windowMonths: 1, maxCount: 1 }]
     }]
   };
-  stores.feeCalculator.standingFeeFamilies = async () => ({
-    families: [standingFamily],
-    source: {
-      sourceType: "test_standing_family_catalog",
-      sourceVersion: "2026-06"
-    }
-  });
+  let standingCatalogInput = null;
+  stores.feeCalculator.standingFeeFamilies = async (input) => {
+    standingCatalogInput = input;
+    return {
+      families: [standingFamily],
+      source: {
+        sourceType: "test_standing_family_catalog",
+        sourceVersion: "2026-06"
+      }
+    };
+  };
   const originalListProfiles = stores.feeStore
     .listStandingBillingProfilesForPatient
     .bind(stores.feeStore);
@@ -10073,7 +10166,7 @@ test("sidecar calculation forwards v15 management-continuation facts to W1c", as
     "/v1/integrations/sidecar/calculate",
     {
       ...body,
-      serviceDate: "2026-06-25",
+      serviceDate: "2025-01-25",
       residenceType: "private",
       clinicalText: "A: 慢性呼吸不全。P: 訪問看護と連携し在宅療養管理を継続。"
     },
@@ -10094,6 +10187,8 @@ test("sidecar calculation forwards v15 management-continuation facts to W1c", as
     facilityId: "fac_001",
     canonicalPatientId: storedDraft.canonicalPatientId
   });
+  assert.equal(storedDraft.serviceDate, "2025-01-25");
+  assert.equal(standingCatalogInput.service_date, "2026-06-01");
   const w1c = storedDraft.calculationResult.candidateProposals.find(
     (proposal) => proposal.basis === "standing_structured_trigger_candidate"
   );
@@ -10656,6 +10751,16 @@ function createStores(options = {}) {
         provider: "test_fee_engine",
         masterDbConfigured: true,
         masterDbPathExists: true
+      };
+    },
+    async masterMetadata() {
+      return {
+        sources: [{
+          sourceType: "medical_procedure_master",
+          sourceVersion: "2026-06-15",
+          publishedAt: "2026-06-05",
+          rowCount: 1
+        }]
       };
     },
     async searchMaster(input) {

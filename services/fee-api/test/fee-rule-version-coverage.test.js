@@ -29,3 +29,23 @@ test("does not add a warning when the rule version covers the service date", () 
   assert.deepEqual(result.reviewIssues, []);
   assert.deepEqual(result.reviewWarnings, []);
 });
+
+test("uses the master lookup date for current-master repricing", () => {
+  const result = applyFeeRuleVersionCoverageToPreparation({
+    reviewIssues: [],
+    reviewWarnings: []
+  }, {
+    serviceDate: "2025-01-15",
+    pricingContext: {
+      mode: "current_master",
+      masterLookupDate: "2026-06-15",
+      historicalReproduction: false
+    }
+  });
+
+  assert.equal(result.metrics.feeRuleVersionCoverage.status, "available");
+  assert.equal(result.metrics.feeRuleVersionCoverage.originalServiceDate, "2025-01-15");
+  assert.equal(result.metrics.feeRuleVersionCoverage.pricingMode, "current_master");
+  assert.equal(result.metrics.feeRuleVersionCoverage.historicalReproduction, false);
+  assert.deepEqual(result.reviewIssues, []);
+});

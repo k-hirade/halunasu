@@ -4,6 +4,10 @@
 更新日: 2026-07-16
 状態: 保留（現行単位の再調査・構想まで。実装未着手）
 
+> 2026-08-01追記: 診療報酬算定アプリ非依存・単一CSV入出力を含む最新方針は
+> `docs/implplan/care-emergency-treatment-standalone-csv-plan-20260801.md` を参照する。
+> 本文書の制度要件は引き続き有効だが、プロダクト境界と一括取込仕様は新方針を優先する。
+
 現行単位、旧通知との不一致、医科500点との制度差、コード実装状況の監査結果は、[緊急時治療管理の現行単位・実装状況調査](./20260716-emergency-treatment-management-current-fee-audit.md)を参照する。
 
 ## 1. 結論
@@ -130,14 +134,14 @@ AIやルールが記録にない事実を補完して自動算定する機能は
     └── 施設設定
 ```
 
-初期URLは`fee.halunasu.com/care`のような同一アプリ配下でもよい。医科の患者セッション画面や算定候補へは混在させない。
+2026-08-01の最新方針で、同一アプリ配下の案は廃止した。初回リリースから`care.halunasu.com`（STGは`care.stg.halunasu.com`）の独立Webアプリとし、医科の患者セッション画面や算定候補へは混在させない。
 
 ### 4.2 内部構成
 
-初期は既存のデプロイ単位を増やさず、コード境界を分ける。
+フロントエンドは独立してデプロイし、バックエンドは初期のみ既存のCloud Runを共用してコード境界を分ける。
 
 ```text
-apps/fee-web/app/care-fee/
+apps/care-fee-web/
 packages/care-fee-core/
 services/fee-api/src/care-fee/
 ```
@@ -151,7 +155,7 @@ careFeeFacilitySettings
 careFeeAuditLogs
 ```
 
-介護報酬全体、外部連携、介護給付費請求まで拡張する段階で、`care-fee-web`と`care-fee-api`への物理分割を再検討する。
+`care-fee-web`は初回から独立させる。介護報酬全体、外部連携、介護給付費請求まで拡張する段階で、バックエンドも`care-fee-api`へ物理分割する。
 
 ## 5. 画面設計
 

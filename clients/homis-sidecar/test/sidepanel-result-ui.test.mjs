@@ -90,6 +90,7 @@ test("result UI hides blocked candidates and shows points for every visible sele
   assert.equal(result.totalPoints, "940点");
   assert.equal(result.decisionCount, "3件");
   assert.match(result.revision, /再計算 2回目/u);
+  assert.match(result.revision, /現行マスタ換算 2026-06-15/u);
   assert.equal(result.diff, "前回から: 候補+1/−1・点数±0");
   assert.equal(result.rawCodeCandidateVisible, false);
   assert.equal(result.selectionStateLabelVisible, false);
@@ -166,6 +167,12 @@ async function openPanel(width) {
               pointDelta: 0
             },
             calculation: {
+              pricingBasis: {
+                mode: "current_master",
+                masterLookupDate: "2026-06-15",
+                masterVersion: "2026-06-15",
+                historicalReproduction: false
+              },
               estimatedTotalPoints: 940,
               decisionCandidateCount: 4,
               candidates: [

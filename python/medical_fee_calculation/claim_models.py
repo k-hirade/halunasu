@@ -16,6 +16,11 @@ class ClaimItemStatus(str, Enum):
     NEEDS_REVIEW = "needs_review"
 
 
+class PricingMode(str, Enum):
+    SERVICE_DATE = "service_date"
+    CURRENT_MASTER = "current_master"
+
+
 class OutpatientBasicFeeKind(str, Enum):
     INITIAL = "initial"
     REVISIT = "revisit"
@@ -140,6 +145,17 @@ class MasterSourceContext:
     comment_source_id: int | None = None
     registry_source_id: int | None = None
     facility_source_id: int | None = None
+
+
+@dataclass(frozen=True)
+class PricingContext:
+    mode: PricingMode = PricingMode.SERVICE_DATE
+    master_lookup_date: date | None = None
+    master_version: str | None = None
+
+    @property
+    def historical_reproduction(self) -> bool:
+        return self.mode == PricingMode.SERVICE_DATE
 
 
 @dataclass(frozen=True)
@@ -347,6 +363,7 @@ class ClaimContext:
     material_inputs: tuple[ChargeInput, ...] = ()
     comment_inputs: tuple[CommentInput, ...] = ()
     patient: PatientContext = field(default_factory=PatientContext)
+    pricing: PricingContext = field(default_factory=PricingContext)
     master_sources: MasterSourceContext = field(default_factory=MasterSourceContext)
     history: ClaimHistoryContext = field(default_factory=ClaimHistoryContext)
     lab_options: LabOptionContext = field(default_factory=LabOptionContext)

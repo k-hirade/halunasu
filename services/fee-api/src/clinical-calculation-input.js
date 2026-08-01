@@ -631,9 +631,13 @@ export async function buildClinicalCalculationPreparation({
   emptyExtractionRetryEnabled = false,
   clinicalExtractionStrategy = "openai_primary",
   extractionCoverage = null,
+  pricingContext = null,
   historyCompleteness = "complete",
   clinicalFactsExtractor = null
 } = {}) {
+  const pricingLookupDate = String(
+    pricingContext?.masterLookupDate || session.serviceDate || ""
+  );
   const manualOptions = manualCalculationOptions(session, calculationInput);
   if (isPlainObject(session.claimContext) || isPlainObject(calculationInput.claimContext)) {
     return {
@@ -724,6 +728,7 @@ export async function buildClinicalCalculationPreparation({
       emptyExtractionRetryEnabled,
       clinicalExtractionStrategy,
       extractionCoverage,
+      ruleEffectiveDate: pricingLookupDate,
       historyCompleteness,
       clinicalFactsExtractor
     });
@@ -816,7 +821,7 @@ export async function buildClinicalCalculationPreparation({
         ...billingCandidates.map((candidate) => candidate?.code).filter(Boolean),
         ...candidateProposals.map((proposal) => proposal?.code || proposal?.candidateLine?.code).filter(Boolean)
       ]),
-      serviceDate: String(session.serviceDate || ""),
+      serviceDate: pricingLookupDate,
       specialty: String(
         session.departmentSnapshot?.specialty
         || session.specialty
@@ -848,7 +853,7 @@ export async function buildClinicalCalculationPreparation({
         setting: diseaseIndicationSetting(session, text),
         patient_age: Number.isFinite(patientAgeOnServiceDate(session)) ? patientAgeOnServiceDate(session) : null,
         patient_sex: patientSexForDiseaseIndicationScan(session),
-        service_date: String(session.serviceDate || ""),
+        service_date: pricingLookupDate,
         act_code_prefixes: ["113", "114"],
         limit: 12
       });
@@ -909,7 +914,8 @@ export async function buildClinicalCalculationPreparation({
   const timeContextWarning = receptionTimeContextWarning(
     session.receptionTime,
     session.serviceDate,
-    feeSettings
+    feeSettings,
+    { scheduleEffectiveDate: pricingLookupDate }
   );
   if (timeContextWarning) {
     reviewWarnings.push(timeContextWarning);
@@ -1664,6 +1670,7 @@ async function inferStructuredClinicalCalculationOptions({
   emptyExtractionRetryEnabled = false,
   clinicalExtractionStrategy = "openai_primary",
   extractionCoverage = null,
+  ruleEffectiveDate = "",
   historyCompleteness = "complete",
   clinicalFactsExtractor = null
 } = {}) {
@@ -2078,6 +2085,7 @@ async function inferStructuredClinicalCalculationOptions({
       feeCalculator: conversionSearch.calculator,
       checklistMenu,
       priorSessions,
+      ruleEffectiveDate,
       lineReviewReconciliation
     });
     const whiteboxShadowComparison = compareWhiteboxShadowCodes(whiteboxPlan, converted);
@@ -2836,7 +2844,15 @@ async function inferDeterministicSupplementalClinicalCalculationOptions({ text =
   };
 }
 
-async function clinicalFactsToCalculationOptions(facts = {}, { text = "", session = {}, feeCalculator, checklistMenu = [], priorSessions = [], lineReviewReconciliation = null } = {}) {
+async function clinicalFactsToCalculationOptions(facts = {}, {
+  text = "",
+  session = {},
+  feeCalculator,
+  checklistMenu = [],
+  priorSessions = [],
+  ruleEffectiveDate = "",
+  lineReviewReconciliation = null
+} = {}) {
   const inferred = {};
   const diagnoses = diagnosesFromClinicalFacts(facts);
   const reviewWarnings = [];
@@ -2982,7 +2998,8 @@ async function clinicalFactsToCalculationOptions(facts = {}, { text = "", sessio
     clinicalText: text,
     verifiedOutsidePrescription,
     structuredSourceFacts: session?.structuredSourceFacts,
-    serviceDate: session?.serviceDate
+    serviceDate: session?.serviceDate,
+    ruleEffectiveDate
   });
 
   // v14契約検証の未解消分: 欠落行のみ再抽出しても line_review が埋まらなかった行は、
@@ -3226,7 +3243,8 @@ export async function convertClinicalCalculationEvents({
   clinicalText = "",
   verifiedOutsidePrescription = false,
   structuredSourceFacts = null,
-  serviceDate = ""
+  serviceDate = "",
+  ruleEffectiveDate = ""
 } = {}) {
   const result = {
     procedureCodes: [],
@@ -3247,7 +3265,8 @@ export async function convertClinicalCalculationEvents({
   const documentLane = buildDocumentBillingLane({
     clinicalEvents,
     structuredSourceFacts,
-    serviceDate
+    serviceDate,
+    ruleEffectiveDate
   });
   result.candidateProposals.push(...documentLane.candidateProposals);
   result.reviewIssues.push(...documentLane.reviewIssues);
@@ -3272,7 +3291,8 @@ export async function convertClinicalCalculationEvents({
       clinicalText,
       verifiedOutsidePrescription,
       structuredSourceFacts,
-      serviceDate
+      serviceDate,
+      ruleEffectiveDate
     });
     mergeClinicalEventConversionResult(result, converted);
   }
@@ -3327,7 +3347,8 @@ async function convertSingleClinicalCalculationEvent({
   clinicalText = "",
   verifiedOutsidePrescription = false,
   structuredSourceFacts = null,
-  serviceDate = ""
+  serviceDate = "",
+  ruleEffectiveDate = ""
 } = {}) {
   const result = emptyClinicalEventConversionResult();
   const type = normalizeClinicalEventType(event);
@@ -3478,7 +3499,7 @@ async function convertSingleClinicalCalculationEvent({
     }
     const material = await materialInputFromClinicalEvent(event, feeCalculator, {
       structuredSourceFacts,
-      serviceDate
+      serviceDate: ruleEffectiveDate || serviceDate
     });
     if (material.input) {
       result.materialInputs.push(material.input);
@@ -4852,11 +4873,13 @@ function standingMentionStatusPriority(status = "") {
 export function receptionTimeContextWarning(
   receptionTime = "",
   serviceDate = "",
-  feeSettings = {}
+  feeSettings = {},
+  { scheduleEffectiveDate = "" } = {}
 ) {
   return facilityServiceTimeReviewWarning(classifyFacilityServiceTime({
     receptionTime,
     serviceDate,
+    scheduleEffectiveDate,
     feeSettings
   }));
 }

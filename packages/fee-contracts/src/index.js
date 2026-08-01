@@ -60,6 +60,7 @@ export const feeMonthlyClaimWorkStatuses = Object.freeze([
 ]);
 export const feeReceiptAnnotationStatuses = Object.freeze(["draft", "confirmed", "rejected"]);
 export const feeCalculationModes = Object.freeze(["full", "reuse_clinical"]);
+export const feePricingModes = Object.freeze(["service_date", "current_master"]);
 export const feeHistoryCompletenessValues = Object.freeze(["complete", "partial", "unknown"]);
 export const feeMissingHistoryBehaviors = Object.freeze(["candidate_with_review", "review_required", "suppress_history_dependent"]);
 export const feePriorHistoryBehaviors = Object.freeze(["prefer_revisit_candidate", "warn_only"]);
@@ -700,6 +701,9 @@ export function defaultFeeSettings(input = {}) {
     standingFactsPolicy: {
       stalenessMonths: 3
     },
+    pricingPolicy: {
+      mode: "service_date"
+    },
     sidecarPatientAutoProvision: false,
     facilityStandardsConfirmed: false,
     facilityStandards: [],
@@ -729,6 +733,9 @@ export function validateUpdateFeeSettingsInput(input = {}) {
   const currentStandingFactsPolicy = isPlainObject(current.standingFactsPolicy ?? current.standing_facts_policy)
     ? (current.standingFactsPolicy ?? current.standing_facts_policy)
     : {};
+  const currentPricingPolicy = isPlainObject(current.pricingPolicy ?? current.pricing_policy)
+    ? (current.pricingPolicy ?? current.pricing_policy)
+    : {};
   const inputHistoryPolicy = isPlainObject(input.historyPolicy ?? input.history_policy) ? (input.historyPolicy ?? input.history_policy) : {};
   const inputInitialRevisitPolicy = isPlainObject(input.initialRevisitPolicy ?? input.initial_revisit_policy)
     ? (input.initialRevisitPolicy ?? input.initial_revisit_policy)
@@ -736,6 +743,9 @@ export function validateUpdateFeeSettingsInput(input = {}) {
   const inputReceiptPolicy = isPlainObject(input.receiptPolicy ?? input.receipt_policy) ? (input.receiptPolicy ?? input.receipt_policy) : {};
   const inputStandingFactsPolicy = isPlainObject(input.standingFactsPolicy ?? input.standing_facts_policy)
     ? (input.standingFactsPolicy ?? input.standing_facts_policy)
+    : {};
+  const inputPricingPolicy = isPlainObject(input.pricingPolicy ?? input.pricing_policy)
+    ? (input.pricingPolicy ?? input.pricing_policy)
     : {};
   const base = defaultFeeSettings({
     facilityId: input.facilityId ?? input.facility_id ?? current.facilityId ?? current.facility_id,
@@ -747,6 +757,11 @@ export function validateUpdateFeeSettingsInput(input = {}) {
     ...base.standingFactsPolicy,
     ...currentStandingFactsPolicy,
     ...inputStandingFactsPolicy
+  };
+  const basePricingPolicy = {
+    ...base.pricingPolicy,
+    ...currentPricingPolicy,
+    ...inputPricingPolicy
   };
   const baseReceiptPolicy = mergeReceiptPolicy(base.receiptPolicy, currentReceiptPolicy, inputReceiptPolicy);
   const facilityStandardsInput = hasOwn(input, "facilityStandards") || hasOwn(input, "facility_standards")
@@ -789,6 +804,7 @@ export function validateUpdateFeeSettingsInput(input = {}) {
     historyPolicy: normalizeHistoryPolicy(baseHistoryPolicy),
     initialRevisitPolicy: normalizeInitialRevisitPolicy(baseInitialRevisitPolicy),
     standingFactsPolicy: normalizeStandingFactsPolicy(baseStandingFactsPolicy),
+    pricingPolicy: normalizePricingPolicy(basePricingPolicy),
     sidecarPatientAutoProvision: strictBoolean(
       sidecarPatientAutoProvisionInput,
       "sidecarPatientAutoProvision"
@@ -1345,6 +1361,17 @@ function normalizeInitialRevisitPolicy(input = {}) {
   const value = isPlainObject(input) ? input : {};
   return {
     requireReviewWhenNoHistory: optionalBoolean(value.requireReviewWhenNoHistory ?? value.require_review_when_no_history, true)
+  };
+}
+
+function normalizePricingPolicy(input = {}) {
+  const value = isPlainObject(input) ? input : {};
+  return {
+    mode: optionalEnum(
+      value.mode,
+      feePricingModes,
+      "pricingPolicy.mode"
+    ) || "service_date"
   };
 }
 

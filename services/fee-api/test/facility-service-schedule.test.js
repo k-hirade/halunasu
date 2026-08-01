@@ -76,6 +76,21 @@ test("special hours override the weekly schedule", () => {
   assert.equal(outside.timeClass, "after_hours");
 });
 
+test("current-master repricing selects the current schedule without rewriting the visit date", () => {
+  const classification = classifyFacilityServiceTime({
+    receptionTime: "10:00",
+    serviceDate: "2025-01-06",
+    scheduleEffectiveDate: "2026-06-15",
+    feeSettings: feeSettings()
+  });
+
+  assert.equal(classification.status, "classified");
+  assert.equal(classification.timeClass, "within_hours");
+  assert.equal(classification.scheduleId, "clinic-hours-2026");
+  assert.equal(classification.serviceDate, "2025-01-06");
+  assert.equal(classification.scheduleEffectiveDate, "2026-06-15");
+});
+
 test("missing and closed-day schedules fail closed without selecting a code", () => {
   const missing = classifyFacilityServiceTime({
     receptionTime: "18:40",

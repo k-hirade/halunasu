@@ -87,6 +87,26 @@ test("defaults receipt exports to fail closed", () => {
   assert.equal(settings.receiptPolicy.blockExportOnErrors, true);
   assert.equal(settings.receiptPolicy.connectorSpecVerified, false);
   assert.equal(settings.sidecarPatientAutoProvision, false);
+  assert.deepEqual(settings.pricingPolicy, { mode: "service_date" });
+});
+
+test("normalizes fee pricing policy without changing the default", () => {
+  assert.deepEqual(validateUpdateFeeSettingsInput({
+    facilityId: "fac_001"
+  }).pricingPolicy, { mode: "service_date" });
+
+  assert.deepEqual(validateUpdateFeeSettingsInput({
+    facilityId: "fac_001",
+    pricingPolicy: { mode: "current_master" }
+  }).pricingPolicy, { mode: "current_master" });
+
+  assert.throws(
+    () => validateUpdateFeeSettingsInput({
+      facilityId: "fac_001",
+      pricingPolicy: { mode: "latest" }
+    }),
+    /pricingPolicy\.mode/u
+  );
 });
 
 test("validates the sidecar v1 extraction and atomic identity contract", () => {

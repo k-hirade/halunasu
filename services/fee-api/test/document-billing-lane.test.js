@@ -100,6 +100,22 @@ test("1012-style created and sent referral document becomes one review candidate
   assert.equal(result.candidateProposals[0].potentialPoints, 250);
 });
 
+test("current-master repricing applies current document rules to an old visit without changing its evidence date", () => {
+  const result = buildDocumentBillingLane({
+    serviceDate: "2025-01-15",
+    ruleEffectiveDate: "2026-06-15",
+    clinicalEvents: [ownCurrentDocumentEvent({
+      id: "historical_referral",
+      name: "診療情報提供書",
+      evidence: "循環器内科へ診療情報提供書を作成・送付した。"
+    })]
+  });
+
+  assert.equal(result.candidateProposals.length, 1);
+  assert.equal(result.candidateProposals[0].code, "180016110");
+  assert.equal(result.candidateProposals[0].potentialPoints, 250);
+});
+
 test("1013-style opinion and consent documents resolve to separate official codes", () => {
   const result = buildDocumentBillingLane({
     serviceDate: "2026-06-13",

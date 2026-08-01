@@ -79,6 +79,7 @@ class RequiredCommentHit:
 @dataclass(frozen=True)
 class ElectronicRuleContext:
     service_date: date
+    rule_effective_date: date | None = None
     source_id: int | None = None
     comment_source_id: int | None = None
     same_day_history_codes: frozenset[str] = field(default_factory=frozenset)
@@ -128,6 +129,10 @@ FREQUENCY_LIMIT_MONTH_WINDOWS = {
 
 def _service_date_filter(field_from: str, field_to: str) -> str:
     return f"({field_from} IS NULL OR {field_from} <= ?) AND ({field_to} IS NULL OR {field_to} >= ?)"
+
+
+def _rule_effective_date(context: ElectronicRuleContext) -> date:
+    return context.rule_effective_date or context.service_date
 
 
 def _source_filter(source_id: int | None, alias: str = "") -> tuple[str, list[object]]:
@@ -189,7 +194,7 @@ def _find_bundles(
     current_codes: frozenset[str],
     context: ElectronicRuleContext,
 ) -> tuple[BundleHit, ...]:
-    service_date = context.service_date.isoformat()
+    service_date = _rule_effective_date(context).isoformat()
     source_sql, source_params = _source_filter(context.source_id, "a")
     code_list = sorted(current_codes)
     params: list[object] = [
@@ -247,7 +252,7 @@ def _find_exclusions(
     context: ElectronicRuleContext,
 ) -> tuple[ExclusionHit, ...]:
     hits: list[ExclusionHit] = []
-    service_date = context.service_date.isoformat()
+    service_date = _rule_effective_date(context).isoformat()
     source_sql, source_params = _source_filter(context.source_id)
     current_list = sorted(current_codes)
 
@@ -316,7 +321,7 @@ def _find_frequency_limits(
     current_codes: frozenset[str],
     context: ElectronicRuleContext,
 ) -> tuple[FrequencyLimitHit, ...]:
-    service_date = context.service_date.isoformat()
+    service_date = _rule_effective_date(context).isoformat()
     source_sql, source_params = _source_filter(context.source_id)
     code_list = sorted(current_codes)
 
@@ -356,7 +361,7 @@ def _find_required_comments(
     current_codes: frozenset[str],
     context: ElectronicRuleContext,
 ) -> tuple[RequiredCommentHit, ...]:
-    service_date = context.service_date.isoformat()
+    service_date = _rule_effective_date(context).isoformat()
     source_sql, source_params = _source_filter(context.comment_source_id)
     code_list = sorted(current_codes)
 

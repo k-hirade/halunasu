@@ -44,6 +44,8 @@ from medical_fee_calculation.claim_models import (
     OutpatientBasicFeeOptionContext,
     OutpatientVisitKind,
     PatientContext,
+    PricingContext,
+    PricingMode,
     RadiographyDiagnosticKind,
     TelephoneEligibilityContext,
     TreatmentAreaSizeKind,
@@ -71,6 +73,7 @@ CLAIM_CONTEXT_FIELDS = frozenset(
         "material_inputs",
         "comment_inputs",
         "master_sources",
+        "pricing",
         "history",
         "lab_options",
         "outpatient_basic",
@@ -486,16 +489,21 @@ def parse_claim_context_payload(
 ) -> ClaimContext:
     merged = _merged_claim_context_payload(payload)
     encounter = _parse_encounter(_dict_value(merged, "encounter"))
+    pricing = _parse_pricing(
+        _dict_value(merged, "pricing"),
+        service_date=encounter.service_date,
+    )
     master_sources = _parse_master_sources(
         _dict_value(merged, "master_sources"),
         default_master_sources=default_master_sources,
         conn=conn,
-        service_date=encounter.service_date,
+        service_date=pricing.master_lookup_date or encounter.service_date,
         regional_bureau=encounter.regional_bureau,
     )
     return ClaimContext(
         patient=_parse_patient(_dict_value(merged, "patient")),
         encounter=encounter,
+        pricing=pricing,
         procedure_codes=_string_tuple(merged.get("procedure_codes")),
         drug_inputs=_parse_charge_inputs(merged.get("drug_inputs")),
         medication_orders=_parse_medication_orders(merged.get("medication_orders")),
@@ -2095,6 +2103,30 @@ def _parse_encounter(payload: dict[str, Any]) -> EncounterContext:
         is_outpatient=_bool_value(payload.get("is_outpatient"), default=True),
         admission_date=_optional_date(payload.get("admission_date")),
         discharge_date=_optional_date(payload.get("discharge_date")),
+    )
+
+
+def _parse_pricing(payload: dict[str, Any], *, service_date: date) -> PricingContext:
+    mode_text = _optional_str(payload.get("mode")) or PricingMode.SERVICE_DATE.value
+    try:
+        mode = PricingMode(mode_text)
+    except ValueError as exc:
+        raise ValueError(
+            "pricing.mode must be service_date or current_master"
+        ) from exc
+
+    master_lookup_date = _optional_date(payload.get("master_lookup_date"))
+    if mode == PricingMode.SERVICE_DATE:
+        master_lookup_date = service_date
+    elif master_lookup_date is None:
+        raise ValueError(
+            "pricing.master_lookup_date is required for current_master mode"
+        )
+
+    return PricingContext(
+        mode=mode,
+        master_lookup_date=master_lookup_date,
+        master_version=_optional_str(payload.get("master_version")),
     )
 
 

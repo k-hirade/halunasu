@@ -34,9 +34,13 @@ export function isSupportedDocumentClinicalEvent(event = {}) {
 export function buildDocumentBillingLane({
   clinicalEvents = [],
   structuredSourceFacts = null,
-  serviceDate = ""
+  serviceDate = "",
+  ruleEffectiveDate = ""
 } = {}) {
   const normalizedServiceDate = isIsoDate(serviceDate) ? serviceDate : null;
+  const normalizedRuleEffectiveDate = isIsoDate(ruleEffectiveDate)
+    ? ruleEffectiveDate
+    : null;
   const clinicalObservations = asArray(clinicalEvents)
     .map((event, index) => clinicalDocumentObservation(event, index, normalizedServiceDate))
     .filter(Boolean);
@@ -50,7 +54,10 @@ export function buildDocumentBillingLane({
   const eligible = observations.filter((observation) => observation.eligible);
   const groups = groupEligibleDocumentObservations(eligible);
   const candidateProposals = groups.flatMap((group) => (
-    activeProcedures(group.family, group.documentDate).map((procedure) => (
+    activeProcedures(
+      group.family,
+      normalizedRuleEffectiveDate || group.documentDate
+    ).map((procedure) => (
       candidateProposalFromDocumentGroup(group, procedure)
     ))
   ));
@@ -72,6 +79,7 @@ export function buildDocumentBillingLane({
     clinicalTrace: [{
       traceId: `trace_document_billing_${shortHash(JSON.stringify([
         normalizedServiceDate,
+        normalizedRuleEffectiveDate,
         observations.map((observation) => observation.observationId)
       ]))}`,
       stage: "document_billing_lane",
@@ -452,13 +460,13 @@ function normalizedDocumentEvidenceFingerprint(observation) {
   ].join(":");
 }
 
-function activeProcedures(family, documentDate) {
-  if (!isIsoDate(documentDate)) {
+function activeProcedures(family, ruleEffectiveDate) {
+  if (!isIsoDate(ruleEffectiveDate)) {
     return [];
   }
   return asArray(family.procedures).filter((procedure) => (
-    (!procedure.effectiveFrom || procedure.effectiveFrom <= documentDate)
-    && (!procedure.effectiveTo || procedure.effectiveTo >= documentDate)
+    (!procedure.effectiveFrom || procedure.effectiveFrom <= ruleEffectiveDate)
+    && (!procedure.effectiveTo || procedure.effectiveTo >= ruleEffectiveDate)
   ));
 }
 

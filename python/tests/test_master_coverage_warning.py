@@ -29,7 +29,13 @@ class MasterCoverageWarningTest(unittest.TestCase):
         finally:
             conn.close()
 
-    def _calculate(self, db_path: Path, service_date: str) -> dict:
+    def _calculate(
+        self,
+        db_path: Path,
+        service_date: str,
+        *,
+        pricing_mode: str = "service_date",
+    ) -> dict:
         return calculate_fee_session({
             "db_path": str(db_path),
             "session": {"feeSessionId": "t", "patientId": "p", "serviceDate": service_date},
@@ -37,6 +43,7 @@ class MasterCoverageWarningTest(unittest.TestCase):
                 "record_id": "t",
                 "patient": {"patient_id": "p"},
                 "encounter": {"service_date": service_date, "is_outpatient": True},
+                "pricing": {"mode": pricing_mode},
                 "procedure_codes": ["113012810"],
                 "drug_inputs": [], "medication_orders": [], "injection_drug_inputs": [],
                 "injection_orders": [], "treatment_orders": [], "imaging_orders": [],
@@ -56,6 +63,27 @@ class MasterCoverageWarningTest(unittest.TestCase):
             in_range = self._calculate(db_path, "2026-06-15")
             self.assertFalse(any("マスタ適用期間外" in w for w in in_range["warnings"]))
             self.assertEqual(in_range["totalPoints"], 200.0)
+
+    def test_current_master_prices_old_service_date_without_rewriting_it(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "master.sqlite"
+            self._seed(db_path)
+
+            result = self._calculate(
+                db_path,
+                "2025-01-15",
+                pricing_mode="current_master",
+            )
+
+            self.assertEqual(result["totalPoints"], 200.0)
+            self.assertTrue(any("現行マスタ換算" in w for w in result["warnings"]))
+            self.assertEqual(result["pricingBasis"], {
+                "mode": "current_master",
+                "serviceDate": "2025-01-15",
+                "masterLookupDate": "2026-06-01",
+                "masterVersion": "test",
+                "historicalReproduction": False,
+            })
 
 
 if __name__ == "__main__":

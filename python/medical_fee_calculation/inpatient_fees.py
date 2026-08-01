@@ -74,6 +74,7 @@ def calculate_inpatient_fees(
     electronic_fee_source_id: int | None = None,
     dpc_electronic_table_source_id: int | None = None,
     hospital_profile: HospitalProfile | None = None,
+    pricing_date: date | None = None,
 ) -> InpatientFeeResult:
     """Return inpatient basic fee candidates and DPC advisory messages.
 
@@ -87,6 +88,7 @@ def calculate_inpatient_fees(
 
     messages: list[CalculationMessage] = []
     lines: list[CalculationLine] = []
+    effective_pricing_date = pricing_date or service_date
 
     if is_outpatient:
         return InpatientFeeResult(
@@ -105,7 +107,7 @@ def calculate_inpatient_fees(
         basic_fee_line, basic_fee_messages = _calculate_inpatient_basic_fee(
             conn,
             procedure_codes,
-            service_date,
+            effective_pricing_date,
             context,
             facility_standard_keys=facility_standard_keys,
             source_id=source_id,
@@ -120,6 +122,7 @@ def calculate_inpatient_fees(
             conn,
             service_date,
             dpc_context,
+            pricing_date=effective_pricing_date,
             admission_date=admission_date,
             source_id=dpc_electronic_table_source_id,
             hospital_profile=hospital_profile,
@@ -247,13 +250,14 @@ def _calculate_dpc_estimate(
     service_date: date,
     context: DpcOptionContext,
     *,
+    pricing_date: date,
     admission_date: date | None,
     source_id: int | None,
     hospital_profile: HospitalProfile | None,
 ) -> tuple[CalculationLine | None, tuple[CalculationMessage, ...]]:
     code_resolution = _resolve_dpc_code_candidate(
         conn,
-        service_date,
+        pricing_date,
         context,
         source_id=source_id,
     )
@@ -311,7 +315,7 @@ def _calculate_dpc_estimate(
             ),
         )
 
-    row = _find_dpc_point_row(conn, str(dpc_code), service_date, source_id)
+    row = _find_dpc_point_row(conn, str(dpc_code), pricing_date, source_id)
     if row is None:
         return (
             None,

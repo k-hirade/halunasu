@@ -381,7 +381,10 @@
       lastCalculationContext
         ? `患者${lastCalculationContext.externalPatientId} / ${lastCalculationContext.serviceDate} / ${lastCalculationContext.settingLabel} / ${lastCalculationContext.sameBuildingLabel}`
         : "",
-      `再計算 ${Number(sidecarDraft.calculationRevision || 1)}回目`
+      `再計算 ${Number(sidecarDraft.calculationRevision || 1)}回目`,
+      calculation.pricingBasis?.mode === "current_master"
+        ? `現行マスタ換算 ${calculation.pricingBasis.masterVersion || calculation.pricingBasis.masterLookupDate || ""}`.trim()
+        : ""
     ].filter(Boolean).join(" ・ ");
     renderCalculationDiff(sidecarDraft.calculationDiff);
     renderCandidateGroup("included-group", "line-candidates", candidates.filter((item) => item.zone === "included"));

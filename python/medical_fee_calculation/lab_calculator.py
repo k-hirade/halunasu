@@ -65,6 +65,7 @@ from medical_fee_calculation.treatment_fees import calculate_treatment_fees
 @dataclass(frozen=True)
 class LabCalculationContext:
     service_date: date
+    pricing_date: date | None = None
     medical_procedure_source_id: int | None = None
     electronic_fee_source_id: int | None = None
     comment_source_id: int | None = None
@@ -93,6 +94,14 @@ class LabCalculationContext:
     outpatient_rapid_lab_history_complete: bool = True
     lab_management_facility_missing_policy: str = "review"
     comment_inputs: tuple[CommentInput, ...] = ()
+
+
+def _claim_pricing_date(claim_context: ClaimContext) -> date:
+    pricing = getattr(claim_context, "pricing", None)
+    return (
+        getattr(pricing, "master_lookup_date", None)
+        or claim_context.encounter.service_date
+    )
 
 
 @dataclass(frozen=True)
@@ -156,6 +165,7 @@ def calculate_lab_claim_standardized(
         claim_context,
         hospital_profile=hospital_profile,
     )
+    pricing_date = _claim_pricing_date(claim_context)
     patient_age_years = _patient_age_years_on_service_date(
         claim_context.patient.birth_date,
         claim_context.encounter.service_date,
@@ -201,25 +211,25 @@ def calculate_lab_claim_standardized(
     input_resolution = resolve_medical_procedure_lines(
         conn,
         claim_context.procedure_codes,
-        claim_context.encounter.service_date,
+        pricing_date,
         claim_context.master_sources.medical_procedure_source_id,
     )
     drug_resolution = resolve_drug_lines(
         conn,
         resolved_drug_inputs,
-        claim_context.encounter.service_date,
+        pricing_date,
         claim_context.master_sources.drug_source_id,
     )
     material_resolution = resolve_specific_material_lines(
         conn,
         claim_context.material_inputs,
-        claim_context.encounter.service_date,
+        pricing_date,
         claim_context.master_sources.material_source_id,
     )
     outpatient_basic = calculate_outpatient_basic_fee(
         conn,
         claim_context.procedure_codes,
-        claim_context.encounter.service_date,
+        pricing_date,
         claim_context.outpatient_basic,
         is_outpatient=claim_context.encounter.is_outpatient,
         source_id=claim_context.master_sources.medical_procedure_source_id,
@@ -227,7 +237,7 @@ def calculate_lab_claim_standardized(
     outpatient_basic_derived_add_ons = calculate_outpatient_basic_derived_add_ons(
         conn,
         claim_context.procedure_codes,
-        claim_context.encounter.service_date,
+        pricing_date,
         is_outpatient=claim_context.encounter.is_outpatient,
         existing_lines=(
             *input_resolution.lines,
@@ -241,7 +251,7 @@ def calculate_lab_claim_standardized(
         conn,
         claim_context.procedure_codes,
         resolved_medication_drug_inputs,
-        claim_context.encounter.service_date,
+        pricing_date,
         medication_context,
         is_outpatient=claim_context.encounter.is_outpatient,
         source_id=claim_context.master_sources.medical_procedure_source_id,
@@ -249,7 +259,7 @@ def calculate_lab_claim_standardized(
     injection_fees = calculate_injection_fees(
         conn,
         claim_context.procedure_codes,
-        claim_context.encounter.service_date,
+        pricing_date,
         claim_context.injection,
         is_outpatient=claim_context.encounter.is_outpatient,
         source_id=claim_context.master_sources.medical_procedure_source_id,
@@ -258,14 +268,14 @@ def calculate_lab_claim_standardized(
         conn,
         claim_context.procedure_codes,
         claim_context.treatment_orders,
-        claim_context.encounter.service_date,
+        pricing_date,
         source_id=claim_context.master_sources.medical_procedure_source_id,
     )
     imaging_fees = calculate_imaging_fees(
         conn,
         claim_context.procedure_codes,
         claim_context.imaging_orders,
-        claim_context.encounter.service_date,
+        pricing_date,
         source_id=claim_context.master_sources.medical_procedure_source_id,
         facility_standard_keys=facility_standard_keys,
     )
@@ -282,6 +292,7 @@ def calculate_lab_claim_standardized(
         electronic_fee_source_id=claim_context.master_sources.electronic_fee_source_id,
         dpc_electronic_table_source_id=claim_context.master_sources.dpc_electronic_table_source_id,
         hospital_profile=hospital_profile,
+        pricing_date=pricing_date,
     )
     lines_before_outpatient_management = (
         *input_resolution.lines,
@@ -299,7 +310,7 @@ def calculate_lab_claim_standardized(
     outpatient_management_add_on = calculate_outpatient_management_add_on(
         conn,
         claim_context.procedure_codes,
-        claim_context.encounter.service_date,
+        pricing_date,
         claim_context.outpatient_basic,
         is_outpatient=claim_context.encounter.is_outpatient,
         existing_lines=lines_before_outpatient_management,
@@ -348,7 +359,7 @@ def calculate_lab_claim_standardized(
         conn,
         all_lines,
         patient_age_years=patient_age_years,
-        service_date=claim_context.encounter.service_date,
+        service_date=pricing_date,
         source_id=claim_context.master_sources.medical_procedure_source_id,
     )
     if addon_lines:
@@ -433,6 +444,7 @@ def _claim_level_electronic_messages(
         list(codes),
         ElectronicRuleContext(
             service_date=claim_context.encounter.service_date,
+            rule_effective_date=_claim_pricing_date(claim_context),
             source_id=claim_context.master_sources.electronic_fee_source_id,
             comment_source_id=claim_context.master_sources.comment_source_id,
             same_day_history_codes=history.same_day_history_codes,
@@ -521,6 +533,7 @@ def lab_context_from_claim_context(
 
     return LabCalculationContext(
         service_date=claim_context.encounter.service_date,
+        pricing_date=_claim_pricing_date(claim_context),
         medical_procedure_source_id=master_sources.medical_procedure_source_id,
         electronic_fee_source_id=master_sources.electronic_fee_source_id,
         comment_source_id=master_sources.comment_source_id,
@@ -585,10 +598,11 @@ def calculate_lab_claim(
     """
 
     input_codes = _unique_codes(procedure_codes)
+    pricing_date = context.pricing_date or context.service_date
     present_judgement_groups = _find_present_judgement_groups(
         conn,
         input_codes,
-        context.service_date,
+        pricing_date,
         context.medical_procedure_source_id,
     )
 
@@ -596,7 +610,7 @@ def calculate_lab_claim(
         conn,
         list(input_codes),
         D026Context(
-            service_date=context.service_date,
+            service_date=pricing_date,
             source_id=context.medical_procedure_source_id,
             already_present_judgement_groups=present_judgement_groups,
             already_billed_judgement_groups=context.already_billed_judgement_groups,
@@ -615,7 +629,7 @@ def calculate_lab_claim(
             conn,
             list(after_d026_codes),
             LabManagementContext(
-                service_date=context.service_date,
+                service_date=pricing_date,
                 source_id=context.medical_procedure_source_id,
                 facility_standard_keys=facility_standard_keys,
                 already_present_in_claim=_has_lab_management_fee(input_codes),
@@ -639,7 +653,7 @@ def calculate_lab_claim(
         conn,
         list(after_lab_management_codes),
         CollectionFeeContext(
-            service_date=context.service_date,
+            service_date=pricing_date,
             source_id=context.medical_procedure_source_id,
             collection_fee_inputs=context.collection_fee_inputs,
             already_billed_same_day_codes=context.already_billed_collection_fee_codes_same_day,
@@ -655,7 +669,7 @@ def calculate_lab_claim(
         conn,
         list(after_collection_codes),
         OutpatientRapidLabContext(
-            service_date=context.service_date,
+            service_date=pricing_date,
             source_id=context.medical_procedure_source_id,
             eligible_test_item_count=context.outpatient_rapid_lab_eligible_test_item_count,
             is_outpatient=context.is_outpatient,
@@ -675,6 +689,7 @@ def calculate_lab_claim(
         list(candidate_codes),
         ElectronicRuleContext(
             service_date=context.service_date,
+            rule_effective_date=pricing_date,
             source_id=context.electronic_fee_source_id,
             comment_source_id=context.comment_source_id,
             same_day_history_codes=context.same_day_history_codes,
@@ -722,7 +737,7 @@ def _resolve_hospital_profile(
     return get_hospital_profile(
         conn,
         medical_institution_code,
-        claim_context.encounter.service_date,
+        _claim_pricing_date(claim_context),
         regional_bureau=claim_context.encounter.regional_bureau,
         registry_source_id=claim_context.master_sources.registry_source_id,
         facility_source_id=claim_context.master_sources.facility_source_id,

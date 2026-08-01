@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,7 @@ def calculate_fee_session(payload: dict[str, Any]) -> dict[str, Any]:
     conn = connect(Path(str(db_path)))
     try:
         initialize_schema(conn)
+        claim_payload = _resolve_pricing_context(conn, claim_payload)
         result = run_outpatient_lab_claim_payload(
             conn,
             claim_payload,
@@ -51,6 +53,7 @@ def calculate_fee_session(payload: dict[str, Any]) -> dict[str, Any]:
             "inputCodes": result_dict["input_codes"],
             "candidateCodes": result_dict["candidate_codes"],
             "coverage": _calculation_coverage(result_dict, line_items),
+            "pricingBasis": _pricing_basis(claim_payload),
             "rawResult": result_dict,
         },
         "claimPayload": claim_payload,
@@ -139,6 +142,7 @@ def build_claim_payload(session: dict[str, Any], calculation_input: dict[str, An
         "treatment_orders",
         "imaging_orders",
         "kizami_quantities",
+        "pricing",
     ):
         if key in options:
             claim_payload[key] = options[key]
@@ -356,6 +360,16 @@ def _master_coverage_warning(conn: Any, claim_payload: dict[str, Any]) -> str:
     service_date = str(encounter.get("service_date") or "").strip()
     if not service_date:
         return ""
+    pricing = claim_payload.get("pricing") if isinstance(claim_payload.get("pricing"), dict) else {}
+    pricing_mode = str(pricing.get("mode") or "service_date").strip()
+    master_lookup_date = str(pricing.get("master_lookup_date") or service_date).strip()
+    if pricing_mode == "current_master":
+        master_version = str(pricing.get("master_version") or "unknown").strip()
+        return (
+            f"現行マスタ換算: 診療日{service_date}を保持したまま、"
+            f"診療行為マスタ{master_version}（参照日{master_lookup_date}）で再算定しています。"
+            "過去請求時点の点数再現ではありません。"
+        )
     try:
         row = conn.execute(
             """
@@ -385,6 +399,123 @@ def _master_coverage_warning(conn: Any, claim_payload: dict[str, Any]) -> str:
             "最新年度のマスタ取込を確認してください。"
         )
     return ""
+
+
+def _resolve_pricing_context(conn: Any, claim_payload: dict[str, Any]) -> dict[str, Any]:
+    resolved = dict(claim_payload)
+    encounter = (
+        dict(resolved.get("encounter"))
+        if isinstance(resolved.get("encounter"), dict)
+        else {}
+    )
+    service_date = str(encounter.get("service_date") or "").strip()
+    if not service_date:
+        return resolved
+
+    raw_pricing = (
+        dict(resolved.get("pricing"))
+        if isinstance(resolved.get("pricing"), dict)
+        else {}
+    )
+    mode = str(raw_pricing.get("mode") or "service_date").strip()
+    if mode not in {"service_date", "current_master"}:
+        raise ValueError("pricing.mode must be service_date or current_master")
+
+    if mode == "current_master":
+        descriptor = _current_medical_procedure_master(conn)
+        if descriptor is None:
+            raise ValueError(
+                "current_master pricing requires an imported medical procedure master"
+            )
+        raw_pricing = {
+            "mode": mode,
+            "master_lookup_date": descriptor["lookup_date"],
+            "master_version": descriptor["version"],
+        }
+    else:
+        raw_pricing = {
+            "mode": mode,
+            "master_lookup_date": service_date,
+            "master_version": _medical_procedure_master_version_for_date(
+                conn,
+                service_date,
+            ),
+        }
+
+    resolved["encounter"] = encounter
+    resolved["pricing"] = raw_pricing
+    return resolved
+
+
+def _current_medical_procedure_master(conn: Any) -> dict[str, str] | None:
+    row = conn.execute(
+        """
+        SELECT id, source_version, published_at
+        FROM master_sources
+        WHERE source_type = 'medical_procedure_master'
+        ORDER BY imported_at DESC, id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    if row is None:
+        return None
+
+    coverage = conn.execute(
+        """
+        SELECT MIN(effective_from) AS min_from, MAX(effective_to) AS max_to
+        FROM medical_procedures
+        WHERE source_id = ?
+        """,
+        (int(row["id"]),),
+    ).fetchone()
+    version = str(row["source_version"] or row["published_at"] or "unknown").strip()
+    lookup_date = _iso_date_or_none(row["source_version"])
+    if lookup_date is None:
+        lookup_date = _iso_date_or_none(row["published_at"])
+    if lookup_date is None and coverage is not None:
+        lookup_date = _iso_date_or_none(coverage["min_from"])
+    if lookup_date is None:
+        raise ValueError(
+            "current medical procedure master does not expose a usable lookup date"
+        )
+    return {"version": version, "lookup_date": lookup_date}
+
+
+def _medical_procedure_master_version_for_date(conn: Any, service_date: str) -> str | None:
+    row = conn.execute(
+        """
+        SELECT source_version
+        FROM master_sources
+        WHERE source_type = 'medical_procedure_master'
+          AND (published_at IS NULL OR published_at <= ?)
+        ORDER BY COALESCE(published_at, '') DESC, id DESC
+        LIMIT 1
+        """,
+        (service_date,),
+    ).fetchone()
+    return None if row is None else str(row["source_version"] or "").strip() or None
+
+
+def _iso_date_or_none(value: Any) -> str | None:
+    text = str(value or "").strip()[:10]
+    try:
+        return date.fromisoformat(text).isoformat()
+    except ValueError:
+        return None
+
+
+def _pricing_basis(claim_payload: dict[str, Any]) -> dict[str, Any]:
+    encounter = claim_payload.get("encounter") if isinstance(claim_payload.get("encounter"), dict) else {}
+    pricing = claim_payload.get("pricing") if isinstance(claim_payload.get("pricing"), dict) else {}
+    mode = str(pricing.get("mode") or "service_date")
+    service_date = str(encounter.get("service_date") or "")
+    return {
+        "mode": mode,
+        "serviceDate": service_date,
+        "masterLookupDate": str(pricing.get("master_lookup_date") or service_date),
+        "masterVersion": pricing.get("master_version"),
+        "historicalReproduction": mode == "service_date",
+    }
 
 
 def _warning_messages(result: dict[str, Any]) -> list[str]:

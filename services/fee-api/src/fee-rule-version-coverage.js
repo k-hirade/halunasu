@@ -1,14 +1,21 @@
 import { encounterBasicFeeCoverage } from "./facility-service-schedule.js";
 
 export function applyFeeRuleVersionCoverageToPreparation(prepared = {}, {
-  serviceDate = ""
+  serviceDate = "",
+  pricingContext = null
 } = {}) {
-  const coverage = encounterBasicFeeCoverage(serviceDate);
+  const ruleLookupDate = pricingContext?.masterLookupDate || serviceDate;
+  const coverage = encounterBasicFeeCoverage(ruleLookupDate);
   const result = {
     ...prepared,
     metrics: {
       ...(prepared.metrics || {}),
-      feeRuleVersionCoverage: coverage
+      feeRuleVersionCoverage: {
+        ...coverage,
+        originalServiceDate: serviceDate,
+        pricingMode: pricingContext?.mode || "service_date",
+        historicalReproduction: pricingContext?.historicalReproduction !== false
+      }
     }
   };
   if (coverage.status !== "unavailable") {

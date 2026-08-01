@@ -376,6 +376,13 @@ test("normalizes external calculation results", () => {
       adoptionBlockReason: "同日同一世帯の2人目候補は自動採用しません。",
       status: "needs_review"
     }],
+    pricingBasis: {
+      mode: "current_master",
+      serviceDate: "2025-01-15",
+      masterLookupDate: "2026-06-15",
+      masterVersion: "2026-06-15",
+      historicalReproduction: true
+    },
     rawResult: { rows: Array.from({ length: 10 }, (_, index) => ({ index })) }
   }, {
     calculationId: "calc_001",
@@ -401,6 +408,13 @@ test("normalizes external calculation results", () => {
     "同日同一世帯の2人目候補は自動採用しません。"
   );
   assert.equal(calculation.candidateProposals[0].status, "needs_review");
+  assert.deepEqual(calculation.pricingBasis, {
+    mode: "current_master",
+    serviceDate: "2025-01-15",
+    masterLookupDate: "2026-06-15",
+    masterVersion: "2026-06-15",
+    historicalReproduction: false
+  });
   assert.equal(calculation.coverage.reviewRequired, true);
   assert.equal(updated.status, "needs_review");
   assert.equal(updated.latestCalculationId, "calc_001");

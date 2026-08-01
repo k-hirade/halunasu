@@ -94,7 +94,8 @@ export function applyEncounterVariantToPreparation(prepared = {}, {
   priorSessions = [],
   historyCompleteness = "unknown",
   feeSettings = {},
-  facilityStandardKeys = []
+  facilityStandardKeys = [],
+  pricingContext = null
 } = {}) {
   const encounterDetails = isPlainObject(session.encounterDetails)
     ? session.encounterDetails
@@ -104,7 +105,8 @@ export function applyEncounterVariantToPreparation(prepared = {}, {
   const common = {
     session,
     feeSettings,
-    facilityStandardKeys
+    facilityStandardKeys,
+    pricingContext
   };
 
   if (String(session.setting || "") === "home_visit") {
@@ -361,7 +363,8 @@ function applyHouseCallVariant(prepared, {
 function applyEncounterTimeAndFacilityRules(prepared, {
   session = {},
   feeSettings = {},
-  facilityStandardKeys = []
+  facilityStandardKeys = [],
+  pricingContext = null
 } = {}) {
   const setting = String(session.setting || "").trim();
   if (!["outpatient", "house_call"].includes(setting)) {
@@ -382,6 +385,7 @@ function applyEncounterTimeAndFacilityRules(prepared, {
   const classification = classifyFacilityServiceTime({
     receptionTime: session.receptionTime,
     serviceDate: session.serviceDate,
+    scheduleEffectiveDate: pricingContext?.masterLookupDate || session.serviceDate,
     feeSettings
   });
   const warning = facilityServiceTimeReviewWarning(classification);

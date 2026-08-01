@@ -1,6 +1,9 @@
 {
   "schemaVersion": 1,
   "effectiveFrom": "2026-06-01",
+  "pricingPolicy": {
+    "mode": "current_master"
+  },
   "facilityStandardsConfirmed": false,
   "sidecarPatientAutoProvision": true,
   "historyPolicy": {

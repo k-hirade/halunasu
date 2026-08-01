@@ -4,6 +4,11 @@
 
 - 制度調査(現行518単位・制度差・実装状況監査): `docs/20260716-emergency-treatment-management-current-fee-audit.md`
 - アプリ構想(境界・画面・データモデル・フェーズ): `docs/20260713-care-emergency-treatment-management-app-plan.md`
+- 独立利用・単一CSV入出力・競合調査の最新方針:
+  `docs/implplan/care-emergency-treatment-standalone-csv-plan-20260801.md`
+
+> 2026-08-01追記: C0/C1/C2-0/C2-1の制度分離・マスタ・gold・純関数エンジン方針は維持する。
+> C2-3以降のプロダクト境界、C2-4のUI配置、C2-5の一括取込は、上記最新方針を優先する。
 
 本チケットは上記2docsを実装指示書へ落としたもの。設計原則は医科feeで確立済みのものを移植する:
 
@@ -192,9 +197,9 @@ store実装: firestore-store / memory-store / Lazy delegate。
 
 evaluate は保存済みエピソードに対する再実行が冪等であること(決定論)をテストで固定。
 
-### C2-4. UI(`apps/fee-web/app/care-fee/`)
+### C2-4. UI(`apps/care-fee-web/`)
 
-構想doc §5 のモック準拠。医科画面とはナビゲーション階層から分離(「介護報酬点検」)。
+最新方針に従い、`care.halunasu.com`（STGは`care.stg.halunasu.com`）へ独立デプロイする。構想doc §5 のモック準拠。医科画面とはアプリとナビゲーション階層の両方を分離する（表示名「介護報酬点検」）。
 
 1. 月次点検一覧(第一画面): 請求月/施設/状態フィルタ、状態バッジ(要確認/算定候補/確定/対象外)、
    単位列はマスタ解決値。**一括操作はCSV出力のみ**(一括確定は作らない)。
