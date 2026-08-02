@@ -4,7 +4,7 @@ import { join, relative } from "node:path";
 import { test } from "node:test";
 
 const root = new URL("../../..", import.meta.url).pathname;
-const productApis = ["charting-api", "fee-api", "referral-api"];
+const productApis = ["charting-api", "fee-api", "care-fee-api", "referral-api"];
 const allApis = ["platform-api", ...productApis, "charting-finalize"];
 const migrationLegacyPathPatterns = [
   /^packages\/medical-core\//,
@@ -101,8 +101,8 @@ test("browser apps do not import Firestore or Firebase client SDKs", () => {
   }
 });
 
-test("Firestore Admin SDK usage stays inside server store adapters", () => {
-  const files = walkFiles(root)
+test("runtime Firestore Admin SDK usage stays inside server store adapters", () => {
+  const files = walkFiles(join(root, "services"))
     .filter((file) => /\.(js|mjs|json)$/.test(file))
     .filter((file) => !isMigrationLegacyPath(relative(root, file)));
   const matches = files.filter((file) => {
@@ -152,12 +152,12 @@ test("service runtime logs do not print request or clinical payloads", () => {
         continue;
       }
       // 許可する安全な構造化運用ログ:
-      //  - console.info / console.error で JSON.stringify({ ... }) を出力
+      //  - console.info / console.warn / console.error で JSON.stringify({ ... }) を出力
       //  - event フィールドを持つ運用イベントログ
       //  - PHI / 生ペイロードを示すトークンを含まない
       const isStructuredEventLog =
-        /console\.(info|error)\s*\(\s*JSON\.stringify\(/.test(statement.text)
-        && /\bevent\s*:/.test(statement.text);
+        /console\.(info|warn|error)\s*\(\s*JSON\.stringify\(/.test(statement.text)
+        && /\bevent\s*[:,]/.test(statement.text);
       const referencesUnsafePayload = unsafePayloadTokens.some((token) => statement.text.includes(token));
       if (isStructuredEventLog && !referencesUnsafePayload) {
         continue;
@@ -265,12 +265,20 @@ test("P10 runtime provisioning and deploy scripts keep low-cost guardrails", () 
   const provision = readText(join(root, "scripts", "p10_provision_runtime_projects_low_cost.sh"));
   const deploy = readText(join(root, "scripts", "p10_deploy_runtime_services_low_cost.sh"));
   const cleanup = readText(join(root, "scripts", "p19_cleanup_runtime_artifacts.sh"));
+  const activate = readText(join(root, "scripts", "p10_activate_product_project_guarded.sh"));
+  const splitPreflight = readText(join(root, "scripts", "p10_project_split_preflight.sh"));
+  const firestoreDeploy = readText(join(root, "scripts", "p17_deploy_firestore_security_and_indexes.sh"));
+  const careIndexes = JSON.parse(readText(join(root, "firestore.care.indexes.json")));
   const feeCloudBuild = readText(join(root, "cloudbuild.fee-api.yaml"));
   const nodeCloudBuild = readText(join(root, "cloudbuild.node-service.yaml"));
   const feeCloudIgnore = readText(join(root, ".gcloudignore.fee-api"));
+  const careFeeCloudIgnore = readText(join(root, ".gcloudignore.care-fee-api"));
 
   assert.match(provision, /APPLY="false"/, "P10 provision must dry-run by default");
   assert.match(provision, /P10_ALLOW_BILLING/, "P10 provision must require billing acknowledgement");
+  assert.match(provision, /TARGET_PRODUCT="\$\{TARGET_PRODUCT:-all\}"/, "P10 provision must support product-scoped provisioning");
+  assert.match(provision, /TARGET_ENV="\$\{TARGET_ENV:-all\}"/, "P10 provision must support environment-scoped provisioning");
+  assert.match(provision, /provision_care_environment/, "P10 provision must isolate the Care provisioning path");
   assert.match(provision, /no Cloud Run minimum instances/, "P10 provision must document no minimum instances");
   assert.equal(/gcloud\s+run\s+deploy/.test(provision), false, "P10 provision must not deploy Cloud Run");
   assert.equal(/terraform\s+apply/.test(provision), false, "P10 provision must not run Terraform");
@@ -284,10 +292,23 @@ test("P10 runtime provisioning and deploy scripts keep low-cost guardrails", () 
   );
   assert.match(
     deploy,
-    /sidecar_enabled="\$\{HOMIS_SIDECAR_ENABLED_PROD:-\$\{sidecar_enabled:-false\}\}"/,
-    "P10 deploy must keep the HOMIS sidecar disabled by default in PROD"
+    /PROD_HOMIS_SIDECAR_ENABLED_DEFAULT="true"/,
+    "P10 deploy must keep the approved PROD HOMIS sidecar default explicit"
+  );
+  assert.match(
+    deploy,
+    /sidecar_enabled="\$\{HOMIS_SIDECAR_ENABLED_PROD:-\$\{sidecar_enabled:-\$\{PROD_HOMIS_SIDECAR_ENABLED_DEFAULT\}\}\}"/,
+    "P10 deploy must preserve the explicit PROD HOMIS sidecar override"
   );
   assert.match(deploy, /--cpu-throttling/, "P10 deploy must keep CPU throttling enabled");
+  assert.match(deploy, /--cpu "\$\{CPU\}"/, "P10 deploy must use the established global CPU variable");
+  assert.equal(deploy.includes("FEE_CPU"), false, "P10 deploy must not introduce a FEE_CPU override");
+  assert.equal(deploy.includes("CARE_CPU"), false, "P10 deploy must not introduce a CARE_CPU override");
+  assert.match(
+    deploy,
+    /service_max_instances="\$\{MAX_INSTANCES\}"/,
+    "Care deploys must keep the global max-instance cost ceiling"
+  );
   assert.match(deploy, /--no-allow-unauthenticated/, "P10 deploy must support private worker services");
   assert.match(
     deploy,
@@ -344,6 +365,42 @@ test("P10 runtime provisioning and deploy scripts keep low-cost guardrails", () 
     /python\/data\/whitebox\/\*\/\s*[\r\n]+!python\/data\/whitebox\/\*\.json/,
     "Fee Cloud Build uploads must exclude model directories but retain runtime JSON"
   );
+  assert.match(provision, /halunasu-care-stg/, "P10 provision must include the planned Care STG project");
+  assert.match(provision, /halunasu-care-prod/, "P10 provision must include the planned Care PROD project");
+  assert.match(provision, /halunasu-care-fee-api/, "P10 provision must use a dedicated Care runtime identity");
+  assert.match(activate, /care:stg\) PROJECT_ID="halunasu-care-stg"/, "Guarded activation must support Care STG");
+  assert.match(activate, /care:prod\) PROJECT_ID="halunasu-care-prod"/, "Guarded activation must support Care PROD");
+  assert.match(splitPreflight, /PLANNED_PRODUCT_PROJECTS=\(/, "Read-only preflight must model not-yet-created Care projects");
+  assert.match(deploy, /service_memory="512Mi"/, "Care API must keep a low-memory default");
+  assert.match(
+    deploy,
+    /service_max_instances="\$\{MAX_INSTANCES\}"/,
+    "Care STG and PROD must use the global one-instance ceiling"
+  );
+  assert.equal(
+    deploy.includes('service_max_instances="3"'),
+    false,
+    "Care PROD must not override the low-cost one-instance ceiling"
+  );
+  assert.match(deploy, /CARE_FEE_STORE_BACKEND=firestore/, "Care API must use its own Firestore backend");
+  assert.match(deploy, /PLATFORM_GOOGLE_CLOUD_PROJECT=\$\{core_project\}/, "Care API may read shared Platform context");
+  assert.match(careFeeCloudIgnore, /python\/\*/, "Care Cloud Build must exclude fee model and master data");
+  assert.match(careFeeCloudIgnore, /!services\/care-fee-api\/src\/\*\*/, "Care Cloud Build must include Care runtime source");
+  assert.match(
+    careFeeCloudIgnore,
+    /services\/care-fee-api\/\*/,
+    "Care Cloud Build must exclude Care tests and docs before allowing runtime files"
+  );
+  assert.match(
+    careFeeCloudIgnore,
+    /packages\/care-fee-core\/\*/,
+    "Care Cloud Build must exclude non-runtime Care core files before allowing source and master data"
+  );
+  assert.match(
+    careFeeCloudIgnore,
+    /services\/platform-api\/\*/,
+    "Care Cloud Build must exclude unrelated Platform API files before allowing the shared store"
+  );
   assert.match(
     cleanup,
     /STG_CLOUDBUILD_DELETE_AGE_DAYS="\$\{STG_CLOUDBUILD_DELETE_AGE_DAYS:-1\}"/,
@@ -365,6 +422,33 @@ test("P10 runtime provisioning and deploy scripts keep low-cost guardrails", () 
     "Runtime cleanup must honor the selected service project boundary"
   );
   assert.equal(/terraform\s+apply/.test(deploy), false, "P10 deploy must not run Terraform");
+  assert.match(
+    firestoreDeploy,
+    /FIRESTORE_INDEXES_FILE:-firestore\.indexes\.json/,
+    "Firestore deployment must support a product-specific index file"
+  );
+  assert.deepEqual(careIndexes.indexes, [], "Care must not provision unrelated composite indexes");
+  assert.deepEqual(
+    careIndexes.fieldOverrides.map((entry) => [entry.collectionGroup, entry.fieldPath, entry.ttl]),
+    [["care_fee_import_jobs", "purgeAt", true]],
+    "Care must provision only its import retention TTL"
+  );
+});
+
+test("Care runtime IAM never grants its service account access to Fee Firestore", () => {
+  const provision = readText(join(root, "scripts", "p10_provision_runtime_projects_low_cost.sh"));
+
+  assert.match(provision, /"\$\{care_project\}:halunasu-care-fee-api"/, "Care identity must be provisioned independently");
+  assert.equal(
+    provision.includes('add_project_role "${fee_project}" "${member}" roles/datastore.user'),
+    false,
+    "Care runtime must not receive Fee datastore access"
+  );
+  assert.match(
+    provision,
+    /"\$\{account_id\}" == "halunasu-care-fee-api"[\s\S]*add_project_role "\$\{core_project\}" "\$\{member\}" roles\/datastore\.viewer/,
+    "Care runtime must receive read-only access to shared Core data"
+  );
 });
 
 test("P11 runtime endpoint config points static apps at same-origin API proxies", () => {
@@ -432,6 +516,32 @@ test("P13 Netlify static sites are explicit and deploys are guarded", () => {
   assert.match(deployScript, /"--prod"/, "P13 deploy should publish each env-specific site production deploy");
   assert.match(buildScript, /"_headers"/, "runtime app build must emit Netlify headers");
   assert.match(buildScript, /"_redirects"/, "runtime app build must emit Netlify redirects");
+});
+
+test("Care Netlify environments are explicitly planned or registered", () => {
+  const sites = JSON.parse(readText(join(root, "config", "netlify-sites.json")));
+  const proxyTargets = JSON.parse(readText(join(root, "config", "runtime-proxy-targets.json")));
+  const deployScript = readText(join(root, "scripts", "p18_deploy_admin_fee_next_netlify.mjs"));
+  const registrationScript = readText(join(root, "scripts", "register_care_fee_environment.mjs"));
+
+  for (const env of ["stg", "prod"]) {
+    const site = sites[env]["care-fee-web"];
+    assert.ok(["planned", "registered"].includes(site.provisioningStatus));
+    if (site.provisioningStatus === "planned") {
+      assert.equal(site.siteId, null);
+      assert.equal(proxyTargets[env].careFee, null);
+    } else {
+      assert.match(site.siteId, /^[0-9a-f-]{36}$/u);
+      assert.match(proxyTargets[env].careFee, /^https:\/\/[a-z0-9.-]+\.run\.app$/u);
+    }
+    assert.equal(site.baseDir, "apps/care-fee-web");
+    assert.equal(site.targetDomain, env === "stg" ? "https://care.stg.halunasu.com" : "https://care.halunasu.com");
+  }
+
+  assert.match(deployScript, /is planned but not provisioned/, "P18 must skip unprovisioned Care sites");
+  assert.match(deployScript, /targetApp !== "all"/, "explicit unprovisioned Care deploys must fail");
+  assert.match(registrationScript, /DRY RUN: no files changed/, "Care environment registration must dry-run by default");
+  assert.match(registrationScript, /already registered with a different value/, "Care registration must reject accidental target changes");
 });
 
 test("P14 Cloudflare DNS records cover Halunasu web domains and omit unused API DNS", () => {

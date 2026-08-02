@@ -40,6 +40,12 @@
     },
     {
       "type": "CNAME",
+      "name": "care.stg",
+      "content": "halunasu-care-fee-stg.netlify.app",
+      "proxied": false
+    },
+    {
+      "type": "CNAME",
       "name": "mfc-stg",
       "content": "halunasu-fee-stg.netlify.app",
       "proxied": false
@@ -72,6 +78,12 @@
       "type": "CNAME",
       "name": "fee",
       "content": "halunasu-fee-prod.netlify.app",
+      "proxied": false
+    },
+    {
+      "type": "CNAME",
+      "name": "care",
+      "content": "halunasu-care-fee-prod.netlify.app",
       "proxied": false
     },
     {

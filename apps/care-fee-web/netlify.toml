@@ -1,0 +1,24 @@
+[build]
+command = "npm run build"
+publish = ".next"
+
+[build.environment]
+NODE_VERSION = "20"
+
+[[plugins]]
+package = "@netlify/plugin-nextjs"
+
+[[edge_functions]]
+path = "/*"
+function = "stg-gate"
+
+[[headers]]
+for = "/*"
+
+# Content-Security-Policy is emitted by middleware.js with a per-request nonce.
+[headers.values]
+X-Content-Type-Options = "nosniff"
+Referrer-Policy = "strict-origin-when-cross-origin"
+X-Frame-Options = "DENY"
+Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+Strict-Transport-Security = "max-age=31536000; includeSubDomains"

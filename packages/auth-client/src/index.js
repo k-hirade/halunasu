@@ -168,6 +168,15 @@ export async function requireProductContext(input = {}, options = {}) {
   return context;
 }
 
+export async function requireProductEnabled(platformStore, orgId, productId, options = {}) {
+  if (!platformStore) throw new TypeError("platformStore is required");
+  const entitlement = await platformStore.getProductEntitlement(orgId, productId);
+  if (!entitlementAllowsProductUse(entitlement, options.now)) {
+    throw forbiddenError(`${options.productLabel || productId || "Product"} product access is required`);
+  }
+  return entitlement;
+}
+
 function requireTokenBoundary(session = {}, options = {}) {
   const tokenType = String(session.tokenType || "").trim();
   if (!tokenType) {

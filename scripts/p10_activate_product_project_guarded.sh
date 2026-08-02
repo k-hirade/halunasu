@@ -8,7 +8,7 @@ APPLY="false"
 if [[ "${3:-}" == "--apply" ]]; then
   APPLY="true"
 elif [[ "${3:-}" != "" ]]; then
-  echo "Usage: $0 [charting|fee|referral] [stg|prod] [--apply]" >&2
+  echo "Usage: $0 [charting|fee|care|referral] [stg|prod] [--apply]" >&2
   exit 64
 fi
 
@@ -17,6 +17,8 @@ case "${PRODUCT}:${ENVIRONMENT}" in
   charting:prod) PROJECT_ID="halunasu-charting-prod" ;;
   fee:stg) PROJECT_ID="halunasu-fee-stg" ;;
   fee:prod) PROJECT_ID="halunasu-fee-prod" ;;
+  care:stg) PROJECT_ID="halunasu-care-stg" ;;
+  care:prod) PROJECT_ID="halunasu-care-prod" ;;
   referral:stg) PROJECT_ID="halunasu-referral-stg" ;;
   referral:prod) PROJECT_ID="halunasu-referral-prod" ;;
   *)

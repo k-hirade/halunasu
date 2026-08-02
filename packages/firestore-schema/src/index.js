@@ -26,8 +26,16 @@ export const collections = Object.freeze({
   feeExtractionFeedbackEvents: "fee_extraction_feedback_events",
   feeStandingBillingProfiles: "fee_standing_billing_profiles",
   feeMonthlyExclusionResolutions: "fee_monthly_exclusion_resolutions",
+  feeCareEvidenceOutbox: "fee_care_evidence_outbox",
   sidecarCalculationDrafts: "sidecar_calculation_drafts",
   sidecarAdoptionGuards: "sidecar_adoption_guards",
+  careFeeEpisodes: "care_fee_episodes",
+  careFeeMonthlyClaims: "care_fee_monthly_claims",
+  careFeeMonthlyRuns: "care_fee_monthly_runs",
+  careFeeFacilitySettings: "care_fee_facility_settings",
+  careFeeImportJobs: "care_fee_import_jobs",
+  careFeeEvidenceReceipts: "care_fee_evidence_receipts",
+  careFeeAuditLogs: "care_fee_audit_logs",
   referrals: "referrals"
 });
 
@@ -166,12 +174,49 @@ export function feeMonthlyExclusionResolutionPath(orgId, resolutionId) {
   );
 }
 
+export function feeCareEvidenceOutboxPath(orgId, eventId) {
+  return orgDocPath(
+    orgId,
+    collections.feeCareEvidenceOutbox,
+    eventId,
+    "eventId"
+  );
+}
+
 export function sidecarCalculationDraftPath(orgId, sidecarDraftId) {
   return orgDocPath(orgId, collections.sidecarCalculationDrafts, sidecarDraftId, "sidecarDraftId");
 }
 
 export function sidecarAdoptionGuardPath(orgId, fingerprint) {
   return orgDocPath(orgId, collections.sidecarAdoptionGuards, fingerprint, "fingerprint");
+}
+
+export function careFeeEpisodePath(orgId, episodeId) {
+  return orgDocPath(orgId, collections.careFeeEpisodes, episodeId, "episodeId");
+}
+
+export function careFeeMonthlyClaimPath(orgId, claimId) {
+  return orgDocPath(orgId, collections.careFeeMonthlyClaims, claimId, "claimId");
+}
+
+export function careFeeMonthlyRunPath(orgId, runId) {
+  return orgDocPath(orgId, collections.careFeeMonthlyRuns, runId, "runId");
+}
+
+export function careFeeFacilitySettingsPath(orgId, facilityId) {
+  return orgDocPath(orgId, collections.careFeeFacilitySettings, facilityId, "facilityId");
+}
+
+export function careFeeImportJobPath(orgId, importJobId) {
+  return orgDocPath(orgId, collections.careFeeImportJobs, importJobId, "importJobId");
+}
+
+export function careFeeEvidenceReceiptPath(orgId, receiptId) {
+  return orgDocPath(orgId, collections.careFeeEvidenceReceipts, receiptId, "receiptId");
+}
+
+export function careFeeAuditLogPath(orgId, auditLogId) {
+  return orgDocPath(orgId, collections.careFeeAuditLogs, auditLogId, "auditLogId");
 }
 
 export function feeSettingsPath(orgId, facilityId = "default") {

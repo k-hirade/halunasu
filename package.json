@@ -17,6 +17,7 @@
     "deploy:netlify-static": "node scripts/p13_deploy_netlify_static_apps.mjs",
     "deploy:netlify-charting-next": "node scripts/p16_deploy_charting_next_netlify.mjs",
     "deploy:netlify-admin-fee-next": "node scripts/p18_deploy_admin_fee_next_netlify.mjs",
+    "register:care-fee-environment": "node scripts/register_care_fee_environment.mjs",
     "deploy:firestore:plan": "scripts/p17_deploy_firestore_security_and_indexes.sh",
     "deploy:firestore:apply": "scripts/p17_deploy_firestore_security_and_indexes.sh --apply",
     "seed:core-account": "node scripts/p15_seed_core_account.mjs",
@@ -95,6 +96,9 @@
     "eval:fee-extraction-coverage-recheck-stg": "node scripts/evaluate_fee_extraction_coverage_recheck_stg.mjs",
     "eval:fee-mock-act-coverage": "node scripts/evaluate_fee_mock_act_coverage.mjs",
     "test:fee-mock-act-coverage": "node --test scripts/lib/fee-mock-act-coverage.test.mjs scripts/lib/sidecar-evaluator-auth.test.mjs && PYTHONPATH=. python3 -m unittest python.tests.test_mock_homis_build_action_map",
+    "eval:care-emergency-csv": "node scripts/evaluate_care_emergency_csv.mjs",
+    "test:care-fee-gold": "node --test packages/care-fee-contracts/test/index.test.js packages/care-fee-core/test/index.test.js packages/care-fee-core/test/csv.test.js",
+    "test:care-fee-ops": "node --test scripts/lib/care-fee-environment-registration.test.mjs packages/security-boundaries/test/index.test.js",
     "prepare:fee-whitebox-adjudication": "node scripts/prepare_fee_whitebox_adjudication.mjs",
     "compile:fee-whitebox-adjudication": "node scripts/compile_fee_whitebox_adjudication.mjs",
     "eval:fee-whitebox-runtime": "PYTHONPATH=python:. python3 scripts/measure_fee_whitebox_runtime.py",
@@ -160,6 +164,10 @@
     "start:fee-api": "npm run start --workspace @halunasu/fee-api",
     "dev:fee-api": "npm run dev --workspace @halunasu/fee-api",
     "start:referral-api": "npm run start --workspace @halunasu/referral-api",
-    "dev:referral-api": "npm run dev --workspace @halunasu/referral-api"
+    "dev:referral-api": "npm run dev --workspace @halunasu/referral-api",
+    "start:care-fee-api": "npm run start --workspace @halunasu/care-fee-api",
+    "dev:care-fee-api": "npm run dev --workspace @halunasu/care-fee-api",
+    "start:care-fee-web": "npm run start --workspace @halunasu/care-fee-web",
+    "dev:care-fee-web": "npm run dev --workspace @halunasu/care-fee-web"
   }
 }

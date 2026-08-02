@@ -127,8 +127,84 @@ test("readyz exposes deployed extraction feature flags and revision", async () =
       secretConfigured: false,
       hmacKeyVersion: "v1",
       reason: null
+    },
+    careFeeIntegration: {
+      ready: false,
+      ingestUrlConfigured: false,
+      ingestTokenConfigured: false,
+      workerAuthMode: "token",
+      workerAuthConfigured: false,
+      outboxRetentionDays: 30,
+      deliveredRetentionDays: 7
     }
   });
+});
+
+test("queues and delivers Care Fee evidence without making a Care billing decision", async () => {
+  const stores = createStores();
+  const headers = await signedHeaders(stores.platformStore);
+  stores.platformStore.upsertProductEntitlement("org_001", {
+    productId: "care_fee",
+    status: "enabled"
+  });
+  stores.feeStore.updateFeeSettings("org_001", "fac_001", {
+    facilityId: "fac_001",
+    careFeeIntegration: {
+      enabled: true,
+      facilityCode: "care-facility-001",
+      careOfficeNumber: "1234567890",
+      careServiceType: "care_medical_institution",
+      signalPolicy: "conservative"
+    }
+  });
+  const patient = await request(stores, "POST", "/v1/fee/patients", {
+    displayName: "緊急時治療連携患者"
+  }, headers);
+  const session = await request(stores, "POST", "/v1/fee/sessions", {
+    patientId: patient.body.patient.patientId,
+    facilityId: "fac_001",
+    departmentId: "dep_001",
+    serviceDate: "2026-05-28",
+    clinicalText: "本日急変し急性呼吸不全。酸素投与と点滴を開始した。",
+    diagnoses: [{ name: "急性呼吸不全" }]
+  }, headers);
+  const queued = [...stores.feeStore.careFeeEvidenceOutboxForOrg("org_001").values()];
+  const workerEnv = {
+    CARE_FEE_INGEST_URL: "https://care-api.example.test/v1/care-fee/internal/evidence",
+    CARE_FEE_INGEST_TOKEN: "care-ingest-token",
+    CARE_FEE_OUTBOX_WORKER_TOKEN: "care-worker-token"
+  };
+  const denied = await request(stores, "POST", "/v1/fee/internal/care-fee-outbox/run", {
+    orgId: "org_001"
+  }, {}, { processEnv: workerEnv });
+  const deliveredPayloads = [];
+  const delivered = await request(stores, "POST", "/v1/fee/internal/care-fee-outbox/run", {
+    orgId: "org_001"
+  }, { authorization: "Bearer care-worker-token" }, {
+    processEnv: workerEnv,
+    fetchImpl: async (_url, options) => {
+      deliveredPayloads.push(JSON.parse(options.body));
+      return {
+        ok: true,
+        status: 201,
+        text: async () => JSON.stringify({ receipt: { receiptId: "cer_test_001" } })
+      };
+    }
+  });
+  const stored = stores.feeStore.careFeeEvidenceOutboxForOrg("org_001").get(queued[0].eventId);
+
+  assert.equal(session.statusCode, 201);
+  assert.equal(queued.length, 1);
+  assert.equal(queued[0].deliveryState, "pending");
+  assert.equal(denied.statusCode, 401);
+  assert.equal(delivered.statusCode, 200);
+  assert.equal(delivered.body.delivery.deliveredCount, 1);
+  assert.equal(deliveredPayloads.length, 1);
+  assert.equal(deliveredPayloads[0].rows[0].emergency_care_required, "");
+  assert.equal(deliveredPayloads[0].rows[0].physician_confirmed, "");
+  assert.equal(stored.deliveryState, "delivered");
+  assert.equal(stored.receiptId, "cer_test_001");
+  assert.equal(stored.payload, null);
 });
 
 test("readyz degrades only an incompatible context lane with an explicit reason", async () => {
@@ -11037,6 +11113,7 @@ function request(stores, method, path, body, headers = {}, overrides = {}) {
     openAiApiKey: overrides.openAiApiKey,
     openAiFeeClinicalModel: overrides.openAiFeeClinicalModel,
     openAiFeeClinicalReasoningEffort: overrides.openAiFeeClinicalReasoningEffort,
+    fetchImpl: overrides.fetchImpl,
     projectId: "medical-core-stg",
     region: "asia-northeast1",
     processEnv: overrides.processEnv,

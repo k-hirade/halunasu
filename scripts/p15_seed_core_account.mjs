@@ -62,7 +62,7 @@ const password = await resolvePassword();
 if (loginIds.length === 0) {
   throw new Error("Missing --login-id or --login-ids");
 }
-if (!["admin", "fee-demo"].includes(memberRoleProfile)) {
+if (!["admin", "fee-demo", "care-demo"].includes(memberRoleProfile)) {
   throw new Error(`Unsupported --member-role-profile: ${memberRoleProfile}`);
 }
 if (memberRoleProfile === "fee-demo" && (
@@ -70,6 +70,12 @@ if (memberRoleProfile === "fee-demo" && (
   || products.some((product) => !["fee", "homis_sidecar"].includes(product))
 )) {
   throw new Error("--member-role-profile fee-demo requires fee and only supports optional homis_sidecar");
+}
+if (memberRoleProfile === "care-demo" && (
+  !products.includes("care_fee")
+  || products.some((product) => product !== "care_fee")
+)) {
+  throw new Error("--member-role-profile care-demo requires and only supports care_fee");
 }
 if (Boolean(feeProjectId) !== Boolean(feeSettingsTemplate)) {
   throw new Error("--fee-project-id and --fee-settings-file must be specified together");
@@ -289,12 +295,16 @@ async function ensureMember({ input, organization, loginId, actions }) {
 }
 
 function memberAccessForSeed(input, loginId) {
-  if (input.memberRoleProfile !== "fee-demo") {
+  if (input.memberRoleProfile === "admin") {
     return {
       displayName: loginId,
       globalRoles: ["org_admin", "billing_admin"],
       productRoles: Object.fromEntries(input.products.map((product) => [product, ["admin"]]))
     };
+  }
+
+  if (input.memberRoleProfile === "care-demo") {
+    return careDemoMemberAccess(input, loginId);
   }
 
   const prefix = String(input.memberDisplayPrefix || input.organizationName || "Demo").trim();
@@ -320,6 +330,32 @@ function memberAccessForSeed(input, loginId) {
     };
   }
   throw new Error(`fee-demo login ID must end with -admin, -clerk, or -doctor: ${loginId}`);
+}
+
+function careDemoMemberAccess(input, loginId) {
+  const prefix = String(input.memberDisplayPrefix || input.organizationName || "Care Demo").trim();
+  if (loginId.endsWith("-clerk")) {
+    return {
+      displayName: `${prefix} 介護請求担当`,
+      globalRoles: [],
+      productRoles: { care_fee: ["medical_clerk"] }
+    };
+  }
+  if (loginId.endsWith("-doctor")) {
+    return {
+      displayName: `${prefix} 医師`,
+      globalRoles: [],
+      productRoles: { care_fee: ["doctor"] }
+    };
+  }
+  if (loginId.endsWith("-admin")) {
+    return {
+      displayName: `${prefix} 管理者`,
+      globalRoles: ["org_admin", "billing_admin"],
+      productRoles: { care_fee: ["admin"] }
+    };
+  }
+  throw new Error(`care-demo login ID must end with -admin, -clerk, or -doctor: ${loginId}`);
 }
 
 function feeDemoProductRoles(input, feeRoles, sidecarRoles) {
@@ -757,6 +793,6 @@ function sameStringSet(left = [], right = []) {
 }
 
 function printUsage() {
-  console.log("Usage: npm run seed:core-account -- --env stg|prod|all --organization-code CODE --login-ids ID1,ID2 [--facility-standard-keys KEY1,KEY2] [--member-role-profile admin|fee-demo] [--fee-project-id PROJECT --fee-settings-file FILE] [--apply]");
+  console.log("Usage: npm run seed:core-account -- --env stg|prod|all --organization-code CODE --login-ids ID1,ID2 [--facility-standard-keys KEY1,KEY2] [--member-role-profile admin|fee-demo|care-demo] [--fee-project-id PROJECT --fee-settings-file FILE] [--apply]");
   console.log("Set HALUNASU_SEED_PASSWORD, --password-file, or --generate-password-file for --apply.");
 }

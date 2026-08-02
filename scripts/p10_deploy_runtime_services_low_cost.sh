@@ -183,6 +183,7 @@ deploy_service() {
   local service_memory="${MEMORY}"
   local service_timeout="${TIMEOUT}"
   local service_max_instances="${MAX_INSTANCES}"
+  local service_concurrency="${CONCURRENCY}"
   local build_ignore_file=".gcloudignore"
   local build_config="cloudbuild.node-service.yaml"
   if [[ "${service}" == fee-api-* ]]; then
@@ -192,6 +193,26 @@ deploy_service() {
     service_timeout="${FEE_TIMEOUT:-180}"
     service_max_instances="${FEE_MAX_INSTANCES:-3}"
   fi
+  if [[ "${service}" == care-fee-api-* ]]; then
+    build_ignore_file=".gcloudignore.care-fee-api"
+    service_memory="512Mi"
+    service_timeout="60"
+    if [[ "${service}" == *-stg ]]; then
+      service_concurrency="20"
+    else
+      service_concurrency="40"
+    fi
+    service_max_instances="${MAX_INSTANCES}"
+  fi
+
+  echo "== ${project}/${service} =="
+  billing_state="$(billing_enabled "${project}" | tr '[:upper:]' '[:lower:]')"
+  if [[ "${billing_state}" != "true" ]]; then
+    echo "Skipping ${service}; billing is not linked for ${project}."
+    echo
+    return
+  fi
+
   local secret_vars="APP_SESSION_SIGNING_SECRET=APP_SESSION_SIGNING_SECRET:latest"
   if [[ "${service}" == platform-api-* ]] && secret_exists "${project}" "STRIPE_SECRET_KEY"; then
     secret_vars="${secret_vars},STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest"
@@ -235,13 +256,26 @@ deploy_service() {
   if [[ "${service}" == fee-api-* ]] && secret_exists "${project}" "FEE_EXTRACTION_FEEDBACK_HMAC_SECRET"; then
     secret_vars="${secret_vars},FEE_EXTRACTION_FEEDBACK_HMAC_SECRET=FEE_EXTRACTION_FEEDBACK_HMAC_SECRET:latest"
   fi
+  if [[ "${service}" == fee-api-* ]] && secret_exists "${project}" "CARE_FEE_INGEST_TOKEN"; then
+    secret_vars="${secret_vars},CARE_FEE_INGEST_TOKEN=CARE_FEE_INGEST_TOKEN:latest"
+  fi
+  if [[ "${service}" == fee-api-* ]] && secret_exists "${project}" "CARE_FEE_OUTBOX_WORKER_TOKEN"; then
+    secret_vars="${secret_vars},CARE_FEE_OUTBOX_WORKER_TOKEN=CARE_FEE_OUTBOX_WORKER_TOKEN:latest"
+  fi
+  if [[ "${service}" == care-fee-api-* ]] && secret_exists "${project}" "CARE_FEE_INGEST_TOKEN"; then
+    secret_vars="${secret_vars},CARE_FEE_INGEST_TOKEN=CARE_FEE_INGEST_TOKEN:latest"
+  fi
+  if [[ "${service}" == care-fee-api-* ]] && secret_exists "${project}" "CARE_FEE_MONTHLY_WORKER_TOKEN"; then
+    secret_vars="${secret_vars},CARE_FEE_MONTHLY_WORKER_TOKEN=CARE_FEE_MONTHLY_WORKER_TOKEN:latest"
+  fi
 
-  echo "== ${project}/${service} =="
-  billing_state="$(billing_enabled "${project}" | tr '[:upper:]' '[:lower:]')"
-  if [[ "${billing_state}" != "true" ]]; then
-    echo "Skipping ${service}; billing is not linked for ${project}."
-    echo
-    return
+  if [[ "${service}" == care-fee-api-* ]] && [[ "${APPLY}" == "true" ]]; then
+    for required_secret in APP_SESSION_SIGNING_SECRET CARE_FEE_INGEST_TOKEN CARE_FEE_MONTHLY_WORKER_TOKEN; do
+      if ! secret_exists "${project}" "${required_secret}"; then
+        echo "${service}: required secret is missing in ${project}: ${required_secret}" >&2
+        return 1
+      fi
+    done
   fi
   if [[ "${service}" == platform-api-* ]] && [[ "${APPLY}" == "true" ]] && ! secret_exists "${project}" "RESEND_API_KEY"; then
     echo "Skipping ${service}; RESEND_API_KEY secret is missing for ${project}."
@@ -293,7 +327,7 @@ deploy_service() {
     --cpu "${CPU}"
     --memory "${service_memory}"
     --timeout "${service_timeout}"
-    --concurrency "${CONCURRENCY}"
+    --concurrency "${service_concurrency}"
     --execution-environment gen2
     --cpu-throttling
     --set-env-vars "${env_vars_arg}"
@@ -317,6 +351,7 @@ deploy_env() {
   local charting_project="$3"
   local fee_project="$4"
   local referral_project="$5"
+  local care_project="$6"
   local session_cookie_name="halunasu_session"
   local csrf_cookie_name="halunasu_csrf"
   local sidecar_enabled="${HOMIS_SIDECAR_ENABLED:-}"
@@ -667,11 +702,35 @@ deploy_env() {
     "CHARTING_STORE_BACKEND=firestore"
   fi
 
+  if should_deploy "${env}" "care-fee-api"; then
+    deploy_service "${care_project}" "care-fee-api-${env}" "services/care-fee-api" "halunasu-care-fee-api" "public" \
+    "HALUNASU_ENV=${env}" \
+    "GOOGLE_CLOUD_PROJECT=${care_project}" \
+    "CARE_FEE_GOOGLE_CLOUD_PROJECT=${care_project}" \
+    "PLATFORM_GOOGLE_CLOUD_PROJECT=${core_project}" \
+    "GOOGLE_CLOUD_REGION=${REGION}" \
+    "CARE_FEE_STORE_BACKEND=firestore" \
+    "PLATFORM_STORE_BACKEND=firestore" \
+    "CARE_FEE_MAX_CSV_BYTES=10485760" \
+    "CARE_FEE_MAX_JSON_BYTES=15728640" \
+    "CARE_FEE_IMPORT_RETENTION_DAYS=30" \
+    "CARE_FEE_MONTHLY_WORKER_AUTH_MODE=token" \
+    "APP_SESSION_COOKIE_NAME=${session_cookie_name}" \
+    "APP_CSRF_COOKIE_NAME=${csrf_cookie_name}"
+  fi
+
   if should_deploy "${env}" "fee-api"; then
     fee_calculation_queue_path=""
     fee_calculation_worker_url=""
     fee_queue_max_concurrent="${FEE_CALCULATION_QUEUE_MAX_CONCURRENT_DISPATCHES:-3}"
     fee_queue_max_rate="${FEE_CALCULATION_QUEUE_MAX_DISPATCHES_PER_SECOND:-2}"
+    care_fee_ingest_url="${CARE_FEE_INGEST_URL:-}"
+    if [[ -z "${care_fee_ingest_url}" && "${APPLY}" == "true" ]]; then
+      care_fee_service_url="$(gcloud run services describe "care-fee-api-${env}" --project "${care_project}" --region "${REGION}" --format="value(status.url)" --quiet 2>/dev/null || true)"
+      if [[ -n "${care_fee_service_url}" ]]; then
+        care_fee_ingest_url="${care_fee_service_url}/v1/care-fee/internal/evidence"
+      fi
+    fi
     if secret_exists "${fee_project}" "fee-calculation-worker-token"; then
       fee_calculation_queue_path="${FEE_CALCULATION_CLOUD_TASKS_QUEUE:-projects/${fee_project}/locations/${REGION}/queues/fee-calculation-${env}}"
       fee_calculation_queue_id="fee-calculation-${env}"
@@ -764,6 +823,11 @@ deploy_env() {
     "HOMIS_SIDECAR_DRAFT_RETENTION_DAYS=${sidecar_draft_retention_days}" \
     "FEE_CALCULATION_CLOUD_TASKS_QUEUE=${fee_calculation_queue_path}" \
     "FEE_CALCULATION_WORKER_URL=${fee_calculation_worker_url}" \
+    "CARE_FEE_INGEST_URL=${care_fee_ingest_url}" \
+    "CARE_FEE_INGEST_TIMEOUT_MS=5000" \
+    "CARE_FEE_OUTBOX_WORKER_AUTH_MODE=token" \
+    "CARE_FEE_OUTBOX_RETENTION_DAYS=30" \
+    "CARE_FEE_OUTBOX_DELIVERED_RETENTION_DAYS=7" \
     "APP_SESSION_COOKIE_NAME=${session_cookie_name}" \
     "APP_CSRF_COOKIE_NAME=${csrf_cookie_name}"
   fi
@@ -781,7 +845,7 @@ deploy_env() {
     "APP_CSRF_COOKIE_NAME=${csrf_cookie_name}"
   fi
 
-  if [[ "${TARGET_SERVICE}" == "all" || "${TARGET_SERVICE}" == "platform-api" || "${TARGET_SERVICE}" == charting-* || "${TARGET_SERVICE}" == "fee-api" || "${TARGET_SERVICE}" == "referral-api" ]]; then
+  if [[ "${TARGET_SERVICE}" == "all" || "${TARGET_SERVICE}" == "platform-api" || "${TARGET_SERVICE}" == charting-* || "${TARGET_SERVICE}" == "fee-api" || "${TARGET_SERVICE}" == "care-fee-api" || "${TARGET_SERVICE}" == "referral-api" ]]; then
     run_or_print env TARGET_ENV="${env}" TARGET_SERVICE="${TARGET_SERVICE}" REGION="${REGION}" REPOSITORY="${REPOSITORY}" \
       bash scripts/p19_cleanup_runtime_artifacts.sh --apply
   fi
@@ -795,10 +859,10 @@ should_deploy() {
 }
 
 if [[ "${TARGET_ENV}" == "all" || "${TARGET_ENV}" == "stg" ]]; then
-  deploy_env "stg" "medical-core-stg" "halunasu-charting-stg" "halunasu-fee-stg" "halunasu-referral-stg"
+  deploy_env "stg" "medical-core-stg" "halunasu-charting-stg" "halunasu-fee-stg" "halunasu-referral-stg" "halunasu-care-stg"
 fi
 if [[ "${TARGET_ENV}" == "all" || "${TARGET_ENV}" == "prod" ]]; then
-  deploy_env "prod" "medical-core-497610" "halunasu-charting-prod" "halunasu-fee-prod" "halunasu-referral-prod"
+  deploy_env "prod" "medical-core-497610" "halunasu-charting-prod" "halunasu-fee-prod" "halunasu-referral-prod" "halunasu-care-prod"
 fi
 
 echo "Deploy script complete."

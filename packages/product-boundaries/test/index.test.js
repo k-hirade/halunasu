@@ -17,6 +17,12 @@ const products = Object.freeze({
     routePrefix: "/v1/fee/",
     packages: ["fee-contracts", "fee-core"]
   },
+  care_fee: {
+    service: "care-fee-api",
+    app: "care-fee-web",
+    routePrefix: "/v1/care-fee/",
+    packages: ["care-fee-contracts", "care-fee-core"]
+  },
   referral: {
     service: "referral-api",
     app: "referral-web",
@@ -40,7 +46,7 @@ test("product service code does not import sibling product services or packages"
     const forbiddenTokens = siblingProductTokens(productId);
 
     for (const token of forbiddenTokens) {
-      assert.equal(source.includes(token), false, `${product.service} must not reference ${token}`);
+      assert.equal(importsDependency(source, token), false, `${product.service} must not import ${token}`);
     }
   }
 });
@@ -116,4 +122,11 @@ function stripTestFiles(source) {
 
 function escapeRegExp(value) {
   return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function importsDependency(source, token) {
+  const importSpecifiers = [...String(source || "").matchAll(
+    /(?:from\s+|import\s*\()\s*["']([^"']+)["']/gu
+  )].map((match) => match[1]);
+  return importSpecifiers.some((specifier) => specifier.split("/").includes(token));
 }

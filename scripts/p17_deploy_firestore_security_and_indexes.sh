@@ -23,6 +23,7 @@ USAGE
 
 APPLY="no"
 PROJECTS=()
+INDEXES_FILE="${FIRESTORE_INDEXES_FILE:-firestore.indexes.json}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -54,7 +55,7 @@ if [[ ${#PROJECTS[@]} -eq 0 ]]; then
   )
 fi
 
-if [[ ! -f "firebase.json" || ! -f "firestore.rules" || ! -f "firestore.indexes.json" ]]; then
+if [[ ! -f "firebase.json" || ! -f "firestore.rules" || ! -f "${INDEXES_FILE}" ]]; then
   echo "Run this script from the halunasu repository root." >&2
   exit 1
 fi
@@ -134,7 +135,7 @@ for project in "${PROJECTS[@]}"; do
       else
         printf '%s\n' "${output}"
       fi
-    done < <(jq -c '.indexes[]' firestore.indexes.json)
+    done < <(jq -c '.indexes[]' "${INDEXES_FILE}")
 
     echo "Deploying Firestore TTL policies to ${project}"
     while IFS=$'\t' read -r collection_group field_path; do
@@ -155,12 +156,12 @@ for project in "${PROJECTS[@]}"; do
       else
         printf '%s\n' "${output}"
       fi
-    done < <(jq -r '.fieldOverrides[]? | select(.ttl == true) | [.collectionGroup, .fieldPath] | @tsv' firestore.indexes.json)
+    done < <(jq -r '.fieldOverrides[]? | select(.ttl == true) | [.collectionGroup, .fieldPath] | @tsv' "${INDEXES_FILE}")
   else
     echo "gcloud auth print-access-token >/dev/null"
     echo "curl -sS -X POST https://firebaserules.googleapis.com/v1/projects/${project}/rulesets ..."
     echo "curl -sS -X PATCH https://firebaserules.googleapis.com/v1/projects/${project}/releases/cloud.firestore?updateMask=rulesetName ..."
-    echo "jq -c '.indexes[]' firestore.indexes.json | while read index; do gcloud firestore indexes composite create --project ${project} ...; done"
-    echo "jq -r '.fieldOverrides[]? | select(.ttl == true)' firestore.indexes.json | while read ttl; do gcloud firestore fields ttls update --project ${project} ... --enable-ttl; done"
+    echo "jq -c '.indexes[]' ${INDEXES_FILE} | while read index; do gcloud firestore indexes composite create --project ${project} ...; done"
+    echo "jq -r '.fieldOverrides[]? | select(.ttl == true)' ${INDEXES_FILE} | while read ttl; do gcloud firestore fields ttls update --project ${project} ... --enable-ttl; done"
   fi
 done

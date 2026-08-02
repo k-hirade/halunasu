@@ -38,6 +38,14 @@ export const feeSessionStatuses = Object.freeze([
   "needs_review",
   "failed"
 ]);
+export const careFeeIntegrationServiceTypes = Object.freeze([
+  "roken",
+  "care_medical_institution",
+  "short_stay_roken",
+  "short_stay_care_medical_institution",
+  "preventive_short_stay_roken",
+  "preventive_short_stay_care_medical_institution"
+]);
 export const feeOrderTypes = Object.freeze([
   "lab",
   "drug",
@@ -704,6 +712,13 @@ export function defaultFeeSettings(input = {}) {
     pricingPolicy: {
       mode: "service_date"
     },
+    careFeeIntegration: {
+      enabled: false,
+      facilityCode: "",
+      careOfficeNumber: "",
+      careServiceType: "",
+      signalPolicy: "conservative"
+    },
     sidecarPatientAutoProvision: false,
     facilityStandardsConfirmed: false,
     facilityStandards: [],
@@ -747,6 +762,12 @@ export function validateUpdateFeeSettingsInput(input = {}) {
   const inputPricingPolicy = isPlainObject(input.pricingPolicy ?? input.pricing_policy)
     ? (input.pricingPolicy ?? input.pricing_policy)
     : {};
+  const currentCareFeeIntegration = isPlainObject(current.careFeeIntegration ?? current.care_fee_integration)
+    ? (current.careFeeIntegration ?? current.care_fee_integration)
+    : {};
+  const inputCareFeeIntegration = isPlainObject(input.careFeeIntegration ?? input.care_fee_integration)
+    ? (input.careFeeIntegration ?? input.care_fee_integration)
+    : {};
   const base = defaultFeeSettings({
     facilityId: input.facilityId ?? input.facility_id ?? current.facilityId ?? current.facility_id,
     effectiveFrom: input.effectiveFrom ?? input.effective_from ?? current.effectiveFrom ?? current.effective_from
@@ -764,6 +785,11 @@ export function validateUpdateFeeSettingsInput(input = {}) {
     ...inputPricingPolicy
   };
   const baseReceiptPolicy = mergeReceiptPolicy(base.receiptPolicy, currentReceiptPolicy, inputReceiptPolicy);
+  const baseCareFeeIntegration = {
+    ...base.careFeeIntegration,
+    ...currentCareFeeIntegration,
+    ...inputCareFeeIntegration
+  };
   const facilityStandardsInput = hasOwn(input, "facilityStandards") || hasOwn(input, "facility_standards")
     ? (input.facilityStandards ?? input.facility_standards)
     : (current.facilityStandards ?? current.facility_standards);
@@ -805,6 +831,7 @@ export function validateUpdateFeeSettingsInput(input = {}) {
     initialRevisitPolicy: normalizeInitialRevisitPolicy(baseInitialRevisitPolicy),
     standingFactsPolicy: normalizeStandingFactsPolicy(baseStandingFactsPolicy),
     pricingPolicy: normalizePricingPolicy(basePricingPolicy),
+    careFeeIntegration: normalizeCareFeeIntegration(baseCareFeeIntegration),
     sidecarPatientAutoProvision: strictBoolean(
       sidecarPatientAutoProvisionInput,
       "sidecarPatientAutoProvision"
@@ -817,6 +844,31 @@ export function validateUpdateFeeSettingsInput(input = {}) {
     facilityServiceSchedules,
     autoBillingRules: normalizeAutoBillingRules(autoBillingRulesInput),
     receiptPolicy: normalizeReceiptPolicy(baseReceiptPolicy)
+  };
+}
+
+function normalizeCareFeeIntegration(input = {}) {
+  const enabled = strictBoolean(input.enabled ?? false, "careFeeIntegration.enabled");
+  const facilityCode = optionalString(input.facilityCode ?? input.facility_code);
+  const careOfficeNumber = optionalString(input.careOfficeNumber ?? input.care_office_number);
+  const careServiceType = optionalString(input.careServiceType ?? input.care_service_type);
+  const signalPolicy = optionalEnum(
+    input.signalPolicy ?? input.signal_policy,
+    ["conservative", "explicit_only"],
+    "careFeeIntegration.signalPolicy"
+  ) || "conservative";
+  if (enabled && !facilityCode) {
+    throw validationError("careFeeIntegration.facilityCode is required when enabled", "careFeeIntegration.facilityCode");
+  }
+  if (enabled && !careFeeIntegrationServiceTypes.includes(careServiceType)) {
+    throw validationError("careFeeIntegration.careServiceType is required when enabled", "careFeeIntegration.careServiceType");
+  }
+  return {
+    enabled,
+    facilityCode,
+    careOfficeNumber,
+    careServiceType,
+    signalPolicy
   };
 }
 

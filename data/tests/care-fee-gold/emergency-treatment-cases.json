@@ -1,0 +1,134 @@
+{
+  "schemaVersion": "care-fee-gold-v1",
+  "description": "Deterministic emergency treatment management acceptance cases",
+  "cases": [
+    {
+      "caseId": "candidate-one-day-care-medical",
+      "rows": [{ "treatmentDate": "2026-08-10" }],
+      "expected": { "status": "billing_candidate", "eligibleDayCount": 1, "totalUnits": 518 }
+    },
+    {
+      "caseId": "candidate-three-consecutive-days",
+      "rows": [
+        { "treatmentDate": "2026-08-10" },
+        { "treatmentDate": "2026-08-11" },
+        { "treatmentDate": "2026-08-12" }
+      ],
+      "expected": { "status": "billing_candidate", "eligibleDayCount": 3, "totalUnits": 1554 }
+    },
+    {
+      "caseId": "fourth-day-over-limit",
+      "rows": [
+        { "treatmentDate": "2026-08-10" },
+        { "treatmentDate": "2026-08-11" },
+        { "treatmentDate": "2026-08-12" },
+        { "treatmentDate": "2026-08-13" }
+      ],
+      "expected": {
+        "status": "billing_candidate",
+        "eligibleDayCount": 3,
+        "totalUnits": 1554,
+        "rowReason": { "2026-08-13": "consecutive_day_limit_exceeded" }
+      }
+    },
+    {
+      "caseId": "explicitly-no-severe-condition",
+      "overrides": {
+        "severeRespiratoryFailure": false,
+        "severeShock": false
+      },
+      "rows": [{ "treatmentDate": "2026-08-10" }],
+      "expected": {
+        "status": "not_eligible",
+        "eligibleDayCount": 0,
+        "totalUnits": 0,
+        "reason": "severe_condition_explicitly_absent"
+      }
+    },
+    {
+      "caseId": "severe-condition-unknown",
+      "overrides": { "severeRespiratoryFailure": null },
+      "rows": [{ "treatmentDate": "2026-08-10" }],
+      "expected": { "status": "needs_review", "reason": "severe_condition_unknown" }
+    },
+    {
+      "caseId": "emergency-care-explicitly-not-required",
+      "overrides": { "emergencyCareRequired": false },
+      "rows": [{ "treatmentDate": "2026-08-10" }],
+      "expected": { "status": "not_eligible", "reason": "emergency_care_not_required" }
+    },
+    {
+      "caseId": "daily-treatment-not-documented",
+      "overrides": {
+        "medicationPerformed": false,
+        "medicationDetail": ""
+      },
+      "rows": [{ "treatmentDate": "2026-08-10" }],
+      "expected": { "status": "needs_review", "reason": "daily_treatment_not_documented" }
+    },
+    {
+      "caseId": "monthly-claim-already-present",
+      "overrides": {
+        "existingEmergencyClaimCountMonth": 1,
+        "existingEmergencyClaimStartDate": "2026-08-01"
+      },
+      "rows": [{ "treatmentDate": "2026-08-10" }],
+      "expected": { "status": "conflict", "reason": "monthly_limit_already_claimed" }
+    },
+    {
+      "caseId": "specific-treatment-conflict",
+      "overrides": { "concurrentSpecificTreatment": true },
+      "rows": [{ "treatmentDate": "2026-08-10" }],
+      "expected": { "status": "conflict", "reason": "specific_treatment_conflict" }
+    },
+    {
+      "caseId": "physician-confirmation-missing",
+      "overrides": {
+        "physicianConfirmed": false,
+        "physicianConfirmedBy": "",
+        "physicianConfirmedAt": ""
+      },
+      "rows": [{ "treatmentDate": "2026-08-10" }],
+      "expected": { "status": "needs_review", "reason": "physician_confirmation_missing" }
+    },
+    {
+      "caseId": "roken-code-variant-unknown",
+      "overrides": {
+        "careServiceType": "roken",
+        "existingClaimServiceCode": ""
+      },
+      "rows": [{ "treatmentDate": "2026-08-10" }],
+      "expected": { "status": "needs_review", "reason": "service_code_variant_required" }
+    },
+    {
+      "caseId": "roken-code-variant-explicit",
+      "overrides": {
+        "careServiceType": "roken",
+        "existingClaimServiceCode": "529000"
+      },
+      "rows": [{ "treatmentDate": "2026-08-10" }],
+      "expected": { "status": "billing_candidate", "serviceCode": "529000", "eligibleDayCount": 1, "totalUnits": 518 }
+    },
+    {
+      "caseId": "non-consecutive-treatment-day",
+      "rows": [
+        { "treatmentDate": "2026-08-10" },
+        { "treatmentDate": "2026-08-12" }
+      ],
+      "expected": {
+        "status": "billing_candidate",
+        "eligibleDayCount": 1,
+        "totalUnits": 518,
+        "rowReason": { "2026-08-12": "non_consecutive_treatment_day" }
+      }
+    },
+    {
+      "caseId": "cross-month-onset",
+      "overrides": {
+        "onsetAt": "2026-07-31T23:30:00+09:00"
+      },
+      "rows": [{ "treatmentDate": "2026-08-01" }],
+      "expected": { "status": "needs_review", "reason": "cross_month_episode_requires_review" }
+    }
+  ]
+}

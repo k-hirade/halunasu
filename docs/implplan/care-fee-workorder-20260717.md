@@ -9,6 +9,9 @@
 
 > 2026-08-01追記: C0/C1/C2-0/C2-1の制度分離・マスタ・gold・純関数エンジン方針は維持する。
 > C2-3以降のプロダクト境界、C2-4のUI配置、C2-5の一括取込は、上記最新方針を優先する。
+>
+> 2026-08-02実装状況: C0〜C3の共通基盤はLOCAL実装・テスト済み。環境は未作成であり、STG/PROD rolloutは
+> `docs/runbooks/care-fee-environment-rollout.md`に従う。西山固有CSV adapter・固有帳票・月次実行日時は実データ確認後の残作業とする。
 
 本チケットは上記2docsを実装指示書へ落としたもの。設計原則は医科feeで確立済みのものを移植する:
 
@@ -182,10 +185,9 @@ evaluateEmergencyTreatmentEpisode(episode, {
 store実装: firestore-store / memory-store / Lazy delegate。
 **store delegate完全性テストの対象に含める**(医科で二度踏んだ轍)。
 
-### C2-3. API(`services/fee-api/src/care-fee/` に新モジュール)
+### C2-3. API(`services/care-fee-api/`)
 
-`/v1/care-fee/` 配下。認証・組織・監査は既存基盤を再利用。`CARE_FEE_ENABLED`(env)で
-ルート全体をフラグ制御し、STGから開放する。
+`/v1/care-fee/` 配下。Platformの認証・組織・患者識別子を再利用するが、介護固有の監査・PHIは介護専用projectへ保存する。`CARE_FEE_ENABLED`(env)でルート全体をフラグ制御し、STGから開放する。
 
 - `POST /v1/care-fee/episodes` 作成(下書き) / `PATCH …/{id}` 更新
 - `POST …/{id}/evaluate` 判定実行(C2-1呼び出し。保存はevaluationスナップショット)

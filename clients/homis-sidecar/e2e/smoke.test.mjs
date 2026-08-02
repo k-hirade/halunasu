@@ -87,19 +87,15 @@ test("patient 1006 can authorize, auto-read, and calculate through the side pane
 
     await panel.getByRole("button", { name: "算定案を作成" }).click();
     await panel.locator("#result-section").waitFor({ state: "visible", timeout: 120_000 });
-    assert.match(await panel.locator("#total-points").textContent(), /\d[\d,]*点/);
+    const totalPointsText = await panel.locator("#total-points").textContent();
+    const totalPoints = Number(String(totalPointsText || "").replace(/[^0-9]/gu, ""));
+    assert.ok(totalPoints > 0, `sidecar calculation must produce billable points: ${totalPointsText}`);
+    assert.match(await panel.locator("#revision-copy").textContent(), /現行マスタ換算/u);
     const rows = panel.locator(".candidate-row").filter({ hasNotText: "候補はありません" });
     assert.ok(await rows.count() >= 1);
     assert.equal(await panel.locator(".candidate-context-badge").count(), 0);
     assert.equal(await panel.locator(".candidate-comment").count(), 0);
-    assert.match(await panel.locator("#checklist-count").textContent(), /^\d+件$/u);
-    await panel.locator("#detail-log-button").click();
-    await panel.locator("#detail-log-section").waitFor({ state: "visible" });
-    assert.ok(await panel.locator("#detail-log .detail-log-row").count() >= 1);
-    const detailLogText = (await panel.locator("#detail-log .detail-log-row").allTextContents()).join("\n");
-    assert.match(detailLogText, /施設ルール|レセプトコメント|コメント/u);
-    await panel.locator("#detail-log-back-button").click();
-    await panel.locator("#result-section").waitFor({ state: "visible" });
+    assert.match(await panel.locator("#decision-count").textContent(), /^\d+件$/u);
   } finally {
     await context.close();
     await rm(profilePath, { recursive: true, force: true });

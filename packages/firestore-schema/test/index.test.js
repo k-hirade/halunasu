@@ -4,9 +4,17 @@ import {
   collections,
   auditEventPath,
   chartingEncounterPath,
+  careFeeAuditLogPath,
+  careFeeEpisodePath,
+  careFeeEvidenceReceiptPath,
+  careFeeFacilitySettingsPath,
+  careFeeImportJobPath,
+  careFeeMonthlyClaimPath,
+  careFeeMonthlyRunPath,
   dataRequestPath,
   departmentPath,
   facilityPath,
+  feeCareEvidenceOutboxPath,
   feeMonthlyExclusionResolutionPath,
   feeSessionPath,
   sidecarAdoptionGuardPath,
@@ -58,6 +66,10 @@ test("builds platform document paths", () => {
     "organizations/org_123/fee_monthly_exclusion_resolutions/resolution_456"
   );
   assert.equal(
+    feeCareEvidenceOutboxPath("org_123", "fce_456"),
+    "organizations/org_123/fee_care_evidence_outbox/fce_456"
+  );
+  assert.equal(
     sidecarCalculationDraftPath("org_123", "sidecar_456"),
     "organizations/org_123/sidecar_calculation_drafts/sidecar_456"
   );
@@ -65,6 +77,13 @@ test("builds platform document paths", () => {
     sidecarAdoptionGuardPath("org_123", "a".repeat(64)),
     `organizations/org_123/sidecar_adoption_guards/${"a".repeat(64)}`
   );
+  assert.equal(careFeeEpisodePath("org_123", "cep_456"), "organizations/org_123/care_fee_episodes/cep_456");
+  assert.equal(careFeeMonthlyClaimPath("org_123", "ccm_456"), "organizations/org_123/care_fee_monthly_claims/ccm_456");
+  assert.equal(careFeeMonthlyRunPath("org_123", "cmr_456"), "organizations/org_123/care_fee_monthly_runs/cmr_456");
+  assert.equal(careFeeFacilitySettingsPath("org_123", "fac_456"), "organizations/org_123/care_fee_facility_settings/fac_456");
+  assert.equal(careFeeImportJobPath("org_123", "cij_456"), "organizations/org_123/care_fee_import_jobs/cij_456");
+  assert.equal(careFeeEvidenceReceiptPath("org_123", "cer_456"), "organizations/org_123/care_fee_evidence_receipts/cer_456");
+  assert.equal(careFeeAuditLogPath("org_123", "cau_456"), "organizations/org_123/care_fee_audit_logs/cau_456");
   assert.equal(
     referralPath("org_123", "ref_456"),
     "organizations/org_123/referrals/ref_456"
@@ -99,8 +118,10 @@ test("exports canonical collection names", () => {
   assert.equal(collections.patients, "patients");
   assert.equal(collections.patientIdentifierIndex, "patient_identifier_index");
   assert.equal(collections.feeMonthlyExclusionResolutions, "fee_monthly_exclusion_resolutions");
+  assert.equal(collections.feeCareEvidenceOutbox, "fee_care_evidence_outbox");
   assert.equal(collections.sidecarCalculationDrafts, "sidecar_calculation_drafts");
   assert.equal(collections.sidecarAdoptionGuards, "sidecar_adoption_guards");
+  assert.equal(collections.careFeeEpisodes, "care_fee_episodes");
   assert.equal(collections.sidecarDeviceAuthorizations, "sidecar_device_authorizations");
   assert.equal(collections.sidecarDeviceGrants, "sidecar_device_grants");
 });

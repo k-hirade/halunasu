@@ -207,6 +207,22 @@ export class LazyFirestoreFeeStore {
     return this.call("listBillingHistoryEventsForPatient", orgId, patientId, options);
   }
 
+  async putCareFeeEvidenceOutboxEvent(orgId, input) {
+    return this.call("putCareFeeEvidenceOutboxEvent", orgId, input);
+  }
+
+  async listPendingCareFeeEvidenceOutboxEvents(orgId, options) {
+    return this.call("listPendingCareFeeEvidenceOutboxEvents", orgId, options);
+  }
+
+  async markCareFeeEvidenceOutboxDelivered(orgId, eventId, input) {
+    return this.call("markCareFeeEvidenceOutboxDelivered", orgId, eventId, input);
+  }
+
+  async markCareFeeEvidenceOutboxFailed(orgId, eventId, input) {
+    return this.call("markCareFeeEvidenceOutboxFailed", orgId, eventId, input);
+  }
+
   async createExtractionFeedbackEvents(orgId, events) {
     return this.call("createExtractionFeedbackEvents", orgId, events);
   }

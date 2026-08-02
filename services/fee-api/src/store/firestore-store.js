@@ -16,6 +16,7 @@ import {
 } from "../../../../packages/fee-core/src/sidecar-drafts.js";
 import {
   collections,
+  feeCareEvidenceOutboxPath,
   feeBillingHistoryPath,
   feeExtractionFeedbackEventPath,
   feeExtractionSnapshotPath,
@@ -916,6 +917,94 @@ export class FirestoreFeeStore {
     return docsFromSnapshot(snapshot);
   }
 
+  async putCareFeeEvidenceOutboxEvent(orgId, input = {}) {
+    requireFirestoreTransactions(this.db);
+    const eventId = requiredOutboxValue(input.eventId, "eventId");
+    const ref = this.doc(feeCareEvidenceOutboxPath(orgId, eventId));
+    return this.db.runTransaction(async (transaction) => {
+      const current = docDataOrNull(await transaction.get(ref));
+      if (current) return { event: current, created: false };
+      const now = this.timestamp();
+      const event = sanitizeForFirestore({
+        ...input,
+        eventId,
+        orgId,
+        deliveryState: "pending",
+        attemptCount: 0,
+        nextAttemptAt: input.nextAttemptAt || now,
+        lastAttemptAt: null,
+        lastErrorCode: null,
+        deliveredAt: null,
+        receiptId: null,
+        createdAt: input.createdAt || now,
+        updatedAt: now,
+        purgeAt: outboxPurgeDate(input.purgeAt),
+        schemaVersion: 1
+      });
+      transaction.set(ref, event);
+      return { event, created: true };
+    });
+  }
+
+  async listPendingCareFeeEvidenceOutboxEvents(orgId, options = {}) {
+    const now = timestampValue(options.now, this.timestamp());
+    const limit = Math.min(100, Math.max(1, Number.parseInt(options.limit, 10) || 20));
+    const snapshot = await this.orgCollection(orgId, collections.feeCareEvidenceOutbox)
+      .where("deliveryState", "in", ["pending", "failed"])
+      .where("nextAttemptAt", "<=", now)
+      .orderBy("nextAttemptAt", "asc")
+      .limit(limit)
+      .get();
+    return docsFromSnapshot(snapshot);
+  }
+
+  async markCareFeeEvidenceOutboxDelivered(orgId, eventId, input = {}) {
+    requireFirestoreTransactions(this.db);
+    const ref = this.doc(feeCareEvidenceOutboxPath(orgId, eventId));
+    return this.db.runTransaction(async (transaction) => {
+      const current = docDataOrNull(await transaction.get(ref));
+      if (!current) throw notFoundError("care fee evidence outbox event not found");
+      if (current.deliveryState === "delivered") return current;
+      const now = timestampValue(input.now, this.timestamp());
+      const updated = sanitizeForFirestore({
+        ...current,
+        payload: null,
+        deliveryState: "delivered",
+        attemptCount: Number(current.attemptCount || 0) + 1,
+        lastAttemptAt: now,
+        lastErrorCode: null,
+        deliveredAt: now,
+        receiptId: String(input.receiptId || "").trim() || null,
+        purgeAt: outboxPurgeDate(input.purgeAt || current.purgeAt),
+        updatedAt: now
+      });
+      transaction.set(ref, updated);
+      return updated;
+    });
+  }
+
+  async markCareFeeEvidenceOutboxFailed(orgId, eventId, input = {}) {
+    requireFirestoreTransactions(this.db);
+    const ref = this.doc(feeCareEvidenceOutboxPath(orgId, eventId));
+    return this.db.runTransaction(async (transaction) => {
+      const current = docDataOrNull(await transaction.get(ref));
+      if (!current) throw notFoundError("care fee evidence outbox event not found");
+      if (current.deliveryState === "delivered") return current;
+      const now = timestampValue(input.now, this.timestamp());
+      const updated = sanitizeForFirestore({
+        ...current,
+        deliveryState: input.terminal === true ? "dead_letter" : "failed",
+        attemptCount: Number(current.attemptCount || 0) + 1,
+        lastAttemptAt: now,
+        lastErrorCode: safeOutboxErrorCode(input.errorCode),
+        nextAttemptAt: input.terminal === true ? null : timestampValue(input.nextAttemptAt, now),
+        updatedAt: now
+      });
+      transaction.set(ref, updated);
+      return updated;
+    });
+  }
+
   async createExtractionFeedbackEvents(orgId, events = []) {
     const normalized = (Array.isArray(events) ? events : []).map((raw) => {
       if (String(raw?.orgId || "") !== String(orgId || "")) {
@@ -1222,6 +1311,28 @@ function withExtractionFeedbackPurgeTimestamp(event = {}) {
     ...event,
     purgeAt: new Date(purgeAtMs)
   };
+}
+
+function requiredOutboxValue(value, label) {
+  const normalized = String(value || "").trim();
+  if (!normalized) throw new TypeError(`${label} is required`);
+  return normalized;
+}
+
+function safeOutboxErrorCode(value) {
+  return String(value || "delivery_failed").trim().replace(/[^a-zA-Z0-9_.-]/gu, "_").slice(0, 120) || "delivery_failed";
+}
+
+function outboxPurgeDate(value) {
+  if (value instanceof Date || isFirestoreTimestamp(value)) return value;
+  const timestamp = Date.parse(String(value || ""));
+  if (!Number.isFinite(timestamp)) {
+    const error = new Error("care fee evidence outbox event requires a valid purgeAt timestamp");
+    error.name = "ConfigurationError";
+    error.statusCode = 500;
+    throw error;
+  }
+  return new Date(timestamp);
 }
 
 function latestExtractionSnapshot(values = [], { excludeSourceSessionId = "" } = {}) {

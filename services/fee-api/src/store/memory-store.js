@@ -36,6 +36,7 @@ export class MemoryFeeStore {
     this.extractionSnapshotsByOrg = new Map();
     this.extractionFeedbackEventsByOrg = new Map();
     this.standingBillingProfilesByOrg = new Map();
+    this.careFeeEvidenceOutboxByOrg = new Map();
   }
 
   createSession(input) {
@@ -738,6 +739,88 @@ export class MemoryFeeStore {
       .slice(0, limit);
   }
 
+  putCareFeeEvidenceOutboxEvent(orgId, input = {}) {
+    const eventId = requiredOutboxValue(input.eventId, "eventId");
+    const events = this.careFeeEvidenceOutboxForOrg(orgId);
+    const current = events.get(eventId) || null;
+    if (current) {
+      return { event: structuredClone(current), created: false };
+    }
+    const now = this.timestamp();
+    const event = {
+      ...structuredClone(input),
+      eventId,
+      orgId,
+      deliveryState: "pending",
+      attemptCount: 0,
+      nextAttemptAt: input.nextAttemptAt || now,
+      lastAttemptAt: null,
+      lastErrorCode: null,
+      deliveredAt: null,
+      receiptId: null,
+      createdAt: input.createdAt || now,
+      updatedAt: now,
+      schemaVersion: 1
+    };
+    events.set(eventId, event);
+    return { event: structuredClone(event), created: true };
+  }
+
+  listPendingCareFeeEvidenceOutboxEvents(orgId, options = {}) {
+    const now = timestampValue(options.now, this.timestamp());
+    const limit = Math.min(100, Math.max(1, Number.parseInt(options.limit, 10) || 20));
+    return [...this.careFeeEvidenceOutboxForOrg(orgId).values()]
+      .filter((event) => ["pending", "failed"].includes(event.deliveryState))
+      .filter((event) => String(event.nextAttemptAt || "") <= now)
+      .sort((left, right) => (
+        String(left.nextAttemptAt || "").localeCompare(String(right.nextAttemptAt || ""))
+        || String(left.createdAt || "").localeCompare(String(right.createdAt || ""))
+      ))
+      .slice(0, limit)
+      .map((event) => structuredClone(event));
+  }
+
+  markCareFeeEvidenceOutboxDelivered(orgId, eventId, input = {}) {
+    const events = this.careFeeEvidenceOutboxForOrg(orgId);
+    const current = events.get(String(eventId || "").trim()) || null;
+    if (!current) throw notFoundError("care fee evidence outbox event not found");
+    if (current.deliveryState === "delivered") return structuredClone(current);
+    const now = timestampValue(input.now, this.timestamp());
+    const updated = {
+      ...current,
+      payload: null,
+      deliveryState: "delivered",
+      attemptCount: Number(current.attemptCount || 0) + 1,
+      lastAttemptAt: now,
+      lastErrorCode: null,
+      deliveredAt: now,
+      receiptId: String(input.receiptId || "").trim() || null,
+      purgeAt: input.purgeAt || current.purgeAt || null,
+      updatedAt: now
+    };
+    events.set(current.eventId, updated);
+    return structuredClone(updated);
+  }
+
+  markCareFeeEvidenceOutboxFailed(orgId, eventId, input = {}) {
+    const events = this.careFeeEvidenceOutboxForOrg(orgId);
+    const current = events.get(String(eventId || "").trim()) || null;
+    if (!current) throw notFoundError("care fee evidence outbox event not found");
+    if (current.deliveryState === "delivered") return structuredClone(current);
+    const now = timestampValue(input.now, this.timestamp());
+    const updated = {
+      ...current,
+      deliveryState: input.terminal === true ? "dead_letter" : "failed",
+      attemptCount: Number(current.attemptCount || 0) + 1,
+      lastAttemptAt: now,
+      lastErrorCode: safeOutboxErrorCode(input.errorCode),
+      nextAttemptAt: input.terminal === true ? null : timestampValue(input.nextAttemptAt, now),
+      updatedAt: now
+    };
+    events.set(current.eventId, updated);
+    return structuredClone(updated);
+  }
+
   createExtractionFeedbackEvents(orgId, events = []) {
     const values = this.extractionFeedbackEventsForOrg(orgId);
     const stored = [];
@@ -883,9 +966,26 @@ export class MemoryFeeStore {
     return this.billingHistoryByOrg.get(orgId);
   }
 
+  careFeeEvidenceOutboxForOrg(orgId) {
+    if (!this.careFeeEvidenceOutboxByOrg.has(orgId)) {
+      this.careFeeEvidenceOutboxByOrg.set(orgId, new Map());
+    }
+    return this.careFeeEvidenceOutboxByOrg.get(orgId);
+  }
+
   timestamp() {
     return this.now().toISOString();
   }
+}
+
+function requiredOutboxValue(value, label) {
+  const normalized = String(value || "").trim();
+  if (!normalized) throw new TypeError(`${label} is required`);
+  return normalized;
+}
+
+function safeOutboxErrorCode(value) {
+  return String(value || "delivery_failed").trim().replace(/[^a-zA-Z0-9_.-]/gu, "_").slice(0, 120) || "delivery_failed";
 }
 
 export function monthlyBulkJobProgress(items = []) {

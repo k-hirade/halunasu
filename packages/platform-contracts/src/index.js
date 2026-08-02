@@ -1,6 +1,7 @@
 export const productIds = Object.freeze({
   charting: "charting",
   fee: "fee",
+  careFee: "care_fee",
   referral: "referral",
   homisSidecar: "homis_sidecar"
 });

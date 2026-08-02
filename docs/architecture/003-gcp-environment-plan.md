@@ -21,6 +21,8 @@ halunasu-charting-stg
 halunasu-charting-prod
 halunasu-fee-stg
 halunasu-fee-prod
+halunasu-care-stg
+halunasu-care-prod
 halunasu-referral-stg
 halunasu-referral-prod
 ```
@@ -35,11 +37,13 @@ Current role:
 | `halunasu-charting-prod` | `halunasu-charting-prod` / `589293200640` | Production charting project |
 | `halunasu-fee-stg` | `halunasu-fee-stg` / `1048063060603` | Staging fee calculation project |
 | `halunasu-fee-prod` | `halunasu-fee-prod` / `394223136118` | Production fee calculation project |
+| `halunasu-care-stg` | planned / not provisioned | Staging care fee checking project |
+| `halunasu-care-prod` | planned / not provisioned | Production care fee checking project |
 | `halunasu-referral-stg` | `halunasu-referral-stg` / `903620057515` | Staging referral project |
 | `halunasu-referral-prod` | `halunasu-referral-prod` / `252775147719` | Production referral project |
 | `halunasu.com` | `634072823240` | Domain-related GCP entry/project; not the primary runtime project |
 
-The product projects are currently project shells with billing disabled. Do not enable billing, Firestore, Cloud Run, Secret Manager, Artifact Registry, or Storage until a specific staging/prod smoke requires it.
+Rows with a concrete project number are established environment targets; their live billing and service state must be verified with GCP before each operation. Rows marked `planned / not provisioned` do not exist yet. Do not provision a new product project or enable billing, Firestore, Cloud Run, Secret Manager, Artifact Registry, or Storage until its staging/prod smoke and data boundary have been approved.
 
 Do not continue product expansion in the historical product projects. They were deleted on 2026-05-28 and are in `DELETE_REQUESTED` state:
 
@@ -86,6 +90,12 @@ flowchart TB
     FSM["Fee Secret Manager"]
   end
 
+  subgraph CareGCP["Care GCP: halunasu-care-stg or halunasu-care-prod"]
+    CAREA["Cloud Run<br/>care-fee-api"]
+    CAREFS["Care Firestore"]
+    CARESM["Care Secret Manager"]
+  end
+
   subgraph ReferralGCP["Referral GCP: halunasu-referral-stg or halunasu-referral-prod"]
     RA["Cloud Run<br/>referral-api"]
     RFS["Referral Firestore"]
@@ -97,21 +107,25 @@ flowchart TB
   DNS --> PA
   DNS --> CA
   DNS --> FA
+  DNS --> CAREA
   DNS --> RA
 
   NET --> PA
   NET --> CA
   NET --> FA
+  NET --> CAREA
   NET --> RA
 
   PA --> FS
   CA -->|"Platform session / patient refs"| PA
   FA -->|"Platform session / patient refs"| PA
+  CAREA -->|"Platform session / patient refs"| PA
   RA -->|"Platform session / patient refs"| PA
 
   CA --> CFS
   CF --> CFS
   FA --> FFS
+  CAREA --> CAREFS
   RA --> RFS
 
   CA --> CGCS
@@ -126,6 +140,7 @@ flowchart TB
   CA --> CSM
   CF --> CSM
   FA --> FSM
+  CAREA --> CARESM
   RA --> RSM
 
   PA --> STRIPE
@@ -160,10 +175,12 @@ Netlify remains the frontend host for the initial phase. Cloud Run hosts APIs an
 | LP | `halunasu.com` or `stg.halunasu.com` during preview | Netlify |
 | Charting web | `app-stg.halunasu.com` | Netlify |
 | Fee web | `fee-stg.halunasu.com` | Netlify |
+| Care fee web | `care.stg.halunasu.com` | Netlify |
 | Referral web | `referral-stg.halunasu.com` | Netlify |
 | Platform API | `platform-api-stg.halunasu.com` | Cloud Run |
 | Charting API | `charting-api-stg.halunasu.com` | Cloud Run |
 | Fee API | `fee-api-stg.halunasu.com` | Cloud Run |
+| Care fee API | `care-fee-api-stg.halunasu.com` | Cloud Run |
 | Referral API | `referral-api-stg.halunasu.com` | Cloud Run |
 
 ### Production
@@ -173,10 +190,12 @@ Netlify remains the frontend host for the initial phase. Cloud Run hosts APIs an
 | LP | `halunasu.com` | Netlify |
 | Charting web | `app.halunasu.com` | Netlify |
 | Fee web | `fee.halunasu.com` | Netlify |
+| Care fee web | `care.halunasu.com` | Netlify |
 | Referral web | `referral.halunasu.com` | Netlify |
 | Platform API | `platform-api.halunasu.com` | Cloud Run |
 | Charting API | `charting-api.halunasu.com` | Cloud Run |
 | Fee API | `fee-api.halunasu.com` | Cloud Run |
+| Care fee API | `care-fee-api.halunasu.com` | Cloud Run |
 | Referral API | `referral-api.halunasu.com` | Cloud Run |
 
 Important first step:
@@ -191,6 +210,7 @@ Important first step:
 | `charting-api` | Node.js | `services/charting-api` | `halunasu-charting-stg` | `halunasu-charting-prod` | Platform session required |
 | `charting-finalize` | Node.js | `services/charting-finalize` | `halunasu-charting-stg` | `halunasu-charting-prod` | Cloud Tasks OIDC |
 | `fee-api` | Node.js + Python package | `services/fee-api` + `python/medical_fee_calculation` | `halunasu-fee-stg` | `halunasu-fee-prod` | Platform session required |
+| `care-fee-api` | Node.js | `services/care-fee-api` + `packages/care-fee-core` | `halunasu-care-stg` | `halunasu-care-prod` | Platform session and internal service auth |
 | `referral-api` | Node.js | `services/referral-api` | `halunasu-referral-stg` | `halunasu-referral-prod` | Platform session required |
 
 Initial staging settings:
@@ -225,6 +245,7 @@ Use one service account per service.
 | `halunasu-charting-api@PROJECT.iam.gserviceaccount.com` | Charting | `charting-api` | Charting DB, charting GCS, task enqueue |
 | `halunasu-charting-finalize@PROJECT.iam.gserviceaccount.com` | Charting | `charting-finalize` | Final transcript/SOAP worker |
 | `halunasu-fee-api@PROJECT.iam.gserviceaccount.com` | Fee | `fee-api` | Fee DB, fee GCS, masters |
+| `halunasu-care-fee-api@PROJECT.iam.gserviceaccount.com` | Care | `care-fee-api` | Care DB, care secrets, Core context read |
 | `halunasu-referral-api@PROJECT.iam.gserviceaccount.com` | Referral | `referral-api` | Referral DB, referral GCS |
 | `halunasu-cloud-tasks@PROJECT.iam.gserviceaccount.com` | Charting initially | Cloud Tasks | OIDC task invocation |
 | `halunasu-deployer@PROJECT.iam.gserviceaccount.com` | Each active project | CI/CD | Build/deploy only |
@@ -302,6 +323,8 @@ Default bucket settings:
 - Uniform bucket-level access: enabled
 - Public access prevention: enforced
 - Object versioning: enabled for production artifact buckets where useful
+
+`care-fee-api` v1はアプリ用Cloud Storage bucketを持たない。入力CSV本文と結果行はリクエスト処理中のメモリだけで扱い、Firestoreへはhash、ジョブメタデータ、月次管理へ明示取込された正規化済み症例だけを保存する。デプロイ時のregional Cloud Build staging bucketは非PHIのソース転送専用であり、アプリデータ保存先ではない。
 - Lifecycle rules: enabled
 - Retention policy: define before production PHI
 
@@ -488,7 +511,7 @@ No production PHI migration is required at this point.
 
 - GCP domain verification completed.
 - Firestore backup enabled and restore drill completed.
-- GCS lifecycle policy configured.
+- GCS lifecycle policy configured for services that persist application objects; Care v1 has no application bucket.
 - Secret access scoped per service.
 - Runtime service accounts have no broad owner/editor roles.
 - Cloud Run services use explicit service accounts.

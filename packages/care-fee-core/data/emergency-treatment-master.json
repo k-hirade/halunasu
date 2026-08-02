@@ -1,0 +1,116 @@
+{
+  "schemaVersion": "care-service-code-master-v1",
+  "masterVersion": "care-emergency-service-codes-2026-06-01-v1",
+  "itemName": "緊急時治療管理",
+  "verifiedAt": "2026-07-16",
+  "sources": [
+    {
+      "title": "指定施設サービス等に要する費用の額の算定に関する基準",
+      "url": "https://www.mhlw.go.jp/web/t_doc?dataId=82aa0255&dataType=0"
+    },
+    {
+      "title": "令和8年6月版 介護報酬の算定構造",
+      "url": "https://www.mhlw.go.jp/content/001675193.pdf"
+    },
+    {
+      "title": "令和6年4月施行版 介護給付費単位数等サービスコード表",
+      "url": "https://www.int.wam.go.jp/sec/gyoseiShiryou-files/documents/2024/0327195057909/20240329_106.pdf"
+    },
+    {
+      "title": "令和6年6月・8月施行版 介護予防サービスコード表",
+      "url": "https://www.int.wam.go.jp/sec/gyoseiShiryou-files/documents/2024/0327195117604/20240329_109.pdf"
+    }
+  ],
+  "records": [
+    {
+      "serviceCode": "529000",
+      "serviceCodeName": "保健施設緊急時治療管理1",
+      "careServiceType": "roken",
+      "facilityVariant": "standard",
+      "unitScore": 518,
+      "unitKind": "per_day",
+      "effectiveFrom": "2019-10-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "serviceCode": "526000",
+      "serviceCodeName": "保健施設緊急時治療管理2",
+      "careServiceType": "roken",
+      "facilityVariant": "long_term_care_type",
+      "unitScore": 518,
+      "unitKind": "per_day",
+      "effectiveFrom": "2019-10-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "serviceCode": "556000",
+      "serviceCodeName": "医療院緊急時治療管理",
+      "careServiceType": "care_medical_institution",
+      "facilityVariant": "default",
+      "unitScore": 518,
+      "unitKind": "per_day",
+      "effectiveFrom": "2019-10-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "serviceCode": "229000",
+      "serviceCodeName": "老短緊急時治療管理1",
+      "careServiceType": "short_stay_roken",
+      "facilityVariant": "standard",
+      "unitScore": 518,
+      "unitKind": "per_day",
+      "effectiveFrom": "2019-10-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "serviceCode": "226000",
+      "serviceCodeName": "老短緊急時治療管理2",
+      "careServiceType": "short_stay_roken",
+      "facilityVariant": "long_term_care_type",
+      "unitScore": 518,
+      "unitKind": "per_day",
+      "effectiveFrom": "2019-10-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "serviceCode": "2A6000",
+      "serviceCodeName": "医療院短期緊急時治療管理",
+      "careServiceType": "short_stay_care_medical_institution",
+      "facilityVariant": "default",
+      "unitScore": 518,
+      "unitKind": "per_day",
+      "effectiveFrom": "2019-10-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "serviceCode": "259000",
+      "serviceCodeName": "予老短緊急時治療管理1",
+      "careServiceType": "preventive_short_stay_roken",
+      "facilityVariant": "standard",
+      "unitScore": 518,
+      "unitKind": "per_day",
+      "effectiveFrom": "2019-10-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "serviceCode": "256000",
+      "serviceCodeName": "予老短緊急時治療管理2",
+      "careServiceType": "preventive_short_stay_roken",
+      "facilityVariant": "long_term_care_type",
+      "unitScore": 518,
+      "unitKind": "per_day",
+      "effectiveFrom": "2019-10-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "serviceCode": "2B6000",
+      "serviceCodeName": "予防医療院短期緊急時治療管理",
+      "careServiceType": "preventive_short_stay_care_medical_institution",
+      "facilityVariant": "default",
+      "unitScore": 518,
+      "unitKind": "per_day",
+      "effectiveFrom": "2019-10-01",
+      "effectiveTo": "9999-12-31"
+    }
+  ]
+}

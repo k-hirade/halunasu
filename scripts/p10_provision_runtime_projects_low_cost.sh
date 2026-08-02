@@ -14,6 +14,23 @@ BILLING_ACCOUNT_ID_PROD="${BILLING_ACCOUNT_ID_PROD:-${BILLING_ACCOUNT_ID:-01AF66
 BILLING_ACCOUNT_ID_STG="${BILLING_ACCOUNT_ID_STG:-017363-055589-E21116}"
 REGION="${REGION:-asia-northeast1}"
 REPOSITORY="${REPOSITORY:-halunasu-services}"
+TARGET_PRODUCT="${TARGET_PRODUCT:-all}"
+TARGET_ENV="${TARGET_ENV:-all}"
+
+if [[ "${TARGET_PRODUCT}" != "all" && "${TARGET_PRODUCT}" != "care" ]]; then
+  echo "TARGET_PRODUCT must be all or care." >&2
+  exit 64
+fi
+if [[ "${TARGET_ENV}" != "all" && "${TARGET_ENV}" != "stg" && "${TARGET_ENV}" != "prod" ]]; then
+  echo "TARGET_ENV must be all, stg, or prod." >&2
+  exit 64
+fi
+if [[ "${TARGET_PRODUCT}" == "care" \
+  && ( "${TARGET_ENV}" == "all" || "${TARGET_ENV}" == "prod" ) \
+  && "${P10_ALLOW_PROD:-}" != "yes" ]]; then
+  echo "Refusing Care production provisioning without P10_ALLOW_PROD=yes" >&2
+  exit 65
+fi
 
 CORE_STG="medical-core-stg"
 CORE_PROD="medical-core-497610"
@@ -22,6 +39,8 @@ PRODUCT_PROJECTS=(
   "halunasu-charting-prod"
   "halunasu-fee-stg"
   "halunasu-fee-prod"
+  "halunasu-care-stg"
+  "halunasu-care-prod"
   "halunasu-referral-stg"
   "halunasu-referral-prod"
 )
@@ -35,6 +54,8 @@ echo "Billing account STG: ${BILLING_ACCOUNT_ID_STG}"
 echo "Billing account PROD: ${BILLING_ACCOUNT_ID_PROD}"
 echo "Region: ${REGION}"
 echo "Repository: ${REPOSITORY}"
+echo "Target product: ${TARGET_PRODUCT}"
+echo "Target environment: ${TARGET_ENV}"
 echo
 echo "Guardrails:"
 echo "- no Terraform"
@@ -65,7 +86,18 @@ run_or_print() {
 }
 
 project_number() {
-  gcloud projects describe "$1" --format="value(projectNumber)" --quiet
+  local number
+  number="$(gcloud projects describe "$1" --format="value(projectNumber)" --quiet 2>/dev/null || true)"
+  if [[ -n "${number}" ]]; then
+    printf '%s' "${number}"
+    return 0
+  fi
+  if [[ "${APPLY}" != "true" ]]; then
+    printf '%s' "PROJECT_NUMBER_FOR_$1"
+    return 0
+  fi
+  echo "Unable to resolve GCP project number for $1" >&2
+  return 1
 }
 
 billing_enabled() {
@@ -144,11 +176,15 @@ ensure_regional_cloudbuild_bucket() {
   local project="$1"
   local bucket="${project}_${REGION}_cloudbuild"
   local location
+  local normalized_location
+  local normalized_region
   location="$(gcloud storage buckets describe "gs://${bucket}" \
     --format="value(location)" \
     --quiet 2>/dev/null || true)"
+  normalized_location="$(printf '%s' "${location}" | tr '[:upper:]' '[:lower:]')"
+  normalized_region="$(printf '%s' "${REGION}" | tr '[:upper:]' '[:lower:]')"
   if [[ -n "${location}" ]]; then
-    if [[ "${location,,}" != "${REGION,,}" ]]; then
+    if [[ "${normalized_location}" != "${normalized_region}" ]]; then
       echo "Regional Cloud Build bucket has unexpected location: gs://${bucket} (${location})" >&2
       return 1
     fi
@@ -170,11 +206,15 @@ ensure_fee_whitebox_artifact_bucket() {
   local project="$1"
   local bucket="${project}-artifacts"
   local location
+  local normalized_location
+  local normalized_region
   location="$(gcloud storage buckets describe "gs://${bucket}" \
     --format="value(location)" \
     --quiet 2>/dev/null || true)"
+  normalized_location="$(printf '%s' "${location}" | tr '[:upper:]' '[:lower:]')"
+  normalized_region="$(printf '%s' "${REGION}" | tr '[:upper:]' '[:lower:]')"
   if [[ -n "${location}" ]]; then
-    if [[ "${location,,}" != "${REGION,,}" ]]; then
+    if [[ "${normalized_location}" != "${normalized_region}" ]]; then
       echo "Fee artifact bucket has unexpected location: gs://${bucket} (${location})" >&2
       return 1
     fi
@@ -318,6 +358,92 @@ secret_value_or_generate() {
   fi
 }
 
+secret_value_from_projects_or_generate() {
+  local secret="$1"
+  shift
+  local project
+  for project in "$@"; do
+    if gcloud secrets versions access latest --secret="${secret}" --project="${project}" --quiet >/dev/null 2>&1; then
+      gcloud secrets versions access latest --secret="${secret}" --project="${project}" --quiet
+      return 0
+    fi
+  done
+  openssl rand -base64 48
+}
+
+provision_care_environment() {
+  local env="$1"
+  local core_project
+  local fee_project
+  local care_project
+  if [[ "${env}" == "stg" ]]; then
+    core_project="${CORE_STG}"
+    fee_project="halunasu-fee-stg"
+    care_project="halunasu-care-stg"
+  else
+    core_project="${CORE_PROD}"
+    fee_project="halunasu-fee-prod"
+    care_project="halunasu-care-prod"
+  fi
+
+  echo "== Care project: ${care_project} =="
+  if ! ensure_billing "${care_project}"; then
+    echo "Unable to provision Care while billing is unavailable: ${care_project}" >&2
+    return 1
+  fi
+
+  enable_services "${care_project}" \
+    artifactregistry.googleapis.com \
+    cloudbuild.googleapis.com \
+    firestore.googleapis.com \
+    iam.googleapis.com \
+    run.googleapis.com \
+    secretmanager.googleapis.com \
+    storage.googleapis.com
+  ensure_artifact_repo "${care_project}"
+  ensure_regional_cloudbuild_bucket "${care_project}"
+  ensure_firestore "${care_project}"
+  ensure_cloud_build_account_roles "${care_project}"
+  ensure_service_account "${care_project}" "halunasu-care-fee-api" "Halunasu Care Fee API"
+
+  local session_secret
+  local care_ingest_secret
+  local care_monthly_worker_secret
+  local care_outbox_worker_secret
+  session_secret="$(secret_value_or_generate "${core_project}" "APP_SESSION_SIGNING_SECRET")"
+  care_ingest_secret="$(secret_value_from_projects_or_generate "CARE_FEE_INGEST_TOKEN" "${care_project}" "${fee_project}")"
+  care_monthly_worker_secret="$(secret_value_or_generate "${care_project}" "CARE_FEE_MONTHLY_WORKER_TOKEN")"
+  care_outbox_worker_secret="$(secret_value_or_generate "${fee_project}" "CARE_FEE_OUTBOX_WORKER_TOKEN")"
+
+  ensure_secret "${care_project}" "APP_SESSION_SIGNING_SECRET"
+  add_secret_version "${care_project}" "APP_SESSION_SIGNING_SECRET" "${session_secret}"
+  ensure_secret "${care_project}" "CARE_FEE_INGEST_TOKEN"
+  add_secret_version "${care_project}" "CARE_FEE_INGEST_TOKEN" "${care_ingest_secret}"
+  ensure_secret "${fee_project}" "CARE_FEE_INGEST_TOKEN"
+  add_secret_version "${fee_project}" "CARE_FEE_INGEST_TOKEN" "${care_ingest_secret}"
+  ensure_secret "${care_project}" "CARE_FEE_MONTHLY_WORKER_TOKEN"
+  add_secret_version "${care_project}" "CARE_FEE_MONTHLY_WORKER_TOKEN" "${care_monthly_worker_secret}"
+  ensure_secret "${fee_project}" "CARE_FEE_OUTBOX_WORKER_TOKEN"
+  add_secret_version "${fee_project}" "CARE_FEE_OUTBOX_WORKER_TOKEN" "${care_outbox_worker_secret}"
+
+  local member="serviceAccount:halunasu-care-fee-api@${care_project}.iam.gserviceaccount.com"
+  add_project_role "${care_project}" "${member}" roles/datastore.user
+  add_project_role "${care_project}" "${member}" roles/logging.logWriter
+  add_project_role "${care_project}" "${member}" roles/secretmanager.secretAccessor
+  add_project_role "${core_project}" "${member}" roles/datastore.viewer
+}
+
+if [[ "${TARGET_PRODUCT}" == "care" ]]; then
+  if [[ "${TARGET_ENV}" == "all" || "${TARGET_ENV}" == "stg" ]]; then
+    provision_care_environment stg
+  fi
+  if [[ "${TARGET_ENV}" == "all" || "${TARGET_ENV}" == "prod" ]]; then
+    provision_care_environment prod
+  fi
+  echo "Care provisioning complete."
+  exit 0
+fi
+
 core_services=(artifactregistry.googleapis.com cloudbuild.googleapis.com firestore.googleapis.com iam.googleapis.com run.googleapis.com secretmanager.googleapis.com storage.googleapis.com)
 product_services=(artifactregistry.googleapis.com cloudbuild.googleapis.com firestore.googleapis.com iam.googleapis.com run.googleapis.com secretmanager.googleapis.com storage.googleapis.com)
 charting_services=("${product_services[@]}" cloudtasks.googleapis.com)
@@ -354,11 +480,13 @@ for env in stg prod; do
     core_project="${CORE_STG}"
     charting_project="halunasu-charting-stg"
     fee_project="halunasu-fee-stg"
+    care_project="halunasu-care-stg"
     referral_project="halunasu-referral-stg"
   else
     core_project="${CORE_PROD}"
     charting_project="halunasu-charting-prod"
     fee_project="halunasu-fee-prod"
+    care_project="halunasu-care-prod"
     referral_project="halunasu-referral-prod"
   fi
 
@@ -366,6 +494,7 @@ for env in stg prod; do
   project_is_active "${charting_project}" && ensure_service_account "${charting_project}" "halunasu-charting-gateway" "Halunasu Charting Gateway"
   project_is_active "${charting_project}" && ensure_service_account "${charting_project}" "halunasu-charting-finalize" "Halunasu Charting Finalize"
   project_is_active "${fee_project}" && ensure_service_account "${fee_project}" "halunasu-fee-api" "Halunasu Fee API"
+  project_is_active "${care_project}" && ensure_service_account "${care_project}" "halunasu-care-fee-api" "Halunasu Care Fee API"
   project_is_active "${referral_project}" && ensure_service_account "${referral_project}" "halunasu-referral-api" "Halunasu Referral API"
 
   session_secret="$(secret_value_or_generate "${core_project}" "APP_SESSION_SIGNING_SECRET")"
@@ -375,7 +504,7 @@ for env in stg prod; do
     finalize_secret="$(secret_value_or_generate "${charting_project}" "CHARTING_FINALIZE_INTERNAL_SECRET")"
   fi
 
-  for project in "${core_project}" "${charting_project}" "${fee_project}" "${referral_project}"; do
+  for project in "${core_project}" "${charting_project}" "${fee_project}" "${care_project}" "${referral_project}"; do
     if ! project_is_active "${project}"; then
       echo "Skipping secrets for inactive project: ${project}"
       continue
@@ -398,6 +527,21 @@ for env in stg prod; do
     add_secret_version "${charting_project}" "APP_FIELD_ENCRYPTION_KEY" "$(secret_value_or_generate "${charting_project}" "APP_FIELD_ENCRYPTION_KEY")"
   fi
 
+  if project_is_active "${care_project}"; then
+    care_ingest_secret="$(secret_value_from_projects_or_generate "CARE_FEE_INGEST_TOKEN" "${care_project}" "${fee_project}")"
+    care_monthly_worker_secret="$(secret_value_or_generate "${care_project}" "CARE_FEE_MONTHLY_WORKER_TOKEN")"
+    care_outbox_worker_secret="$(secret_value_or_generate "${fee_project}" "CARE_FEE_OUTBOX_WORKER_TOKEN")"
+
+    ensure_secret "${care_project}" "CARE_FEE_INGEST_TOKEN"
+    add_secret_version "${care_project}" "CARE_FEE_INGEST_TOKEN" "${care_ingest_secret}"
+    ensure_secret "${fee_project}" "CARE_FEE_INGEST_TOKEN"
+    add_secret_version "${fee_project}" "CARE_FEE_INGEST_TOKEN" "${care_ingest_secret}"
+    ensure_secret "${care_project}" "CARE_FEE_MONTHLY_WORKER_TOKEN"
+    add_secret_version "${care_project}" "CARE_FEE_MONTHLY_WORKER_TOKEN" "${care_monthly_worker_secret}"
+    ensure_secret "${fee_project}" "CARE_FEE_OUTBOX_WORKER_TOKEN"
+    add_secret_version "${fee_project}" "CARE_FEE_OUTBOX_WORKER_TOKEN" "${care_outbox_worker_secret}"
+  fi
+
   add_project_role "${core_project}" "serviceAccount:halunasu-platform-api@${core_project}.iam.gserviceaccount.com" roles/datastore.user
   add_project_role "${core_project}" "serviceAccount:halunasu-platform-api@${core_project}.iam.gserviceaccount.com" roles/logging.logWriter
   add_project_role "${core_project}" "serviceAccount:halunasu-platform-api@${core_project}.iam.gserviceaccount.com" roles/secretmanager.secretAccessor
@@ -407,6 +551,7 @@ for env in stg prod; do
     "${charting_project}:halunasu-charting-api" \
     "${charting_project}:halunasu-charting-finalize" \
     "${fee_project}:halunasu-fee-api" \
+    "${care_project}:halunasu-care-fee-api" \
     "${referral_project}:halunasu-referral-api"; do
     project="${spec%%:*}"
     account_id="${spec##*:}"
@@ -418,7 +563,11 @@ for env in stg prod; do
     add_project_role "${project}" "${member}" roles/datastore.user
     add_project_role "${project}" "${member}" roles/logging.logWriter
     add_project_role "${project}" "${member}" roles/secretmanager.secretAccessor
-    add_project_role "${core_project}" "${member}" roles/datastore.user
+    if [[ "${account_id}" == "halunasu-care-fee-api" ]]; then
+      add_project_role "${core_project}" "${member}" roles/datastore.viewer
+    else
+      add_project_role "${core_project}" "${member}" roles/datastore.user
+    fi
   done
 done
 

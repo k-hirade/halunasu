@@ -16,6 +16,13 @@ PRODUCT_PROJECTS=(
   "halunasu-referral-prod"
 )
 
+# These product shells are intentionally created only when their rollout starts.
+# Their absence must not make the existing project-split audit fail.
+PLANNED_PRODUCT_PROJECTS=(
+  "halunasu-care-stg"
+  "halunasu-care-prod"
+)
+
 OLD_PROJECTS=(
   "medical-stg-493105"
   "medical-fee-calculation-stg"
@@ -79,6 +86,32 @@ for project in "${PRODUCT_PROJECTS[@]}"; do
   billing="$(billing_enabled "${project}")"
   echo "INFO billingEnabled=${billing:-unknown}"
 
+  services="$(enabled_services "${project}")"
+  for service in run.googleapis.com firestore.googleapis.com artifactregistry.googleapis.com cloudbuild.googleapis.com secretmanager.googleapis.com; do
+    if grep -Fxq "${service}" <<<"${services}"; then
+      echo "INFO runtime service enabled: ${service}"
+    fi
+  done
+  echo
+done
+
+for project in "${PLANNED_PRODUCT_PROJECTS[@]}"; do
+  echo "## Planned product project shell: ${project}"
+  state="$(project_state "${project}")"
+  if [[ -z "${state}" ]]; then
+    echo "INFO project not created yet (planned rollout)"
+    echo
+    continue
+  fi
+  if [[ "${state}" == "ACTIVE" ]]; then
+    echo "OK   lifecycleState=ACTIVE"
+  else
+    echo "FAIL expected ACTIVE or not-yet-created, got ${state}"
+    failures=$((failures + 1))
+  fi
+
+  billing="$(billing_enabled "${project}")"
+  echo "INFO billingEnabled=${billing:-unknown}"
   services="$(enabled_services "${project}")"
   for service in run.googleapis.com firestore.googleapis.com artifactregistry.googleapis.com cloudbuild.googleapis.com secretmanager.googleapis.com; do
     if grep -Fxq "${service}" <<<"${services}"; then

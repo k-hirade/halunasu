@@ -1,0 +1,22 @@
+{
+  "name": "@halunasu/care-fee-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "npm run test:next-ui && npm run build",
+    "test:next-ui": "node scripts/next-ui-smoke.mjs"
+  },
+  "dependencies": {
+    "@halunasu/web-ui": "file:../../packages/web-ui",
+    "next": "15.5.15",
+    "react": "19.1.1",
+    "react-dom": "19.1.1"
+  },
+  "devDependencies": {
+    "@netlify/plugin-nextjs": "^5.15.12"
+  }
+}

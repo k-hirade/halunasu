@@ -40,6 +40,16 @@
       ],
       "publishDir": "dist/runtime-apps/stg/fee-web"
     },
+    "care-fee-web": {
+      "siteName": "halunasu-care-fee-stg",
+      "siteId": "927ceb6b-095c-4584-be99-2d003f257e97",
+      "netlifyUrl": "https://halunasu-care-fee-stg.netlify.app",
+      "targetDomain": "https://care.stg.halunasu.com",
+      "deploymentMode": "next",
+      "provisioningStatus": "registered",
+      "baseDir": "apps/care-fee-web",
+      "publishDir": "dist/runtime-apps/stg/care-fee-web"
+    },
     "referral-web": {
       "siteName": "halunasu-referral-stg",
       "siteId": "835a45a1-cd88-480a-90a7-33a5a0d23051",
@@ -88,6 +98,16 @@
       "deploymentMode": "next",
       "baseDir": "apps/fee-web",
       "publishDir": "dist/runtime-apps/prod/fee-web"
+    },
+    "care-fee-web": {
+      "siteName": "halunasu-care-fee-prod",
+      "siteId": "a9ba1a24-1359-4b0b-9756-26cce0461675",
+      "netlifyUrl": "https://halunasu-care-fee-prod.netlify.app",
+      "targetDomain": "https://care.halunasu.com",
+      "deploymentMode": "next",
+      "provisioningStatus": "registered",
+      "baseDir": "apps/care-fee-web",
+      "publishDir": "dist/runtime-apps/prod/care-fee-web"
     },
     "referral-web": {
       "siteName": "halunasu-referral-prod",

@@ -109,6 +109,32 @@ test("normalizes fee pricing policy without changing the default", () => {
   );
 });
 
+test("keeps care fee integration disabled by default and validates explicit facility opt-in", () => {
+  assert.deepEqual(defaultFeeSettings({ facilityId: "fac_001" }).careFeeIntegration, {
+    enabled: false,
+    facilityCode: "",
+    careOfficeNumber: "",
+    careServiceType: "",
+    signalPolicy: "conservative"
+  });
+  const settings = validateUpdateFeeSettingsInput({
+    facilityId: "fac_001",
+    careFeeIntegration: {
+      enabled: true,
+      facilityCode: "care-001",
+      careOfficeNumber: "1234567890",
+      careServiceType: "care_medical_institution",
+      signalPolicy: "explicit_only"
+    }
+  });
+  assert.equal(settings.careFeeIntegration.enabled, true);
+  assert.equal(settings.careFeeIntegration.careServiceType, "care_medical_institution");
+  assert.throws(() => validateUpdateFeeSettingsInput({
+    facilityId: "fac_001",
+    careFeeIntegration: { enabled: true, facilityCode: "care-001" }
+  }), /careFeeIntegration\.careServiceType/u);
+});
+
 test("validates the sidecar v1 extraction and atomic identity contract", () => {
   const input = validateSidecarCalculationInput({
     contractVersion: "v1",

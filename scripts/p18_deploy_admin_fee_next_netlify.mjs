@@ -51,6 +51,25 @@ const appConfigs = {
       }
       return values;
     }
+  },
+  "care-fee-web": {
+    baseDir: "apps/care-fee-web",
+    packageName: "@halunasu/care-fee-web",
+    requiredTargets: ["platform", "careFee"],
+    envForTarget(env, targets) {
+      return {
+        HALUNASU_ENV: env,
+        NEXT_PUBLIC_HALUNASU_ENV: env,
+        PLATFORM_PROXY_TARGET: targets.platform,
+        CARE_FEE_PROXY_TARGET: targets.careFee,
+        PLATFORM_BASE_URL: targets.platform,
+        NEXT_PUBLIC_PLATFORM_BASE_URL: "/api/platform",
+        CARE_FEE_BASE_URL: targets.careFee,
+        NEXT_PUBLIC_CARE_FEE_BASE_URL: "/api/care-fee",
+        CORE_ADMIN_BASE_URL: env === "stg" ? "https://admin.stg.halunasu.com" : "https://admin.halunasu.com",
+        NEXT_PUBLIC_CORE_ADMIN_BASE_URL: env === "stg" ? "https://admin.stg.halunasu.com" : "https://admin.halunasu.com"
+      };
+    }
   }
 };
 
@@ -83,7 +102,7 @@ for (const app of apps) {
   }
 }
 
-console.log("P18 Netlify Core Admin / Fee Next.js deploy");
+console.log("P18 Netlify Core Admin / Fee / Care Fee Next.js deploy");
 console.log(`Apply: ${apply}`);
 console.log(`Environment: ${targetEnv}`);
 console.log(`App: ${targetApp}`);
@@ -97,7 +116,25 @@ for (const env of envs) {
       throw new Error(`Missing ${app} Netlify site config for ${env}`);
     }
 
-    const targets = normalizeTargets(env, config.requiredTargets);
+    const targetResolution = normalizeTargets(env, config.requiredTargets);
+    const readinessIssues = [
+      ...targetResolution.issues,
+      ...(!site.siteId || !/^[0-9a-f-]{36}$/u.test(site.siteId)
+        ? [`Netlify siteId is not registered for ${env}/${app}`]
+        : [])
+    ];
+    if (readinessIssues.length > 0) {
+      console.log(`== ${env}/${app} -> ${site.siteName} ==`);
+      console.log(`Target domain: ${site.targetDomain}`);
+      for (const issue of readinessIssues) console.log(`PENDING: ${issue}`);
+      if (apply && targetApp !== "all") {
+        throw new Error(`${env}/${app} is not provisioned; complete the environment registration before deploy.`);
+      }
+      console.log(`${apply ? "SKIP" : "DRY RUN SKIP"}: ${env}/${app} is planned but not provisioned.`);
+      console.log();
+      continue;
+    }
+    const targets = targetResolution.targets;
     const appEnv = {
       ...config.envForTarget(env, targets),
       ...stgGateEnvForDeploy(env)
@@ -147,14 +184,16 @@ for (const env of envs) {
 
 function normalizeTargets(env, requiredTargets) {
   const targets = {};
+  const issues = [];
   for (const key of requiredTargets) {
     const value = proxyTargets[env]?.[key];
     if (!value || !/^https:\/\/[a-z0-9-]+[a-z0-9.-]*\.run\.app$/u.test(value)) {
-      throw new Error(`Missing or invalid ${key} proxy target for ${env}: ${value || "(empty)"}`);
+      issues.push(`missing or invalid ${key} proxy target for ${env}: ${value || "(empty)"}`);
+      continue;
     }
     targets[key] = value.replace(/\/$/u, "");
   }
-  return targets;
+  return { targets, issues };
 }
 
 function buildDeployCommand({ baseDir, packageName, siteId, message }) {
@@ -315,5 +354,5 @@ function formatCommand(parts) {
 }
 
 function printUsage() {
-  console.log("Usage: npm run deploy:netlify-admin-fee-next -- [--env stg|prod|all] [--app core-admin|fee-web|all] [--apply]");
+  console.log("Usage: npm run deploy:netlify-admin-fee-next -- [--env stg|prod|all] [--app core-admin|fee-web|care-fee-web|all] [--apply]");
 }

@@ -6,6 +6,7 @@ import {
   hasProductAccess,
   publicAuthErrorCode,
   requirePlatformCsrf,
+  requireProductEnabled,
   requireProductContext
 } from "../../../packages/auth-client/src/index.js";
 import {
@@ -93,8 +94,13 @@ import {
 } from "./extraction-feedback.js";
 import { buildSidecarNoticePresentation } from "./sidecar-notice-view.js";
 import { narrowSidecarCandidateSelection } from "./sidecar-selection-narrowing.js";
+import {
+  dispatchPendingCareFeeEvidence,
+  enqueueCareFeeEvidenceForSession
+} from "./care-fee-evidence-outbox.js";
 
 const PRODUCT_ID = "fee";
+const CARE_FEE_PRODUCT_ID = productIds.careFee;
 const SIDECAR_PRODUCT_ID = productIds.homisSidecar;
 const SIDECAR_TOKEN_SCOPE = "sidecar:calculate";
 const SIDECAR_CONTRACT_VERSION = "v1";
@@ -161,7 +167,8 @@ export function createFeeApiServer(options = {}) {
         sidecarEnabled: options.sidecarEnabled,
         sidecarAllowedExtensionIds: options.sidecarAllowedExtensionIds,
         sidecarAllowedSelectorContractVersions: options.sidecarAllowedSelectorContractVersions,
-        sidecarRevokedDeviceIds: options.sidecarRevokedDeviceIds
+        sidecarRevokedDeviceIds: options.sidecarRevokedDeviceIds,
+        fetchImpl: options.fetchImpl
       });
 
       writeResponse(res, response);
@@ -242,7 +249,8 @@ async function routeFeeApiRequest(input = {}) {
         whiteboxExtraction: whiteboxRuntimeModes(runtimeEnv),
         whiteboxExtractionDiagnostics: whiteboxRuntimeDiagnostics(runtimeEnv),
         extractionFeedbackMode: extractionFeedbackMode(runtimeEnv),
-        extractionFeedback: extractionFeedbackReadiness(runtimeEnv)
+        extractionFeedback: extractionFeedbackReadiness(runtimeEnv),
+        careFeeIntegration: careFeeIntegrationReadiness(runtimeEnv)
       },
       feeCalculator: feeReadiness,
       startedAt: input.startedAt instanceof Date
@@ -407,6 +415,45 @@ async function routeFeeApiRequest(input = {}) {
     return ok(result);
   }
 
+  if (method === "POST" && matches(parts, ["v1", "fee", "internal", "care-fee-outbox", "run"])) {
+    requireCareFeeOutboxWorkerAuth(input);
+    const payload = validateCareFeeOutboxWorkerInput(input.body || {});
+    const orgId = payload.orgId;
+    await requireProductEnabled(platformStore, payload.orgId, CARE_FEE_PRODUCT_ID, {
+      now: input.now,
+      productLabel: "Care Fee"
+    });
+    const backfill = payload.facilityId
+      ? await backfillCareFeeEvidenceOutbox({ input, platformStore, feeStore, payload })
+      : null;
+    const runtimeEnv = input.processEnv || process.env;
+    const delivery = await dispatchPendingCareFeeEvidence({
+      feeStore,
+      orgId: payload.orgId,
+      endpoint: runtimeEnv.CARE_FEE_INGEST_URL,
+      token: runtimeEnv.CARE_FEE_INGEST_TOKEN,
+      fetchImpl: input.fetchImpl,
+      now: input.now,
+      limit: payload.limit,
+      timeoutMs: runtimeEnv.CARE_FEE_INGEST_TIMEOUT_MS,
+      deliveredRetentionDays: runtimeEnv.CARE_FEE_OUTBOX_DELIVERED_RETENTION_DAYS,
+      shouldDeliver: async (event) => careFeeEventDeliveryEnabled(feeStore, payload.orgId, event)
+    });
+    console.info(JSON.stringify({
+      event: "fee.care_fee_outbox.run",
+      orgId,
+      backfill: backfill ? backfill.summary : null,
+      delivery: {
+        attemptedCount: delivery.attemptedCount,
+        deliveredCount: delivery.deliveredCount,
+        failedCount: delivery.failedCount,
+        deadLetterCount: delivery.deadLetterCount,
+        skippedCount: delivery.skippedCount
+      }
+    }));
+    return ok({ backfill, delivery });
+  }
+
   const context = await requireFeeContext(input, platformStore);
   if (["POST", "PATCH", "PUT", "DELETE"].includes(method)) {
     requireFeeWriteAccess(context);
@@ -507,6 +554,13 @@ async function routeFeeApiRequest(input = {}) {
         patientMatchBasis: patientMatch.basis,
         alreadyAdopted: adopted.alreadyAdopted === true
       }
+    });
+    await maybeEnqueueCareFeeEvidence({
+      input,
+      context,
+      platformStore,
+      feeStore,
+      feeSession: adopted.feeSession
     });
     return adopted.alreadyAdopted
       ? ok({ feeSession: adopted.feeSession, sidecarDraft: sidecarDraftSummaryView(adopted.sidecarDraft), alreadyAdopted: true })
@@ -1456,6 +1510,14 @@ async function routeFeeApiRequest(input = {}) {
       }
     });
 
+    await maybeEnqueueCareFeeEvidence({
+      input,
+      context,
+      platformStore,
+      feeStore,
+      feeSession: session
+    });
+
     return created({ feeSession: session });
   }
 
@@ -1516,6 +1578,14 @@ async function routeFeeApiRequest(input = {}) {
         departmentId: result.feeSession.departmentId || null,
         claimMonth: result.feeSession.claimMonth || null
       }
+    });
+
+    await maybeEnqueueCareFeeEvidence({
+      input,
+      context,
+      platformStore,
+      feeStore,
+      feeSession: result.feeSession
     });
 
     return ok(await feeSessionMutationResponse(feeStore, context.session.orgId, result, input.now || new Date()));
@@ -5648,6 +5718,14 @@ async function calculatePreparedFeeSessionNow({
     ruleBasedClinicalInference: prepared.metrics?.ruleBasedClinicalInference || null,
     shadowCalculations: shadowCalculationLogSummary(prepared.shadowCalculations || [])
   }));
+
+  await maybeEnqueueCareFeeEvidence({
+    input,
+    context,
+    platformStore,
+    feeStore,
+    feeSession: result.feeSession
+  });
 
   const receiptDraft = buildReceiptDraft(result.feeSession, { now: input.now || new Date() });
   const reviewItems = buildReviewItems(result.feeSession);
@@ -10379,6 +10457,176 @@ function requireMutationCsrf(input, session) {
     return;
   }
   requirePlatformCsrf(input.headers || {}, session);
+}
+
+function careFeeIntegrationReadiness(env = {}) {
+  const ingestUrlConfigured = Boolean(String(env.CARE_FEE_INGEST_URL || "").trim());
+  const ingestTokenConfigured = Boolean(String(env.CARE_FEE_INGEST_TOKEN || "").trim());
+  const workerAuthMode = String(env.CARE_FEE_OUTBOX_WORKER_AUTH_MODE || "token").trim().toLowerCase();
+  const workerAuthConfigured = workerAuthMode === "iam"
+    || Boolean(String(env.CARE_FEE_OUTBOX_WORKER_TOKEN || "").trim());
+  return {
+    ready: ingestUrlConfigured && ingestTokenConfigured && workerAuthConfigured,
+    ingestUrlConfigured,
+    ingestTokenConfigured,
+    workerAuthMode,
+    workerAuthConfigured,
+    outboxRetentionDays: parsePositiveInteger(env.CARE_FEE_OUTBOX_RETENTION_DAYS, 30, 365),
+    deliveredRetentionDays: parsePositiveInteger(env.CARE_FEE_OUTBOX_DELIVERED_RETENTION_DAYS, 7, 90)
+  };
+}
+
+async function maybeEnqueueCareFeeEvidence({
+  input = {},
+  context = {},
+  platformStore,
+  feeStore,
+  feeSession
+} = {}) {
+  if (!feeSession || (feeSession.sidecarDraftId && !feeSession.adoptedFeeSessionId)) {
+    return { status: "skipped", reason: "non_canonical_sidecar_draft" };
+  }
+  try {
+    const orgId = context.session?.orgId || feeSession.orgId;
+    const settings = await loadFeeSettingsForCalculation({ feeStore, orgId, session: feeSession });
+    if (settings?.careFeeIntegration?.enabled !== true) {
+      return { status: "skipped", reason: "integration_disabled" };
+    }
+    await requireProductEnabled(platformStore, orgId, CARE_FEE_PRODUCT_ID, {
+      now: input.now,
+      productLabel: "Care Fee"
+    });
+    const runtimeEnv = input.processEnv || process.env;
+    const result = await enqueueCareFeeEvidenceForSession({
+      feeStore,
+      orgId,
+      organizationCode: context.session?.organizationCode || "",
+      session: feeSession,
+      feeSettings: settings,
+      now: input.now,
+      retentionDays: runtimeEnv.CARE_FEE_OUTBOX_RETENTION_DAYS
+    });
+    if (result.status !== "skipped") {
+      console.info(JSON.stringify({
+        event: "fee.care_fee_outbox.enqueue",
+        orgId,
+        feeSessionId: feeSession.feeSessionId || null,
+        facilityId: feeSession.facilityId || null,
+        status: result.status,
+        sourceScope: result.event?.sourceScope || null,
+        eventId: result.event?.eventId || null
+      }));
+    }
+    return result;
+  } catch (error) {
+    console.warn(JSON.stringify({
+      event: "fee.care_fee_outbox.enqueue_failed",
+      orgId: context.session?.orgId || feeSession.orgId || null,
+      feeSessionId: feeSession.feeSessionId || null,
+      facilityId: feeSession.facilityId || null,
+      error: safeLogError(error)
+    }));
+    return { status: "failed", reason: error?.name || "Error" };
+  }
+}
+
+async function backfillCareFeeEvidenceOutbox({ input, platformStore, feeStore, payload }) {
+  const { facilityId, orgId } = payload;
+  const settings = await feeStore.getFeeSettings(orgId, facilityId);
+  if (settings?.careFeeIntegration?.enabled !== true) {
+    return {
+      summary: { sourceSessionCount: 0, queuedCount: 0, duplicateCount: 0, skippedCount: 0, failedCount: 0 },
+      status: "integration_disabled"
+    };
+  }
+  const organization = typeof platformStore.getOrganization === "function"
+    ? await platformStore.getOrganization(orgId)
+    : null;
+  const sessions = (await feeStore.listSessionsForClaimMonth(orgId, payload.claimMonth, {
+    limit: payload.backfillLimit
+  }))
+    .filter((session) => String(session.facilityId || "") === facilityId)
+    .slice(0, payload.backfillLimit);
+  const counts = { queued: 0, duplicate: 0, skipped: 0, failed: 0 };
+  for (const session of sessions) {
+    try {
+      const result = await enqueueCareFeeEvidenceForSession({
+        feeStore,
+        orgId,
+        organizationCode: organization?.organizationCode || organization?.code || "",
+        session,
+        feeSettings: settings,
+        now: input.now,
+        retentionDays: (input.processEnv || process.env).CARE_FEE_OUTBOX_RETENTION_DAYS
+      });
+      counts[result.status] = Number(counts[result.status] || 0) + 1;
+    } catch (error) {
+      counts.failed += 1;
+      console.warn(JSON.stringify({
+        event: "fee.care_fee_outbox.backfill_item_failed",
+        orgId,
+        feeSessionId: session.feeSessionId || null,
+        facilityId,
+        error: safeLogError(error)
+      }));
+    }
+  }
+  return {
+    status: "complete",
+    summary: {
+      sourceSessionCount: sessions.length,
+      queuedCount: counts.queued,
+      duplicateCount: counts.duplicate,
+      skippedCount: counts.skipped,
+      failedCount: counts.failed
+    }
+  };
+}
+
+async function careFeeEventDeliveryEnabled(feeStore, orgId, event = {}) {
+  const settings = await feeStore.getFeeSettings(orgId, event.facilityId || "default");
+  return settings?.careFeeIntegration?.enabled === true;
+}
+
+function validateCareFeeOutboxWorkerInput(body = {}) {
+  const orgId = String(body.orgId || body.org_id || "").trim();
+  if (!orgId) throw requestValidationError("orgId is required");
+  const facilityId = String(body.facilityId || body.facility_id || "").trim();
+  const claimMonth = String(body.claimMonth || body.claim_month || "").trim();
+  if (Boolean(facilityId) !== Boolean(claimMonth)) {
+    throw requestValidationError("facilityId and claimMonth must be provided together");
+  }
+  if (claimMonth && !/^\d{4}-(0[1-9]|1[0-2])$/u.test(claimMonth)) {
+    throw requestValidationError("claimMonth must be YYYY-MM");
+  }
+  return {
+    orgId,
+    facilityId,
+    claimMonth,
+    limit: parsePositiveInteger(body.limit, 20, 100),
+    backfillLimit: parsePositiveInteger(body.backfillLimit ?? body.backfill_limit, 5000, 5000)
+  };
+}
+
+function requireCareFeeOutboxWorkerAuth(input = {}) {
+  const env = input.processEnv || process.env;
+  const expected = String(env.CARE_FEE_OUTBOX_WORKER_TOKEN || "").trim();
+  const authMode = String(env.CARE_FEE_OUTBOX_WORKER_AUTH_MODE || "").trim().toLowerCase();
+  if (!expected && isTestEnvironment(input.env)) return;
+  if (!expected && authMode === "iam") return;
+  if (!expected) {
+    const error = new Error("care fee outbox worker token is not configured");
+    error.name = "ServiceUnavailableError";
+    error.statusCode = 503;
+    throw error;
+  }
+  const provided = workerTokenFromHeaders(input.headers || {});
+  if (!provided || !timingSafeEqualString(provided, expected)) {
+    const error = new Error("invalid care fee outbox worker token");
+    error.name = "UnauthorizedError";
+    error.statusCode = 401;
+    throw error;
+  }
 }
 
 function requireCalculationWorkerAuth(input = {}) {

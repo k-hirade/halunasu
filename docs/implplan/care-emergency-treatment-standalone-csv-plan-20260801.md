@@ -1,6 +1,6 @@
 # 緊急時治療管理 独立チェッカー・単一CSV方針 (2026-08-01)
 
-状態: 設計確定前の実装計画。実装未着手。
+状態: 設計確定、LOCAL共通基盤実装済み。STG/PROD環境作成と施設固有受入は未実施（2026-08-02）。
 
 関連資料:
 
@@ -282,18 +282,20 @@ npm run eval:care-emergency-csv -- \
 apps/care-fee-web/                         独立した利用画面
 packages/care-fee-contracts/              CSV/JSON契約、enum、validator
 packages/care-fee-core/                   決定論判定
-services/fee-api/src/care-fee/            初期のAPI実装先
+services/care-fee-api/                    独立したAPI・月次ジョブ
 scripts/evaluate_care_emergency_csv.mjs    CLI
 ```
 
-初期は既存Cloud Run、認証、組織、患者、監査基盤を共有してよい。ただし次を禁止する。
+Platformの認証、組織、施設、患者識別子は共有するが、介護固有のCloud Run、Firestore、Storage、Secret Manager、監査データは介護製品プロジェクトへ分離する。次を禁止する。
 
 - `care-fee-core`からFeeアプリ又は`feeSessions`をimportする
 - 医科点数マスタから介護単位を解決する
 - WebとAPIで判定ロジックを二重実装する
 - 入力経路ごとに異なる判定ルールを使う
+- `care-fee-api`からFee Firestoreを直接読む
+- Fee APIへ介護固有PHI又は介護請求結果を保存する
 
-独立商品としては`care_fee` entitlementと独立ナビゲーションを持たせる。商用契約、スケール、障害分離の必要が生じた段階で`care-fee-api`を物理分割する。
+独立商品として`care_fee` entitlement、独立ナビゲーション、独立デプロイを持たせる。Fee連携は版付きAPI/event契約だけを通し、相互の内部storeへ依存させない。
 
 ### 7.1 Webアプリとドメインの境界
 
@@ -309,9 +311,9 @@ scripts/evaluate_care_emergency_csv.mjs    CLI
 - `fee.halunasu.com/care`配下には実装しない。医科Feeのルーティング、セッション画面、算定候補、合計点数へ介護機能を混在させない。
 - Feeアプリのハンバーガーメニューから、`care_fee` entitlementを持つ利用者に限り独立ドメインへのリンクを表示してよい。
 - 病院コード、個人ID、組織、施設、認証基盤は既存Platformと共有し、製品権限は`fee`と`care_fee`で分離する。
-- `care-fee-web`は同一オリジンの`/api/platform`と`/api/care-fee`を使用する。初期の`/api/care-fee`は既存`fee-api`内の`/v1/care-fee/`へプロキシする。
+- `care-fee-web`は同一オリジンの`/api/platform`と`/api/care-fee`を使用する。`/api/care-fee`は専用`care-fee-api`へプロキシする。
 - CSV画面、ナビゲーション、エラー表示、監査導線は介護報酬点検として独立させる。Feeアプリのコンポーネントを直接importせず、必要なデザイントークンだけを共有する。
-- `fee-api`停止時の影響を初期は許容するが、商用SLA、負荷又はリリース周期が分かれた時点で`care-fee-api`へ物理分割する。
+- `care-fee-api`はFee APIと別revision・別ロールバック単位とし、Fee APIの停止又はデプロイ失敗で単独CSV判定が停止しないようにする。
 
 この構成により、診療報酬算定を契約していない施設でも介護報酬点検だけを利用でき、制度・単位・権限・障害の境界も画面上で明確になる。
 
@@ -357,6 +359,62 @@ scripts/evaluate_care_emergency_csv.mjs    CLI
 - `feeSessions`等の医科保存領域と`careFeeEpisodes`等の介護保存領域
 
 コード共有は、実装を見て少なくとも2製品で同じ契約が安定した後に、認証、CSV parser、provenance、監査、マスタmanifest等の技術部品を小さく切り出す。医科と介護を抽象的な「万能算定エンジン」へ先に統合することはしない。
+
+### 7.3 LOCAL/STG/PROD環境
+
+既存の「Core共有、製品固有PHIは製品ごとのGCPプロジェクトへ分離」という原則に合わせる。次のGCP・Netlifyリソースは**計画確定済みだが未作成**である。
+
+| 項目 | LOCAL | STG | PROD |
+| --- | --- | --- | --- |
+| Web | `localhost` | `care.stg.halunasu.com` | `care.halunasu.com` |
+| Netlify site | 不要 | `halunasu-care-fee-stg` | `halunasu-care-fee-prod` |
+| Core/認証 | emulator又はmemory | `medical-core-stg` | `medical-core-497610` |
+| 製品GCP project | emulator又はmemory | `halunasu-care-stg` | `halunasu-care-prod` |
+| Cloud Run | ローカルNode | `care-fee-api-stg` | `care-fee-api-prod` |
+| Firestore | emulator又はmemory-store | `halunasu-care-stg/(default)` | `halunasu-care-prod/(default)` |
+| アプリ用Cloud Storage | 不要 | 不要 | 不要 |
+| Cloud Build staging | ローカルbuild | GCP管理のregional build bucket | GCP管理のregional build bucket |
+| Region | local | `asia-northeast1` | `asia-northeast1` |
+| Cloud Run初期値 | - | min 0 / max 1 | min 0 / max 3 |
+
+環境分離ルール:
+
+1. STGとPRODでFirestore、Secret Manager、サービスアカウント、Netlify site、Cookie名を共有しない。
+2. PRODデータをSTGへコピーしない。検証には匿名化済みfixture又は明示的に承認された匿名化データだけを使う。
+3. v1のCSV本文と結果行はリクエスト処理中のメモリだけで扱い、Cloud Storageへ保存しない。スポット点検はhashとジョブメタデータだけ、月次管理取込は正規化済み症例と監査メタデータだけをFirestoreへ残す。Cloud Build staging bucketへPHIを入れない。
+4. `care-fee-api`のサービスアカウントは介護projectのデータと必要最小限のCore参照だけにアクセスでき、Fee projectへのIAMを付けない。
+5. Fee連携はFeeサービスアカウントから`care-fee-api`の内部取込endpointへ、環境ごとに分離したサービス間認証で送る。ブラウザ経由、共有Firestore、共有秘密鍵ファイルは使わない。
+6. STGでgold、CSV E2E、月次冪等性、権限、TTLを通過してからPRODをプロビジョニングする。
+7. PRODでPHIを受ける前にFirestoreバックアップ、restore drill、Storage lifecycle、監査ログ保持期間を確認する。
+
+### 7.4 決定状態
+
+実装着手に必要なアーキテクチャ判断は確定している。
+
+- 単一CSV入出力と`care-emergency-csv-v1`
+- `care-fee-core`の決定論判定と医科エンジンからの分離
+- 独立Web、独立ドメイン、独立Cloud Run、独立製品GCP project
+- CSV単独利用とFee連携の二経路
+- カルテ確定時の増分検知と月次再点検
+- 自動候補化まで。自動確定・自動請求・自動書戻しは行わない
+- Platform認証・組織・患者識別子だけを共有
+
+実装を止めないが、STG運用開始までに確定するパラメータは次のとおりである。
+
+- 西山病院の実CSV列と施設内患者キー
+- 監査ログと月次管理データの保持期間
+- 医師確認者、請求確定者、施設管理者のrole mapping
+- 月次自動点検の締め日時と再実行可能期間
+- 西山病院が保有する当月既算定・併算定情報の取得元
+- Feeからcareへのサービス間認証方式の実装詳細
+
+Phase 0の契約・gold、Phase 1のcore/CLI、環境プロビジョニングは上記回答を待たず開始できる。施設固有項目はadapterと設定へ閉じ込め、共通判定へハードコードしない。
+
+### 7.5 2026-08-02 実装状況
+
+LOCAL実装はPhase 0〜4の共通基盤まで完了している。`care-fee-contracts`、`care-fee-core`、単一CSV CLI、独立API、独立Web、監査付き月次管理、Fee outbox連携を実装済みである。汎用の月次一覧印刷は実装済みだが、西山病院固有様式は実帳票の項目確定後にadapterとして追加する。
+
+STG/PRODのGCP project、Cloud Run、Netlify site、DNSは意図的に未作成である。環境作成はLOCALの全ゲート通過後にSTGから開始し、手順は`docs/runbooks/care-fee-environment-rollout.md`を正とする。PRODはSTG受入完了まで作成しない。
 
 ## 8. 競合調査
 

@@ -84,12 +84,14 @@ project_prefixes_for_env() {
       printf '%s|%s\n' "medical-core-stg" "platform-api-stg"
       printf '%s|%s\n' "halunasu-charting-stg" "charting-gateway-stg charting-api-stg charting-finalize-stg"
       printf '%s|%s\n' "halunasu-fee-stg" "fee-api-stg"
+      printf '%s|%s\n' "halunasu-care-stg" "care-fee-api-stg"
       printf '%s|%s\n' "halunasu-referral-stg" "referral-api-stg"
       ;;
     prod)
       printf '%s|%s\n' "medical-core-497610" "platform-api-prod"
       printf '%s|%s\n' "halunasu-charting-prod" "charting-gateway-prod charting-api-prod charting-finalize-prod"
       printf '%s|%s\n' "halunasu-fee-prod" "fee-api-prod"
+      printf '%s|%s\n' "halunasu-care-prod" "care-fee-api-prod"
       printf '%s|%s\n' "halunasu-referral-prod" "referral-api-prod"
       ;;
     *)
