@@ -210,6 +210,4 @@ UX10(表示停止のみ・最小)→UX12(削除)→UX9(要求生成停止)→UX1
 - 更新対象は最新計算の `review_required` / `selection_required` だけとし、included、blocked、採用済み・期限切れdraftはサーバ側で拒否する。
 - 算定と確認更新の両方で、端末tokenの施設・診療科scopeを照合する。診療科が対象施設に属さない場合も拒否する。
 - 状態変更と失効はdraft内の監査outboxへ同じtransactionで積み、event IDをdraft・候補・versionから決定する。Platform監査への冪等書き込み成功後にoutboxから削除し、失敗時は次の操作でも古いtransitionから順に補完する。
-- 未配送outboxは `candidateAcknowledgementAuditPending` で索引し、専用tokenで保護した内部workerが全組織を横断して再送する。1 draftの失敗は他draftの配送を止めない。
-- 本番運用では `candidateAcknowledgementAuditPending` のcollection-group index、`SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_TOKEN`、定期Schedulerを必須とし、Sidecar有効な非local環境でtoken未設定なら起動時に失敗させる。
 - 既存の「操作追加なし」は、算定結果を変更する採用・却下・区分選択を対象外とする方針として維持し、目視確認トグルだけを例外とする。

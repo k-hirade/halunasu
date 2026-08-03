@@ -526,27 +526,6 @@ async function routeFeeApiRequest(input = {}) {
     return ok({ backfill, delivery });
   }
 
-  if (
-    method === "POST"
-    && matches(parts, ["v1", "fee", "internal", "sidecar-acknowledgement-audit-outbox", "run"])
-  ) {
-    requireSidecarAcknowledgementAuditWorkerAuth(input);
-    const payload = validateSidecarAcknowledgementAuditWorkerInput(input.body || {});
-    const delivery = await dispatchPendingSidecarAcknowledgementAudits({
-      feeStore,
-      platformStore,
-      limit: payload.limit
-    });
-    console.info(JSON.stringify({
-      event: "fee.sidecar_acknowledgement_audit_outbox.run",
-      selectedDraftCount: delivery.selectedDraftCount,
-      succeededDraftCount: delivery.succeededDraftCount,
-      failedDraftCount: delivery.failedDraftCount,
-      deliveredEventCount: delivery.deliveredEventCount
-    }));
-    return ok({ delivery });
-  }
-
   const context = await requireFeeContext(input, platformStore);
   if (["POST", "PATCH", "PUT", "DELETE"].includes(method)) {
     requireFeeWriteAccess(context);
@@ -2545,78 +2524,6 @@ async function flushSidecarAcknowledgementAuditOutbox({
   return current;
 }
 
-async function dispatchPendingSidecarAcknowledgementAudits({
-  feeStore,
-  platformStore,
-  limit
-} = {}) {
-  if (typeof feeStore?.listSidecarDraftsWithPendingAcknowledgementAudits !== "function") {
-    throw new TypeError("feeStore with sidecar acknowledgement audit outbox support is required");
-  }
-  const sidecarDrafts = await feeStore.listSidecarDraftsWithPendingAcknowledgementAudits({ limit });
-  const results = [];
-  for (const sidecarDraft of sidecarDrafts) {
-    const orgId = String(sidecarDraft?.orgId || "").trim();
-    const sidecarDraftId = String(sidecarDraft?.sidecarDraftId || "").trim();
-    const pendingEventCount = Object.keys(
-      sidecarDraft?.candidateAcknowledgementAuditOutbox || {}
-    ).length;
-    try {
-      const deliveredDraft = await flushSidecarAcknowledgementAuditOutbox({
-        feeStore,
-        platformStore,
-        orgId,
-        sidecarDraft
-      });
-      const remainingEventCount = Object.keys(
-        deliveredDraft?.candidateAcknowledgementAuditOutbox || {}
-      ).length;
-      results.push({
-        orgId,
-        sidecarDraftId,
-        delivered: true,
-        deliveredEventCount: Math.max(0, pendingEventCount - remainingEventCount),
-        remainingEventCount,
-        errorCode: null
-      });
-    } catch (error) {
-      let remainingEventCount = pendingEventCount;
-      try {
-        const latestDraft = await feeStore.getSidecarCalculationDraft(orgId, sidecarDraftId);
-        remainingEventCount = Object.keys(
-          latestDraft?.candidateAcknowledgementAuditOutbox || {}
-        ).length;
-      } catch {
-        // The original delivery error remains the actionable failure for this draft.
-      }
-      console.warn(JSON.stringify({
-        event: "fee.sidecar_acknowledgement_audit_outbox.delivery_failed",
-        orgId: orgId || null,
-        sidecarDraftId: sidecarDraftId || null,
-        error: safeLogError(error)
-      }));
-      results.push({
-        orgId,
-        sidecarDraftId,
-        delivered: false,
-        deliveredEventCount: Math.max(0, pendingEventCount - remainingEventCount),
-        remainingEventCount,
-        errorCode: String(error?.code || error?.name || "delivery_failed").slice(0, 120)
-      });
-    }
-  }
-  return {
-    selectedDraftCount: results.length,
-    succeededDraftCount: results.filter((result) => result.delivered).length,
-    failedDraftCount: results.filter((result) => !result.delivered).length,
-    deliveredEventCount: results.reduce(
-      (total, result) => total + Number(result.deliveredEventCount || 0),
-      0
-    ),
-    results
-  };
-}
-
 function sidecarCalculationResponse(sidecarDraft = {}) {
   const calculation = sidecarDraft.calculationResult || {};
   const warnings = Array.isArray(calculation.warnings) ? calculation.warnings : [];
@@ -2919,19 +2826,7 @@ export function assertFeeSidecarRuntimeConfiguration(input = {}) {
   if (sidecarAllowedSelectorContractVersions(input).some((version) => !/^[A-Za-z0-9._-]{1,128}$/.test(version))) {
     throw new Error("HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS contains an invalid version");
   }
-  const runtimeEnv = input.processEnv || process.env;
-  sidecarDraftRetentionDays(runtimeEnv);
-  const auditWorkerAuthMode = String(
-    runtimeEnv.SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_AUTH_MODE || "token"
-  ).trim().toLowerCase();
-  if (auditWorkerAuthMode !== "token") {
-    throw new Error("SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_AUTH_MODE must be token");
-  }
-  if (!String(runtimeEnv.SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_TOKEN || "").trim()) {
-    throw new Error(
-      "SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_TOKEN is required when HOMIS Sidecar is enabled"
-    );
-  }
+  sidecarDraftRetentionDays(input.processEnv || process.env);
 }
 
 function requireFeeWriteAccess(context) {
@@ -10951,12 +10846,6 @@ function validateCareFeeOutboxWorkerInput(body = {}) {
   };
 }
 
-function validateSidecarAcknowledgementAuditWorkerInput(body = {}) {
-  return {
-    limit: parsePositiveInteger(body.limit, 20, 100)
-  };
-}
-
 function requireCareFeeOutboxWorkerAuth(input = {}) {
   const env = input.processEnv || process.env;
   const expected = String(env.CARE_FEE_OUTBOX_WORKER_TOKEN || "").trim();
@@ -10972,34 +10861,6 @@ function requireCareFeeOutboxWorkerAuth(input = {}) {
   const provided = workerTokenFromHeaders(input.headers || {});
   if (!provided || !timingSafeEqualString(provided, expected)) {
     const error = new Error("invalid care fee outbox worker token");
-    error.name = "UnauthorizedError";
-    error.statusCode = 401;
-    throw error;
-  }
-}
-
-function requireSidecarAcknowledgementAuditWorkerAuth(input = {}) {
-  const env = input.processEnv || process.env;
-  const expected = String(env.SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_TOKEN || "").trim();
-  const authMode = String(
-    env.SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_AUTH_MODE || "token"
-  ).trim().toLowerCase();
-  if (authMode !== "token") {
-    const error = new Error("sidecar acknowledgement audit worker auth mode is unsupported");
-    error.name = "ConfigurationError";
-    error.statusCode = 503;
-    throw error;
-  }
-  if (!expected && isTestEnvironment(input.env)) return;
-  if (!expected) {
-    const error = new Error("sidecar acknowledgement audit worker token is not configured");
-    error.name = "ServiceUnavailableError";
-    error.statusCode = 503;
-    throw error;
-  }
-  const provided = workerTokenFromHeaders(input.headers || {});
-  if (!provided || !timingSafeEqualString(provided, expected)) {
-    const error = new Error("invalid sidecar acknowledgement audit worker token");
     error.name = "UnauthorizedError";
     error.statusCode = 401;
     throw error;

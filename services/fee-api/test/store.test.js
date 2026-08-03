@@ -63,10 +63,6 @@ test("LazyFirestoreFeeStore forwards sidecar acknowledgement operations", async 
     await store.completeSidecarCandidateAcknowledgementAudit("org_123", "sidecar_123", "aud_123"),
     ["completeSidecarCandidateAcknowledgementAudit", "org_123", "sidecar_123", "aud_123"]
   );
-  assert.deepEqual(
-    await store.listSidecarDraftsWithPendingAcknowledgementAudits({ limit: 10 }),
-    ["listSidecarDraftsWithPendingAcknowledgementAudits", { limit: 10 }]
-  );
 });
 
 test("stores fee sessions by organization and saves calculation results", () => {
@@ -693,7 +689,6 @@ test("MemoryFeeStore versions and reconciles sidecar candidate acknowledgements"
   assert.equal(acknowledged.acknowledgement.status, "acknowledged");
   assert.equal(acknowledged.acknowledgement.version, 1);
   assert.equal(Object.keys(acknowledged.sidecarDraft.candidateAcknowledgementAuditOutbox).length, 1);
-  assert.equal(acknowledged.sidecarDraft.candidateAcknowledgementAuditPending, true);
   assert.equal(repeated.changed, false);
   assert.deepEqual(repeated.sidecarDraft.calculationResult, calculationBefore);
   assert.throws(() => store.setSidecarCandidateAcknowledgement(
@@ -728,44 +723,7 @@ test("MemoryFeeStore versions and reconciles sidecar candidate acknowledgements"
     Object.hasOwn(completedAudit.sidecarDraft.candidateAcknowledgementAuditOutbox, firstAuditEventId),
     false
   );
-  assert.equal(completedAudit.sidecarDraft.candidateAcknowledgementAuditPending, true);
   assert.deepEqual(reconciled.sidecarDraft.calculationResult, calculationBefore);
-});
-
-test("MemoryFeeStore lists pending sidecar acknowledgement audits across organizations", () => {
-  const store = new MemoryFeeStore();
-  const pendingDraft = (orgId, sidecarDraftId, occurredAt) => ({
-    orgId,
-    sidecarDraftId,
-    candidateAcknowledgementAuditPending: true,
-    candidateAcknowledgementAuditOutbox: {
-      [`aud_${sidecarDraftId}`]: {
-        eventId: `aud_${sidecarDraftId}`,
-        occurredAt
-      }
-    },
-    updatedAt: occurredAt
-  });
-  store.sidecarDraftsForOrg("org_001").set(
-    "sidecar_newer",
-    pendingDraft("org_001", "sidecar_newer", "2026-08-03T00:02:00.000Z")
-  );
-  store.sidecarDraftsForOrg("org_002").set(
-    "sidecar_oldest",
-    pendingDraft("org_002", "sidecar_oldest", "2026-08-03T00:00:00.000Z")
-  );
-  store.sidecarDraftsForOrg("org_003").set("sidecar_complete", {
-    orgId: "org_003",
-    sidecarDraftId: "sidecar_complete",
-    candidateAcknowledgementAuditPending: false,
-    candidateAcknowledgementAuditOutbox: {}
-  });
-
-  assert.deepEqual(
-    store.listSidecarDraftsWithPendingAcknowledgementAudits({ limit: 1 })
-      .map((draft) => [draft.orgId, draft.sidecarDraftId]),
-    [["org_002", "sidecar_oldest"]]
-  );
 });
 
 test("Firestore transactions persist sidecar acknowledgement CAS and stale reconciliation", async () => {
@@ -856,46 +814,6 @@ test("Firestore transactions persist sidecar acknowledgement CAS and stale recon
   assert.deepEqual(stored.calculationResult, calculationBefore);
   assert.equal(stored.calculationResult.totalPoints, 890);
   assert.ok(db.transactionCount >= 6);
-});
-
-test("Firestore queries pending sidecar acknowledgement audits through a collection group", async () => {
-  const calls = [];
-  const db = {
-    collectionGroup(name) {
-      calls.push(["collectionGroup", name]);
-      return {
-        where(field, operator, value) {
-          calls.push(["where", field, operator, value]);
-          return this;
-        },
-        limit(value) {
-          calls.push(["limit", value]);
-          return this;
-        },
-        async get() {
-          return {
-            docs: [{
-              data: () => ({
-                orgId: "org_123",
-                sidecarDraftId: "sidecar_pending",
-                candidateAcknowledgementAuditPending: true
-              })
-            }]
-          };
-        }
-      };
-    }
-  };
-  const store = new FirestoreFeeStore({ db });
-
-  const drafts = await store.listSidecarDraftsWithPendingAcknowledgementAudits({ limit: 500 });
-
-  assert.deepEqual(calls, [
-    ["collectionGroup", "sidecar_calculation_drafts"],
-    ["where", "candidateAcknowledgementAuditPending", "==", true],
-    ["limit", 100]
-  ]);
-  assert.deepEqual(drafts.map((draft) => draft.sidecarDraftId), ["sidecar_pending"]);
 });
 
 test("Firestore keeps sidecar drafts isolated and adopts exactly once in one transaction", async () => {

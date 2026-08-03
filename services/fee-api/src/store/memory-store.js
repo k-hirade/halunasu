@@ -85,25 +85,6 @@ export class MemoryFeeStore {
     };
   }
 
-  listSidecarDraftsWithPendingAcknowledgementAudits(options = {}) {
-    const limit = normalizePendingSidecarAuditLimit(options.limit);
-    const drafts = [];
-    for (const organizationDrafts of this.sidecarDraftsByOrg.values()) {
-      for (const draft of organizationDrafts.values()) {
-        if (draft.candidateAcknowledgementAuditPending === true) {
-          drafts.push(draft);
-        }
-      }
-    }
-    return drafts
-      .sort((left, right) => (
-        oldestSidecarAcknowledgementAuditTime(left)
-          .localeCompare(oldestSidecarAcknowledgementAuditTime(right))
-        || String(left.sidecarDraftId || "").localeCompare(String(right.sidecarDraftId || ""))
-      ))
-      .slice(0, limit);
-  }
-
   listSidecarDraftsForServiceDate(orgId, options = {}) {
     const serviceDate = String(options.serviceDate || "").trim();
     const facilityId = String(options.facilityId || "").trim();
@@ -1048,18 +1029,6 @@ function requiredOutboxValue(value, label) {
 
 function safeOutboxErrorCode(value) {
   return String(value || "delivery_failed").trim().replace(/[^a-zA-Z0-9_.-]/gu, "_").slice(0, 120) || "delivery_failed";
-}
-
-function normalizePendingSidecarAuditLimit(value) {
-  return Math.min(100, Math.max(1, Number.parseInt(value, 10) || 20));
-}
-
-function oldestSidecarAcknowledgementAuditTime(sidecarDraft = {}) {
-  const occurredAtValues = Object.values(sidecarDraft.candidateAcknowledgementAuditOutbox || {})
-    .map((entry) => String(entry?.occurredAt || ""))
-    .filter(Boolean)
-    .sort();
-  return occurredAtValues[0] || String(sidecarDraft.updatedAt || "");
 }
 
 export function monthlyBulkJobProgress(items = []) {

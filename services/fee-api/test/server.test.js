@@ -10261,130 +10261,6 @@ test("sidecar acknowledgement audits recover idempotently after a transient audi
   ).candidateAcknowledgementAuditOutbox, {});
 });
 
-test("sidecar acknowledgement audit worker continues after one draft fails and retries idempotently", async () => {
-  const stores = createStores();
-  const drafts = stores.feeStore.sidecarDraftsForOrg("org_001");
-  const pendingDraft = (sidecarDraftId, occurredAt) => ({
-    orgId: "org_001",
-    sidecarDraftId,
-    candidateAcknowledgementAuditPending: true,
-    candidateAcknowledgementAuditOutbox: {
-      [`aud_${sidecarDraftId}`]: {
-        eventId: `aud_${sidecarDraftId}`,
-        eventType: "fee.sidecar_candidate_acknowledgement_changed",
-        candidateKey: `proposal:${sidecarDraftId}`,
-        candidateFingerprint: "a".repeat(64),
-        sourceRevision: 1,
-        calculationRevision: 1,
-        acknowledgementVersion: 1,
-        acknowledged: true,
-        actorMemberId: "mem_001",
-        actorLoginId: "admin@example.com",
-        deviceId: "sidecar-device-001",
-        staleReason: null,
-        occurredAt
-      }
-    },
-    updatedAt: occurredAt,
-    expiresAt: "2026-09-02T00:00:00.000Z"
-  });
-  const failingDraft = pendingDraft(
-    "sidecar_worker_failing",
-    "2026-08-03T00:00:00.000Z"
-  );
-  const [firstFailingEntry] = Object.values(failingDraft.candidateAcknowledgementAuditOutbox);
-  failingDraft.candidateAcknowledgementAuditOutbox.aud_sidecar_worker_failing_second = {
-    ...firstFailingEntry,
-    eventId: "aud_sidecar_worker_failing_second",
-    candidateKey: "proposal:sidecar_worker_failing:second",
-    acknowledgementVersion: 2,
-    occurredAt: "2026-08-03T00:00:30.000Z"
-  };
-  drafts.set("sidecar_worker_failing", failingDraft);
-  drafts.set(
-    "sidecar_worker_succeeding",
-    pendingDraft("sidecar_worker_succeeding", "2026-08-03T00:01:00.000Z")
-  );
-  const workerPath = "/v1/fee/internal/sidecar-acknowledgement-audit-outbox/run";
-  const workerEnv = {
-    SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_AUTH_MODE: "token",
-    SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_TOKEN: "sidecar-audit-worker-token"
-  };
-  const denied = await request(stores, "POST", workerPath, {}, {}, {
-    processEnv: workerEnv
-  });
-  const unsupportedIam = await request(stores, "POST", workerPath, {}, {}, {
-    env: "prod",
-    processEnv: {
-      SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_AUTH_MODE: "iam"
-    }
-  });
-  const createAuditEvent = stores.platformStore.createAuditEvent.bind(stores.platformStore);
-  stores.platformStore.createAuditEvent = (orgId, auditInput) => {
-    if (auditInput.eventId === "aud_sidecar_worker_failing_second") {
-      throw new Error("transient worker delivery failure");
-    }
-    return createAuditEvent(orgId, auditInput);
-  };
-
-  const partiallyDelivered = await request(
-    stores,
-    "POST",
-    workerPath,
-    { limit: 20 },
-    { authorization: "Bearer sidecar-audit-worker-token" },
-    { processEnv: workerEnv }
-  );
-
-  assert.equal(denied.statusCode, 401);
-  assert.equal(unsupportedIam.statusCode, 503);
-  assert.equal(partiallyDelivered.statusCode, 200);
-  assert.deepEqual({
-    selectedDraftCount: partiallyDelivered.body.delivery.selectedDraftCount,
-    succeededDraftCount: partiallyDelivered.body.delivery.succeededDraftCount,
-    failedDraftCount: partiallyDelivered.body.delivery.failedDraftCount,
-    deliveredEventCount: partiallyDelivered.body.delivery.deliveredEventCount
-  }, {
-    selectedDraftCount: 2,
-    succeededDraftCount: 1,
-    failedDraftCount: 1,
-    deliveredEventCount: 2
-  });
-  assert.equal(drafts.get("sidecar_worker_failing").candidateAcknowledgementAuditPending, true);
-  assert.equal(Object.keys(
-    drafts.get("sidecar_worker_failing").candidateAcknowledgementAuditOutbox
-  ).length, 1);
-  assert.equal(drafts.get("sidecar_worker_succeeding").candidateAcknowledgementAuditPending, false);
-
-  stores.platformStore.createAuditEvent = createAuditEvent;
-  const repaired = await request(
-    stores,
-    "POST",
-    workerPath,
-    { limit: 1 },
-    { "x-fee-worker-token": "sidecar-audit-worker-token" },
-    { processEnv: workerEnv }
-  );
-  const emptyRetry = await request(
-    stores,
-    "POST",
-    workerPath,
-    {},
-    { authorization: "Bearer sidecar-audit-worker-token" },
-    { processEnv: workerEnv }
-  );
-  const workerAuditEvents = stores.platformStore.listAuditEvents("org_001")
-    .filter((event) => event.eventId.startsWith("aud_sidecar_worker_"));
-
-  assert.equal(repaired.statusCode, 200);
-  assert.equal(repaired.body.delivery.deliveredEventCount, 1);
-  assert.equal(drafts.get("sidecar_worker_failing").candidateAcknowledgementAuditPending, false);
-  assert.equal(emptyRetry.statusCode, 200);
-  assert.equal(emptyRetry.body.delivery.selectedDraftCount, 0);
-  assert.equal(workerAuditEvents.length, 3);
-  assert.equal(new Set(workerAuditEvents.map((event) => event.eventId)).size, 3);
-});
-
 test("sidecar notices deduplicate warning and review issue paths and honor encounter applicability", async () => {
   const stores = createStores();
   const originalCalculate = stores.feeCalculator.calculate;
@@ -11310,32 +11186,12 @@ test("fee sidecar runtime configuration fails closed outside test environments",
       HOMIS_SIDECAR_DRAFT_RETENTION_DAYS: "0"
     }
   }), /1 to 90/);
-  assert.throws(() => assertFeeSidecarRuntimeConfiguration({
-    env: "prod",
-    processEnv: {
-      HOMIS_SIDECAR_ENABLED: "true",
-      HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS: TEST_SIDECAR_EXTENSION_ID,
-      HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS: "homis-test-v1"
-    }
-  }), /SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_TOKEN/);
-  assert.throws(() => assertFeeSidecarRuntimeConfiguration({
-    env: "prod",
-    processEnv: {
-      HOMIS_SIDECAR_ENABLED: "true",
-      HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS: TEST_SIDECAR_EXTENSION_ID,
-      HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS: "homis-test-v1",
-      SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_AUTH_MODE: "iam",
-      SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_TOKEN: "sidecar-audit-worker-token"
-    }
-  }), /AUTH_MODE must be token/);
   assert.doesNotThrow(() => assertFeeSidecarRuntimeConfiguration({
     env: "prod",
     processEnv: {
       HOMIS_SIDECAR_ENABLED: "true",
       HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS: TEST_SIDECAR_EXTENSION_ID,
-      HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS: "homis-test-v1",
-      SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_AUTH_MODE: "token",
-      SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_TOKEN: "sidecar-audit-worker-token"
+      HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS: "homis-test-v1"
     }
   }));
 });

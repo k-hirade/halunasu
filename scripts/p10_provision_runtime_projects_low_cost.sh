@@ -527,17 +527,6 @@ for env in stg prod; do
     add_secret_version "${charting_project}" "APP_FIELD_ENCRYPTION_KEY" "$(secret_value_or_generate "${charting_project}" "APP_FIELD_ENCRYPTION_KEY")"
   fi
 
-  if project_is_active "${fee_project}"; then
-    sidecar_acknowledgement_audit_worker_secret="$(
-      secret_value_or_generate "${fee_project}" "SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_TOKEN"
-    )"
-    ensure_secret "${fee_project}" "SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_TOKEN"
-    add_secret_version \
-      "${fee_project}" \
-      "SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_TOKEN" \
-      "${sidecar_acknowledgement_audit_worker_secret}"
-  fi
-
   if project_is_active "${care_project}"; then
     care_ingest_secret="$(secret_value_from_projects_or_generate "CARE_FEE_INGEST_TOKEN" "${care_project}" "${fee_project}")"
     care_monthly_worker_secret="$(secret_value_or_generate "${care_project}" "CARE_FEE_MONTHLY_WORKER_TOKEN")"

@@ -44,7 +44,6 @@ export function buildSidecarCalculationDraft(input = {}, options = {}) {
     calculationDiff: null,
     candidateAcknowledgements: {},
     candidateAcknowledgementAuditOutbox: {},
-    candidateAcknowledgementAuditPending: false,
     encounterTypeSource: requiredString(input.encounterTypeSource, "encounterTypeSource"),
     extractionProof: input.extractionProof || null,
     lastCalculatedByMemberId: input.createdByMemberId,
@@ -81,7 +80,6 @@ export function applySidecarDraftInput(current = {}, input = {}, options = {}) {
       status: "ready"
     }, { now })
     : current;
-  const auditOutbox = acknowledgementAuditOutbox(current.candidateAcknowledgementAuditOutbox);
   return {
     ...patched,
     sourceRecordDisplayId: input.sourceRecordDisplayId || current.sourceRecordDisplayId || null,
@@ -107,7 +105,6 @@ export function applySidecarDraftInput(current = {}, input = {}, options = {}) {
       || null,
     extractionProof: input.extractionProof || null,
     lastCalculatedByMemberId: input.lastCalculatedByMemberId || current.lastCalculatedByMemberId,
-    candidateAcknowledgementAuditPending: hasAcknowledgementAuditEntries(auditOutbox),
     expiresAt: input.expiresAt || current.expiresAt || null,
     updatedAt: now
   };
@@ -211,7 +208,6 @@ export function applySidecarCandidateAcknowledgement(current = {}, input = {}, o
         [candidateKey]: acknowledgement
       },
       candidateAcknowledgementAuditOutbox: nextAuditOutbox,
-      candidateAcknowledgementAuditPending: true,
       updatedAt: now
     },
     acknowledgement,
@@ -297,7 +293,6 @@ export function reconcileSidecarCandidateAcknowledgements(current = {}, input = 
       ...current,
       candidateAcknowledgements: nextAcknowledgements,
       candidateAcknowledgementAuditOutbox: nextAuditOutbox,
-      candidateAcknowledgementAuditPending: true,
       updatedAt: now
     },
     invalidated,
@@ -316,8 +311,7 @@ export function completeSidecarCandidateAcknowledgementAudit(current = {}, event
   return {
     sidecarDraft: {
       ...current,
-      candidateAcknowledgementAuditOutbox: nextOutbox,
-      candidateAcknowledgementAuditPending: hasAcknowledgementAuditEntries(nextOutbox)
+      candidateAcknowledgementAuditOutbox: nextOutbox
     },
     changed: true
   };
@@ -552,10 +546,6 @@ function acknowledgementMap(value) {
 
 function acknowledgementAuditOutbox(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
-}
-
-function hasAcknowledgementAuditEntries(value) {
-  return Object.keys(acknowledgementAuditOutbox(value)).length > 0;
 }
 
 function assertSidecarAcknowledgementDraft(current) {

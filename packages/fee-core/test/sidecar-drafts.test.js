@@ -58,7 +58,6 @@ test("sidecar draft revisions the same immutable record instead of creating a fe
   assert.equal(current.lifecycleStatus, "draft");
   assert.deepEqual(current.candidateAcknowledgements, {});
   assert.deepEqual(current.candidateAcknowledgementAuditOutbox, {});
-  assert.equal(current.candidateAcknowledgementAuditPending, false);
   assert.equal(revised.sidecarDraftId, current.sidecarDraftId);
   assert.equal(revised.sourceRecordId, current.sourceRecordId);
   assert.equal(revised.sourceRevision, 2);
@@ -132,7 +131,6 @@ test("sidecar candidate acknowledgement is explicit, idempotent, and revision lo
   });
   assert.equal(Object.hasOwn(acknowledged.acknowledgement, "candidateId"), false);
   assert.equal(Object.keys(acknowledged.sidecarDraft.candidateAcknowledgementAuditOutbox).length, 1);
-  assert.equal(acknowledged.sidecarDraft.candidateAcknowledgementAuditPending, true);
   assert.equal(repeated.changed, false);
   assert.strictEqual(repeated.sidecarDraft, acknowledged.sidecarDraft);
   assert.deepEqual(repeated.sidecarDraft.calculationResult, calculationBefore);
@@ -164,7 +162,6 @@ test("sidecar candidate acknowledgement is explicit, idempotent, and revision lo
   );
   assert.equal(completedAudit.changed, true);
   assert.equal(Object.keys(completedAudit.sidecarDraft.candidateAcknowledgementAuditOutbox).length, 1);
-  assert.equal(completedAudit.sidecarDraft.candidateAcknowledgementAuditPending, true);
   assert.equal(completeSidecarCandidateAcknowledgementAudit(
     completedAudit.sidecarDraft,
     completedEventId
@@ -177,7 +174,6 @@ test("sidecar candidate acknowledgement is explicit, idempotent, and revision lo
     remainingEventId
   );
   assert.deepEqual(fullyCompletedAudit.sidecarDraft.candidateAcknowledgementAuditOutbox, {});
-  assert.equal(fullyCompletedAudit.sidecarDraft.candidateAcknowledgementAuditPending, false);
   assert.deepEqual(unacknowledged.sidecarDraft.calculationResult, calculationBefore);
 
   const adopted = markSidecarDraftAdopted(acknowledged.sidecarDraft, "fee_001");
@@ -264,7 +260,6 @@ test("sidecar acknowledgement reconciliation only stales acknowledged candidates
   assert.equal(reconciled.invalidated[0].invalidatedByLoginId, "recalculator@example.com");
   assert.equal(reconciled.invalidated[0].invalidationCalculationRevision, 1);
   assert.equal(Object.keys(reconciled.sidecarDraft.candidateAcknowledgementAuditOutbox).length, 3);
-  assert.equal(reconciled.sidecarDraft.candidateAcknowledgementAuditPending, true);
   assert.deepEqual(reconciled.sidecarDraft.calculationResult, calculationBefore);
 
   const repeated = reconcileSidecarCandidateAcknowledgements(reconciled.sidecarDraft, {

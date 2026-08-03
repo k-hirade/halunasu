@@ -150,15 +150,6 @@ export class FirestoreFeeStore {
     };
   }
 
-  async listSidecarDraftsWithPendingAcknowledgementAudits(options = {}) {
-    const limit = Math.min(100, Math.max(1, Number.parseInt(options.limit, 10) || 20));
-    const snapshot = await this.db.collectionGroup(collections.sidecarCalculationDrafts)
-      .where("candidateAcknowledgementAuditPending", "==", true)
-      .limit(limit)
-      .get();
-    return docsFromSnapshot(snapshot);
-  }
-
   async listSidecarDraftsForServiceDate(orgId, options = {}) {
     const serviceDate = String(options.serviceDate || "").trim();
     const facilityId = String(options.facilityId || "").trim();
