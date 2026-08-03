@@ -105,6 +105,23 @@
         <h3>算定案に含まれる</h3>
         <div class="candidate-list" id="line-candidates"></div>
       </div>
+      <div class="result-group" id="patient-charge-group" hidden>
+        <h3>患者負担</h3>
+        <div class="patient-charge-row">
+          <label for="patient-charge-handling">在宅医療交通費</label>
+          <div class="patient-charge-controls">
+            <select id="patient-charge-handling" aria-label="在宅医療交通費の患者別設定">
+              <option value="unknown">未設定</option>
+              <option value="inherit">施設設定を継承</option>
+              <option value="charge">請求する</option>
+              <option value="waive">請求しない</option>
+              <option value="included_in_contract">契約内に含む</option>
+            </select>
+            <button class="button secondary patient-charge-save" id="patient-charge-save" type="button">保存</button>
+          </div>
+          <span class="patient-charge-status" id="patient-charge-status"></span>
+        </div>
+      </div>
       <div class="result-group" id="decision-group">
         <h3 id="decision-heading">要判断</h3>
         <div class="decision-list" id="decision-candidates" role="list" aria-labelledby="decision-heading"></div>

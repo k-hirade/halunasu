@@ -371,10 +371,61 @@ function normalizeCalculationMetrics(metrics) {
       setting: String(metrics.sidecarSelectionContext.setting || ""),
       specialDiseaseStatus: ["eligible", "not_eligible", "unknown"].includes(
         String(metrics.sidecarSelectionContext.specialDiseaseStatus || "")
-      ) ? String(metrics.sidecarSelectionContext.specialDiseaseStatus) : "unknown"
+      ) ? String(metrics.sidecarSelectionContext.specialDiseaseStatus) : "unknown",
+      selection: normalizeSidecarSelectionFacts(metrics.sidecarSelectionContext.selection)
     };
   }
   return Object.keys(normalized).length ? normalized : undefined;
+}
+
+function normalizeSidecarSelectionFacts(value) {
+  if (!isPlainObject(value)) {
+    return {};
+  }
+  return Object.fromEntries([
+    "singleBuildingPatientCount",
+    "qualifyingMonthlyVisits",
+    "specialDisease",
+    "reduced",
+    "specialProvision"
+  ].flatMap((name) => {
+    const fact = value[name];
+    if (!isPlainObject(fact)) {
+      return [];
+    }
+    const scalar = fact.value;
+    const normalizedValue = scalar === null
+      || typeof scalar === "string"
+      || typeof scalar === "number"
+      || typeof scalar === "boolean"
+      ? scalar
+      : null;
+    return [[name, {
+      value: normalizedValue,
+      status: String(fact.status || "unknown"),
+      source: String(fact.source || ""),
+      sourceRevision: fact.sourceRevision ? String(fact.sourceRevision) : null,
+      ...(safeIsoTimestamp(fact.observedAt)
+        ? { observedAt: safeIsoTimestamp(fact.observedAt) }
+        : {}),
+      ...(Array.isArray(fact.serviceDates)
+        ? { serviceDates: uniqueStrings(fact.serviceDates) }
+        : {})
+    }]];
+  }));
+}
+
+function uniqueStrings(value) {
+  return [...new Set((Array.isArray(value) ? value : [])
+    .map((item) => String(item || "").trim())
+    .filter(Boolean))];
+}
+
+function safeIsoTimestamp(value) {
+  const timestamp = String(value || "");
+  return timestamp.includes("T") && Number.isFinite(Date.parse(timestamp))
+    ? new Date(timestamp).toISOString()
+    : null;
 }
 
 function finiteNumberOrNull(value) {

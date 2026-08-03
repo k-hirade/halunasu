@@ -99,7 +99,7 @@ def ikou_souki_comment(start_iso: str) -> str:
 #     houkan                … 訪問看護情報（カルテ左カラム／MCS・週回数）
 #     shougai               … 障害支援区分（カルテ右カラム）
 #     problems[]            … {name, since, main}
-#     devices[]             … 在宅医療機器 管理状況欄の行
+#     devices[]             … 疾病等・状態管理一覧の全行（在宅医療機器を含む）
 #     docs[]                … {kind, period, written} 書類タブ
 #     plan                  … 診療計画パターン文字列
 #     visits{ "YYYY-MM": [ {day,type,time,status,tatemono,soap,shohou[],action_list[]} ] }
@@ -1000,7 +1000,7 @@ PATIENTS.append({
              "shohou": [{"rp": 1, "type": "内服薬", "lines": [
                  "【般】酸化マグネシウム錠330mg　3錠", "　　分3 経管注入　28日分"]}],
              "action_list": fac_teiki("2025-01-28", [
-                 SHIISOU_KAN2_29, tatemono_comment(5), KANWA_SHI_29, DATA_TEISHUTSU])},
+                 SHIISOU_NAN2_29, tatemono_comment(5), KANWA_SHI_29, DATA_TEISHUTSU])},
         ],
         "2024-12": [
             {"day": 24, "type": "定期", "time": "13:00", "status": "定期", "tatemono": 5,

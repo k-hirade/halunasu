@@ -24,6 +24,7 @@ import {
   feeExtractionFeedbackEventPath,
   feeExtractionSnapshotPath,
   feeMonthlyExclusionResolutionPath,
+  feePatientChargeContractPath,
   feeStandingBillingProfilePath,
   feeSettingsPath,
   feeSessionPath,
@@ -37,6 +38,16 @@ import {
   applyStandingBillingStatus,
   standingBillingProfileId
 } from "../standing-billing-profiles.js";
+import {
+  applyPatientChargeContractSetting,
+  assertPatientChargeDraftWriteScope,
+  buildPatientChargeContract,
+  completePatientChargeContractAudit,
+  isPatientChargeSettingRetry,
+  patientChargeContractId,
+  resolvePatientChargeSetting,
+  resolvePatientChargeSettingBeforeRevision
+} from "../patient-charge-contracts.js";
 import {
   matchesSearch,
   matchesStatus,
@@ -125,6 +136,67 @@ export class FirestoreFeeStore {
 
   async getSidecarCalculationDraft(orgId, sidecarDraftId) {
     return docDataOrNull(await this.doc(sidecarCalculationDraftPath(orgId, sidecarDraftId)).get());
+  }
+
+  async getPatientChargeContract(orgId, facilityId, canonicalPatientId, chargeType) {
+    const contractId = patientChargeContractId({
+      orgId,
+      facilityId,
+      canonicalPatientId,
+      chargeType
+    });
+    return docDataOrNull(await this.doc(feePatientChargeContractPath(orgId, contractId)).get());
+  }
+
+  async putPatientChargeContractSetting(orgId, input) {
+    requireFirestoreTransactions(this.db);
+    const identity = { ...input, orgId };
+    const operationNow = input.writeAt || this.timestamp();
+    const contractId = patientChargeContractId(identity);
+    const contractRef = this.doc(feePatientChargeContractPath(orgId, contractId));
+    const draftRef = this.doc(sidecarCalculationDraftPath(orgId, input.sidecarDraftId));
+    return this.db.runTransaction(async (transaction) => {
+      const sidecarDraft = docDataOrNull(await transaction.get(draftRef));
+      assertPatientChargeDraftWriteScope(sidecarDraft, identity, { now: operationNow });
+      const current = docDataOrNull(await transaction.get(contractRef));
+      if (isPatientChargeSettingRetry(current, identity)) {
+        return {
+          changed: false,
+          previousSetting: resolvePatientChargeSettingBeforeRevision(
+            current,
+            input.effectiveFrom,
+            current.revision
+          ),
+          patientChargeContract: current
+        };
+      }
+      const previousSetting = resolvePatientChargeSetting(current, input.effectiveFrom);
+      const patientChargeContract = sanitizeForFirestore(current
+        ? applyPatientChargeContractSetting(current, identity, { now: operationNow })
+        : buildPatientChargeContract(identity, { now: operationNow }));
+      transaction.set(contractRef, patientChargeContract);
+      return {
+        changed: true,
+        previousSetting,
+        patientChargeContract
+      };
+    });
+  }
+
+  async completePatientChargeContractAudit(orgId, patientChargeContractId, eventId) {
+    requireFirestoreTransactions(this.db);
+    const contractRef = this.doc(feePatientChargeContractPath(orgId, patientChargeContractId));
+    return this.db.runTransaction(async (transaction) => {
+      const current = docDataOrNull(await transaction.get(contractRef));
+      if (!current) {
+        throw notFoundError("patient charge contract not found");
+      }
+      const result = completePatientChargeContractAudit(current, eventId);
+      if (result.changed) {
+        transaction.set(contractRef, sanitizeForFirestore(result.patientChargeContract));
+      }
+      return result;
+    });
   }
 
   async listSidecarCalculationDrafts(orgId, options = {}) {

@@ -9,6 +9,7 @@
     telephone_revisit: "電話再診"
   };
   const AUTO_READ_DEBOUNCE_MS = 220;
+  const MAX_COMPLETED_CALCULATION_TASKS = 20;
   let preview = null;
   let pollingGeneration = 0;
   let extractionGeneration = 0;
@@ -20,6 +21,11 @@
   let sameBuildingSource = null;
   let currentSidecarDraft = null;
   let resultGeneration = 0;
+  let calculationTaskGeneration = 0;
+  let activeCalculationTask = null;
+  let currentResultTask = null;
+  const completedCalculationTasks = new Map();
+  const patientChargeMutationsInFlight = new Map();
   const acknowledgementMutationsInFlight = new Set();
 
   const elements = Object.fromEntries([
@@ -33,6 +39,8 @@
     "calculate-button",
     "result-section", "total-points",
     "included-group", "line-candidates", "decision-group", "decision-candidates",
+    "patient-charge-group", "patient-charge-handling", "patient-charge-save",
+    "patient-charge-status",
     "status-message"
   ].map((id) => [id, document.getElementById(id)]));
 
@@ -95,6 +103,14 @@
     });
   });
 
+  elements["patient-charge-handling"].addEventListener("change", () => {
+    renderPatientChargeControls(currentSidecarDraft, { preserveSelection: true });
+  });
+
+  elements["patient-charge-save"].addEventListener("click", () => {
+    void savePatientChargeSetting();
+  });
+
   chrome.runtime.onMessage.addListener((message, sender) => {
     if (message?.type !== "halunasu:chart-state-changed") {
       return false;
@@ -115,23 +131,43 @@
 
   elements["calculate-button"].addEventListener("click", async () => {
     const encounterType = selectedEncounterType();
-    if (!preview || !encounterType.value) {
+    if (!preview || !encounterType.value || patientChargeMutationsInFlight.size > 0) {
       return;
     }
-    const expectedPreviewFingerprint = preview.previewFingerprint;
+    const sameBuilding = selectedSameBuilding();
+    const telephoneEligibility = selectedTelephoneEligibility(encounterType);
+    const task = {
+      generation: ++calculationTaskGeneration,
+      phase: "extracting",
+      sourceTabId: preview.sourceTabId,
+      externalPatientId: preview.externalPatientId,
+      sourceRecordId: preview.sourceRecordId,
+      serviceDate: preview.serviceDate,
+      previewFingerprint: preview.previewFingerprint,
+      calculationInput: calculationInputSnapshot({
+        encounterType,
+        sameBuilding,
+        telephoneEligibility
+      }),
+      patientChargeFailureMessage: "",
+      sidecarDraft: null
+    };
+    completedCalculationTasks.delete(calculationTaskKey(task));
+    activeCalculationTask = task;
     invalidateRenderedResult();
     setBusy(elements["calculate-button"], true, "作成中");
     setStatus("表示中のカルテを再確認して算定案を作成しています。");
     try {
-      const prepared = await sendToActiveTab({
+      const prepared = await sendToTab(task.sourceTabId, {
         type: "halunasu:prepare-calculation",
-        previewFingerprint: expectedPreviewFingerprint
+        previewFingerprint: task.previewFingerprint
       });
       if (!prepared?.ok) {
         throw responseError(prepared);
       }
-      assertCurrentPreview(expectedPreviewFingerprint);
-      const sameBuilding = selectedSameBuilding();
+      await assertCurrentCalculationSource(task);
+      assertPreparedCalculationSource(task, prepared);
+      task.phase = "calculating";
       const result = await api.calculate({
         contractVersion: "v1",
         sourceSystem: "homis",
@@ -140,13 +176,13 @@
         sourceRecordDisplayId: prepared.sourceRecordDisplayId || undefined,
         serviceDate: prepared.serviceDate,
         receptionTime: prepared.receptionTime || undefined,
-        setting: encounterType.value,
-        encounterTypeSource: encounterType.source,
-        visitKind: encounterType.visitKind,
-        visitKindSource: encounterType.visitKindSource,
-        telephoneEligibility: selectedTelephoneEligibility(encounterType),
-        sameBuilding: sameBuilding.value,
-        sameBuildingSource: sameBuilding.source,
+        setting: task.calculationInput.encounterType.value,
+        encounterTypeSource: task.calculationInput.encounterType.source,
+        visitKind: task.calculationInput.encounterType.visitKind,
+        visitKindSource: task.calculationInput.encounterType.visitKindSource,
+        telephoneEligibility: task.calculationInput.telephoneEligibility,
+        sameBuilding: task.calculationInput.sameBuilding.value,
+        sameBuildingSource: task.calculationInput.sameBuilding.source,
         singleBuildingPatientCount: prepared.singleBuildingPatientCount ?? null,
         residenceType: prepared.facilityResidence === true
           ? "facility"
@@ -157,12 +193,24 @@
         sourceSurfaces: prepared.sourceSurfaces,
         extractionProof: prepared.extractionProof
       });
-      assertCurrentPreview(expectedPreviewFingerprint);
-      renderResult(result.sidecarDraft);
-      setStatus("");
+      if (activeCalculationTask !== task) {
+        return;
+      }
+      assertCalculationResultSource(task, result?.sidecarDraft);
+      task.phase = "completed";
+      task.sidecarDraft = result.sidecarDraft;
+      storeCompletedCalculationTask(task);
+      const rendered = await renderCompletedCalculationIfCurrent(task);
+      setStatus(rendered ? "" : "算定は完了しました。元のカルテに戻ると結果を表示します。");
     } catch (error) {
+      if (activeCalculationTask !== task) {
+        return;
+      }
+      activeCalculationTask = null;
       if (["preview_changed", "chart_changed_during_extraction"].includes(error.code)) {
-        resetChartState();
+        if (!preview || isPreviewForCalculation(task, { requireFingerprint: false })) {
+          resetChartState();
+        }
       }
       if ([401, 403].includes(error.status)) {
         await api.clearGrant().catch(() => {});
@@ -221,31 +269,41 @@
       setStatus("表示中のカルテを確認しています。");
     }
     try {
-      const response = await sendToActiveTab({ type: "halunasu:extract" });
+      const sourceTab = await activeTab();
+      if (!sourceTab?.id) {
+        throw responseError({ error: "HOMISの患者カルテ画面を開いてください。" });
+      }
+      const response = await sendToTab(sourceTab.id, { type: "halunasu:extract" });
       if (generation !== extractionGeneration) {
         return;
       }
       if (!response?.ok) {
         throw responseError(response);
       }
-      const unchanged = preview?.previewFingerprint === response.previewFingerprint;
+      const nextPreview = { ...response, sourceTabId: sourceTab.id };
+      const unchanged = preview?.sourceTabId === nextPreview.sourceTabId
+        && preview?.previewFingerprint === nextPreview.previewFingerprint;
       if (unchanged) {
-        preview = response;
+        preview = nextPreview;
+        const restored = await renderCompletedCalculationForCurrentPreview();
         if (!automatic) {
-          setStatus("表示内容に変更はありません。");
+          setStatus(restored ? "" : "表示内容に変更はありません。");
         }
         return;
       }
 
-      preview = response;
+      preview = nextPreview;
       invalidateRenderedResult();
-      renderPreview(response);
+      renderPreview(nextPreview);
       elements["setting-control"].disabled = false;
       elements["same-building-control"].disabled = false;
       updateCalculateButton();
       setStatus(selectedEncounterType().value
         ? "表示中のカルテを読み取りました。"
         : "読み取りました。受診区分を選択してください。");
+      if (await renderCompletedCalculationForCurrentPreview()) {
+        setStatus("");
+      }
     } catch (error) {
       if (generation !== extractionGeneration) {
         return;
@@ -296,15 +354,6 @@
     updateCalculateButton();
   }
 
-  function assertCurrentPreview(expectedFingerprint) {
-    if (!preview || preview.previewFingerprint !== expectedFingerprint) {
-      throw responseError({
-        code: "preview_changed",
-        error: "表示中のカルテが読み取り時から変わりました。"
-      });
-    }
-  }
-
   async function pollUntilAuthorized(authorization, generation) {
     const expiresAt = Date.parse(authorization.expiresAt);
     const interval = Math.max(Number(authorization.pollIntervalSeconds || 5), 5) * 1000;
@@ -346,6 +395,9 @@
     } else {
       clearTimeout(autoReadTimer);
       extractionGeneration += 1;
+      activeCalculationTask = null;
+      currentResultTask = null;
+      completedCalculationTasks.clear();
       resetChartState();
     }
   }
@@ -363,7 +415,10 @@
     elements["chart-preview"].hidden = false;
   }
 
-  function renderResult(sidecarDraft = {}) {
+  function renderResult(sidecarDraft = {}, options = {}) {
+    if (options.task) {
+      currentResultTask = options.task;
+    }
     currentSidecarDraft = sidecarDraft;
     const calculation = sidecarDraft.calculation || {};
     const candidates = (Array.isArray(calculation.candidates) ? calculation.candidates : [])
@@ -377,7 +432,190 @@
       decisionCandidates,
       Array.isArray(calculation.notices) ? calculation.notices : []
     );
+    renderPatientChargeControls(sidecarDraft);
+    if (
+      currentResultTask?.patientChargeFailureMessage
+      && isSameDraftRevision(currentResultTask.sidecarDraft, sidecarDraft)
+    ) {
+      elements["patient-charge-status"].textContent = currentResultTask.patientChargeFailureMessage;
+      elements["patient-charge-status"].classList.add("is-error");
+    }
     elements["result-section"].hidden = false;
+  }
+
+  function renderPatientChargeControls(sidecarDraft = {}, options = {}) {
+    const patientCharge = homeMedicalTransportCharge(sidecarDraft);
+    const mutation = patientChargeMutationsInFlight.get(sidecarDraft.sidecarDraftId) || null;
+    const mutationInFlight = Boolean(mutation);
+    const group = elements["patient-charge-group"];
+    if (!patientCharge) {
+      group.hidden = true;
+      elements["patient-charge-handling"].value = "unknown";
+      elements["patient-charge-save"].disabled = true;
+      elements["patient-charge-status"].textContent = "";
+      return;
+    }
+
+    group.hidden = false;
+    const persistedHandling = patientChargeHandling(patientCharge);
+    const selectedHandling = mutationInFlight
+      ? mutation.handling
+      : options.preserveSelection === true
+        ? elements["patient-charge-handling"].value
+        : persistedHandling;
+    elements["patient-charge-handling"].value = selectedHandling;
+    const writable = patientCharge.writable !== false
+      && Boolean(sidecarDraft.sidecarDraftId)
+      && sidecarDraft.lifecycleStatus !== "adopted";
+    elements["patient-charge-handling"].disabled = mutationInFlight || !writable;
+    elements["patient-charge-save"].disabled = mutationInFlight
+      || !writable
+      || selectedHandling === "unknown"
+      || selectedHandling === persistedHandling;
+    elements["patient-charge-save"].textContent = mutationInFlight ? "保存中" : "保存";
+    elements["patient-charge-status"].classList.remove("is-error");
+    if (!mutationInFlight) {
+      elements["patient-charge-status"].textContent = patientChargeStatusText(patientCharge);
+    }
+  }
+
+  async function savePatientChargeSetting() {
+    const draft = currentSidecarDraft;
+    const patientCharge = homeMedicalTransportCharge(draft);
+    const handling = elements["patient-charge-handling"].value;
+    if (
+      patientChargeMutationsInFlight.has(draft?.sidecarDraftId)
+      || !draft?.sidecarDraftId
+      || !patientCharge
+      || !["inherit", "charge", "waive", "included_in_contract"].includes(handling)
+    ) {
+      return;
+    }
+    const sourceTask = currentResultTask && isSameDraftRevision(currentResultTask.sidecarDraft, draft)
+      ? currentResultTask
+      : completedCalculationTaskForDraft(draft);
+    let failureMessage = "";
+    const mutation = { draftId: draft.sidecarDraftId, handling };
+    if (sourceTask) {
+      sourceTask.patientChargeFailureMessage = "";
+    }
+    patientChargeMutationsInFlight.set(draft.sidecarDraftId, mutation);
+    renderPatientChargeControls(draft);
+    updateCalculateButton();
+    setStatus("");
+    try {
+      const response = await api.setPatientChargeSetting({
+        sidecarDraftId: draft.sidecarDraftId,
+        handling,
+        amountMode: handling === "charge" ? "actual" : null,
+        amountYen: null,
+        effectiveFrom: draft.serviceDate || undefined,
+        effectiveTo: null,
+        expectedRevision: patientChargeRevision(patientCharge),
+        expectedSourceRevision: Number(draft.sourceRevision || 0),
+        expectedCalculationRevision: Number(draft.calculationRevision || 0)
+      });
+      if (!isSameDraftRevision(draft, response.sidecarDraft)) {
+        throw responseError({ status: 409, error: "算定案が更新されています。" });
+      }
+      if (sourceTask && isStoredCompletedCalculationTask(sourceTask)) {
+        sourceTask.sidecarDraft = mergePatientChargeResponse(
+          sourceTask.sidecarDraft,
+          response.sidecarDraft
+        );
+        sourceTask.patientChargeFailureMessage = "";
+      }
+      if (!isSameDraftRevision(currentSidecarDraft, draft)) {
+        return;
+      }
+      currentSidecarDraft = mergePatientChargeResponse(currentSidecarDraft, response.sidecarDraft);
+      setStatus("在宅医療交通費の患者別設定を保存しました。");
+    } catch (error) {
+      if ([401, 403].includes(error.status)) {
+        await api.clearGrant().catch(() => {});
+        setConnected(false);
+        setStatus(errorMessage(error), true);
+        return;
+      }
+      failureMessage = errorMessage(error);
+      if (sourceTask && isStoredCompletedCalculationTask(sourceTask)) {
+        sourceTask.patientChargeFailureMessage = failureMessage;
+      }
+    } finally {
+      if (patientChargeMutationsInFlight.get(draft.sidecarDraftId) === mutation) {
+        patientChargeMutationsInFlight.delete(draft.sidecarDraftId);
+      }
+      updateCalculateButton();
+      if (isSameDraftRevision(currentSidecarDraft, draft)) {
+        renderResult(currentSidecarDraft, { task: sourceTask || currentResultTask });
+        if (failureMessage) {
+          elements["patient-charge-status"].textContent = failureMessage;
+          elements["patient-charge-status"].classList.add("is-error");
+        }
+      }
+    }
+  }
+
+  function homeMedicalTransportCharge(sidecarDraft = {}) {
+    return (Array.isArray(sidecarDraft.patientCharges) ? sidecarDraft.patientCharges : [])
+      .find((item) => item?.chargeType === "home_medical_transport") || null;
+  }
+
+  function patientChargeHandling(patientCharge = {}) {
+    const value = String(patientCharge.handling || patientCharge.billingHandling || "unknown");
+    return ["inherit", "charge", "waive", "included_in_contract"].includes(value)
+      ? value
+      : "unknown";
+  }
+
+  function patientChargeRevision(patientCharge = {}) {
+    const value = Number(
+      patientCharge.agreementRevision
+      ?? patientCharge.contractRevision
+      ?? patientCharge.revision
+      ?? 0
+    );
+    return Number.isInteger(value) && value >= 0 ? value : 0;
+  }
+
+  function patientChargeStatusText(patientCharge = {}) {
+    if (["patient_not_linked", "patient_unresolved"].includes(patientCharge.unavailableReason)) {
+      return "患者連携後に設定できます。";
+    }
+    if (["setting_store_unavailable", "setting_lookup_failed"].includes(patientCharge.unavailableReason)) {
+      return "患者別設定を取得できません。再読み取りしてください。";
+    }
+    if (patientCharge.writable === false) {
+      return "この算定案では患者別設定を変更できません。";
+    }
+    switch (patientChargeHandling(patientCharge)) {
+      case "inherit":
+        return patientCharge.unavailableReason === "facility_default_not_configured"
+          ? "施設設定が未登録のため、請求は未確定です。"
+          : "施設設定を継承します。";
+      case "charge":
+        return patientCharge.status === "ready"
+          ? "請求する設定です。"
+          : "請求する設定です。実費入力待ちです。";
+      case "waive":
+        return "この患者には請求しません。";
+      case "included_in_contract":
+        return "患者契約に含めます。";
+      default:
+        return "未設定です。選択するまで請求に含めません。";
+    }
+  }
+
+  function mergePatientChargeResponse(currentDraft, responseDraft) {
+    if (!isSameDraftRevision(currentDraft, responseDraft)) {
+      throw responseError({ status: 409, error: "算定案が更新されています。" });
+    }
+    return {
+      ...currentDraft,
+      patientCharges: Array.isArray(responseDraft.patientCharges)
+        ? responseDraft.patientCharges
+        : currentDraft.patientCharges
+    };
   }
 
   function renderPreviewReadStatus(extraction = {}) {
@@ -521,6 +759,15 @@
         response.sidecarDraft,
         candidateKey
       );
+      if (isSameDraftRevision(currentResultTask?.sidecarDraft, currentSidecarDraft)) {
+        currentResultTask.sidecarDraft = currentSidecarDraft;
+      }
+      if (
+        activeCalculationTask !== currentResultTask
+        && isSameDraftRevision(activeCalculationTask?.sidecarDraft, currentSidecarDraft)
+      ) {
+        activeCalculationTask.sidecarDraft = currentSidecarDraft;
+      }
       setStatus(acknowledged
         ? `${candidateName}を未確認に戻しました。`
         : `${candidateName}を確認済みにしました。`);
@@ -581,6 +828,7 @@
     resultGeneration += 1;
     acknowledgementMutationsInFlight.clear();
     currentSidecarDraft = null;
+    currentResultTask = null;
     elements["result-section"].hidden = true;
   }
 
@@ -812,17 +1060,175 @@
     container.replaceChildren(...children);
   }
 
-  async function sendToActiveTab(message) {
-    const tab = await activeTab();
-    if (!tab?.id) {
+  async function sendToTab(tabId, message) {
+    if (!tabId) {
       throw responseError({ error: "HOMISの患者カルテ画面を開いてください。" });
     }
-    return chrome.tabs.sendMessage(tab.id, message);
+    return chrome.tabs.sendMessage(tabId, message);
   }
 
   async function activeTab() {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     return tab || null;
+  }
+
+  async function assertCurrentCalculationSource(task) {
+    const tab = await activeTab();
+    if (activeCalculationTask !== task || !isPreviewForCalculation(task)) {
+      throw responseError({
+        code: "preview_changed",
+        error: "表示中のカルテが読み取り時から変わりました。"
+      });
+    }
+    if (tab?.id !== task.sourceTabId) {
+      throw responseError({
+        code: "preview_changed",
+        error: "表示中のカルテが読み取り時から変わりました。"
+      });
+    }
+  }
+
+  function assertPreparedCalculationSource(task, prepared = {}) {
+    if (
+      prepared.previewFingerprint !== task.previewFingerprint
+      || prepared.externalPatientId !== task.externalPatientId
+      || prepared.sourceRecordId !== task.sourceRecordId
+      || prepared.serviceDate !== task.serviceDate
+    ) {
+      throw responseError({
+        code: "preview_changed",
+        error: "表示中のカルテが読み取り時から変わりました。"
+      });
+    }
+  }
+
+  function assertCalculationResultSource(task, sidecarDraft = {}) {
+    if (
+      sidecarDraft.externalPatientId !== task.externalPatientId
+      || sidecarDraft.sourceRecordId !== task.sourceRecordId
+      || sidecarDraft.serviceDate !== task.serviceDate
+    ) {
+      throw responseError({
+        code: "calculation_response_identity_mismatch",
+        error: "算定結果の患者またはカルテが一致しません。算定案を作成し直してください。"
+      });
+    }
+  }
+
+  function isPreviewForCalculation(task, options = {}) {
+    if (!task || !preview) {
+      return false;
+    }
+    const requireFingerprint = options.requireFingerprint !== false;
+    return preview.sourceTabId === task.sourceTabId
+      && preview.externalPatientId === task.externalPatientId
+      && preview.sourceRecordId === task.sourceRecordId
+      && (!requireFingerprint || preview.previewFingerprint === task.previewFingerprint);
+  }
+
+  async function renderCompletedCalculationIfCurrent(task) {
+    if (
+      task?.phase !== "completed"
+      || !task.sidecarDraft
+      || !isStoredCompletedCalculationTask(task)
+      || !isPreviewForCalculation(task)
+    ) {
+      return false;
+    }
+    const tab = await activeTab();
+    if (
+      tab?.id !== task.sourceTabId
+      || !isStoredCompletedCalculationTask(task)
+      || !isPreviewForCalculation(task)
+    ) {
+      return false;
+    }
+    restoreCalculationInput(task.calculationInput);
+    renderResult(task.sidecarDraft, { task });
+    return true;
+  }
+
+  async function renderCompletedCalculationForCurrentPreview() {
+    return renderCompletedCalculationIfCurrent(completedCalculationTaskForPreview(preview));
+  }
+
+  function calculationTaskKey(value = {}) {
+    return JSON.stringify([
+      Number(value.sourceTabId || 0),
+      String(value.externalPatientId || ""),
+      String(value.sourceRecordId || "")
+    ]);
+  }
+
+  function storeCompletedCalculationTask(task) {
+    const key = calculationTaskKey(task);
+    completedCalculationTasks.delete(key);
+    completedCalculationTasks.set(key, task);
+    while (completedCalculationTasks.size > MAX_COMPLETED_CALCULATION_TASKS) {
+      completedCalculationTasks.delete(completedCalculationTasks.keys().next().value);
+    }
+  }
+
+  function completedCalculationTaskForPreview(value = {}) {
+    if (!value?.sourceTabId || !value.externalPatientId || !value.sourceRecordId) {
+      return null;
+    }
+    const task = completedCalculationTasks.get(calculationTaskKey(value)) || null;
+    return task?.previewFingerprint === value.previewFingerprint ? task : null;
+  }
+
+  function completedCalculationTaskForDraft(draft = {}) {
+    return [...completedCalculationTasks.values()].find((task) => (
+      isSameDraftRevision(task.sidecarDraft, draft)
+    )) || null;
+  }
+
+  function isStoredCompletedCalculationTask(task) {
+    return Boolean(task)
+      && completedCalculationTasks.get(calculationTaskKey(task)) === task;
+  }
+
+  function calculationInputSnapshot({ encounterType, sameBuilding, telephoneEligibility }) {
+    return {
+      encounterType: { ...encounterType },
+      sameBuilding: { ...sameBuilding },
+      telephoneEligibility: telephoneEligibility
+        ? { ...telephoneEligibility }
+        : null
+    };
+  }
+
+  function restoreCalculationInput(input = {}) {
+    const encounterType = input.encounterType || {};
+    document.querySelectorAll('input[name="setting"]').forEach((option) => {
+      option.checked = option.value === encounterType.selectionKey;
+    });
+    encounterTypeSource = encounterType.source || null;
+    visitKindSource = encounterType.visitKindSource || null;
+
+    const sameBuilding = input.sameBuilding || {};
+    const sameBuildingValue = sameBuilding.value === true
+      ? "same"
+      : sameBuilding.value === false
+        ? "outside"
+        : "unknown";
+    document.querySelectorAll('input[name="same-building"]').forEach((option) => {
+      option.checked = option.value === sameBuildingValue;
+    });
+    sameBuildingSource = sameBuilding.source || null;
+
+    const telephoneEligibility = input.telephoneEligibility || {};
+    setNullableBooleanSelection("telephone-patient-initiated", telephoneEligibility.patientInitiated);
+    setNullableBooleanSelection("telephone-instruction-given", telephoneEligibility.instructionGiven);
+    setNullableBooleanSelection("telephone-scheduled-management", telephoneEligibility.scheduledManagement);
+    renderEncounterTypeCopy(preview, selectedEncounterType());
+    renderSameBuildingCopy(preview, selectedSameBuilding());
+    renderTelephoneEligibilityControl();
+    updateCalculateButton();
+  }
+
+  function setNullableBooleanSelection(elementId, value) {
+    elements[elementId].value = value === true ? "true" : value === false ? "false" : "unknown";
   }
 
   function selectedEncounterType() {
@@ -945,7 +1351,11 @@
   }
 
   function updateCalculateButton() {
-    elements["calculate-button"].disabled = !preview || !selectedEncounterType().value;
+    const calculationPending = ["extracting", "calculating"].includes(activeCalculationTask?.phase);
+    elements["calculate-button"].disabled = calculationPending
+      || patientChargeMutationsInFlight.size > 0
+      || !preview
+      || !selectedEncounterType().value;
   }
 
   function setBusy(button, busy, label) {
@@ -970,7 +1380,7 @@
       return "カルテ画面と接続できません。拡張機能とカルテ画面を再読み込みしてください。";
     }
     if (error.code === "selector_contract_mismatch") {
-      return "画面の形式が想定と異なります（契約 homis-mock-v5）。";
+      return "画面の形式が想定と異なります（契約 homis-mock-v6）。";
     }
     if (["preview_changed", "chart_changed_during_extraction"].includes(error.code)) {
       return "カルテが切り替わりました。画面を再読み取りしてください。";

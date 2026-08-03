@@ -1,13 +1,16 @@
 (function registerSidecarContract(global) {
   "use strict";
 
-  const VERSION = "homis-mock-v5";
+  const VERSION = "homis-mock-v6";
   const SUPPORTED_VERSIONS = Object.freeze([VERSION]);
   const SOURCE_SYSTEM = "homis";
   const RECORD_KEY_VERSION = "homis-visible-record-v1";
   const RECORD_KEY_SEPARATOR = "\u001f";
   const MAX_SOURCE_RECORD_ID_BYTES = 256;
   const REQUIRED_ELEMENT_COUNT = 7;
+  const COMPLETE_CONDITION_MANAGEMENT_LIST_MARKER = "疾病等状態管理一覧:全件表示";
+  const COMPLETE_PROBLEM_LIST_MARKER = "病名一覧:全件表示";
+  const COMPLETE_ENCOUNTER_HISTORY_MARKER = "当月受診履歴:全件表示";
   const ENCOUNTER_TYPES = Object.freeze({
     "定期": "home_visit",
     "定期訪問": "home_visit",
@@ -106,17 +109,36 @@
   }
 
   function readCurrentChartSurface(documentRef, container, patientId) {
+    const deviceElement = container?.querySelector(".device-text") || null;
+    const conditionManagementListMarker = text(
+      container?.querySelector(".condition-management-list-status")
+    ).normalize("NFKC").replace(/\s+/gu, "");
+    const calendarElement = documentRef.querySelector("#calendar3") || null;
+    const calendarMonth = readCalendarMonth(documentRef);
+    const calendarVisitNodes = calendarElement
+      ? [...calendarElement.querySelectorAll("td.visit .cal-day[data-iso]")]
+      : [];
+    const calendarVisitDates = readCalendarVisitDates(documentRef);
     return {
       status: "ok",
       patientId,
       raw: {
         careInsuranceText: text(container?.querySelector(".kaigo-text")),
         visitingNurseText: text(container?.querySelector(".houkan-box")),
-        deviceManagementText: text(container?.querySelector(".device-text")),
+        deviceManagementText: text(deviceElement),
+        deviceManagementListCompleteness: deviceElement
+          && conditionManagementListMarker === COMPLETE_CONDITION_MANAGEMENT_LIST_MARKER
+          ? "complete"
+          : "unknown",
         prescriptionRows: readTextRows(container, ".shohou-wrap table tr"),
         patientStartDate: readPatientStartDate(documentRef),
-        calendarMonth: readCalendarMonth(documentRef),
-        calendarVisitDates: readCalendarVisitDates(documentRef)
+        calendarMonth,
+        calendarVisitDates,
+        calendarVisitListCompleteness: calendarElement
+          && calendarMonth
+          && calendarVisitDates.length === calendarVisitNodes.length
+          ? "complete"
+          : "unknown"
       }
     };
   }
@@ -137,6 +159,96 @@
       status: "ok",
       patientId,
       raw: { rows }
+    };
+  }
+
+  function readProblemsSurface(documentRef, options = {}) {
+    const patientId = options.patientId || readIdentity(documentRef, options).patientId;
+    const table = documentRef.querySelector(".problem-list");
+    const rows = table
+      ? [...table.querySelectorAll("tbody tr")]
+        .map((row) => [...row.querySelectorAll("td")].map(text))
+        .filter((cells) => cells.length >= 4)
+        .map((cells) => {
+          const displayedName = cells[1];
+          return {
+            name: displayedName.replace(/\s*[（(]主病[）)]\s*$/u, "").trim(),
+            main: /[（(]主病[）)]\s*$/u.test(displayedName),
+            startDate: cells[2],
+            outcome: cells[3],
+            suspected: /(?:疑い|疑診)/u.test(displayedName)
+          };
+        })
+        .filter((row) => row.name)
+      : [];
+    return {
+      status: "ok",
+      patientId,
+      raw: {
+        rows,
+        listCompleteness: table
+          && hasExactCompletenessMarker(documentRef, ".problem-list-status", COMPLETE_PROBLEM_LIST_MARKER)
+          && !hasAdditionalPages(documentRef)
+          ? "complete"
+          : "incomplete"
+      }
+    };
+  }
+
+  function readVisitPlanSurface(documentRef, options = {}) {
+    const patientId = options.patientId || readIdentity(documentRef, options).patientId;
+    const calendarMonth = String(options.calendarMonth || "").trim();
+    const category = text(documentRef.querySelector(".plan-\u79d1"));
+    const encounterType = encounterTypeFromPlanCategory(category);
+    const historyTable = documentRef.querySelector(".encounter-history");
+    const historyNodes = historyTable
+      ? [...historyTable.querySelectorAll("tbody tr")]
+      : [];
+    const historyRows = historyNodes.map((node) => {
+      const cells = [...node.querySelectorAll("td")].map(text);
+      const type = encounterDetailsFromHistoryLabel(cells[1]);
+      return {
+        serviceDate: cells[0] || "",
+        encounterType: type.encounterType,
+        visitKind: type.visitKind,
+        status: encounterStatusFromHistoryLabel(cells[2]),
+        sourceRecordId: cells[3] || null
+      };
+    });
+    const dateNodes = [...documentRef.querySelectorAll(".plan-dates .plan-chip")];
+    const scheduledRows = dateNodes.map((node) => ({
+      serviceDate: parsePlanDate(text(node), calendarMonth),
+      encounterType,
+      visitKind: null,
+      status: "planned",
+      sourceRecordId: null
+    })).filter((row) => row.serviceDate && row.encounterType);
+    const planElement = documentRef.querySelector(".plan-pattern");
+    const historyComplete = Boolean(
+      historyTable
+      && hasExactCompletenessMarker(
+        documentRef,
+        ".encounter-history-status",
+        COMPLETE_ENCOUNTER_HISTORY_MARKER
+      )
+      && !hasAdditionalPages(documentRef)
+      && historyRows.length === historyNodes.length
+      && historyRows.every(validEncounterHistoryRow)
+    );
+    const basis = historyTable
+      ? "encounter_history"
+      : dateNodes.length ? "schedule_only" : "unknown";
+    return {
+      status: "ok",
+      patientId,
+      raw: {
+        calendarMonth: /^\d{4}-\d{2}$/u.test(calendarMonth) ? calendarMonth : "",
+        category,
+        patternText: text(planElement),
+        basis,
+        rows: historyTable ? historyRows.filter(validEncounterHistoryRow) : scheduledRows,
+        listCompleteness: historyComplete ? "complete" : "incomplete"
+      }
     };
   }
 
@@ -162,6 +274,74 @@
     return [...documentRef.querySelectorAll("#calendar3 td.visit .cal-day[data-iso]")]
       .map((node) => String(node.getAttribute("data-iso") || "").trim())
       .filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value));
+  }
+
+  function encounterTypeFromPlanCategory(value) {
+    const normalized = String(value || "").replace(/\s+/gu, "");
+    return /^(?:\u5728\u5b85\u8a3a\u7642|\u8a2a\u554f\u8a3a\u7642)$/u.test(normalized) ? "home_visit" : null;
+  }
+
+  function parsePlanDate(value, calendarMonth) {
+    if (!/^\d{4}-\d{2}$/u.test(calendarMonth)) {
+      return "";
+    }
+    const normalized = String(value || "").normalize("NFKC");
+    const match = normalized.match(/(\d{1,2})\s*[\/]\s*(\d{1,2})/u);
+    if (!match || Number(match[1]) !== Number(calendarMonth.slice(5, 7))) {
+      return "";
+    }
+    const result = `${calendarMonth.slice(0, 4)}-${String(Number(match[1])).padStart(2, "0")}-${String(Number(match[2])).padStart(2, "0")}`;
+    const parsed = new Date(`${result}T00:00:00Z`);
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === result
+      ? result
+      : "";
+  }
+
+  function validEncounterHistoryRow(row) {
+    return /^\d{4}-\d{2}-\d{2}$/u.test(String(row?.serviceDate || ""))
+      && ["home_visit", "house_call", "outpatient"].includes(row?.encounterType)
+      && [null, "telephone_revisit"].includes(row?.visitKind)
+      && row?.status === "completed"
+      && Boolean(row?.sourceRecordId);
+  }
+
+  function encounterDetailsFromHistoryLabel(value) {
+    const label = String(value || "").replace(/\s+/gu, "");
+    if (["定期", "定期訪問", "訪問診療"].includes(label)) {
+      return { encounterType: "home_visit", visitKind: null };
+    }
+    if (["往診", "臨時往診"].includes(label)) {
+      return { encounterType: "house_call", visitKind: null };
+    }
+    if (["電話", "電話再診"].includes(label)) {
+      return { encounterType: "outpatient", visitKind: "telephone_revisit" };
+    }
+    if (["外来", "外来診療"].includes(label)) {
+      return { encounterType: "outpatient", visitKind: null };
+    }
+    return { encounterType: null, visitKind: null };
+  }
+
+  function encounterStatusFromHistoryLabel(value) {
+    const label = String(value || "").replace(/\s+/gu, "");
+    return ["完了", "実施済", "確定"].includes(label) ? "completed" : null;
+  }
+
+  function hasAdditionalPages(documentRef) {
+    return [...documentRef.querySelectorAll(".pager a")].some((node) => {
+      const label = [text(node), node.getAttribute("aria-label"), node.getAttribute("title")]
+        .filter(Boolean)
+        .join(" ")
+        .normalize("NFKC")
+        .replace(/\s+/gu, "");
+      return Number(label) > 1 || /(?:次へ?|next|[>›»→])/iu.test(label);
+    });
+  }
+
+  function hasExactCompletenessMarker(documentRef, selector, expected) {
+    return text(documentRef.querySelector(selector))
+      .normalize("NFKC")
+      .replace(/\s+/gu, "") === expected;
   }
 
   function readEncounterType(container) {
@@ -297,6 +477,8 @@
     extractContractSnapshot,
     readCurrentChartSurface,
     readDocumentsSurface,
+    readProblemsSurface,
+    readVisitPlanSurface,
     readEncounterType,
     readResidenceDetails,
     readIdentity

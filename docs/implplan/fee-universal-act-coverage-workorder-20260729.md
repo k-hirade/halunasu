@@ -140,3 +140,13 @@
 - G6: 一次資料由来のstanding structured trigger artifactとW1cレーンを実装。在医総管/施医総管は履歴・明示mentionがない場合も、当日自院の陽性構造化事実が揃ったときだけ未確定の確認候補を出す。自動算定・区分自動選択は行わない。
 - G7: 往診交通費を`patient_charge`として分離し、保険請求の欠落分母から除外した。
 - 回帰確認: fee-api 379件、fee-core 74件、medical-core 82件、Python 211件、gold exact 150件・138件、抽出安定性5件が成功。生成artifactの`--check`と`git diff --check`も成功。
+
+## 7. 追記(2026-08-03): 患者別交通費はG7の非対象
+
+G7で決定・実装したのは、往診交通費を保険点数と評価分母から分離することまでである。
+患者ごとの請求/免除をSidecarからFee API経由で契約DBへ保存する基本フローは
+2026-08-03に承認され、実装した。契約文書・同意、任意の有効期間、実費金額、会計・領収証の
+詳細は引き続き保険点数から分離し、mockの行為欄や個人宅表示から推論してはならない。
+
+現状整理と提案仕様は
+[HOMIS Sidecar 患者別交通費・処理継続 意思決定メモ](./homis-sidecar-patient-charges-and-background-decisions-20260803.md) を参照する。

@@ -1496,7 +1496,11 @@ test("sidecar device authorization issues and refreshes an MFA-bound scoped toke
   assert.equal(session.tokenType, "scoped_product_access");
   assert.equal(session.productId, "homis_sidecar");
   assert.equal(session.audience, "fee-api");
-  const expectedScopes = ["sidecar:calculate", "sidecar:acknowledge"];
+  const expectedScopes = [
+    "sidecar:calculate",
+    "sidecar:acknowledge",
+    "sidecar:patient_charge_write"
+  ];
   assert.deepEqual(issued.body.scopes, expectedScopes);
   assert.deepEqual(session.scopes, expectedScopes);
   assert.equal(session.extensionId, fixture.extensionId);

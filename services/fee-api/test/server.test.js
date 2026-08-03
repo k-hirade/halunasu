@@ -9614,6 +9614,184 @@ test("baseline diagnosis is unavailable outside stg and rejects empty parsed upl
   assert.match(emptyUpload.body.message, /既存レセを取り込めません/);
 });
 
+test("sidecar v6 structured surfaces reach management selection through the Fee API", async () => {
+  const stores = createStores({ facilityStandardKeys: ["3055", "3057"] });
+  const originalCalculate = stores.feeCalculator.calculate;
+  const selectionArtifact = JSON.parse(readFileSync(new URL(
+    "../src/fee-rule-data/sidecar-selection-axes-2026.generated.json",
+    import.meta.url
+  ), "utf8"));
+  const homeManagementCodes = selectionArtifact.options
+    .filter((option) => option.familyName === "在医総管")
+    .map((option) => option.code);
+  stores.feeCalculator.calculate = async (feeSession) => {
+    const calculated = await originalCalculate(feeSession);
+    return {
+      ...calculated,
+      candidateProposals: [
+        ...(Array.isArray(calculated.candidateProposals) ? calculated.candidateProposals : []),
+        {
+          proposalId: "v6_home_management_selection",
+          title: "在医総管の算定区分確認",
+          orderType: "procedure",
+          potentialPoints: 0,
+          codeCandidates: homeManagementCodes,
+          source: "test:structured_management_selection"
+        }
+      ]
+    };
+  };
+
+  const base = sidecarCalculationBody();
+  const sourceRecordId = "homis-record-20260528-v6";
+  const observedAt = "2026-05-28T00:00:00.000Z";
+  const sourceSurfaces = {
+    currentChart: {
+      status: "ok",
+      patientId: "1001",
+      observedAt,
+      surfaceHash: "",
+      raw: {
+        careInsuranceText: "要介護2",
+        visitingNurseText: "",
+        deviceManagementText: "（在宅医療機器の登録なし）",
+        deviceManagementListCompleteness: "complete",
+        prescriptionRows: [],
+        patientStartDate: "2020-01-01",
+        calendarMonth: "2026-05",
+        calendarVisitDates: ["2026-05-14", "2026-05-28"],
+        calendarVisitListCompleteness: "complete"
+      }
+    },
+    documents: {
+      status: "ok",
+      patientId: "1001",
+      observedAt,
+      surfaceHash: "",
+      raw: { rows: [] }
+    },
+    problems: {
+      status: "ok",
+      patientId: "1001",
+      observedAt,
+      surfaceHash: "",
+      raw: {
+        listCompleteness: "complete",
+        rows: [{
+          name: "パーキンソン病（ヤール分類IV度）",
+          main: true,
+          startDate: "2020-01-01",
+          outcome: "継続",
+          suspected: false
+        }]
+      }
+    },
+    visitPlan: {
+      status: "ok",
+      patientId: "1001",
+      observedAt,
+      surfaceHash: "",
+      raw: {
+        calendarMonth: "2026-05",
+        category: "在宅診療",
+        patternText: "第2・4週",
+        basis: "encounter_history",
+        listCompleteness: "complete",
+        rows: [{
+          serviceDate: "2026-05-14",
+          encounterType: "outpatient",
+          visitKind: "telephone_revisit",
+          status: "completed",
+          sourceRecordId: "10010514"
+        }, {
+          serviceDate: "2026-05-28",
+          encounterType: "home_visit",
+          visitKind: null,
+          status: "completed",
+          sourceRecordId: "10010528"
+        }]
+      }
+    }
+  };
+  for (const surface of Object.values(sourceSurfaces)) {
+    surface.surfaceHash = testSidecarSurfaceHash(surface);
+  }
+  const requestBody = {
+    ...base,
+    sourceRecordId,
+    sourceRecordDisplayId: "10010528",
+    residenceType: "private",
+    sameBuilding: false,
+    sameBuildingSource: "dom",
+    singleBuildingPatientCount: null,
+    sourceSurfaces,
+    extractionProof: {
+      ...base.extractionProof,
+      patientIdBefore: "1001",
+      patientIdAfter: "1001",
+      sourceRecordIdBefore: sourceRecordId,
+      sourceRecordIdAfter: sourceRecordId,
+      selectorContractVersion: "homis-mock-v6",
+      surfaceProofs: Object.fromEntries(Object.entries(sourceSurfaces).map(([name, surface]) => [
+        name,
+        {
+          status: surface.status,
+          patientId: surface.patientId,
+          observedAt: surface.observedAt,
+          surfaceHash: surface.surfaceHash
+        }
+      ]))
+    }
+  };
+  const sidecarOptions = sidecarRequestOptions({
+    sidecarAllowedSelectorContractVersions: ["homis-mock-v6"]
+  });
+  const sidecarHeaders = await signedSidecarHeaders(stores);
+  const tamperedBody = structuredClone(requestBody);
+  tamperedBody.sourceSurfaces.problems.raw.rows[0].name = "高血圧症";
+  const tampered = await request(
+    stores,
+    "POST",
+    "/v1/integrations/sidecar/calculate",
+    tamperedBody,
+    sidecarHeaders,
+    sidecarOptions
+  );
+  assert.equal(tampered.statusCode, 400);
+  assert.match(tampered.body.message, /surfaceHash/u);
+
+  const response = await request(
+    stores,
+    "POST",
+    "/v1/integrations/sidecar/calculate",
+    requestBody,
+    sidecarHeaders,
+    sidecarOptions
+  );
+
+  assert.equal(response.statusCode, 201);
+  const draft = stores.feeStore.getSidecarCalculationDraft(
+    "org_001",
+    response.body.sidecarDraft.sidecarDraftId
+  );
+  assert.equal(draft.structuredSourceFacts.selection.singleBuildingPatientCount.value, 1);
+  assert.equal(draft.structuredSourceFacts.selection.qualifyingMonthlyVisits.value, 1);
+  assert.equal(draft.structuredSourceFacts.selection.qualifyingMonthlyVisits.status, "complete");
+  assert.equal(
+    draft.calculationResult.metrics.sidecarSelectionContext.selection.qualifyingMonthlyVisits.value,
+    1
+  );
+  const candidate = response.body.sidecarDraft.calculation.candidates.find((item) => (
+    item.candidateId === "v6_home_management_selection"
+  ));
+  assert.ok(candidate);
+  assert.equal(candidate.selectionResolution, "exact");
+  assert.equal(candidate.selectionNarrowing.remainingOptionCount, 1);
+  assert.equal(candidate.selectionNarrowing.remainingOptions[0].code, "114031310");
+  assert.equal(candidate.zone, "review_required");
+  assert.equal(candidate.billingEligibility, "review_required");
+});
+
 test("sidecar calculation remains candidate-only and isolated until explicit adoption", async () => {
   const stores = createStores();
   const originalCalculate = stores.feeCalculator.calculate;
@@ -10459,6 +10637,21 @@ test("sidecar auto-provisions an unlinked patient without changing the canonical
     sidecarRequestOptions()
   );
   assert.equal(before.statusCode, 201);
+  assert.deepEqual(before.body.sidecarDraft.patientCharges, [{
+    chargeType: "home_medical_transport",
+    status: "pending",
+    handling: null,
+    billingHandling: "unknown",
+    amountMode: null,
+    amountYen: null,
+    effectiveFrom: null,
+    effectiveTo: null,
+    revision: 0,
+    includedInInsurancePoints: false,
+    includedInUke: false,
+    writable: false,
+    unavailableReason: "patient_not_linked"
+  }]);
   const draftId = before.body.sidecarDraft.sidecarDraftId;
   const unlinkedDraft = stores.feeStore.getSidecarCalculationDraft("org_001", draftId);
   assert.equal(unlinkedDraft.canonicalPatientResolutionStatus, "not_linked");
@@ -10566,6 +10759,593 @@ test("sidecar auto-provisions an unlinked patient without changing the canonical
     patientId: patients[0].patientId,
     facilityId: "fac_001"
   });
+});
+
+test("Sidecar stores patient transport handling through a draft-scoped revision-locked contract", async () => {
+  const stores = createStores();
+  const patient = stores.platformStore.createPatient("org_001", {
+    displayName: "交通費契約患者",
+    patientIdentifiers: [{
+      sourceSystem: "homis",
+      facilityId: "fac_001",
+      patientNumber: "1001"
+    }]
+  });
+  const headers = await signedSidecarHeaders(stores);
+  const calculated = await request(
+    stores,
+    "POST",
+    "/v1/integrations/sidecar/calculate",
+    sidecarCalculationBody(),
+    headers,
+    sidecarRequestOptions()
+  );
+  assert.equal(calculated.statusCode, 201);
+  assert.equal(calculated.body.sidecarDraft.patientCharges.length, 1);
+  assert.deepEqual(calculated.body.sidecarDraft.patientCharges[0], {
+    chargeType: "home_medical_transport",
+    status: "pending",
+    handling: null,
+    billingHandling: "unknown",
+    amountMode: null,
+    amountYen: null,
+    effectiveFrom: null,
+    effectiveTo: null,
+    revision: 0,
+    includedInInsurancePoints: false,
+    includedInUke: false,
+    writable: true,
+    unavailableReason: "setting_not_configured"
+  });
+  const draftId = calculated.body.sidecarDraft.sidecarDraftId;
+  const draftLock = {
+    expectedSourceRevision: calculated.body.sidecarDraft.sourceRevision,
+    expectedCalculationRevision: calculated.body.sidecarDraft.calculationRevision
+  };
+  const settingPath = `/v1/integrations/sidecar/drafts/${draftId}/patient-charge-setting`;
+  const missingScope = await request(
+    stores,
+    "PUT",
+    settingPath,
+    { contractVersion: "v1", handling: "charge", expectedRevision: 0, ...draftLock },
+    await signedSidecarHeaders(stores, {
+      scopes: ["sidecar:calculate", "sidecar:acknowledge"]
+    }),
+    sidecarRequestOptions()
+  );
+  assert.equal(missingScope.statusCode, 403);
+
+  for (const body of [
+    {
+      contractVersion: "v1",
+      handling: "charge",
+      amountMode: "fixed",
+      amountYen: 1200,
+      expectedRevision: 0
+    },
+    {
+      contractVersion: "v1",
+      handling: "waive",
+      effectiveFrom: "2026-05-27",
+      expectedRevision: 0
+    },
+    {
+      contractVersion: "v1",
+      handling: "waive",
+      effectiveTo: "2026-06-30",
+      expectedRevision: 0
+    }
+  ]) {
+    const outsideSidecarBoundary = await request(
+      stores,
+      "PUT",
+      settingPath,
+      { ...body, ...draftLock },
+      headers,
+      sidecarRequestOptions()
+    );
+    assert.equal(outsideSidecarBoundary.statusCode, 400);
+  }
+  assert.equal(stores.feeStore.getPatientChargeContract(
+    "org_001",
+    "fac_001",
+    patient.patientId,
+    "home_medical_transport"
+  ), null);
+
+  const charged = await request(
+    stores,
+    "PUT",
+    settingPath,
+    {
+      contractVersion: "v1",
+      handling: "charge",
+      expectedRevision: 0,
+      ...draftLock,
+      canonicalPatientId: "malicious_patient",
+      facilityId: "malicious_facility"
+    },
+    headers,
+    sidecarRequestOptions()
+  );
+  assert.equal(charged.statusCode, 200);
+  assert.equal(charged.body.changed, true);
+  assert.deepEqual(charged.body.sidecarDraft.patientCharges[0], {
+    chargeType: "home_medical_transport",
+    status: "pending_actual",
+    handling: "charge",
+    billingHandling: "unknown",
+    amountMode: "actual",
+    amountYen: null,
+    effectiveFrom: "2026-05-28",
+    effectiveTo: null,
+    revision: 1,
+    includedInInsurancePoints: false,
+    includedInUke: false,
+    writable: true,
+    unavailableReason: null
+  });
+  assert.equal(
+    charged.body.sidecarDraft.calculation.estimatedTotalPoints,
+    calculated.body.sidecarDraft.calculation.estimatedTotalPoints
+  );
+  assert.equal(charged.body.sidecarDraft.calculation.candidates.some((candidate) => (
+    candidate.chargeType === "home_medical_transport"
+  )), false);
+  const contract = stores.feeStore.getPatientChargeContract(
+    "org_001",
+    "fac_001",
+    patient.patientId,
+    "home_medical_transport"
+  );
+  assert.equal(contract.canonicalPatientId, patient.patientId);
+  assert.equal(contract.settingEvents[0].effectiveFrom, "2026-05-28");
+  assert.equal(contract.settingEvents[0].source, "homis_sidecar");
+
+  const chargedRetry = await request(
+    stores,
+    "PUT",
+    settingPath,
+    { contractVersion: "v1", handling: "charge", expectedRevision: 0, ...draftLock },
+    headers,
+    sidecarRequestOptions()
+  );
+  assert.equal(chargedRetry.statusCode, 200);
+  assert.equal(chargedRetry.body.changed, false);
+  assert.equal(chargedRetry.body.sidecarDraft.patientCharges[0].revision, 1);
+  assert.equal(stores.feeStore.getPatientChargeContract(
+    "org_001",
+    "fac_001",
+    patient.patientId,
+    "home_medical_transport"
+  ).settingEvents.length, 1);
+
+  const waived = await request(
+    stores,
+    "PUT",
+    settingPath,
+    { contractVersion: "v1", handling: "waive", expectedRevision: 1, ...draftLock },
+    headers,
+    sidecarRequestOptions()
+  );
+  assert.equal(waived.statusCode, 200);
+  assert.equal(waived.body.sidecarDraft.patientCharges[0].handling, "waive");
+  assert.equal(waived.body.sidecarDraft.patientCharges[0].billingHandling, "waive");
+  assert.equal(waived.body.sidecarDraft.patientCharges[0].revision, 2);
+  const stale = await request(
+    stores,
+    "PUT",
+    settingPath,
+    {
+      contractVersion: "v1", handling: "included_in_contract", expectedRevision: 1, ...draftLock
+    },
+    headers,
+    sidecarRequestOptions()
+  );
+  assert.equal(stale.statusCode, 409);
+
+  const inherited = await request(
+    stores,
+    "PUT",
+    settingPath,
+    { contractVersion: "v1", handling: "inherit", expectedRevision: 2, ...draftLock },
+    headers,
+    sidecarRequestOptions()
+  );
+  assert.equal(inherited.statusCode, 200);
+  assert.equal(inherited.body.sidecarDraft.patientCharges[0].status, "pending");
+  assert.equal(inherited.body.sidecarDraft.patientCharges[0].handling, "inherit");
+  assert.equal(inherited.body.sidecarDraft.patientCharges[0].billingHandling, "unknown");
+  assert.equal(
+    inherited.body.sidecarDraft.patientCharges[0].unavailableReason,
+    "facility_default_not_configured"
+  );
+  const audits = stores.platformStore.listAuditEvents("org_001")
+    .filter((event) => event.eventType === "fee.patient_charge_contract_updated");
+  assert.equal(audits.length, 3);
+  assert.deepEqual(audits.map((event) => [
+    event.safePayload.beforeHandling,
+    event.safePayload.afterHandling,
+    event.safePayload.revision
+  ]), [
+    [null, "charge", 1],
+    ["charge", "waive", 2],
+    ["waive", "inherit", 3]
+  ]);
+  assert.equal(audits.every((event) => (
+    !Object.hasOwn(event.safePayload, "clinicalText")
+    && !Object.hasOwn(event.safePayload, "patientName")
+  )), true);
+});
+
+test("Sidecar patient charge write rejects a draft whose canonical patient is unresolved", async () => {
+  const stores = createStores();
+  const headers = await signedSidecarHeaders(stores);
+  const calculated = await request(
+    stores,
+    "POST",
+    "/v1/integrations/sidecar/calculate",
+    sidecarCalculationBody(),
+    headers,
+    sidecarRequestOptions()
+  );
+  assert.equal(calculated.statusCode, 201);
+  assert.equal(calculated.body.sidecarDraft.patientCharges[0].writable, false);
+  assert.equal(
+    calculated.body.sidecarDraft.patientCharges[0].unavailableReason,
+    "patient_not_linked"
+  );
+  const draftId = calculated.body.sidecarDraft.sidecarDraftId;
+  const draft = stores.feeStore.getSidecarCalculationDraft("org_001", draftId);
+
+  const response = await request(
+    stores,
+    "PUT",
+    `/v1/integrations/sidecar/drafts/${draftId}/patient-charge-setting`,
+    {
+      contractVersion: "v1",
+      handling: "waive",
+      expectedRevision: 0,
+      expectedSourceRevision: calculated.body.sidecarDraft.sourceRevision,
+      expectedCalculationRevision: calculated.body.sidecarDraft.calculationRevision
+    },
+    headers,
+    sidecarRequestOptions()
+  );
+
+  assert.equal(response.statusCode, 409);
+  assert.match(response.body.message, /患者連携後/u);
+  assert.equal(stores.feeStore.getPatientChargeContract(
+    "org_001",
+    "fac_001",
+    draft.canonicalPatientId,
+    "home_medical_transport"
+  ), null);
+});
+
+test("Sidecar patient charge write enforces the draft facility and department scope", async () => {
+  const stores = createStores();
+  const patient = stores.platformStore.createPatient("org_001", {
+    displayName: "交通費スコープ患者",
+    patientIdentifiers: [{
+      sourceSystem: "homis",
+      facilityId: "fac_001",
+      patientNumber: "1001"
+    }]
+  });
+  const calculated = await request(
+    stores,
+    "POST",
+    "/v1/integrations/sidecar/calculate",
+    sidecarCalculationBody(),
+    await signedSidecarHeaders(stores),
+    sidecarRequestOptions()
+  );
+  assert.equal(calculated.statusCode, 201);
+  const draftId = calculated.body.sidecarDraft.sidecarDraftId;
+  const body = {
+    contractVersion: "v1",
+    handling: "waive",
+    expectedRevision: 0,
+    expectedSourceRevision: calculated.body.sidecarDraft.sourceRevision,
+    expectedCalculationRevision: calculated.body.sidecarDraft.calculationRevision
+  };
+  const settingPath = `/v1/integrations/sidecar/drafts/${draftId}/patient-charge-setting`;
+
+  const wrongFacility = await request(
+    stores,
+    "PUT",
+    settingPath,
+    body,
+    await signedSidecarHeaders(stores, { facilityId: "fac_other" }),
+    sidecarRequestOptions()
+  );
+  const wrongDepartment = await request(
+    stores,
+    "PUT",
+    settingPath,
+    body,
+    await signedSidecarHeaders(stores, { departmentId: "dep_other" }),
+    sidecarRequestOptions()
+  );
+
+  assert.equal(wrongFacility.statusCode, 403);
+  assert.match(wrongFacility.body.message, /authorized facility/u);
+  assert.equal(wrongDepartment.statusCode, 403);
+  assert.match(wrongDepartment.body.message, /authorized department/u);
+  assert.equal(stores.feeStore.getPatientChargeContract(
+    "org_001",
+    "fac_001",
+    patient.patientId,
+    "home_medical_transport"
+  ), null);
+});
+
+test("Sidecar patient charge write rejects expired and adopted drafts", async () => {
+  const stores = createStores();
+  const patient = stores.platformStore.createPatient("org_001", {
+    displayName: "交通費ライフサイクル患者",
+    patientIdentifiers: [{
+      sourceSystem: "homis",
+      facilityId: "fac_001",
+      patientNumber: "1001"
+    }]
+  });
+  const headers = await signedSidecarHeaders(stores);
+  const calculated = await request(
+    stores,
+    "POST",
+    "/v1/integrations/sidecar/calculate",
+    sidecarCalculationBody(),
+    headers,
+    sidecarRequestOptions()
+  );
+  assert.equal(calculated.statusCode, 201);
+  const draftId = calculated.body.sidecarDraft.sidecarDraftId;
+  const originalDraft = stores.feeStore.getSidecarCalculationDraft("org_001", draftId);
+  const body = {
+    contractVersion: "v1",
+    handling: "waive",
+    expectedRevision: 0,
+    expectedSourceRevision: calculated.body.sidecarDraft.sourceRevision,
+    expectedCalculationRevision: calculated.body.sidecarDraft.calculationRevision
+  };
+  const settingPath = `/v1/integrations/sidecar/drafts/${draftId}/patient-charge-setting`;
+
+  stores.feeStore.sidecarDraftsForOrg("org_001").set(draftId, {
+    ...originalDraft,
+    expiresAt: "2026-05-28T00:00:00.000Z"
+  });
+  const expired = await request(
+    stores,
+    "PUT",
+    settingPath,
+    body,
+    headers,
+    sidecarRequestOptions()
+  );
+  assert.equal(expired.statusCode, 409);
+  assert.match(expired.body.message, /有効期限/u);
+
+  stores.feeStore.sidecarDraftsForOrg("org_001").set(draftId, {
+    ...originalDraft,
+    lifecycleStatus: "adopted",
+    adoptedFeeSessionId: "fee_adopted"
+  });
+  const adopted = await request(
+    stores,
+    "PUT",
+    settingPath,
+    body,
+    headers,
+    sidecarRequestOptions()
+  );
+  assert.equal(adopted.statusCode, 409);
+  assert.match(adopted.body.message, /採用済み/u);
+  assert.equal(stores.feeStore.getPatientChargeContract(
+    "org_001",
+    "fac_001",
+    patient.patientId,
+    "home_medical_transport"
+  ), null);
+});
+
+test("Sidecar patient charge setting applies to both home visits and house calls", async () => {
+  for (const setting of ["home_visit", "house_call"]) {
+    const stores = createStores();
+    const patient = stores.platformStore.createPatient("org_001", {
+      displayName: `交通費${setting}患者`,
+      patientIdentifiers: [{
+        sourceSystem: "homis",
+        facilityId: "fac_001",
+        patientNumber: "1001"
+      }]
+    });
+    const headers = await signedSidecarHeaders(stores);
+    const calculated = await request(
+      stores,
+      "POST",
+      "/v1/integrations/sidecar/calculate",
+      { ...sidecarCalculationBody(), setting },
+      headers,
+      sidecarRequestOptions()
+    );
+    assert.equal(calculated.statusCode, 201, setting);
+    const draftId = calculated.body.sidecarDraft.sidecarDraftId;
+
+    const response = await request(
+      stores,
+      "PUT",
+      `/v1/integrations/sidecar/drafts/${draftId}/patient-charge-setting`,
+      {
+        contractVersion: "v1",
+        handling: "waive",
+        expectedRevision: 0,
+        expectedSourceRevision: calculated.body.sidecarDraft.sourceRevision,
+        expectedCalculationRevision: calculated.body.sidecarDraft.calculationRevision
+      },
+      headers,
+      sidecarRequestOptions()
+    );
+
+    assert.equal(response.statusCode, 200, setting);
+    assert.equal(response.body.sidecarDraft.patientCharges[0].handling, "waive", setting);
+    assert.equal(stores.feeStore.getPatientChargeContract(
+      "org_001",
+      "fac_001",
+      patient.patientId,
+      "home_medical_transport"
+    ).settingEvents[0].source, "homis_sidecar", setting);
+  }
+});
+
+test("Sidecar patient charge write rechecks the draft after authorization before committing", async () => {
+  const stores = createStores();
+  const patient = stores.platformStore.createPatient("org_001", {
+    displayName: "交通費競合患者",
+    patientIdentifiers: [{
+      sourceSystem: "homis",
+      facilityId: "fac_001",
+      patientNumber: "1001"
+    }]
+  });
+  const headers = await signedSidecarHeaders(stores);
+  const calculated = await request(
+    stores,
+    "POST",
+    "/v1/integrations/sidecar/calculate",
+    sidecarCalculationBody(),
+    headers,
+    sidecarRequestOptions()
+  );
+  assert.equal(calculated.statusCode, 201);
+  const draftId = calculated.body.sidecarDraft.sidecarDraftId;
+  const draftLock = {
+    expectedSourceRevision: calculated.body.sidecarDraft.sourceRevision,
+    expectedCalculationRevision: calculated.body.sidecarDraft.calculationRevision
+  };
+  const displayedDraft = stores.feeStore.getSidecarCalculationDraft("org_001", draftId);
+  for (const revisionField of ["sourceRevision", "calculationRevision"]) {
+    stores.feeStore.sidecarDraftsForOrg("org_001").set(draftId, {
+      ...displayedDraft,
+      [revisionField]: displayedDraft[revisionField] + 1
+    });
+    const alreadyChanged = await request(
+      stores,
+      "PUT",
+      `/v1/integrations/sidecar/drafts/${draftId}/patient-charge-setting`,
+      { contractVersion: "v1", handling: "waive", expectedRevision: 0, ...draftLock },
+      headers,
+      sidecarRequestOptions()
+    );
+    assert.equal(alreadyChanged.statusCode, 409, revisionField);
+    assert.match(alreadyChanged.body.message, /算定案が更新/u, revisionField);
+    assert.equal(stores.feeStore.getPatientChargeContract(
+      "org_001", "fac_001", patient.patientId, "home_medical_transport"
+    ), null, revisionField);
+  }
+  stores.feeStore.sidecarDraftsForOrg("org_001").set(draftId, displayedDraft);
+  const originalPut = stores.feeStore.putPatientChargeContractSetting.bind(stores.feeStore);
+  stores.feeStore.putPatientChargeContractSetting = (orgId, input) => {
+    const draft = stores.feeStore.getSidecarCalculationDraft(orgId, draftId);
+    stores.feeStore.sidecarDraftsForOrg(orgId).set(draftId, {
+      ...draft,
+      lifecycleStatus: "adopted",
+      adoptedFeeSessionId: "fee_concurrent"
+    });
+    return originalPut(orgId, input);
+  };
+
+  const response = await request(
+    stores,
+    "PUT",
+    `/v1/integrations/sidecar/drafts/${draftId}/patient-charge-setting`,
+    { contractVersion: "v1", handling: "waive", expectedRevision: 0, ...draftLock },
+    headers,
+    sidecarRequestOptions()
+  );
+  assert.equal(response.statusCode, 409);
+  assert.equal(stores.feeStore.getPatientChargeContract(
+    "org_001",
+    "fac_001",
+    patient.patientId,
+    "home_medical_transport"
+  ), null);
+});
+
+test("Sidecar patient charge audit outbox recovers idempotently after audit delivery fails", async () => {
+  const stores = createStores();
+  const patient = stores.platformStore.createPatient("org_001", {
+    displayName: "交通費監査患者",
+    patientIdentifiers: [{
+      sourceSystem: "homis",
+      facilityId: "fac_001",
+      patientNumber: "1001"
+    }]
+  });
+  const headers = await signedSidecarHeaders(stores);
+  const calculated = await request(
+    stores,
+    "POST",
+    "/v1/integrations/sidecar/calculate",
+    sidecarCalculationBody(),
+    headers,
+    sidecarRequestOptions()
+  );
+  const draftId = calculated.body.sidecarDraft.sidecarDraftId;
+  const draftLock = {
+    expectedSourceRevision: calculated.body.sidecarDraft.sourceRevision,
+    expectedCalculationRevision: calculated.body.sidecarDraft.calculationRevision
+  };
+  const settingPath = `/v1/integrations/sidecar/drafts/${draftId}/patient-charge-setting`;
+  const originalAudit = stores.platformStore.createAuditEvent.bind(stores.platformStore);
+  let failPatientChargeAudit = true;
+  stores.platformStore.createAuditEvent = (orgId, event) => {
+    if (failPatientChargeAudit && event.eventType === "fee.patient_charge_contract_updated") {
+      failPatientChargeAudit = false;
+      throw new Error("simulated patient charge audit outage");
+    }
+    return originalAudit(orgId, event);
+  };
+
+  const failed = await request(
+    stores,
+    "PUT",
+    settingPath,
+    { contractVersion: "v1", handling: "waive", expectedRevision: 0, ...draftLock },
+    headers,
+    sidecarRequestOptions()
+  );
+  assert.equal(failed.statusCode, 500);
+  const persisted = stores.feeStore.getPatientChargeContract(
+    "org_001",
+    "fac_001",
+    patient.patientId,
+    "home_medical_transport"
+  );
+  assert.equal(persisted.revision, 1);
+  assert.equal(Object.keys(persisted.auditOutbox).length, 1);
+
+  const recovered = await request(
+    stores,
+    "PUT",
+    settingPath,
+    { contractVersion: "v1", handling: "waive", expectedRevision: 0, ...draftLock },
+    headers,
+    sidecarRequestOptions()
+  );
+  assert.equal(recovered.statusCode, 200);
+  assert.equal(recovered.body.changed, false);
+  const completed = stores.feeStore.getPatientChargeContract(
+    "org_001",
+    "fac_001",
+    patient.patientId,
+    "home_medical_transport"
+  );
+  assert.equal(completed.revision, 1);
+  assert.deepEqual(completed.auditOutbox, {});
+  assert.equal(stores.platformStore.listAuditEvents("org_001")
+    .filter((event) => event.eventType === "fee.patient_charge_contract_updated").length, 1);
 });
 
 test("sidecar calculation forwards v15 management-continuation facts to W1c", async () => {
@@ -11380,7 +12160,11 @@ async function signedSidecarHeaders(stores, options = {}) {
     tokenType: "scoped_product_access",
     productId: "homis_sidecar",
     audience: "fee-api",
-    scopes: options.scopes || ["sidecar:calculate", "sidecar:acknowledge"],
+    scopes: options.scopes || [
+      "sidecar:calculate",
+      "sidecar:acknowledge",
+      "sidecar:patient_charge_write"
+    ],
     extensionId: TEST_SIDECAR_EXTENSION_ID,
     deviceId: TEST_SIDECAR_DEVICE_ID,
     facilityId: options.facilityId || "fac_001",
@@ -11432,6 +12216,31 @@ function sidecarCalculationBody() {
       clinicalTextNodeCount: 3
     }
   };
+}
+
+function testSidecarSurfaceHash(surface = {}) {
+  const payload = {
+    status: surface.status || "unavailable",
+    patientId: surface.patientId || "",
+    ...(surface.status === "ok" ? { raw: surface.raw || {} } : {}),
+    ...(surface.status === "unavailable"
+      ? { unavailableReason: surface.unavailableReason || "fetch_failed" }
+      : {})
+  };
+  const canonical = JSON.stringify(canonicalTestValue(payload));
+  return `sha256-${crypto.createHash("sha256").update(canonical).digest("base64url")}`;
+}
+
+function canonicalTestValue(value) {
+  if (Array.isArray(value)) {
+    return value.map(canonicalTestValue);
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.keys(value).sort().map((key) => [key, canonicalTestValue(value[key])])
+    );
+  }
+  return value;
 }
 
 function sidecarRequestOptions(overrides = {}) {

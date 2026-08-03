@@ -13,6 +13,9 @@ const artifact = JSON.parse(readFileSync(new URL(
 const facilityManagementCodes = artifact.options
   .filter((option) => option.familyName === "施医総管")
   .map((option) => option.code);
+const homeManagementCodes = artifact.options
+  .filter((option) => option.familyName === "在医総管")
+  .map((option) => option.code);
 const yamamotoContext = {
   facilityStandardKeys: ["3055", "3057"],
   singleBuildingPatientCount: 6,
@@ -61,6 +64,78 @@ test("an exact disease axis resolves one code without declaring billing eligibil
   assert.equal(result.remainingOptionCount, 1);
   assert.equal(result.remainingOptions[0].code, "114035610");
   assert.equal(Object.hasOwn(result, "billingEligibility"), false);
+});
+
+test("accepts provenance-bearing facts and preserves their source revisions", () => {
+  const result = narrowSidecarCandidateSelection({
+    requiresSelection: true,
+    codeCandidates: facilityManagementCodes
+  }, {
+    facilityStandardKeys: ["3055", "3057"],
+    setting: "home_visit",
+    selection: {
+      singleBuildingPatientCount: {
+        value: 6,
+        status: "known",
+        source: "screen.singleBuildingPatientCount",
+        sourceRevision: "sha256-screen"
+      },
+      qualifyingMonthlyVisits: {
+        value: 4,
+        status: "complete",
+        source: "homis.visitPlan",
+        sourceRevision: "sha256-plan"
+      },
+      specialDisease: {
+        value: "eligible",
+        status: "known",
+        source: "c002.table8_2",
+        sourceRevision: "sha256-patient-surfaces-plus-artifact",
+        observedAt: "2026-07-25T01:02:03.000Z",
+        completeness: { problems: "complete", states: "complete" },
+        artifact: {
+          revision: "2026-08-03.1",
+          artifactPayloadSha256: "a".repeat(64)
+        }
+      }
+    }
+  });
+
+  assert.equal(result.selectionResolution, "exact");
+  assert.equal(result.remainingOptions[0].code, "114035610");
+  const countFilter = result.appliedFilters.find((filter) => filter.axis === "patientCount");
+  const monthlyFilter = result.appliedFilters.find((filter) => filter.axis === "monthlyVisits");
+  const diseaseFilter = result.appliedFilters.find((filter) => filter.axis === "specialDisease");
+  assert.equal(countFilter.sourceRevision, "sha256-screen");
+  assert.equal(countFilter.value, 6);
+  assert.equal(monthlyFilter.evidenceStatus, "complete");
+  assert.equal(monthlyFilter.sourceRevision, "sha256-plan");
+  assert.equal(monthlyFilter.value, 4);
+  assert.equal(monthlyFilter.completeness, "complete");
+  assert.equal(diseaseFilter.sourceRevision, "sha256-patient-surfaces-plus-artifact");
+  assert.equal(diseaseFilter.observedAt, "2026-07-25T01:02:03.000Z");
+  assert.equal(diseaseFilter.value, "eligible");
+  assert.deepEqual(diseaseFilter.completeness, { problems: "complete", states: "complete" });
+  assert.equal(diseaseFilter.artifactRevision, "2026-08-03.1");
+  assert.equal(diseaseFilter.artifactPayloadSha256, "a".repeat(64));
+});
+
+test("does not apply the special-disease branch to the one-visit category", () => {
+  const result = narrowSidecarCandidateSelection({
+    requiresSelection: true,
+    codeCandidates: homeManagementCodes
+  }, {
+    facilityStandardKeys: ["3055", "3057"],
+    setting: "home_visit",
+    selection: {
+      singleBuildingPatientCount: { value: 1, status: "known" },
+      qualifyingMonthlyVisits: { value: 1, status: "complete" },
+      specialDisease: { value: "eligible", status: "known" }
+    }
+  });
+  assert.equal(result.selectionResolution, "exact");
+  assert.equal(result.remainingOptions[0].code, "114031310");
+  assert.equal(result.appliedFilters.some((filter) => filter.axis === "specialDisease"), false);
 });
 
 test("incomplete artifact coverage fails closed", () => {

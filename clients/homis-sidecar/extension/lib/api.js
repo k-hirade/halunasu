@@ -135,6 +135,37 @@
     );
   }
 
+  async function setPatientChargeSetting(input = {}) {
+    const sidecarDraftId = String(input.sidecarDraftId || "").trim();
+    const allowedHandlings = new Set(["inherit", "charge", "waive", "included_in_contract"]);
+    const handling = String(input.handling || "").trim();
+    if (!sidecarDraftId || !allowedHandlings.has(handling)) {
+      throw apiError(
+        "patient_charge_setting_invalid",
+        "患者負担設定の保存内容が不正です。算定案を作成し直してください。",
+        400
+      );
+    }
+    return authorizedFeeRequest(
+      `/v1/integrations/sidecar/drafts/${encodeURIComponent(sidecarDraftId)}/patient-charge-setting`,
+      {
+        method: "PUT",
+        body: {
+          contractVersion: "v1",
+          chargeType: "home_medical_transport",
+          handling,
+          amountMode: input.amountMode,
+          amountYen: input.amountYen,
+          effectiveFrom: input.effectiveFrom,
+          effectiveTo: input.effectiveTo,
+          expectedRevision: input.expectedRevision,
+          expectedSourceRevision: input.expectedSourceRevision,
+          expectedCalculationRevision: input.expectedCalculationRevision
+        }
+      }
+    );
+  }
+
   async function authorizedFeeRequest(path, options = {}) {
     const stored = await storageGet([GRANT_ID_KEY]);
     if (!stored[GRANT_ID_KEY]) {
@@ -305,6 +336,7 @@
     environment: configuration.environment,
     pollDeviceAuthorization,
     setCandidateAcknowledgement,
+    setPatientChargeSetting,
     startDeviceAuthorization
   });
 })(globalThis);

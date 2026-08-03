@@ -39,6 +39,29 @@ export class LazyFirestoreFeeStore {
     return this.call("getSidecarCalculationDraft", orgId, sidecarDraftId);
   }
 
+  async getPatientChargeContract(orgId, facilityId, canonicalPatientId, chargeType) {
+    return this.call(
+      "getPatientChargeContract",
+      orgId,
+      facilityId,
+      canonicalPatientId,
+      chargeType
+    );
+  }
+
+  async putPatientChargeContractSetting(orgId, input) {
+    return this.call("putPatientChargeContractSetting", orgId, input);
+  }
+
+  async completePatientChargeContractAudit(orgId, patientChargeContractId, eventId) {
+    return this.call(
+      "completePatientChargeContractAudit",
+      orgId,
+      patientChargeContractId,
+      eventId
+    );
+  }
+
   async listSidecarCalculationDrafts(orgId, options) {
     return this.call("listSidecarCalculationDrafts", orgId, options);
   }

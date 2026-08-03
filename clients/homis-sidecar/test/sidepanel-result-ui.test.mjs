@@ -71,6 +71,10 @@ test("result UI renders review and selection candidates as compact decision rows
       blockedCandidateTextVisible: document.body.textContent.includes("未確認の行為xxxxxxxx"),
       legacyDecisionContainersExist: document.querySelector("#proposal-candidates, #selection-candidates") !== null,
       selectionStateLabelVisible: document.body.textContent.includes("要選択"),
+      patientChargeGroupHidden: document.querySelector("#patient-charge-group")?.hidden,
+      patientChargeHandling: document.querySelector("#patient-charge-handling")?.value,
+      patientChargeSaveDisabled: document.querySelector("#patient-charge-save")?.disabled,
+      patientChargeStatus: document.querySelector("#patient-charge-status")?.textContent,
       candidateCodeTag: included.querySelector(".candidate-code").tagName,
       candidateExternalLinkCount: document.querySelectorAll(".candidate-row a, .decision-row a").length,
       horizontalOverflow: document.documentElement.scrollWidth > window.innerWidth
@@ -79,7 +83,7 @@ test("result UI renders review and selection candidates as compact decision rows
 
   assert.equal(result.clinicalTextVisible, false);
   assert.match(result.readStatus, /^読取済み: SOAP 4項目・(?:たった今|\d+秒前)$/u);
-  assert.deepEqual(result.zoneHeadings, ["算定案に含まれる", "要判断"]);
+  assert.deepEqual(result.zoneHeadings, ["算定案に含まれる", "患者負担", "要判断"]);
   assert.equal(result.includedName, "在宅患者訪問診療料");
   assert.equal(result.includedPoints, "890点");
   assert.deepEqual(result.includedNames, ["在宅患者訪問診療料", "在宅データ提出加算"]);
@@ -126,9 +130,43 @@ test("result UI renders review and selection candidates as compact decision rows
   assert.equal(result.blockedCandidateTextVisible, false);
   assert.equal(result.legacyDecisionContainersExist, false);
   assert.equal(result.selectionStateLabelVisible, false);
+  assert.equal(result.patientChargeGroupHidden, false);
+  assert.equal(result.patientChargeHandling, "unknown");
+  assert.equal(result.patientChargeSaveDisabled, true);
+  assert.equal(result.patientChargeStatus, "未設定です。選択するまで請求に含めません。");
   assert.equal(result.candidateCodeTag, "SPAN");
   assert.equal(result.candidateExternalLinkCount, 0);
   assert.equal(result.horizontalOverflow, false);
+  await page.close();
+});
+
+test("patient transport handling is persisted without changing insurance points", async () => {
+  const page = await openPanel(380);
+  await page.selectOption("#patient-charge-handling", "charge");
+  assert.equal(await page.locator("#patient-charge-save").isEnabled(), true);
+  await page.click("#patient-charge-save");
+  await page.locator("#patient-charge-status").filter({ hasText: "実費入力待ち" }).waitFor();
+
+  const result = await page.evaluate(() => ({
+    calls: globalThis.__sidecarTest.patientChargeCalls,
+    handling: document.querySelector("#patient-charge-handling")?.value,
+    totalPoints: document.querySelector("#total-points")?.textContent,
+    saveDisabled: document.querySelector("#patient-charge-save")?.disabled
+  }));
+  assert.deepEqual(result.calls, [{
+    sidecarDraftId: "sidecar_result_ui",
+    handling: "charge",
+    amountMode: "actual",
+    amountYen: null,
+    effectiveFrom: "2026-06-25",
+    effectiveTo: null,
+    expectedRevision: 0,
+    expectedSourceRevision: 4,
+    expectedCalculationRevision: 2
+  }]);
+  assert.equal(result.handling, "charge");
+  assert.equal(result.totalPoints, "940点");
+  assert.equal(result.saveDisabled, true);
   await page.close();
 });
 
@@ -319,6 +357,7 @@ async function openPanel(width) {
       acknowledgementMode: "success",
       acknowledgementResolvers: {},
       clearGrantCalls: 0,
+      patientChargeCalls: [],
       releaseAcknowledgement(candidateKey) {
         const resolve = this.acknowledgementResolvers[candidateKey];
         delete this.acknowledgementResolvers[candidateKey];
@@ -344,8 +383,20 @@ async function openPanel(width) {
         return {
           sidecarDraft: {
             sidecarDraftId: "sidecar_result_ui",
+            externalPatientId: "1001",
+            sourceRecordId: "1001-20260625-01",
+            serviceDate: "2026-06-25",
+            lifecycleStatus: "draft",
             sourceRevision: 4,
             calculationRevision: 2,
+            patientCharges: [{
+              chargeType: "home_medical_transport",
+              displayName: "在宅医療交通費",
+              status: "unconfigured",
+              billingHandling: "unknown",
+              agreementRevision: 0,
+              writable: true
+            }],
             calculationDiff: {
               candidates: { addedCount: 1, removedCount: 1 },
               notices: { addedCount: 1, removedCount: 0 },
@@ -515,6 +566,19 @@ async function openPanel(width) {
           updatedAt: "2026-08-03T00:00:01.000Z"
         };
         globalThis.__sidecarTest.acknowledgementCompleted += 1;
+        return { contractVersion: "v1", changed: true, sidecarDraft: response.sidecarDraft };
+      },
+      async setPatientChargeSetting(input) {
+        globalThis.__sidecarTest.patientChargeCalls.push(structuredClone(input));
+        const response = await this.calculate();
+        response.sidecarDraft.patientCharges = [{
+          chargeType: "home_medical_transport",
+          displayName: "在宅医療交通費",
+          status: input.handling === "charge" ? "pending_actual" : "resolved",
+          billingHandling: input.handling,
+          agreementRevision: Number(input.expectedRevision || 0) + 1,
+          writable: true
+        }];
         return { contractVersion: "v1", changed: true, sidecarDraft: response.sidecarDraft };
       },
       async clearGrant() { globalThis.__sidecarTest.clearGrantCalls += 1; },

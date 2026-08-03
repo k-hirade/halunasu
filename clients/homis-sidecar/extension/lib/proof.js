@@ -43,7 +43,7 @@
   async function sealSourceSurfaces(sourceSurfaces = {}, input = {}) {
     const observedAt = input.observedAt || new Date().toISOString();
     const result = {};
-    for (const name of ["currentChart", "documents"]) {
+    for (const name of ["currentChart", "documents", "problems", "visitPlan"]) {
       const surface = sourceSurfaces?.[name];
       if (!surface) {
         continue;
@@ -52,7 +52,7 @@
       result[name] = {
         ...revisionPayload,
         observedAt,
-        surfaceHash: await textFingerprint(JSON.stringify(revisionPayload))
+        surfaceHash: await textFingerprint(canonicalJson(revisionPayload))
       };
     }
     return result;
@@ -119,6 +119,22 @@
         }
       ])
     );
+  }
+
+  function canonicalJson(value) {
+    return JSON.stringify(canonicalValue(value));
+  }
+
+  function canonicalValue(value) {
+    if (Array.isArray(value)) {
+      return value.map(canonicalValue);
+    }
+    if (value && typeof value === "object") {
+      return Object.fromEntries(
+        Object.keys(value).sort().map((key) => [key, canonicalValue(value[key])])
+      );
+    }
+    return value;
   }
 
   global.HalunasuSidecarProof = Object.freeze({

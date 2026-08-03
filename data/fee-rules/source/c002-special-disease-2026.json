@@ -1,0 +1,1591 @@
+{
+  "schemaVersion": "fee-c002-special-disease-source-v1",
+  "revision": "2026-08-03.1",
+  "effectiveFrom": "2026-06-01",
+  "sources": [
+    {
+      "title": "特掲診療料の施設基準等 別表第八の二（令和8年厚生労働省告示第71号）",
+      "url": "https://www.mhlw.go.jp/web/t_doc?dataId=84aa9733&dataType=0",
+      "retrievedAt": "2026-08-03"
+    },
+    {
+      "title": "令和8年4月時点の指定難病（告示番号1～348）",
+      "url": "https://www.mhlw.go.jp/stf/newpage_53881.html",
+      "retrievedAt": "2026-08-03",
+      "sourceSha256": "054e9d54fa69c5b8ac32068b981e7713a91c34446dbfbb35b9f7ed8292eea319"
+    }
+  ],
+  "directDiseaseRules": [
+    {
+      "ruleId": "terminal_malignant_neoplasm",
+      "label": "末期の悪性腫瘍",
+      "allTermGroups": [
+        [
+          "末期",
+          "終末期"
+        ],
+        [
+          "悪性腫瘍",
+          "悪性新生物",
+          "癌",
+          "がん"
+        ]
+      ]
+    },
+    {
+      "ruleId": "smon",
+      "label": "スモン",
+      "anyTerms": [
+        "スモン"
+      ]
+    },
+    {
+      "ruleId": "aids",
+      "label": "後天性免疫不全症候群",
+      "anyTerms": [
+        "後天性免疫不全症候群",
+        "AIDS"
+      ]
+    },
+    {
+      "ruleId": "spinal_cord_injury",
+      "label": "脊髄損傷",
+      "anyTerms": [
+        "脊髄損傷"
+      ]
+    },
+    {
+      "ruleId": "deep_pressure_ulcer",
+      "label": "真皮を越える褥瘡",
+      "anyTerms": [
+        "真皮を越える褥瘡",
+        "真皮を超える褥瘡",
+        "褥瘡ステージIII",
+        "褥瘡ステージIV",
+        "褥瘡stageIII",
+        "褥瘡stageIV"
+      ]
+    }
+  ],
+  "stateRules": [
+    {
+      "ruleId": "capd",
+      "label": "在宅自己連続携行式腹膜灌流",
+      "anyTerms": [
+        "在宅自己連続携行式腹膜灌流",
+        "CAPD"
+      ]
+    },
+    {
+      "ruleId": "home_hemodialysis",
+      "label": "在宅血液透析",
+      "anyTerms": [
+        "在宅血液透析"
+      ]
+    },
+    {
+      "ruleId": "home_oxygen",
+      "label": "在宅酸素療法",
+      "anyTerms": [
+        "在宅酸素療法",
+        "HOT導入"
+      ],
+      "deviceTypes": [
+        "home_oxygen",
+        "oxygen_concentrator",
+        "oxygen_cylinder",
+        "oxygen_demand_valve"
+      ]
+    },
+    {
+      "ruleId": "home_parenteral_nutrition",
+      "label": "在宅中心静脈栄養法",
+      "anyTerms": [
+        "在宅中心静脈栄養法",
+        "中心静脈栄養"
+      ]
+    },
+    {
+      "ruleId": "home_enteral_nutrition",
+      "label": "在宅成分栄養経管栄養法",
+      "anyTerms": [
+        "在宅成分栄養経管栄養法"
+      ]
+    },
+    {
+      "ruleId": "self_catheterization",
+      "label": "在宅自己導尿",
+      "anyTerms": [
+        "在宅自己導尿"
+      ]
+    },
+    {
+      "ruleId": "home_ventilation",
+      "label": "在宅人工呼吸",
+      "anyTerms": [
+        "在宅人工呼吸"
+      ],
+      "deviceTypes": [
+        "ventilator"
+      ]
+    },
+    {
+      "ruleId": "implanted_pain_stimulator",
+      "label": "植込型脳・脊髄刺激装置による疼痛管理",
+      "anyTerms": [
+        "植込型脳刺激装置",
+        "植込型脊髄刺激装置"
+      ]
+    },
+    {
+      "ruleId": "pulmonary_hypertension_pgi2",
+      "label": "肺高血圧症かつプロスタグランジンI2製剤",
+      "allTermGroups": [
+        [
+          "肺高血圧症"
+        ],
+        [
+          "プロスタグランジンI2",
+          "プロスタグランジンI２",
+          "PGI2",
+          "PGI２"
+        ]
+      ]
+    },
+    {
+      "ruleId": "tracheostomy",
+      "label": "気管切開",
+      "anyTerms": [
+        "気管切開"
+      ],
+      "deviceTypes": [
+        "tracheostomy_cannula"
+      ]
+    },
+    {
+      "ruleId": "tracheal_cannula",
+      "label": "気管カニューレ",
+      "anyTerms": [
+        "気管カニューレ"
+      ],
+      "deviceTypes": [
+        "tracheostomy_cannula"
+      ]
+    },
+    {
+      "ruleId": "drain_or_indwelling_catheter",
+      "label": "ドレーンチューブ又は留置カテーテル",
+      "anyTerms": [
+        "ドレーンチューブ",
+        "留置カテーテル"
+      ],
+      "deviceTypes": [
+        "urinary_indwelling_catheter"
+      ]
+    },
+    {
+      "ruleId": "stoma",
+      "label": "人工肛門又は人工膀胱",
+      "anyTerms": [
+        "人工肛門",
+        "人工膀胱",
+        "ストーマ",
+        "ウロストミー"
+      ]
+    }
+  ],
+  "designatedDiseases": [
+    {
+      "noticeNumber": 1,
+      "name": "球脊髄性筋萎縮症"
+    },
+    {
+      "noticeNumber": 2,
+      "name": "筋萎縮性側索硬化症"
+    },
+    {
+      "noticeNumber": 3,
+      "name": "脊髄性筋萎縮症"
+    },
+    {
+      "noticeNumber": 4,
+      "name": "原発性側索硬化症"
+    },
+    {
+      "noticeNumber": 5,
+      "name": "進行性核上性麻痺"
+    },
+    {
+      "noticeNumber": 6,
+      "name": "パーキンソン病"
+    },
+    {
+      "noticeNumber": 7,
+      "name": "大脳皮質基底核変性症"
+    },
+    {
+      "noticeNumber": 8,
+      "name": "ハンチントン病"
+    },
+    {
+      "noticeNumber": 9,
+      "name": "神経有棘赤血球症"
+    },
+    {
+      "noticeNumber": 10,
+      "name": "シャルコー・マリー・トゥース病"
+    },
+    {
+      "noticeNumber": 11,
+      "name": "重症筋無力症"
+    },
+    {
+      "noticeNumber": 12,
+      "name": "先天性筋無力症候群"
+    },
+    {
+      "noticeNumber": 13,
+      "name": "多発性硬化症／視神経脊髄炎"
+    },
+    {
+      "noticeNumber": 14,
+      "name": "慢性炎症性脱髄性多発神経炎／多巣性運動ニューロパチー"
+    },
+    {
+      "noticeNumber": 15,
+      "name": "封入体筋炎"
+    },
+    {
+      "noticeNumber": 16,
+      "name": "クロウ・深瀬症候群"
+    },
+    {
+      "noticeNumber": 17,
+      "name": "多系統萎縮症"
+    },
+    {
+      "noticeNumber": 18,
+      "name": "脊髄小脳変性症(多系統萎縮症を除く。)"
+    },
+    {
+      "noticeNumber": 19,
+      "name": "ライソゾーム病"
+    },
+    {
+      "noticeNumber": 20,
+      "name": "副腎白質ジストロフィー"
+    },
+    {
+      "noticeNumber": 21,
+      "name": "ミトコンドリア病"
+    },
+    {
+      "noticeNumber": 22,
+      "name": "もやもや病"
+    },
+    {
+      "noticeNumber": 23,
+      "name": "プリオン病"
+    },
+    {
+      "noticeNumber": 24,
+      "name": "亜急性硬化性全脳炎"
+    },
+    {
+      "noticeNumber": 25,
+      "name": "進行性多巣性白質脳症"
+    },
+    {
+      "noticeNumber": 26,
+      "name": "HTLV-1関連脊髄症"
+    },
+    {
+      "noticeNumber": 27,
+      "name": "特発性基底核石灰化症"
+    },
+    {
+      "noticeNumber": 28,
+      "name": "全身性アミロイドーシス"
+    },
+    {
+      "noticeNumber": 29,
+      "name": "ウルリッヒ病"
+    },
+    {
+      "noticeNumber": 30,
+      "name": "遠位型ミオパチー"
+    },
+    {
+      "noticeNumber": 31,
+      "name": "ベスレムミオパチー"
+    },
+    {
+      "noticeNumber": 32,
+      "name": "自己貪食空胞性ミオパチー"
+    },
+    {
+      "noticeNumber": 33,
+      "name": "シュワルツ・ヤンペル症候群"
+    },
+    {
+      "noticeNumber": 34,
+      "name": "神経線維腫症"
+    },
+    {
+      "noticeNumber": 35,
+      "name": "天疱瘡"
+    },
+    {
+      "noticeNumber": 36,
+      "name": "表皮水疱症"
+    },
+    {
+      "noticeNumber": 37,
+      "name": "膿疱性乾癬（汎発型）"
+    },
+    {
+      "noticeNumber": 38,
+      "name": "スティーヴンス・ジョンソン症候群"
+    },
+    {
+      "noticeNumber": 39,
+      "name": "中毒性表皮壊死症"
+    },
+    {
+      "noticeNumber": 40,
+      "name": "高安動脈炎"
+    },
+    {
+      "noticeNumber": 41,
+      "name": "巨細胞性動脈炎"
+    },
+    {
+      "noticeNumber": 42,
+      "name": "結節性多発動脈炎"
+    },
+    {
+      "noticeNumber": 43,
+      "name": "顕微鏡的多発血管炎"
+    },
+    {
+      "noticeNumber": 44,
+      "name": "多発血管炎性肉芽腫症"
+    },
+    {
+      "noticeNumber": 45,
+      "name": "好酸球性多発血管炎性肉芽腫症"
+    },
+    {
+      "noticeNumber": 46,
+      "name": "悪性関節リウマチ"
+    },
+    {
+      "noticeNumber": 47,
+      "name": "バージャー病"
+    },
+    {
+      "noticeNumber": 48,
+      "name": "原発性抗リン脂質抗体症候群"
+    },
+    {
+      "noticeNumber": 49,
+      "name": "全身性エリテマトーデス"
+    },
+    {
+      "noticeNumber": 50,
+      "name": "皮膚筋炎／多発性筋炎"
+    },
+    {
+      "noticeNumber": 51,
+      "name": "全身性強皮症"
+    },
+    {
+      "noticeNumber": 52,
+      "name": "混合性結合組織病"
+    },
+    {
+      "noticeNumber": 53,
+      "name": "シェーグレン症候群"
+    },
+    {
+      "noticeNumber": 54,
+      "name": "成人発症スチル病"
+    },
+    {
+      "noticeNumber": 55,
+      "name": "再発性多発軟骨炎"
+    },
+    {
+      "noticeNumber": 56,
+      "name": "ベーチェット病"
+    },
+    {
+      "noticeNumber": 57,
+      "name": "特発性拡張型心筋症"
+    },
+    {
+      "noticeNumber": 58,
+      "name": "肥大型心筋症"
+    },
+    {
+      "noticeNumber": 59,
+      "name": "拘束型心筋症"
+    },
+    {
+      "noticeNumber": 60,
+      "name": "再生不良性貧血"
+    },
+    {
+      "noticeNumber": 61,
+      "name": "自己免疫性溶血性貧血"
+    },
+    {
+      "noticeNumber": 62,
+      "name": "発作性夜間ヘモグロビン尿症"
+    },
+    {
+      "noticeNumber": 63,
+      "name": "免疫性血小板減少症"
+    },
+    {
+      "noticeNumber": 64,
+      "name": "血栓性血小板減少性紫斑病"
+    },
+    {
+      "noticeNumber": 65,
+      "name": "原発性免疫不全症候群"
+    },
+    {
+      "noticeNumber": 66,
+      "name": "IgA腎症"
+    },
+    {
+      "noticeNumber": 67,
+      "name": "多発性嚢胞腎"
+    },
+    {
+      "noticeNumber": 68,
+      "name": "黄色靱帯骨化症"
+    },
+    {
+      "noticeNumber": 69,
+      "name": "後縦靱帯骨化症"
+    },
+    {
+      "noticeNumber": 70,
+      "name": "広範脊柱管狭窄症"
+    },
+    {
+      "noticeNumber": 71,
+      "name": "特発性大腿骨頭壊死症"
+    },
+    {
+      "noticeNumber": 72,
+      "name": "下垂体性ADH分泌異常症"
+    },
+    {
+      "noticeNumber": 73,
+      "name": "下垂体性TSH分泌亢進症"
+    },
+    {
+      "noticeNumber": 74,
+      "name": "下垂体性PRL分泌亢進症"
+    },
+    {
+      "noticeNumber": 75,
+      "name": "クッシング病"
+    },
+    {
+      "noticeNumber": 76,
+      "name": "下垂体性ゴナドトロピン分泌亢進症"
+    },
+    {
+      "noticeNumber": 77,
+      "name": "下垂体性成長ホルモン分泌亢進症"
+    },
+    {
+      "noticeNumber": 78,
+      "name": "下垂体前葉機能低下症"
+    },
+    {
+      "noticeNumber": 79,
+      "name": "家族性高コレステロール血症（ホモ接合体）"
+    },
+    {
+      "noticeNumber": 80,
+      "name": "甲状腺ホルモン不応症"
+    },
+    {
+      "noticeNumber": 81,
+      "name": "先天性副腎皮質酵素欠損症"
+    },
+    {
+      "noticeNumber": 82,
+      "name": "先天性副腎低形成症"
+    },
+    {
+      "noticeNumber": 83,
+      "name": "アジソン病"
+    },
+    {
+      "noticeNumber": 84,
+      "name": "サルコイドーシス"
+    },
+    {
+      "noticeNumber": 85,
+      "name": "特発性間質性肺炎"
+    },
+    {
+      "noticeNumber": 86,
+      "name": "肺動脈性肺高血圧症"
+    },
+    {
+      "noticeNumber": 87,
+      "name": "肺静脈閉塞症／肺毛細血管腫症"
+    },
+    {
+      "noticeNumber": 88,
+      "name": "慢性血栓塞栓性肺高血圧症"
+    },
+    {
+      "noticeNumber": 89,
+      "name": "リンパ脈管筋腫症"
+    },
+    {
+      "noticeNumber": 90,
+      "name": "網膜色素変性症"
+    },
+    {
+      "noticeNumber": 91,
+      "name": "バッド・キアリ症候群"
+    },
+    {
+      "noticeNumber": 92,
+      "name": "特発性門脈圧亢進症"
+    },
+    {
+      "noticeNumber": 93,
+      "name": "原発性胆汁性胆管炎"
+    },
+    {
+      "noticeNumber": 94,
+      "name": "原発性硬化性胆管炎"
+    },
+    {
+      "noticeNumber": 95,
+      "name": "自己免疫性肝炎"
+    },
+    {
+      "noticeNumber": 96,
+      "name": "クローン病"
+    },
+    {
+      "noticeNumber": 97,
+      "name": "潰瘍性大腸炎"
+    },
+    {
+      "noticeNumber": 98,
+      "name": "好酸球性消化管疾患"
+    },
+    {
+      "noticeNumber": 99,
+      "name": "慢性特発性偽性腸閉塞症"
+    },
+    {
+      "noticeNumber": 100,
+      "name": "巨大膀胱短小結腸腸管蠕動不全症"
+    },
+    {
+      "noticeNumber": 101,
+      "name": "腸管神経節細胞僅少症"
+    },
+    {
+      "noticeNumber": 102,
+      "name": "ルビンシュタイン・テイビ症候群"
+    },
+    {
+      "noticeNumber": 103,
+      "name": "CFC症候群"
+    },
+    {
+      "noticeNumber": 104,
+      "name": "コステロ症候群"
+    },
+    {
+      "noticeNumber": 105,
+      "name": "チャージ症候群"
+    },
+    {
+      "noticeNumber": 106,
+      "name": "クリオピリン関連周期熱症候群"
+    },
+    {
+      "noticeNumber": 107,
+      "name": "若年性特発性関節炎"
+    },
+    {
+      "noticeNumber": 108,
+      "name": "TNF受容体関連周期性症候群"
+    },
+    {
+      "noticeNumber": 109,
+      "name": "非典型溶血性尿毒症症候群"
+    },
+    {
+      "noticeNumber": 110,
+      "name": "ブラウ症候群"
+    },
+    {
+      "noticeNumber": 111,
+      "name": "先天性ミオパチー"
+    },
+    {
+      "noticeNumber": 112,
+      "name": "マリネスコ・シェーグレン症候群"
+    },
+    {
+      "noticeNumber": 113,
+      "name": "筋ジストロフィー"
+    },
+    {
+      "noticeNumber": 114,
+      "name": "非ジストロフィー性ミオトニー症候群"
+    },
+    {
+      "noticeNumber": 115,
+      "name": "遺伝性周期性四肢麻痺"
+    },
+    {
+      "noticeNumber": 116,
+      "name": "アトピー性脊髄炎"
+    },
+    {
+      "noticeNumber": 117,
+      "name": "脊髄空洞症"
+    },
+    {
+      "noticeNumber": 118,
+      "name": "脊髄髄膜瘤"
+    },
+    {
+      "noticeNumber": 119,
+      "name": "アイザックス症候群"
+    },
+    {
+      "noticeNumber": 120,
+      "name": "遺伝性ジストニア"
+    },
+    {
+      "noticeNumber": 121,
+      "name": "脳内鉄沈着神経変性症"
+    },
+    {
+      "noticeNumber": 122,
+      "name": "脳表ヘモジデリン沈着症"
+    },
+    {
+      "noticeNumber": 123,
+      "name": "HTRA1関連脳小血管病"
+    },
+    {
+      "noticeNumber": 124,
+      "name": "皮質下梗塞と白質脳症を伴う常染色体優性脳動脈症"
+    },
+    {
+      "noticeNumber": 125,
+      "name": "神経軸索スフェロイド形成を伴う遺伝性びまん性白質脳症"
+    },
+    {
+      "noticeNumber": 126,
+      "name": "ペリー病"
+    },
+    {
+      "noticeNumber": 127,
+      "name": "前頭側頭葉変性症"
+    },
+    {
+      "noticeNumber": 128,
+      "name": "ビッカースタッフ脳幹脳炎"
+    },
+    {
+      "noticeNumber": 129,
+      "name": "痙攣重積型（二相性）急性脳症."
+    },
+    {
+      "noticeNumber": 130,
+      "name": "先天性無痛無汗症"
+    },
+    {
+      "noticeNumber": 131,
+      "name": "アレキサンダー病"
+    },
+    {
+      "noticeNumber": 132,
+      "name": "先天性核上性球麻痺"
+    },
+    {
+      "noticeNumber": 133,
+      "name": "メビウス症候群"
+    },
+    {
+      "noticeNumber": 134,
+      "name": "中隔視神経形成異常症／ドモルシア症候群"
+    },
+    {
+      "noticeNumber": 135,
+      "name": "アイカルディ症候群"
+    },
+    {
+      "noticeNumber": 136,
+      "name": "片側巨脳症"
+    },
+    {
+      "noticeNumber": 137,
+      "name": "限局性皮質異形成"
+    },
+    {
+      "noticeNumber": 138,
+      "name": "神経細胞移動異常症"
+    },
+    {
+      "noticeNumber": 139,
+      "name": "先天性大脳白質形成不全症"
+    },
+    {
+      "noticeNumber": 140,
+      "name": "ドラベ症候群"
+    },
+    {
+      "noticeNumber": 141,
+      "name": "海馬硬化を伴う内側側頭葉てんかん"
+    },
+    {
+      "noticeNumber": 142,
+      "name": "ミオクロニー欠神てんかん"
+    },
+    {
+      "noticeNumber": 143,
+      "name": "ミオクロニー脱力発作を伴うてんかん"
+    },
+    {
+      "noticeNumber": 144,
+      "name": "レノックス・ガストー症候群他"
+    },
+    {
+      "noticeNumber": 145,
+      "name": "ウエスト症候群"
+    },
+    {
+      "noticeNumber": 146,
+      "name": "大田原症候群"
+    },
+    {
+      "noticeNumber": 147,
+      "name": "早期ミオクロニー脳症"
+    },
+    {
+      "noticeNumber": 148,
+      "name": "遊走性焦点発作を伴う乳児てんかん"
+    },
+    {
+      "noticeNumber": 149,
+      "name": "片側痙攣・片麻痺・てんかん症候群"
+    },
+    {
+      "noticeNumber": 150,
+      "name": "環状20番染色体症候群"
+    },
+    {
+      "noticeNumber": 151,
+      "name": "ラスムッセン脳炎"
+    },
+    {
+      "noticeNumber": 152,
+      "name": "PCDH19関連症候群"
+    },
+    {
+      "noticeNumber": 153,
+      "name": "難治頻回部分発作重積型急性脳炎"
+    },
+    {
+      "noticeNumber": 154,
+      "name": "睡眠時棘徐波活性化を示す発達性てんかん性脳症及びてんかん性脳症"
+    },
+    {
+      "noticeNumber": 155,
+      "name": "ランドウ・クレフナー症候群"
+    },
+    {
+      "noticeNumber": 156,
+      "name": "レット症候群"
+    },
+    {
+      "noticeNumber": 157,
+      "name": "スタージ・ウェーバー症候群"
+    },
+    {
+      "noticeNumber": 158,
+      "name": "結節性硬化症"
+    },
+    {
+      "noticeNumber": 159,
+      "name": "色素性乾皮症"
+    },
+    {
+      "noticeNumber": 160,
+      "name": "先天性魚鱗癬"
+    },
+    {
+      "noticeNumber": 161,
+      "name": "家族性良性慢性天疱瘡"
+    },
+    {
+      "noticeNumber": 162,
+      "name": "類天疱瘡（後天性表皮水疱症を含む。）"
+    },
+    {
+      "noticeNumber": 163,
+      "name": "特発性後天性全身性無汗症"
+    },
+    {
+      "noticeNumber": 164,
+      "name": "眼皮膚白皮症"
+    },
+    {
+      "noticeNumber": 165,
+      "name": "肥厚性皮膚骨膜症"
+    },
+    {
+      "noticeNumber": 166,
+      "name": "弾性線維性仮性黄色腫"
+    },
+    {
+      "noticeNumber": 167,
+      "name": "マルファン症候群／ロイス・ディーツ症候群"
+    },
+    {
+      "noticeNumber": 168,
+      "name": "エーラス・ダンロス症候群"
+    },
+    {
+      "noticeNumber": 169,
+      "name": "メンケス病"
+    },
+    {
+      "noticeNumber": 170,
+      "name": "オクシピタル・ホーン症候群"
+    },
+    {
+      "noticeNumber": 171,
+      "name": "ウィルソン病"
+    },
+    {
+      "noticeNumber": 172,
+      "name": "低ホスファターゼ症"
+    },
+    {
+      "noticeNumber": 173,
+      "name": "VATER症候群"
+    },
+    {
+      "noticeNumber": 174,
+      "name": "那須・ハコラ病"
+    },
+    {
+      "noticeNumber": 175,
+      "name": "ウィーバー症候群"
+    },
+    {
+      "noticeNumber": 176,
+      "name": "コフィン・ローリー 症候群"
+    },
+    {
+      "noticeNumber": 177,
+      "name": "ジュベール症候群関連疾患"
+    },
+    {
+      "noticeNumber": 178,
+      "name": "モワット・ウィルソン症候群"
+    },
+    {
+      "noticeNumber": 179,
+      "name": "ウィリアムズ症候群"
+    },
+    {
+      "noticeNumber": 180,
+      "name": "ＡＴＲ－Ｘ症候群"
+    },
+    {
+      "noticeNumber": 181,
+      "name": "クルーゾン症候群"
+    },
+    {
+      "noticeNumber": 182,
+      "name": "アペール症候群"
+    },
+    {
+      "noticeNumber": 183,
+      "name": "ファイファー症候群"
+    },
+    {
+      "noticeNumber": 184,
+      "name": "アントレー・ビクスラー症候群"
+    },
+    {
+      "noticeNumber": 185,
+      "name": "コフィン・シリス症候群"
+    },
+    {
+      "noticeNumber": 186,
+      "name": "ロスムンド・トムソン症候群"
+    },
+    {
+      "noticeNumber": 187,
+      "name": "歌舞伎症候群"
+    },
+    {
+      "noticeNumber": 188,
+      "name": "多脾症候群"
+    },
+    {
+      "noticeNumber": 189,
+      "name": "無脾症候群"
+    },
+    {
+      "noticeNumber": 190,
+      "name": "鰓耳腎症候群"
+    },
+    {
+      "noticeNumber": 191,
+      "name": "ウェルナー症候群"
+    },
+    {
+      "noticeNumber": 192,
+      "name": "コケイン症候群"
+    },
+    {
+      "noticeNumber": 193,
+      "name": "プラダー･ウィリ症候群"
+    },
+    {
+      "noticeNumber": 194,
+      "name": "ソトス症候群"
+    },
+    {
+      "noticeNumber": 195,
+      "name": "ヌーナン症候群"
+    },
+    {
+      "noticeNumber": 196,
+      "name": "ヤング・シンプソン症候群"
+    },
+    {
+      "noticeNumber": 197,
+      "name": "1ｐ36欠失症候群"
+    },
+    {
+      "noticeNumber": 198,
+      "name": "４p欠失症候群"
+    },
+    {
+      "noticeNumber": 199,
+      "name": "５p欠失症候群"
+    },
+    {
+      "noticeNumber": 200,
+      "name": "第14番染色体父親性ダイソミー症候群"
+    },
+    {
+      "noticeNumber": 201,
+      "name": "アンジェルマン症候群"
+    },
+    {
+      "noticeNumber": 202,
+      "name": "スミス・マギニス症候群"
+    },
+    {
+      "noticeNumber": 203,
+      "name": "22q11.２欠失症候群"
+    },
+    {
+      "noticeNumber": 204,
+      "name": "エマヌエル症候群"
+    },
+    {
+      "noticeNumber": 205,
+      "name": "脆弱Ｘ症候群関連疾患"
+    },
+    {
+      "noticeNumber": 206,
+      "name": "脆弱X症候群"
+    },
+    {
+      "noticeNumber": 207,
+      "name": "総動脈幹遺残症"
+    },
+    {
+      "noticeNumber": 208,
+      "name": "修正大血管転位症"
+    },
+    {
+      "noticeNumber": 209,
+      "name": "完全大血管転位症"
+    },
+    {
+      "noticeNumber": 210,
+      "name": "単心室症"
+    },
+    {
+      "noticeNumber": 211,
+      "name": "左心低形成症候群"
+    },
+    {
+      "noticeNumber": 212,
+      "name": "三尖弁閉鎖症"
+    },
+    {
+      "noticeNumber": 213,
+      "name": "心室中隔欠損を伴わない肺動脈閉鎖症"
+    },
+    {
+      "noticeNumber": 214,
+      "name": "心室中隔欠損を伴う肺動脈閉鎖症"
+    },
+    {
+      "noticeNumber": 215,
+      "name": "ファロー四徴症"
+    },
+    {
+      "noticeNumber": 216,
+      "name": "両大血管右室起始症"
+    },
+    {
+      "noticeNumber": 217,
+      "name": "エプスタイン病"
+    },
+    {
+      "noticeNumber": 218,
+      "name": "アルポート症候群"
+    },
+    {
+      "noticeNumber": 219,
+      "name": "ギャロウェイ・モワト症候群"
+    },
+    {
+      "noticeNumber": 220,
+      "name": "急速進行性糸球体腎炎"
+    },
+    {
+      "noticeNumber": 221,
+      "name": "抗糸球体基底膜腎炎"
+    },
+    {
+      "noticeNumber": 222,
+      "name": "一次性ネフローゼ症候群"
+    },
+    {
+      "noticeNumber": 223,
+      "name": "一次性膜性増殖性糸球体腎炎"
+    },
+    {
+      "noticeNumber": 224,
+      "name": "紫斑病性腎炎"
+    },
+    {
+      "noticeNumber": 225,
+      "name": "先天性腎性尿崩症"
+    },
+    {
+      "noticeNumber": 226,
+      "name": "間質性膀胱炎（ハンナ型）"
+    },
+    {
+      "noticeNumber": 227,
+      "name": "オスラー病"
+    },
+    {
+      "noticeNumber": 228,
+      "name": "閉塞性細気管支炎"
+    },
+    {
+      "noticeNumber": 229,
+      "name": "肺胞蛋白症（自己免疫性又は先天性）"
+    },
+    {
+      "noticeNumber": 230,
+      "name": "肺胞低換気症候群"
+    },
+    {
+      "noticeNumber": 231,
+      "name": "α1－アンチトリプシン欠乏症"
+    },
+    {
+      "noticeNumber": 232,
+      "name": "カーニー複合"
+    },
+    {
+      "noticeNumber": 233,
+      "name": "ウォルフラム症候群"
+    },
+    {
+      "noticeNumber": 234,
+      "name": "ペルオキシソーム病"
+    },
+    {
+      "noticeNumber": 235,
+      "name": "副甲状腺機能低下症"
+    },
+    {
+      "noticeNumber": 236,
+      "name": "偽性副甲状腺機能低下症"
+    },
+    {
+      "noticeNumber": 237,
+      "name": "副腎皮質刺激ホルモン不応症"
+    },
+    {
+      "noticeNumber": 238,
+      "name": "ビタミンD抵抗性くる病／骨軟化症"
+    },
+    {
+      "noticeNumber": 239,
+      "name": "ビタミンD依存性くる病"
+    },
+    {
+      "noticeNumber": 240,
+      "name": "フェニルケトン尿症"
+    },
+    {
+      "noticeNumber": 241,
+      "name": "高チロシン血症１型"
+    },
+    {
+      "noticeNumber": 242,
+      "name": "高チロシン血症２型"
+    },
+    {
+      "noticeNumber": 243,
+      "name": "高チロシン血症３型"
+    },
+    {
+      "noticeNumber": 244,
+      "name": "メープルシロップ尿症"
+    },
+    {
+      "noticeNumber": 245,
+      "name": "プロピオン酸血症"
+    },
+    {
+      "noticeNumber": 246,
+      "name": "メチルマロン酸血症"
+    },
+    {
+      "noticeNumber": 247,
+      "name": "イソ吉草酸血症"
+    },
+    {
+      "noticeNumber": 248,
+      "name": "グルコーストランスポーター１欠損症"
+    },
+    {
+      "noticeNumber": 249,
+      "name": "グルタル酸血症1型"
+    },
+    {
+      "noticeNumber": 250,
+      "name": "グルタル酸血症２型"
+    },
+    {
+      "noticeNumber": 251,
+      "name": "尿素サイクル異常症"
+    },
+    {
+      "noticeNumber": 252,
+      "name": "リジン尿性蛋白不耐症"
+    },
+    {
+      "noticeNumber": 253,
+      "name": "先天性葉酸吸収不全（症）"
+    },
+    {
+      "noticeNumber": 254,
+      "name": "ポルフィリン症"
+    },
+    {
+      "noticeNumber": 255,
+      "name": "複合カルボキシラーゼ欠損症"
+    },
+    {
+      "noticeNumber": 256,
+      "name": "筋型糖原病"
+    },
+    {
+      "noticeNumber": 257,
+      "name": "肝型糖原病"
+    },
+    {
+      "noticeNumber": 258,
+      "name": "ガラクトース-1-リン酸ウリジルトランスフェラーゼ欠損症"
+    },
+    {
+      "noticeNumber": 259,
+      "name": "レシチンコレステロールアシルトランスフェラーゼ欠損症"
+    },
+    {
+      "noticeNumber": 260,
+      "name": "シトステロール血症"
+    },
+    {
+      "noticeNumber": 261,
+      "name": "タンジール病"
+    },
+    {
+      "noticeNumber": 262,
+      "name": "原発性高カイロミクロン血症"
+    },
+    {
+      "noticeNumber": 263,
+      "name": "脳腱黄色腫症"
+    },
+    {
+      "noticeNumber": 264,
+      "name": "無β リポタンパク血症"
+    },
+    {
+      "noticeNumber": 265,
+      "name": "脂肪萎縮症"
+    },
+    {
+      "noticeNumber": 266,
+      "name": "家族性地中海熱"
+    },
+    {
+      "noticeNumber": 267,
+      "name": "高ＩｇＤ症候群"
+    },
+    {
+      "noticeNumber": 268,
+      "name": "中條・西村症候群"
+    },
+    {
+      "noticeNumber": 269,
+      "name": "化膿性無菌性関節炎・壊疽性膿皮症・アクネ症候群"
+    },
+    {
+      "noticeNumber": 270,
+      "name": "慢性再発性多発性骨髄炎"
+    },
+    {
+      "noticeNumber": 271,
+      "name": "強直性脊椎炎"
+    },
+    {
+      "noticeNumber": 272,
+      "name": "進行性骨化性線維異形成症"
+    },
+    {
+      "noticeNumber": 273,
+      "name": "肋骨異常を伴う先天性側弯症"
+    },
+    {
+      "noticeNumber": 274,
+      "name": "骨形成不全症"
+    },
+    {
+      "noticeNumber": 275,
+      "name": "タナトフォリック骨異形成症"
+    },
+    {
+      "noticeNumber": 276,
+      "name": "軟骨無形成症"
+    },
+    {
+      "noticeNumber": 277,
+      "name": "リンパ管腫症／ゴーハム病"
+    },
+    {
+      "noticeNumber": 278,
+      "name": "巨大リンパ管奇形（頚部顔面病変）"
+    },
+    {
+      "noticeNumber": 279,
+      "name": "巨大静脈奇形（頚部口腔咽頭びまん性病変）"
+    },
+    {
+      "noticeNumber": 280,
+      "name": "巨大動静脈奇形（頚部顔面又は四肢病変）"
+    },
+    {
+      "noticeNumber": 281,
+      "name": "クリッペル・トレノネー・ウェーバー症候群"
+    },
+    {
+      "noticeNumber": 282,
+      "name": "先天性赤血球形成異常性貧血"
+    },
+    {
+      "noticeNumber": 283,
+      "name": "後天性赤芽球癆"
+    },
+    {
+      "noticeNumber": 284,
+      "name": "ダイアモンド・ブラックファン貧血"
+    },
+    {
+      "noticeNumber": 285,
+      "name": "ファンコニ貧血"
+    },
+    {
+      "noticeNumber": 286,
+      "name": "遺伝性鉄芽球性貧血"
+    },
+    {
+      "noticeNumber": 287,
+      "name": "エプスタイン症候群"
+    },
+    {
+      "noticeNumber": 288,
+      "name": "自己免疫性後天性凝固因子欠乏症"
+    },
+    {
+      "noticeNumber": 289,
+      "name": "クロンカイト・カナダ症候群"
+    },
+    {
+      "noticeNumber": 290,
+      "name": "非特異性多発性小腸潰瘍症"
+    },
+    {
+      "noticeNumber": 291,
+      "name": "ヒルシュスプルング病（全結腸型又は小腸型）"
+    },
+    {
+      "noticeNumber": 292,
+      "name": "総排泄腔外反症"
+    },
+    {
+      "noticeNumber": 293,
+      "name": "総排泄腔遺残"
+    },
+    {
+      "noticeNumber": 294,
+      "name": "先天性横隔膜ヘルニア"
+    },
+    {
+      "noticeNumber": 295,
+      "name": "乳幼児肝巨大血管腫"
+    },
+    {
+      "noticeNumber": 296,
+      "name": "胆道閉鎖症"
+    },
+    {
+      "noticeNumber": 297,
+      "name": "アラジール症候群"
+    },
+    {
+      "noticeNumber": 298,
+      "name": "遺伝性膵炎"
+    },
+    {
+      "noticeNumber": 299,
+      "name": "嚢胞性線維症"
+    },
+    {
+      "noticeNumber": 300,
+      "name": "ＩｇＧ４関連疾患"
+    },
+    {
+      "noticeNumber": 301,
+      "name": "黄斑ジストロフィー"
+    },
+    {
+      "noticeNumber": 302,
+      "name": "レーベル遺伝性視神経症"
+    },
+    {
+      "noticeNumber": 303,
+      "name": "アッシャー症候群"
+    },
+    {
+      "noticeNumber": 304,
+      "name": "若年発症型両側性感音難聴"
+    },
+    {
+      "noticeNumber": 305,
+      "name": "遅発性内リンパ水腫"
+    },
+    {
+      "noticeNumber": 306,
+      "name": "好酸球性副鼻腔炎"
+    },
+    {
+      "noticeNumber": 307,
+      "name": "カナバン病"
+    },
+    {
+      "noticeNumber": 308,
+      "name": "進行性白質脳症"
+    },
+    {
+      "noticeNumber": 309,
+      "name": "進行性ミオクローヌスてんかん"
+    },
+    {
+      "noticeNumber": 310,
+      "name": "先天異常症候群"
+    },
+    {
+      "noticeNumber": 311,
+      "name": "先天性三尖弁狭窄症"
+    },
+    {
+      "noticeNumber": 312,
+      "name": "先天性僧帽弁狭窄症"
+    },
+    {
+      "noticeNumber": 313,
+      "name": "先天性肺静脈狭窄症"
+    },
+    {
+      "noticeNumber": 314,
+      "name": "左肺動脈右肺動脈起始症"
+    },
+    {
+      "noticeNumber": 315,
+      "name": "ネイルパテラ症候群（爪膝蓋骨症候群）／ＬＭＸ１Ｂ関連腎症"
+    },
+    {
+      "noticeNumber": 316,
+      "name": "カルニチン回路異常症"
+    },
+    {
+      "noticeNumber": 317,
+      "name": "三頭酵素欠損症"
+    },
+    {
+      "noticeNumber": 318,
+      "name": "シトリン欠損症"
+    },
+    {
+      "noticeNumber": 319,
+      "name": "セピアプテリン還元酵素（ＳＲ）欠損症"
+    },
+    {
+      "noticeNumber": 320,
+      "name": "先天性グリコシルホスファチジルイノシトール（ＧＰＩ）欠損症"
+    },
+    {
+      "noticeNumber": 321,
+      "name": "非ケトーシス型高グリシン血症"
+    },
+    {
+      "noticeNumber": 322,
+      "name": "β—ケトチオラーゼ欠損症"
+    },
+    {
+      "noticeNumber": 323,
+      "name": "芳香族L－アミノ酸脱炭酸酵素欠損症"
+    },
+    {
+      "noticeNumber": 324,
+      "name": "メチルグルタコン酸尿症"
+    },
+    {
+      "noticeNumber": 325,
+      "name": "遺伝性自己炎症疾患"
+    },
+    {
+      "noticeNumber": 326,
+      "name": "大理石骨病"
+    },
+    {
+      "noticeNumber": 327,
+      "name": "特発性血栓症（遺伝性血栓性素因によるものに限る。）"
+    },
+    {
+      "noticeNumber": 328,
+      "name": "前眼部形成異常"
+    },
+    {
+      "noticeNumber": 329,
+      "name": "無虹彩症"
+    },
+    {
+      "noticeNumber": 330,
+      "name": "先天性気管狭窄症／先天性声門下狭窄症"
+    },
+    {
+      "noticeNumber": 331,
+      "name": "特発性多中心性キャッスルマン病"
+    },
+    {
+      "noticeNumber": 332,
+      "name": "膠様滴状角膜ジストロフィー"
+    },
+    {
+      "noticeNumber": 333,
+      "name": "ハッチンソン・ギルフォード症候群"
+    },
+    {
+      "noticeNumber": 334,
+      "name": "脳クレアチン欠乏症候群"
+    },
+    {
+      "noticeNumber": 335,
+      "name": "ネフロン癆"
+    },
+    {
+      "noticeNumber": 336,
+      "name": "家族性低βリポタンパク血症1(ホモ接合体)"
+    },
+    {
+      "noticeNumber": 337,
+      "name": "ホモシスチン尿症"
+    },
+    {
+      "noticeNumber": 338,
+      "name": "進行性家族性肝内胆汁うっ滞症"
+    },
+    {
+      "noticeNumber": 339,
+      "name": "MECP2重複症候群"
+    },
+    {
+      "noticeNumber": 340,
+      "name": "線毛機能不全症候群（カルタゲナー症候群を含む。）"
+    },
+    {
+      "noticeNumber": 341,
+      "name": "TRPV4異常症"
+    },
+    {
+      "noticeNumber": 342,
+      "name": "LMNB1 関連大脳白質脳症"
+    },
+    {
+      "noticeNumber": 343,
+      "name": "PURA関連神経発達異常症"
+    },
+    {
+      "noticeNumber": 344,
+      "name": "極長鎖アシル-CoA 脱水素酵素欠損症"
+    },
+    {
+      "noticeNumber": 345,
+      "name": "乳児発症 STING 関連血管炎"
+    },
+    {
+      "noticeNumber": 346,
+      "name": "原発性肝外門脈閉塞症"
+    },
+    {
+      "noticeNumber": 347,
+      "name": "出血性線溶異常症"
+    },
+    {
+      "noticeNumber": 348,
+      "name": "ロウ症候群"
+    }
+  ]
+}

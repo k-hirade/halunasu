@@ -5,12 +5,31 @@ export const sidecarEncounterTypeSources = Object.freeze(["dom", "user"]);
 export const feeResidenceTypes = Object.freeze(["private", "facility"]);
 export const feeVisitKinds = Object.freeze(["telephone_revisit"]);
 export const sidecarContractVersions = Object.freeze(["v1"]);
+export const patientChargeTypes = Object.freeze(["home_medical_transport"]);
+export const patientChargeHandlings = Object.freeze([
+  "inherit",
+  "charge",
+  "waive",
+  "included_in_contract"
+]);
+export const patientChargeAmountModes = Object.freeze(["actual", "fixed"]);
 export const sidecarSourceSurfaceStatuses = Object.freeze(["ok", "unavailable"]);
 export const sidecarSourceSurfaceUnavailableReasons = Object.freeze([
   "fetch_failed",
   "http_error",
   "selector_mismatch",
   "timeout"
+]);
+const sidecarSourceSurfaceNames = Object.freeze([
+  "currentChart",
+  "documents",
+  "problems",
+  "visitPlan"
+]);
+const sidecarSourceListCompletenessValues = Object.freeze([
+  "complete",
+  "incomplete",
+  "unknown"
 ]);
 export {
   CLAUSE_SEGMENTATION_VERSION,
@@ -337,6 +356,88 @@ export function validateSidecarCandidateAcknowledgementInput(input = {}) {
   };
 }
 
+export function validateSidecarPatientChargeSettingInput(input = {}) {
+  if (!isPlainObject(input)) {
+    throw validationError("request body must be an object", "body");
+  }
+  const contractVersion = boundedRequiredString(
+    input.contractVersion ?? input.contract_version,
+    "contractVersion",
+    16
+  );
+  if (!sidecarContractVersions.includes(contractVersion)) {
+    throw validationError(
+      `contractVersion must be one of: ${sidecarContractVersions.join(", ")}`,
+      "contractVersion"
+    );
+  }
+  const chargeType = optionalEnum(
+    input.chargeType ?? input.charge_type ?? "home_medical_transport",
+    patientChargeTypes,
+    "chargeType"
+  );
+  const handling = optionalEnum(
+    input.handling ?? input.billingHandling ?? input.billing_handling,
+    patientChargeHandlings,
+    "handling"
+  );
+  if (!handling) {
+    throw validationError("handling is required", "handling");
+  }
+  const suppliedAmountYen = input.amountYen ?? input.amount_yen;
+  const amountYen = nullablePositiveInteger(suppliedAmountYen, "amountYen");
+  let amountMode = optionalEnum(
+    input.amountMode ?? input.amount_mode,
+    patientChargeAmountModes,
+    "amountMode"
+  );
+  if (handling === "charge") {
+    amountMode ||= amountYen === null ? "actual" : "fixed";
+    if (amountMode === "fixed" && amountYen === null) {
+      throw validationError("amountYen is required when amountMode is fixed", "amountYen");
+    }
+    if (amountMode === "actual" && amountYen !== null) {
+      throw validationError("amountYen must be omitted when amountMode is actual", "amountYen");
+    }
+  } else if (amountMode || amountYen !== null) {
+    throw validationError("amount fields are only valid when handling is charge", "amountMode");
+  }
+
+  const effectiveFrom = optionalDate(
+    input.effectiveFrom ?? input.effective_from,
+    "effectiveFrom"
+  );
+  const rawEffectiveTo = input.effectiveTo ?? input.effective_to;
+  const effectiveTo = rawEffectiveTo === null || rawEffectiveTo === undefined || rawEffectiveTo === ""
+    ? null
+    : optionalDate(rawEffectiveTo, "effectiveTo");
+  if (effectiveFrom && effectiveTo && effectiveTo < effectiveFrom) {
+    throw validationError("effectiveTo must not be before effectiveFrom", "effectiveTo");
+  }
+
+  return compactObject({
+    contractVersion,
+    chargeType,
+    handling,
+    amountMode: handling === "charge" ? amountMode : null,
+    amountYen: handling === "charge" ? amountYen : null,
+    effectiveFrom,
+    effectiveTo,
+    expectedRevision: requiredNonNegativeInteger(
+      input.expectedRevision ?? input.expected_revision,
+      "expectedRevision"
+    ),
+    expectedSourceRevision: requiredPositiveInteger(
+      input.expectedSourceRevision ?? input.expected_source_revision,
+      "expectedSourceRevision"
+    ),
+    expectedCalculationRevision: requiredPositiveInteger(
+      input.expectedCalculationRevision ?? input.expected_calculation_revision,
+      "expectedCalculationRevision"
+    )
+  });
+}
+
 function validateSidecarExtractionProof(value, expected) {
   if (!isPlainObject(value)) {
     throw validationError("extractionProof is required", "extractionProof");
@@ -396,7 +497,9 @@ function validateSidecarExtractionProof(value, expected) {
 }
 
 function validateSidecarSourceSurfaces(value, expected) {
-  const required = ["homis-mock-v4", "homis-mock-v5"].includes(expected.selectorContractVersion);
+  const enhancedSelectionSurfaces = expected.selectorContractVersion === "homis-mock-v6";
+  const required = ["homis-mock-v4", "homis-mock-v5", "homis-mock-v6"]
+    .includes(expected.selectorContractVersion);
   if (value === undefined || value === null) {
     if (required) {
       throw validationError(
@@ -419,13 +522,33 @@ function validateSidecarSourceSurfaces(value, expected) {
     externalPatientId: expected.externalPatientId,
     allowUnavailable: true
   });
+  const problems = enhancedSelectionSurfaces
+    ? validateSidecarSourceSurface(value.problems, {
+      name: "problems",
+      externalPatientId: expected.externalPatientId,
+      allowUnavailable: true
+    })
+    : undefined;
+  const visitPlan = enhancedSelectionSurfaces
+    ? validateSidecarSourceSurface(value.visitPlan ?? value.visit_plan, {
+      name: "visitPlan",
+      externalPatientId: expected.externalPatientId,
+      allowUnavailable: true
+    })
+    : undefined;
   if (required && (!currentChart || !documents)) {
     throw validationError(
       `currentChart and documents source surfaces are required for ${expected.selectorContractVersion}`,
       "sourceSurfaces"
     );
   }
-  return compactObject({ currentChart, documents });
+  if (expected.selectorContractVersion === "homis-mock-v6" && (!problems || !visitPlan)) {
+    throw validationError(
+      "problems and visitPlan source surfaces are required for homis-mock-v6",
+      "sourceSurfaces"
+    );
+  }
+  return compactObject({ currentChart, documents, problems, visitPlan });
 }
 
 function validateSidecarSourceSurface(value, options) {
@@ -477,10 +600,16 @@ function validateSidecarSourceSurface(value, options) {
     patientId,
     observedAt,
     surfaceHash,
-    raw: options.name === "currentChart"
-      ? validateSidecarCurrentChartRaw(value.raw, `${field}.raw`)
-      : validateSidecarDocumentsRaw(value.raw, `${field}.raw`)
+    raw: validateSidecarSourceSurfaceRaw(options.name, value.raw, `${field}.raw`)
   };
+}
+
+function validateSidecarSourceSurfaceRaw(name, value, field) {
+  if (name === "currentChart") return validateSidecarCurrentChartRaw(value, field);
+  if (name === "documents") return validateSidecarDocumentsRaw(value, field);
+  if (name === "problems") return validateSidecarProblemsRaw(value, field);
+  if (name === "visitPlan") return validateSidecarVisitPlanRaw(value, field);
+  throw validationError(`unsupported source surface: ${name}`, field);
 }
 
 function validateSidecarCurrentChartRaw(value, field) {
@@ -491,6 +620,11 @@ function validateSidecarCurrentChartRaw(value, field) {
     careInsuranceText: multilineStringValue(value.careInsuranceText ?? value.care_insurance_text, 10_000),
     visitingNurseText: multilineStringValue(value.visitingNurseText ?? value.visiting_nurse_text, 10_000),
     deviceManagementText: multilineStringValue(value.deviceManagementText ?? value.device_management_text, 20_000),
+    deviceManagementListCompleteness: optionalEnum(
+      value.deviceManagementListCompleteness ?? value.device_management_list_completeness,
+      sidecarSourceListCompletenessValues,
+      `${field}.deviceManagementListCompleteness`
+    ) || "unknown",
     prescriptionRows: boundedTextArray(
       value.prescriptionRows ?? value.prescription_rows,
       `${field}.prescriptionRows`,
@@ -505,8 +639,115 @@ function validateSidecarCurrentChartRaw(value, field) {
       value.calendarVisitDates ?? value.calendar_visit_dates,
       `${field}.calendarVisitDates`,
       62
-    )
+    ),
+    calendarVisitListCompleteness: optionalEnum(
+      value.calendarVisitListCompleteness ?? value.calendar_visit_list_completeness,
+      sidecarSourceListCompletenessValues,
+      `${field}.calendarVisitListCompleteness`
+    ) || "unknown"
   };
+}
+
+function validateSidecarProblemsRaw(value, field) {
+  if (!isPlainObject(value)) {
+    throw validationError(`${field} must be an object`, field);
+  }
+  const rows = boundedObjectRows(value.rows, `${field}.rows`, 500);
+  return {
+    listCompleteness: optionalEnum(
+      value.listCompleteness ?? value.list_completeness,
+      sidecarSourceListCompletenessValues,
+      `${field}.listCompleteness`
+    ) || "unknown",
+    rows: rows.map((row, index) => {
+      const rowField = `${field}.rows[${index}]`;
+      return {
+        name: boundedRequiredString(row.name, `${rowField}.name`, 2_000),
+        main: strictBoolean(row.main, `${rowField}.main`),
+        startDate: optionalDate(row.startDate ?? row.start_date, `${rowField}.startDate`) || null,
+        outcome: multilineStringValue(row.outcome, 256),
+        suspected: strictBoolean(row.suspected, `${rowField}.suspected`)
+      };
+    })
+  };
+}
+
+function validateSidecarVisitPlanRaw(value, field) {
+  if (!isPlainObject(value)) {
+    throw validationError(`${field} must be an object`, field);
+  }
+  const rows = boundedObjectRows(value.rows, `${field}.rows`, 100);
+  const basis = optionalEnum(
+    value.basis,
+    ["encounter_history", "schedule_only", "unknown"],
+    `${field}.basis`
+  ) || "unknown";
+  return {
+    calendarMonth: optionalClaimMonth(value.calendarMonth ?? value.calendar_month) || null,
+    category: multilineStringValue(value.category, 256),
+    patternText: multilineStringValue(value.patternText ?? value.pattern_text, 2_000),
+    basis,
+    listCompleteness: optionalEnum(
+      value.listCompleteness ?? value.list_completeness,
+      sidecarSourceListCompletenessValues,
+      `${field}.listCompleteness`
+    ) || "unknown",
+    rows: rows.map((row, index) => {
+      const rowField = `${field}.rows[${index}]`;
+      const encounterType = optionalEnum(
+        row.encounterType ?? row.encounter_type,
+        ["home_visit", "house_call", "outpatient"],
+        `${rowField}.encounterType`
+      );
+      const status = optionalEnum(
+        row.status,
+        ["planned", "completed", "cancelled"],
+        `${rowField}.status`
+      );
+      if (!encounterType || !status) {
+        throw validationError(
+          `${rowField}.encounterType and status are required`,
+          rowField
+        );
+      }
+      const rawSourceRecordId = row.sourceRecordId ?? row.source_record_id;
+      const sourceRecordId = basis === "encounter_history"
+        ? boundedRequiredString(rawSourceRecordId, `${rowField}.sourceRecordId`, 512)
+        : nullableString(rawSourceRecordId);
+      if (sourceRecordId && sourceRecordId.length > 512) {
+        throw validationError(
+          `${rowField}.sourceRecordId must be 512 characters or less`,
+          `${rowField}.sourceRecordId`
+        );
+      }
+      return {
+        serviceDate: requiredDate(row.serviceDate ?? row.service_date, `${rowField}.serviceDate`),
+        encounterType,
+        visitKind: optionalEnum(
+          row.visitKind ?? row.visit_kind,
+          feeVisitKinds,
+          `${rowField}.visitKind`
+        ) || null,
+        status,
+        sourceRecordId
+      };
+    })
+  };
+}
+
+function boundedObjectRows(value, field, maxItems) {
+  if (!Array.isArray(value)) {
+    throw validationError(`${field} must be an array`, field);
+  }
+  if (value.length > maxItems) {
+    throw validationError(`${field} must contain ${maxItems} items or less`, field);
+  }
+  return value.map((row, index) => {
+    if (!isPlainObject(row)) {
+      throw validationError(`${field}[${index}] must be an object`, `${field}[${index}]`);
+    }
+    return row;
+  });
 }
 
 function validateSidecarDocumentsRaw(value, field) {
@@ -551,7 +792,7 @@ function validateSidecarSurfaceProofs(value, expected) {
     );
   }
   const result = {};
-  for (const name of ["currentChart", "documents"]) {
+  for (const name of sidecarSourceSurfaceNames) {
     const source = expected.sourceSurfaces?.[name];
     const proof = value[name];
     if (!source && !proof) {

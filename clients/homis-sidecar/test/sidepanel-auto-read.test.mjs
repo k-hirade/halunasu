@@ -66,7 +66,13 @@ test("automatic preview selects DOM-backed encounter details without calculating
         globalThis.__sidecarTest.calculateCalls.push(payload);
         return {
           sidecarDraft: {
+            sidecarDraftId: "sidecar-auto-read-1001",
+            externalPatientId: payload.externalPatientId,
+            sourceRecordId: payload.sourceRecordId,
+            serviceDate: payload.serviceDate,
+            lifecycleStatus: "draft",
             sourceRevision: 1,
+            calculationRevision: 1,
             calculation: { estimatedTotalPoints: 0, candidates: [], warnings: [], reviewIssues: [] }
           }
         };

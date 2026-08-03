@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Build the homis-mock-v5 demo from the immutable upstream fixture.
+"""Prepare a dated HOMIS mock from the checksum-pinned fixture.
 
 Only synthetic dates are shifted. The visible DOM remains identical to the
-fixture; selector metadata is intentionally not injected into the mock.
+fixture, and hidden selector metadata is intentionally not injected.
 """
 
 from __future__ import annotations
@@ -24,6 +24,10 @@ ORIGINAL_EXTENSION_DATES = ("2025-06-19", "2025-07-05")
 FORBIDDEN_SELECTOR_METADATA = (
     "data-record-id",
     "data-single-building-patient-count",
+    "data-encounter-type",
+    "data-visit-kind",
+    "data-status",
+    "data-source-record-id",
 )
 
 SHIFTED_PATIENT_DATE_PATTERNS = (
@@ -37,7 +41,7 @@ SHIFTED_PATIENT_DATE_PATTERNS = (
 )
 
 
-def main() -> int:
+def main(contract_label: str = "homis-mock-v5") -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", type=Path, default=DEFAULT_FIXTURE)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
@@ -49,21 +53,21 @@ def main() -> int:
         parser.error("choose exactly one of --apply or --check")
 
     verify_fixture(args.source)
-    with tempfile.TemporaryDirectory(prefix="halunasu-homis-v5-") as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"halunasu-{contract_label}-") as temporary:
         generated = Path(temporary) / "mock_homis"
         build_mock(args.source, generated, args.target_month)
         if args.check:
             differences = compare_trees(generated, args.output)
             if differences:
-                raise SystemExit("homis-mock-v5 output differs: " + ", ".join(differences))
-            print("homis-mock-v5 check passed")
+                raise SystemExit(f"{contract_label} output differs: " + ", ".join(differences))
+            print(f"{contract_label} check passed")
             return 0
 
         args.output.parent.mkdir(parents=True, exist_ok=True)
         if args.output.exists():
             shutil.rmtree(args.output)
         shutil.copytree(generated, args.output)
-        print(f"Prepared homis-mock-v5 at {args.output}")
+        print(f"Prepared {contract_label} at {args.output}")
     return 0
 
 

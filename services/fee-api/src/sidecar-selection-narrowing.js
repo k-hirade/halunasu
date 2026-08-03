@@ -35,7 +35,16 @@ export function narrowSidecarCandidateSelection(candidate = {}, context = {}) {
   let remaining = options;
   const appliedFilters = [];
   let contextConflict = null;
-  const apply = (axis, value, label, evidenceLabel, evidenceSource, { record = true } = {}) => {
+  const apply = (axis, value, label, evidenceLabel, evidenceSource, {
+    record = true,
+    evidenceStatus = null,
+    sourceRevision = null,
+    observedAt = null,
+    evidenceValue = null,
+    completeness = null,
+    artifactRevision = null,
+    artifactPayloadSha256 = null
+  } = {}) => {
     if (value === null || value === undefined || contextConflict) return false;
     const next = remaining.filter((option) => axisMatches(option.axes?.[axis], value));
     if (!next.length) {
@@ -43,7 +52,19 @@ export function narrowSidecarCandidateSelection(candidate = {}, context = {}) {
       return false;
     }
     remaining = next;
-    if (record) appliedFilters.push({ axis, label, evidenceLabel, evidenceSource });
+    if (record) appliedFilters.push({
+      axis,
+      label,
+      evidenceLabel,
+      evidenceSource,
+      ...(evidenceStatus ? { evidenceStatus } : {}),
+      ...(sourceRevision ? { sourceRevision } : {}),
+      ...(observedAt ? { observedAt } : {}),
+      ...(evidenceValue !== null && evidenceValue !== undefined ? { value: evidenceValue } : {}),
+      ...(completeness ? { completeness } : {}),
+      ...(artifactRevision ? { artifactRevision } : {}),
+      ...(artifactPayloadSha256 ? { artifactPayloadSha256 } : {})
+    });
     return true;
   };
 
@@ -68,21 +89,46 @@ export function narrowSidecarCandidateSelection(candidate = {}, context = {}) {
     });
   }
 
-  const patientCount = finitePositiveInteger(context.singleBuildingPatientCount);
+  const patientCountFact = normalizedEvidenceFact(
+    context.selection?.singleBuildingPatientCount ?? context.singleBuildingPatientCount,
+    "screen.singleBuildingPatientCount"
+  );
+  const patientCount = trustedPositiveInteger(patientCountFact);
   apply(
     "patientCount",
     patientCount === null ? null : { count: patientCount },
     "単一建物人数",
     patientCount === null ? null : `単一建物${patientCount}名`,
-    "screen.singleBuildingPatientCount"
+    patientCountFact.source,
+    {
+      evidenceStatus: patientCountFact.status,
+      sourceRevision: patientCountFact.sourceRevision,
+      observedAt: patientCountFact.observedAt,
+      evidenceValue: patientCount,
+      completeness: patientCountFact.completeness
+    }
   );
-  const monthlyCount = finitePositiveInteger(context.currentMonthEncounterCount);
+  const monthlyVisitFact = normalizedEvidenceFact(
+    context.selection?.qualifyingMonthlyVisits
+      ?? context.qualifyingMonthlyVisits
+      ?? context.currentMonthEncounterCount,
+    "calendar.currentMonthEncounterCount"
+  );
+  const monthlyCount = trustedPositiveInteger(monthlyVisitFact);
+  const monthlyVisitAxis = monthlyCount === null ? null : (monthlyCount >= 2 ? "two_or_more" : "one");
   apply(
     "monthlyVisits",
-    monthlyCount === null ? null : (monthlyCount >= 2 ? "two_or_more" : "one"),
+    monthlyVisitAxis,
     "当月訪問回数",
     monthlyCount === null ? null : `当月${monthlyCount}回訪問`,
-    "calendar.currentMonthEncounterCount"
+    monthlyVisitFact.source,
+    {
+      evidenceStatus: monthlyVisitFact.status,
+      sourceRevision: monthlyVisitFact.sourceRevision,
+      observedAt: monthlyVisitFact.observedAt,
+      evidenceValue: monthlyCount,
+      completeness: monthlyVisitFact.completeness
+    }
   );
 
   const setting = String(context.setting || "");
@@ -99,14 +145,52 @@ export function narrowSidecarCandidateSelection(candidate = {}, context = {}) {
     "encounter.setting"
   );
 
-  const specialDiseaseStatus = String(context.specialDiseaseStatus || "unknown");
-  apply(
-    "specialDisease",
-    specialDiseaseStatus === "eligible" ? true : specialDiseaseStatus === "not_eligible" ? false : null,
-    "疾病等区分",
-    specialDiseaseStatus === "eligible" ? "対象疾病等" : specialDiseaseStatus === "not_eligible" ? "対象外" : null,
+  const specialDiseaseFact = normalizedEvidenceFact(
+    context.selection?.specialDisease ?? context.specialDisease ?? context.specialDiseaseStatus,
     "diagnosis.specialDiseaseTable"
   );
+  const specialDiseaseStatus = trustedEnum(specialDiseaseFact, ["eligible", "not_eligible"]);
+  // C002/C002-2 has no separate disease branch when the qualifying monthly visit count is one.
+  if (monthlyVisitAxis === "two_or_more") {
+    apply(
+      "specialDisease",
+      specialDiseaseStatus === "eligible" ? true : specialDiseaseStatus === "not_eligible" ? false : null,
+      "疾病等区分",
+      specialDiseaseStatus === "eligible" ? "対象疾病等" : specialDiseaseStatus === "not_eligible" ? "対象外" : null,
+      specialDiseaseFact.source,
+      {
+        evidenceStatus: specialDiseaseFact.status,
+        sourceRevision: specialDiseaseFact.sourceRevision,
+        observedAt: specialDiseaseFact.observedAt,
+        evidenceValue: specialDiseaseStatus,
+        completeness: specialDiseaseFact.completeness,
+        artifactRevision: specialDiseaseFact.artifactRevision,
+        artifactPayloadSha256: specialDiseaseFact.artifactPayloadSha256
+      }
+    );
+  }
+
+  for (const [axis, label, contextKey] of [
+    ["reduced", "減算区分", "reduced"],
+    ["specialProvision", "特例区分", "specialProvision"]
+  ]) {
+    const fact = normalizedEvidenceFact(context.selection?.[contextKey] ?? context[contextKey], `selection.${contextKey}`);
+    const value = trustedBoolean(fact);
+    apply(
+      axis,
+      value,
+      label,
+      value === null ? null : value ? "該当" : "非該当",
+      fact.source,
+      {
+        evidenceStatus: fact.status,
+        sourceRevision: fact.sourceRevision,
+        observedAt: fact.observedAt,
+        evidenceValue: value,
+        completeness: fact.completeness
+      }
+    );
+  }
 
   if (contextConflict) {
     return {
@@ -188,6 +272,72 @@ function varyingAxes(options = []) {
 function finitePositiveInteger(value) {
   const numeric = Number(value);
   return Number.isInteger(numeric) && numeric > 0 ? numeric : null;
+}
+
+function normalizedEvidenceFact(value, fallbackSource) {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return {
+      value: value.value ?? null,
+      status: String(value.status || "unknown"),
+      source: String(value.source || fallbackSource),
+      sourceRevision: value.sourceRevision || value.artifact?.artifactPayloadSha256 || null,
+      observedAt: validIsoTimestamp(value.observedAt),
+      completeness: normalizedEvidenceCompleteness(value.completeness ?? value.status),
+      artifactRevision: normalizedOptionalString(value.artifact?.revision),
+      artifactPayloadSha256: normalizedSha256(value.artifact?.artifactPayloadSha256)
+    };
+  }
+  return {
+    value: value ?? null,
+    status: value === null || value === undefined || value === "unknown" ? "unknown" : "known",
+    source: fallbackSource,
+    sourceRevision: null,
+    observedAt: null,
+    completeness: null,
+    artifactRevision: null,
+    artifactPayloadSha256: null
+  };
+}
+
+function factIsTrusted(fact) {
+  return ["known", "complete"].includes(fact.status);
+}
+
+function trustedPositiveInteger(fact) {
+  return factIsTrusted(fact) ? finitePositiveInteger(fact.value) : null;
+}
+
+function trustedEnum(fact, values) {
+  return factIsTrusted(fact) && values.includes(fact.value) ? fact.value : null;
+}
+
+function trustedBoolean(fact) {
+  return factIsTrusted(fact) && typeof fact.value === "boolean" ? fact.value : null;
+}
+
+function validIsoTimestamp(value) {
+  const timestamp = String(value || "");
+  return timestamp.includes("T") && Number.isFinite(Date.parse(timestamp))
+    ? new Date(timestamp).toISOString()
+    : null;
+}
+
+function normalizedOptionalString(value) {
+  const normalized = String(value || "").trim();
+  return normalized || null;
+}
+
+function normalizedSha256(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return /^[a-f0-9]{64}$/u.test(normalized) ? normalized : null;
+}
+
+function normalizedEvidenceCompleteness(value) {
+  if (["complete", "incomplete", "unavailable"].includes(value)) return value;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const entries = Object.entries(value)
+    .filter(([, status]) => ["complete", "incomplete", "unavailable", "unknown"].includes(status));
+  return entries.length ? Object.fromEntries(entries) : null;
 }
 
 function assertArtifactIntegrity(artifact) {

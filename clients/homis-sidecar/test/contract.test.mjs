@@ -31,7 +31,7 @@ after(async () => {
   await browser?.close();
 });
 
-test("homis-mock-v5 derives the record key only from visible chart fields", async () => {
+test("homis-mock-v6 derives the record key only from visible chart fields", async () => {
   const page = await contractPage();
   const result = await page.evaluate((href) => {
     const { sourceSurfaces: _sourceSurfaces, ...value } = globalThis.HalunasuSidecarContract.extractContractSnapshot(document, {
@@ -61,7 +61,7 @@ test("homis-mock-v5 derives the record key only from visible chart fields", asyn
     singleBuildingPatientCount: null,
     sameBuilding: false,
     sameBuildingSource: "dom",
-    selectorContractVersion: "homis-mock-v5",
+    selectorContractVersion: "homis-mock-v6",
     requiredElementCount: 7,
     matchedRequiredElementCount: 7,
     clinicalTextNodeCount: 4
@@ -69,7 +69,7 @@ test("homis-mock-v5 derives the record key only from visible chart fields", asyn
   await page.close();
 });
 
-test("homis-mock-v5 reads bounded current-chart facts without reading the action list", async () => {
+test("homis-mock-v6 reads bounded current-chart facts without reading the action list", async () => {
   const page = await contractPage();
   const result = await page.evaluate((href) => {
     const container = document.querySelector("#pdetail_karte");
@@ -91,6 +91,11 @@ test("homis-mock-v5 reads bounded current-chart facts without reading the action
     device.className = "device-text";
     device.textContent = "気管切開・複管カニューレ 8.0mm";
     structured.append(device);
+
+    const conditionManagementStatus = document.createElement("div");
+    conditionManagementStatus.className = "condition-management-list-status";
+    conditionManagementStatus.textContent = "疾病等状態管理一覧: 全件表示";
+    structured.append(conditionManagementStatus);
 
     const prescription = document.createElement("div");
     prescription.className = "shohou-wrap";
@@ -121,13 +126,20 @@ test("homis-mock-v5 reads bounded current-chart facts without reading the action
     const value = globalThis.HalunasuSidecarContract.extractContractSnapshot(document, {
       locationHref: href
     });
+    conditionManagementStatus.remove();
+    const withoutCompletenessMarker = globalThis.HalunasuSidecarContract.extractContractSnapshot(
+      document,
+      { locationHref: href }
+    );
     return {
       version: value.selectorContractVersion,
       currentChart: value.sourceSurfaces.currentChart,
+      withoutCompletenessMarker: withoutCompletenessMarker.sourceSurfaces.currentChart
+        .raw.deviceManagementListCompleteness,
       serialized: JSON.stringify(value)
     };
   }, locationHref);
-  assert.equal(result.version, "homis-mock-v5");
+  assert.equal(result.version, "homis-mock-v6");
   assert.deepEqual(result.currentChart, {
     status: "ok",
     patientId: "1006",
@@ -135,17 +147,37 @@ test("homis-mock-v5 reads bounded current-chart facts without reading the action
       careInsuranceText: "要介護5",
       visitingNurseText: "訪問看護 週4回 MCS連携",
       deviceManagementText: "気管切開・複管カニューレ 8.0mm",
+      deviceManagementListCompleteness: "complete",
       prescriptionRows: ["ラコサミド錠100mg 2錠"],
       patientStartDate: "",
       calendarMonth: "2026-06",
-      calendarVisitDates: ["2026-06-24"]
+      calendarVisitDates: ["2026-06-24"],
+      calendarVisitListCompleteness: "complete"
     }
   });
+  assert.equal(result.withoutCompletenessMarker, "unknown");
   assert.doesNotMatch(result.serialized, /DONT_READ_ACTION_SECRET/u);
   await page.close();
 });
 
-test("homis-mock-v5 parses the separately fetched documents surface", async () => {
+test("action-list mutation cannot change the extracted calculation request", async () => {
+  const page = await contractPage();
+  const result = await page.evaluate((href) => {
+    const contract = globalThis.HalunasuSidecarContract;
+    const actionList = document.querySelector("#action_list") || document.createElement("div");
+    actionList.id = "action_list";
+    if (!actionList.isConnected) document.querySelector("#pdetail_karte").append(actionList);
+    actionList.textContent = "GOLD_CODE_A 9999点";
+    const before = contract.extractContractSnapshot(document, { locationHref: href });
+    actionList.textContent = "GOLD_CODE_B 0点 完全に別の正解";
+    const after = contract.extractContractSnapshot(document, { locationHref: href });
+    return { before, after };
+  }, locationHref);
+  assert.deepEqual(result.after, result.before);
+  await page.close();
+});
+
+test("homis-mock-v6 parses the separately fetched documents surface", async () => {
   const page = await browser.newPage();
   await page.setContent(`
     <div class="patient-id-line">患者名 1006 / 後期高齢者医療</div>
@@ -171,6 +203,127 @@ test("homis-mock-v5 parses the separately fetched documents surface", async () =
     }
   });
   assert.doesNotMatch(JSON.stringify(surface), /DONT_READ_DOCUMENT_ACTION/u);
+  await page.close();
+});
+
+test("parses complete problem and typed actual-encounter surfaces without calculation fields", async () => {
+  const page = await browser.newPage();
+  await page.setContent(`
+    <div class="patient-id-line">患者名 1006 / 後期高齢者医療</div>
+    <div class="problem-list-status">病名一覧: 全件表示</div>
+    <table class="problem-list"><tbody>
+      <tr><td>1</td><td>膵臓癌 末期（主病）</td><td>2026-04-20</td><td>継続</td></tr>
+      <tr><td>2</td><td>肺炎疑い</td><td>2026-06-01</td><td>継続</td></tr>
+    </tbody></table>
+    <div class="plan-科">在宅診療</div>
+    <div class="plan-pattern">2、4週 土</div>
+    <div class="plan-dates">
+      <span class="plan-chip">6/13(土)</span><span class="plan-chip">6/27(土)</span>
+    </div>
+    <div class="encounter-history-status">当月受診履歴: 全件表示</div>
+    <table class="encounter-history"><tbody>
+      <tr>
+        <td>2026-06-13</td><td>定期訪問</td><td>完了</td><td>10060613</td>
+      </tr>
+      <tr>
+        <td>2026-06-20</td><td>電話再診</td><td>完了</td><td>10060620</td>
+      </tr>
+      <tr>
+        <td>2026-06-27</td><td>往診</td><td>完了</td><td>10060627</td>
+      </tr>
+    </tbody></table>
+    <div id="action_list">DONT_READ_SUPPLEMENTAL_ACTION</div>
+  `);
+  await page.addScriptTag({ path: path.join(extensionDir, "lib/contract.js") });
+  const result = await page.evaluate(() => {
+    const contract = globalThis.HalunasuSidecarContract;
+    return {
+      problems: contract.readProblemsSurface(document, { patientId: "1006" }),
+      visitPlan: contract.readVisitPlanSurface(document, {
+        patientId: "1006",
+        calendarMonth: "2026-06"
+      })
+    };
+  });
+  assert.deepEqual(result.problems.raw, {
+    rows: [
+      { name: "膵臓癌 末期", main: true, startDate: "2026-04-20", outcome: "継続", suspected: false },
+      { name: "肺炎疑い", main: false, startDate: "2026-06-01", outcome: "継続", suspected: true }
+    ],
+    listCompleteness: "complete"
+  });
+  assert.deepEqual(result.visitPlan.raw, {
+    calendarMonth: "2026-06",
+    category: "在宅診療",
+    patternText: "2、4週 土",
+    basis: "encounter_history",
+    rows: [
+      {
+        serviceDate: "2026-06-13", encounterType: "home_visit", visitKind: null,
+        status: "completed", sourceRecordId: "10060613"
+      },
+      {
+        serviceDate: "2026-06-20", encounterType: "outpatient", visitKind: "telephone_revisit",
+        status: "completed", sourceRecordId: "10060620"
+      },
+      {
+        serviceDate: "2026-06-27", encounterType: "house_call", visitKind: null,
+        status: "completed", sourceRecordId: "10060627"
+      }
+    ],
+    listCompleteness: "complete"
+  });
+  const withoutMarkers = await page.evaluate(() => {
+    document.querySelector(".problem-list-status").remove();
+    document.querySelector(".encounter-history-status").remove();
+    const contract = globalThis.HalunasuSidecarContract;
+    return {
+      problems: contract.readProblemsSurface(document, { patientId: "1006" }).raw.listCompleteness,
+      visitPlan: contract.readVisitPlanSurface(document, {
+        patientId: "1006",
+        calendarMonth: "2026-06"
+      }).raw.listCompleteness
+    };
+  });
+  assert.deepEqual(withoutMarkers, { problems: "incomplete", visitPlan: "incomplete" });
+  assert.doesNotMatch(JSON.stringify(result), /DONT_READ_SUPPLEMENTAL_ACTION/u);
+  await page.close();
+});
+
+test("planned date chips alone remain incomplete selection evidence", async () => {
+  const page = await browser.newPage();
+  await page.setContent(`
+    <div class="patient-id-line">患者名 1006 / 後期高齢者医療</div>
+    <div class="plan-科">在宅診療</div>
+    <div class="plan-pattern">2、4週 土</div>
+    <div class="plan-dates"><span class="plan-chip">6/13(土)</span></div>
+  `);
+  await page.addScriptTag({ path: path.join(extensionDir, "lib/contract.js") });
+  const surface = await page.evaluate(() => (
+    globalThis.HalunasuSidecarContract.readVisitPlanSurface(document, {
+      patientId: "1006",
+      calendarMonth: "2026-06"
+    })
+  ));
+  assert.equal(surface.raw.basis, "schedule_only");
+  assert.equal(surface.raw.listCompleteness, "incomplete");
+  assert.equal(surface.raw.rows[0].status, "planned");
+  assert.equal(surface.raw.rows[0].sourceRecordId, null);
+  await page.close();
+});
+
+test("proof sealing covers problem and visit-plan source revisions", async () => {
+  const page = await browser.newPage();
+  await page.addScriptTag({ path: path.join(extensionDir, "lib/proof.js") });
+  const result = await page.evaluate(async () => (
+    globalThis.HalunasuSidecarProof.sealSourceSurfaces({
+      problems: { status: "ok", patientId: "1006", raw: { rows: [] } },
+      visitPlan: { status: "unavailable", patientId: "1006", unavailableReason: "timeout" }
+    }, { observedAt: "2026-08-03T00:00:00.000Z" })
+  ));
+  assert.deepEqual(Object.keys(result).sort(), ["problems", "visitPlan"]);
+  assert.match(result.problems.surfaceHash, /^(?:sha256|fnv1a64)-/u);
+  assert.equal(result.visitPlan.unavailableReason, "timeout");
   await page.close();
 });
 
@@ -214,7 +367,7 @@ test("encounter type uses only explicit chart status labels and leaves unsupport
   await page.close();
 });
 
-test("homis-mock-v5 stops when the visible reception time is missing", async () => {
+test("homis-mock-v6 stops when the visible reception time is missing", async () => {
   const page = await contractPage();
   const result = await page.evaluate((href) => {
     document.querySelector(".karte-date").textContent = "6/24(水)";
@@ -233,7 +386,7 @@ test("homis-mock-v5 stops when the visible reception time is missing", async () 
   await page.close();
 });
 
-test("homis-mock-v5 stops instead of calculating from an empty SOAP", async () => {
+test("homis-mock-v6 stops instead of calculating from an empty SOAP", async () => {
   const page = await contractPage();
   const result = await page.evaluate((href) => {
     document.querySelectorAll(".note-soap p:not(.karte-date)").forEach((node) => node.remove());
@@ -248,7 +401,7 @@ test("homis-mock-v5 stops instead of calculating from an empty SOAP", async () =
   await page.close();
 });
 
-test("homis-mock-v5 derives the three-state same-building value from visible text", async () => {
+test("homis-mock-v6 derives the three-state same-building value from visible text", async () => {
   const page = await contractPage();
   const result = await page.evaluate((href) => {
     const contract = globalThis.HalunasuSidecarContract;
@@ -450,7 +603,7 @@ test("content monitoring announces the initial chart and one debounced event aft
   await page.close();
 });
 
-test("a temporarily missing reception time retries and emits only the complete v5 record key", async () => {
+test("a temporarily missing reception time retries and emits only the complete v6 record key", async () => {
   const page = await browser.newPage();
   await page.route("http://localhost:8899/**", (route) => route.fulfill({
     contentType: "text/html; charset=utf-8",

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { analyzeSidecarV5Migration } from "./audit_homis_sidecar_v5_migration.mjs";
+import { analyzeSidecarV6Migration } from "./audit_homis_sidecar_v5_migration.mjs";
 
 function adoptedDraft(overrides = {}) {
   return {
@@ -19,7 +19,7 @@ function adoptedDraft(overrides = {}) {
 }
 
 test("migration audit requires a guard backfill for an adopted v4 draft", () => {
-  const result = analyzeSidecarV5Migration([adoptedDraft()], [], { facilityId: "fac_001" });
+  const result = analyzeSidecarV6Migration([adoptedDraft()], [], { facilityId: "fac_001" });
   assert.equal(result.report.migrationReady, false);
   assert.equal(result.report.guardBackfillRequiredCount, 1);
   assert.deepEqual(result.report.blockerCodes, ["adoption_guard_backfill_required"]);
@@ -27,9 +27,9 @@ test("migration audit requires a guard backfill for an adopted v4 draft", () => 
 });
 
 test("migration audit becomes ready after the matching adoption guard exists", () => {
-  const before = analyzeSidecarV5Migration([adoptedDraft()], [], { facilityId: "fac_001" });
+  const before = analyzeSidecarV6Migration([adoptedDraft()], [], { facilityId: "fac_001" });
   const [{ visitFingerprint, draft }] = before.backfills;
-  const after = analyzeSidecarV5Migration([draft], [{
+  const after = analyzeSidecarV6Migration([draft], [{
     visitFingerprint,
     sidecarDraftId: draft.sidecarDraftId,
     adoptedFeeSessionId: draft.adoptedFeeSessionId
@@ -40,7 +40,7 @@ test("migration audit becomes ready after the matching adoption guard exists", (
 });
 
 test("migration audit blocks active old drafts and incomplete adopted fingerprints", () => {
-  const result = analyzeSidecarV5Migration([
+  const result = analyzeSidecarV6Migration([
     adoptedDraft({ sidecarDraftId: "active", lifecycleStatus: "draft", adoptedFeeSessionId: null }),
     adoptedDraft({ sidecarDraftId: "incomplete", sourceRecordDisplayId: null })
   ], [], { facilityId: "fac_001" });
@@ -53,7 +53,7 @@ test("migration audit blocks active old drafts and incomplete adopted fingerprin
 });
 
 test("migration audit blocks two adopted legacy drafts for the same visit", () => {
-  const result = analyzeSidecarV5Migration([
+  const result = analyzeSidecarV6Migration([
     adoptedDraft(),
     adoptedDraft({ sidecarDraftId: "sidecar_v3", adoptedFeeSessionId: "fee_002" })
   ], [], { facilityId: "fac_001" });

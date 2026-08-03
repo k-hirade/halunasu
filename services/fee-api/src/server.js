@@ -15,6 +15,7 @@ import {
   validateCreateFeeSessionInput,
   validateSidecarCandidateAcknowledgementInput,
   validateSidecarCalculationInput,
+  validateSidecarPatientChargeSettingInput,
   validateMonthlyExclusionResolutionInput,
   validateReviewDecisionInput,
   defaultFeeSettings,
@@ -96,6 +97,10 @@ import {
 import { buildSidecarNoticePresentation } from "./sidecar-notice-view.js";
 import { narrowSidecarCandidateSelection } from "./sidecar-selection-narrowing.js";
 import {
+  HOME_MEDICAL_TRANSPORT_CHARGE_TYPE,
+  resolvePatientChargeSetting
+} from "./patient-charge-contracts.js";
+import {
   decorateSidecarCandidateAcknowledgements,
   findSidecarAcknowledgementCandidate,
   sidecarAcknowledgementTargets
@@ -110,6 +115,7 @@ const CARE_FEE_PRODUCT_ID = productIds.careFee;
 const SIDECAR_PRODUCT_ID = productIds.homisSidecar;
 const SIDECAR_CALCULATE_SCOPE = "sidecar:calculate";
 const SIDECAR_ACKNOWLEDGE_SCOPE = "sidecar:acknowledge";
+const SIDECAR_PATIENT_CHARGE_WRITE_SCOPE = "sidecar:patient_charge_write";
 const SIDECAR_CONTRACT_VERSION = "v1";
 const SIDECAR_PRODUCT_ROLES = ["admin", "doctor", "nurse", "medical_clerk"];
 const FEE_PRODUCT_ROLES = ["admin", "doctor", "nurse", "medical_clerk", "viewer"];
@@ -280,6 +286,7 @@ async function routeFeeApiRequest(input = {}) {
     const normalized = validateSidecarCalculationInput(input.body || {});
     requireSidecarResourceScope(context, normalized);
     requireAllowedSidecarSelectorContract(input, normalized.extractionProof.selectorContractVersion);
+    assertSidecarSourceSurfaceIntegrity(normalized);
     assertFreshSidecarExtraction(normalized.extractionProof, input.now || new Date());
     const facility = await requireFacility(context, platformStore, normalized.facilityId);
     const department = await resolveDepartment(context, platformStore, normalized.departmentId);
@@ -305,7 +312,13 @@ async function routeFeeApiRequest(input = {}) {
     const sourceRevisionHash = sidecarSourceRevisionHash(normalized);
     const structuredSourceFacts = normalizeSidecarStructuredFacts({
       sourceSurfaces: normalized.sourceSurfaces,
-      serviceDate: normalized.serviceDate
+      serviceDate: normalized.serviceDate,
+      privateResidence: normalized.residenceType === "private",
+      sameBuilding: normalized.sameBuilding,
+      singleBuildingPatientCount: normalized.singleBuildingPatientCount,
+      sourceRevisionHash,
+      selectorContractVersion: normalized.extractionProof.selectorContractVersion,
+      observedAt: normalized.extractionProof.extractedAt
     });
     const encounterDetails = {
       sameBuilding: normalized.sameBuilding,
@@ -402,9 +415,13 @@ async function routeFeeApiRequest(input = {}) {
       context,
       sidecarDraft: calculation.feeSession
     });
-    return upserted.created
-      ? created(sidecarCalculationResponse(reconciledDraft))
-      : ok(sidecarCalculationResponse(reconciledDraft));
+    const response = await sidecarCalculationResponseWithPatientCharges({
+      feeStore,
+      orgId: context.session.orgId,
+      sidecarDraft: reconciledDraft,
+      now
+    });
+    return upserted.created ? created(response) : ok(response);
   }
 
   if (method === "PUT" && isSidecarCandidateAcknowledgementRoute(parts)) {
@@ -456,10 +473,100 @@ async function routeFeeApiRequest(input = {}) {
       orgId: context.session.orgId,
       sidecarDraft: result.sidecarDraft
     });
+    const response = await sidecarCalculationResponseWithPatientCharges({
+      feeStore,
+      orgId: context.session.orgId,
+      sidecarDraft: auditedDraft,
+      now: input.now || new Date()
+    });
     return ok({
       contractVersion: SIDECAR_CONTRACT_VERSION,
       changed: result.changed === true,
-      sidecarDraft: sidecarCalculationResponse(auditedDraft).sidecarDraft
+      sidecarDraft: response.sidecarDraft
+    });
+  }
+
+  if (method === "PUT" && isSidecarPatientChargeSettingRoute(parts)) {
+    requireSidecarFeature(input);
+    const context = await requireSidecarContext(input, platformStore, {
+      requiredScope: SIDECAR_PATIENT_CHARGE_WRITE_SCOPE
+    });
+    await consumeSidecarPatientChargeRateLimit(input, platformStore, context);
+    const sidecarDraftId = decodeURIComponent(parts[4]);
+    const normalized = validateSidecarPatientChargeSettingInput(input.body || {});
+    const current = await feeStore.getSidecarCalculationDraft(
+      context.session.orgId,
+      sidecarDraftId
+    );
+    if (!current) {
+      return notFound("sidecar calculation draft not found");
+    }
+    requireSidecarResourceScope(context, current);
+    assertSidecarPatientChargeWritable(current, input.now || new Date());
+    if (
+      Number(current.sourceRevision || 0) !== normalized.expectedSourceRevision
+      || Number(current.calculationRevision || 0) !== normalized.expectedCalculationRevision
+    ) {
+      throw sidecarAcknowledgementConflict(
+        "算定案が更新されています。表示中のカルテから算定案を再作成してください。"
+      );
+    }
+    if (!["home_visit", "house_call"].includes(current.setting)) {
+      throw requestValidationError("patient transport charge is only available for home visits and house calls");
+    }
+    if (normalized.effectiveFrom && normalized.effectiveFrom !== current.serviceDate) {
+      throw requestValidationError("Sidecar patient charge settings must start on the draft service date");
+    }
+    if (normalized.effectiveTo) {
+      throw requestValidationError("Sidecar patient charge settings cannot set an end date");
+    }
+    if (
+      normalized.amountYen !== null
+      || (normalized.handling === "charge" && normalized.amountMode !== "actual")
+    ) {
+      throw requestValidationError("Sidecar can set transport handling but cannot finalize an amount");
+    }
+    const effectiveFrom = current.serviceDate;
+    const effectiveTo = null;
+    const writeAt = input.now instanceof Date ? input.now : new Date(input.now || Date.now());
+    const result = await feeStore.putPatientChargeContractSetting(
+      context.session.orgId,
+      {
+        ...normalized,
+        orgId: context.session.orgId,
+        facilityId: current.facilityId,
+        canonicalPatientId: current.canonicalPatientId,
+        chargeType: HOME_MEDICAL_TRANSPORT_CHARGE_TYPE,
+        effectiveFrom,
+        effectiveTo,
+        source: "homis_sidecar",
+        sidecarDraftId,
+        expectedDraftSourceRevision: normalized.expectedSourceRevision,
+        expectedDraftCalculationRevision: normalized.expectedCalculationRevision,
+        expectedDraftServiceDate: current.serviceDate,
+        updatedByMemberId: context.session.memberId,
+        updatedByLoginId: context.session.loginId,
+        updatedFromDeviceId: context.session.deviceId || null,
+        writeAt: writeAt.toISOString()
+      }
+    );
+    const patientChargeContract = result.patientChargeContract;
+    await flushPatientChargeAuditOutbox({
+      feeStore,
+      platformStore,
+      orgId: context.session.orgId,
+      patientChargeContract
+    });
+    const response = await sidecarCalculationResponseWithPatientCharges({
+      feeStore,
+      orgId: context.session.orgId,
+      sidecarDraft: current,
+      now: input.now || new Date()
+    });
+    return ok({
+      contractVersion: SIDECAR_CONTRACT_VERSION,
+      changed: result.changed === true,
+      sidecarDraft: response.sidecarDraft
     });
   }
 
@@ -2083,6 +2190,19 @@ async function consumeSidecarAcknowledgementRateLimit(input, platformStore, cont
   );
 }
 
+async function consumeSidecarPatientChargeRateLimit(input, platformStore, context) {
+  if (typeof platformStore.consumeRateLimit !== "function") {
+    return;
+  }
+  await platformStore.consumeRateLimit(
+    `sidecar-patient-charge:${context.session.orgId}:${context.session.memberId}:${context.session.deviceId || "unknown"}`,
+    {
+      limit: Number(input.sidecarPatientChargeRateLimit?.limit || 30),
+      windowSeconds: Number(input.sidecarPatientChargeRateLimit?.windowSeconds || 60)
+    }
+  );
+}
+
 function requireSidecarResourceScope(context = {}, resource = {}) {
   const tokenFacilityId = String(context.session?.facilityId || "").trim();
   const resourceFacilityId = String(resource.facilityId || "").trim();
@@ -2110,6 +2230,20 @@ function assertSidecarDepartmentFacility(facility = {}, department = null) {
 function assertMutableSidecarDraft(sidecarDraft = {}, nowInput = new Date()) {
   if (sidecarDraft.lifecycleStatus !== "draft") {
     throw sidecarAcknowledgementConflict("採用済みの算定案は確認状態を変更できません。");
+  }
+  const expiresAt = Date.parse(String(sidecarDraft.expiresAt || ""));
+  const now = nowInput instanceof Date ? nowInput : new Date(nowInput);
+  if (!Number.isFinite(expiresAt) || expiresAt <= now.getTime()) {
+    throw sidecarAcknowledgementConflict("算定案の有効期限が切れています。算定案を再作成してください。");
+  }
+}
+
+function assertSidecarPatientChargeWritable(sidecarDraft = {}, nowInput = new Date()) {
+  if (sidecarDraft.canonicalPatientResolutionStatus !== "resolved") {
+    throw sidecarAcknowledgementConflict("患者連携後に交通費を設定してください。");
+  }
+  if (sidecarDraft.lifecycleStatus !== "draft") {
+    throw sidecarAcknowledgementConflict("採用済みの算定案から交通費設定は変更できません。");
   }
   const expiresAt = Date.parse(String(sidecarDraft.expiresAt || ""));
   const now = nowInput instanceof Date ? nowInput : new Date(nowInput);
@@ -2215,6 +2349,7 @@ async function maybeAutoProvisionSidecarPatient({
 function sidecarSourceRevisionHash(input = {}) {
   return crypto.createHash("sha256").update(JSON.stringify({
     contractVersion: input.contractVersion || SIDECAR_CONTRACT_VERSION,
+    selectorContractVersion: input.extractionProof?.selectorContractVersion || null,
     serviceDate: input.serviceDate,
     receptionTime: input.receptionTime || null,
     setting: input.setting,
@@ -2233,9 +2368,61 @@ function sidecarSourceRevisionHash(input = {}) {
   })).digest("hex");
 }
 
+function assertSidecarSourceSurfaceIntegrity(input = {}) {
+  if (input.extractionProof?.selectorContractVersion !== "homis-mock-v6") {
+    return;
+  }
+  for (const [name, surface] of Object.entries(input.sourceSurfaces || {})) {
+    const serialized = canonicalSidecarSurfaceJson(sidecarSurfaceIntegrityPayload(surface));
+    const expected = String(surface.surfaceHash || "");
+    const actual = expected.startsWith("fnv1a64-")
+      ? fnv1a64Fingerprint(serialized)
+      : `sha256-${crypto.createHash("sha256").update(serialized).digest("base64url")}`;
+    if (!safeStringEqual(actual, expected)) {
+      throw requestValidationError(`sourceSurfaces.${name}.surfaceHash does not match its content`);
+    }
+  }
+}
+
+function sidecarSurfaceIntegrityPayload(surface = {}) {
+  return {
+    status: surface.status || "unavailable",
+    patientId: surface.patientId || "",
+    ...(surface.status === "ok" ? { raw: surface.raw || {} } : {}),
+    ...(surface.status === "unavailable"
+      ? { unavailableReason: surface.unavailableReason || "fetch_failed" }
+      : {})
+  };
+}
+
+function canonicalSidecarSurfaceJson(value) {
+  return JSON.stringify(canonicalSidecarSurfaceValue(value));
+}
+
+function canonicalSidecarSurfaceValue(value) {
+  if (Array.isArray(value)) {
+    return value.map(canonicalSidecarSurfaceValue);
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.keys(value).sort().map((key) => [key, canonicalSidecarSurfaceValue(value[key])])
+    );
+  }
+  return value;
+}
+
+function fnv1a64Fingerprint(value) {
+  let hash = 0xcbf29ce484222325n;
+  for (const byte of Buffer.from(String(value || ""), "utf8")) {
+    hash ^= BigInt(byte);
+    hash = BigInt.asUintN(64, hash * 0x100000001b3n);
+  }
+  return `fnv1a64-${hash.toString(16).padStart(16, "0")}`;
+}
+
 function sidecarSourceSurfaceRevisionPayload(sourceSurfaces = {}) {
   return Object.fromEntries(
-    ["currentChart", "documents"]
+    ["currentChart", "documents", "problems", "visitPlan"]
       .filter((name) => sourceSurfaces?.[name])
       .map((name) => [name, {
         status: sourceSurfaces[name].status,
@@ -2524,7 +2711,138 @@ async function flushSidecarAcknowledgementAuditOutbox({
   return current;
 }
 
-function sidecarCalculationResponse(sidecarDraft = {}) {
+async function flushPatientChargeAuditOutbox({
+  feeStore,
+  platformStore,
+  orgId,
+  patientChargeContract
+} = {}) {
+  let current = patientChargeContract;
+  const entries = Object.values(current?.auditOutbox || {}).sort((left, right) => (
+    String(left?.occurredAt || "").localeCompare(String(right?.occurredAt || ""))
+    || String(left?.eventId || "").localeCompare(String(right?.eventId || ""))
+  ));
+  for (const entry of entries) {
+    await platformStore.createAuditEvent(orgId, {
+      eventId: entry.eventId,
+      eventType: entry.eventType,
+      actorMemberId: entry.actorMemberId,
+      actorLoginId: entry.actorLoginId,
+      targetType: entry.targetType,
+      targetId: entry.targetId,
+      productId: PRODUCT_ID,
+      safePayload: {
+        ...entry.safePayload,
+        occurredAt: entry.occurredAt
+      }
+    });
+    const completed = await feeStore.completePatientChargeContractAudit(
+      orgId,
+      current.patientChargeContractId,
+      entry.eventId
+    );
+    current = completed.patientChargeContract;
+  }
+  return current;
+}
+
+async function sidecarCalculationResponseWithPatientCharges({
+  feeStore,
+  orgId,
+  sidecarDraft,
+  now = new Date()
+} = {}) {
+  const patientCharges = await sidecarPatientChargeViews({
+    feeStore,
+    orgId,
+    sidecarDraft,
+    now
+  });
+  return sidecarCalculationResponse(sidecarDraft, { patientCharges });
+}
+
+async function sidecarPatientChargeViews({ feeStore, orgId, sidecarDraft = {}, now } = {}) {
+  if (!["home_visit", "house_call"].includes(sidecarDraft.setting)) {
+    return [];
+  }
+  const mutable = sidecarDraft.lifecycleStatus === "draft"
+    && Number.isFinite(Date.parse(String(sidecarDraft.expiresAt || "")))
+    && Date.parse(String(sidecarDraft.expiresAt || "")) > new Date(now || Date.now()).getTime();
+  const resolvedPatient = sidecarDraft.canonicalPatientResolutionStatus === "resolved"
+    && String(sidecarDraft.canonicalPatientId || "").trim();
+  const pending = (overrides = {}) => ({
+    chargeType: HOME_MEDICAL_TRANSPORT_CHARGE_TYPE,
+    status: "pending",
+    handling: null,
+    billingHandling: "unknown",
+    amountMode: null,
+    amountYen: null,
+    effectiveFrom: null,
+    effectiveTo: null,
+    revision: 0,
+    includedInInsurancePoints: false,
+    includedInUke: false,
+    writable: Boolean(resolvedPatient && mutable),
+    unavailableReason: "setting_not_configured",
+    ...overrides
+  });
+  if (!resolvedPatient) {
+    return [pending({ writable: false, unavailableReason: "patient_not_linked" })];
+  }
+  if (typeof feeStore?.getPatientChargeContract !== "function") {
+    return [pending({ writable: false, unavailableReason: "setting_store_unavailable" })];
+  }
+
+  let contract;
+  try {
+    contract = await feeStore.getPatientChargeContract(
+      orgId,
+      sidecarDraft.facilityId,
+      sidecarDraft.canonicalPatientId,
+      HOME_MEDICAL_TRANSPORT_CHARGE_TYPE
+    );
+  } catch (error) {
+    logFeeApiError(error, {
+      stage: "patientChargeLookup",
+      orgId,
+      facilityId: sidecarDraft.facilityId
+    });
+    return [pending({ writable: false, unavailableReason: "setting_lookup_failed" })];
+  }
+  const setting = resolvePatientChargeSetting(contract, sidecarDraft.serviceDate);
+  if (!setting) {
+    return [pending({
+      revision: Number(contract?.revision || 0),
+      writable: mutable,
+      unavailableReason: "setting_not_configured"
+    })];
+  }
+  const inherited = setting.handling === "inherit";
+  const pendingActual = setting.handling === "charge"
+    && setting.amountMode === "actual"
+    && !Number.isInteger(setting.amountYen);
+  return [{
+    chargeType: HOME_MEDICAL_TRANSPORT_CHARGE_TYPE,
+    status: inherited ? "pending" : pendingActual ? "pending_actual" : "configured",
+    handling: setting.handling,
+    billingHandling: inherited || pendingActual ? "unknown" : setting.handling,
+    amountMode: setting.amountMode || null,
+    amountYen: Number.isInteger(setting.amountYen) ? setting.amountYen : null,
+    effectiveFrom: setting.effectiveFrom,
+    effectiveTo: setting.effectiveTo || null,
+    revision: Number(contract.revision || setting.revision || 0),
+    includedInInsurancePoints: false,
+    includedInUke: false,
+    writable: mutable,
+    unavailableReason: inherited
+      ? "facility_default_not_configured"
+      : mutable
+        ? null
+        : "draft_not_mutable"
+  }];
+}
+
+function sidecarCalculationResponse(sidecarDraft = {}, options = {}) {
   const calculation = sidecarDraft.calculationResult || {};
   const warnings = Array.isArray(calculation.warnings) ? calculation.warnings : [];
   const reviewIssues = Array.isArray(calculation.reviewIssues) ? calculation.reviewIssues : [];
@@ -2586,9 +2904,10 @@ function sidecarCalculationResponse(sidecarDraft = {}) {
     occurredAt: sidecarDraft.updatedAt || sidecarDraft.createdAt || null
   });
   const selectionContext = calculation.metrics?.sidecarSelectionContext || {
-    singleBuildingPatientCount: sidecarDraft.encounterDetails?.singleBuildingPatientCount || null,
     setting: sidecarDraft.encounterDetails?.visitKind || sidecarDraft.setting || "",
-    specialDiseaseStatus: "unknown"
+    selection: isPlainObject(sidecarDraft.structuredSourceFacts?.selection)
+      ? sidecarDraft.structuredSourceFacts.selection
+      : {}
   };
   const zonedCandidates = presentation.candidates.map((candidate) => {
     const facilityRuleConfirmed = candidate.sourceType === "proposal"
@@ -2635,6 +2954,7 @@ function sidecarCalculationResponse(sidecarDraft = {}) {
       setting: sidecarDraft.setting || null,
       encounterTypeSource: sidecarDraft.encounterTypeSource || null,
       encounterDetails: sidecarDraft.encounterDetails || null,
+      patientCharges: Array.isArray(options.patientCharges) ? options.patientCharges : [],
       sourceRecordDisplayId: sidecarDraft.sourceRecordDisplayId || null,
       sourceRevision: Number(sidecarDraft.sourceRevision || 1),
       calculationRevision: Number(sidecarDraft.calculationRevision || 0),
@@ -2731,6 +3051,12 @@ function isSidecarDraftAdoptionRoute(parts = []) {
   return parts.length === 5
     && matches(parts.slice(0, 3), ["v1", "fee", "sidecar-drafts"])
     && parts[4] === "adopt";
+}
+
+function isSidecarPatientChargeSettingRoute(parts = []) {
+  return parts.length === 6
+    && matches(parts.slice(0, 4), ["v1", "integrations", "sidecar", "drafts"])
+    && parts[5] === "patient-charge-setting";
 }
 
 function isSidecarCandidateAcknowledgementRoute(parts = []) {
@@ -5792,6 +6118,9 @@ async function calculatePreparedFeeSessionNow({
             : {}),
           ...(isPlainObject(prepared.metrics?.sameHouseholdVisit)
             ? { sameHouseholdVisit: prepared.metrics.sameHouseholdVisit }
+            : {}),
+          ...(isPlainObject(prepared.metrics?.sidecarSelectionContext)
+            ? { sidecarSelectionContext: prepared.metrics.sidecarSelectionContext }
             : {})
         },
         candidateProposals: uniqueCandidateProposals([
@@ -8212,8 +8541,7 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
     primaryPreparedWithStandingFacts,
     {
       session: baseSession,
-      facilityProfile: effectiveFacilityProfile,
-      currentMonthEncounterCount
+      facilityProfile: effectiveFacilityProfile
     }
   );
   const primaryPrepared = await measureStage(stageTimings, "candidateProposalGovernance", () => (
@@ -8426,8 +8754,7 @@ function countCurrentMonthEncounters(session = {}, priorSessions = []) {
 
 function applySidecarSelectionContextToPreparation(prepared = {}, {
   session = {},
-  facilityProfile = {},
-  currentMonthEncounterCount = null
+  facilityProfile = {}
 } = {}) {
   if (session.sourceSystem !== "homis_sidecar") {
     return prepared;
@@ -8439,10 +8766,10 @@ function applySidecarSelectionContextToPreparation(prepared = {}, {
       sidecarSelectionContext: {
         facilityStandardKeys: uniqueStrings(facilityProfile.facilityStandardKeys),
         facilityStandardKeysSource: facilityProfile.facilityStandardKeysSource || facilityProfile.source || "",
-        currentMonthEncounterCount,
-        singleBuildingPatientCount: Number(session.encounterDetails?.singleBuildingPatientCount || 0) || null,
         setting: session.encounterDetails?.visitKind || session.setting || "",
-        specialDiseaseStatus: "unknown"
+        selection: isPlainObject(session.structuredSourceFacts?.selection)
+          ? session.structuredSourceFacts.selection
+          : {}
       }
     }
   };

@@ -4,7 +4,7 @@
   const contract = global.HalunasuSidecarContract;
   const proof = global.HalunasuSidecarProof;
   const MAX_EXTRACTION_ATTEMPTS = 3;
-  const DOCUMENTS_SURFACE_TIMEOUT_MS = 2500;
+  const SUPPLEMENTAL_SURFACE_TIMEOUT_MS = 2500;
   const AUTO_READ_DEBOUNCE_MS = 180;
   let observedContainer = null;
   let observedPanel = null;
@@ -38,10 +38,17 @@
     try {
       await Promise.resolve();
       const extraction = contract.extractContractSnapshot(document, { locationHref: location.href });
-      const documents = await fetchDocumentsSurface(identityBefore.patientId);
+      const calendarMonth = extraction.sourceSurfaces.currentChart?.raw?.calendarMonth || "";
+      const [documents, problems, visitPlan] = await Promise.all([
+        fetchDocumentsSurface(identityBefore.patientId),
+        fetchProblemsSurface(identityBefore.patientId),
+        fetchVisitPlanSurface(identityBefore.patientId, calendarMonth)
+      ]);
       extraction.sourceSurfaces = await proof.sealSourceSurfaces({
         ...extraction.sourceSurfaces,
-        documents
+        documents,
+        problems,
+        visitPlan
       }, { observedAt: new Date().toISOString() });
       await Promise.resolve();
       const identityAfter = contract.readIdentity(document, { locationHref: location.href });
@@ -210,12 +217,39 @@
   }
 
   async function fetchDocumentsSurface(patientId) {
+    return fetchSupplementalSurface({
+      patientId,
+      pageId: "docs_index",
+      requiredSelector: ".docs-table",
+      read: (parsed) => contract.readDocumentsSurface(parsed, { patientId })
+    });
+  }
+
+  async function fetchProblemsSurface(patientId) {
+    return fetchSupplementalSurface({
+      patientId,
+      pageId: "patient_problem",
+      requiredSelector: ".problem-list",
+      read: (parsed) => contract.readProblemsSurface(parsed, { patientId })
+    });
+  }
+
+  async function fetchVisitPlanSurface(patientId, calendarMonth) {
+    return fetchSupplementalSurface({
+      patientId,
+      pageId: "patient_plan0",
+      requiredSelector: ".plan-pattern",
+      read: (parsed) => contract.readVisitPlanSurface(parsed, { patientId, calendarMonth })
+    });
+  }
+
+  async function fetchSupplementalSurface({ patientId, pageId, requiredSelector, read }) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), DOCUMENTS_SURFACE_TIMEOUT_MS);
+    const timer = setTimeout(() => controller.abort(), SUPPLEMENTAL_SURFACE_TIMEOUT_MS);
     try {
       const url = new URL(location.href);
       url.search = "";
-      url.searchParams.set("pid", "docs_index");
+      url.searchParams.set("pid", pageId);
       url.searchParams.set("patient_id", patientId);
       const response = await fetch(url, {
         credentials: "include",
@@ -223,24 +257,24 @@
         signal: controller.signal
       });
       if (!response.ok) {
-        return unavailableDocumentsSurface(patientId, "http_error");
+        return unavailableSurface(patientId, "http_error");
       }
       const parsed = new DOMParser().parseFromString(await response.text(), "text/html");
-      if (!parsed.querySelector(".docs-table")) {
-        return unavailableDocumentsSurface(patientId, "selector_mismatch");
+      if (!parsed.querySelector(requiredSelector)) {
+        return unavailableSurface(patientId, "selector_mismatch");
       }
       if (!documentHeaderMatchesPatient(parsed, patientId)) {
-        const error = new Error("書類画面の患者が表示中のカルテと一致しません。再読み取りします。");
+        const error = new Error("補助画面の患者が表示中のカルテと一致しません。再読み取りします。");
         error.code = "supplemental_surface_patient_mismatch";
         error.retryable = true;
         throw error;
       }
-      return contract.readDocumentsSurface(parsed, { patientId });
+      return read(parsed);
     } catch (error) {
       if (error?.code === "supplemental_surface_patient_mismatch") {
         throw error;
       }
-      return unavailableDocumentsSurface(
+      return unavailableSurface(
         patientId,
         error?.name === "AbortError" ? "timeout" : "fetch_failed"
       );
@@ -249,7 +283,7 @@
     }
   }
 
-  function unavailableDocumentsSurface(patientId, unavailableReason) {
+  function unavailableSurface(patientId, unavailableReason) {
     return {
       status: "unavailable",
       patientId,

@@ -15,6 +15,7 @@ import {
   departmentPath,
   facilityPath,
   feeCareEvidenceOutboxPath,
+  feePatientChargeContractPath,
   feeMonthlyExclusionResolutionPath,
   feeSessionPath,
   sidecarAdoptionGuardPath,
@@ -70,6 +71,10 @@ test("builds platform document paths", () => {
     "organizations/org_123/fee_care_evidence_outbox/fce_456"
   );
   assert.equal(
+    feePatientChargeContractPath("org_123", "pcc_456"),
+    "organizations/org_123/fee_patient_charge_contracts/pcc_456"
+  );
+  assert.equal(
     sidecarCalculationDraftPath("org_123", "sidecar_456"),
     "organizations/org_123/sidecar_calculation_drafts/sidecar_456"
   );
@@ -119,6 +124,7 @@ test("exports canonical collection names", () => {
   assert.equal(collections.patientIdentifierIndex, "patient_identifier_index");
   assert.equal(collections.feeMonthlyExclusionResolutions, "fee_monthly_exclusion_resolutions");
   assert.equal(collections.feeCareEvidenceOutbox, "fee_care_evidence_outbox");
+  assert.equal(collections.feePatientChargeContracts, "fee_patient_charge_contracts");
   assert.equal(collections.sidecarCalculationDrafts, "sidecar_calculation_drafts");
   assert.equal(collections.sidecarAdoptionGuards, "sidecar_adoption_guards");
   assert.equal(collections.careFeeEpisodes, "care_fee_episodes");

@@ -9,12 +9,13 @@ import { sidecarVisitAdoptionFingerprint } from "../packages/fee-core/src/sideca
 const OLD_SELECTOR_CONTRACTS = new Set([
   "homis-mock-v2",
   "homis-mock-v3",
-  "homis-mock-v4"
+  "homis-mock-v4",
+  "homis-mock-v5"
 ]);
-const CURRENT_SELECTOR_CONTRACT = "homis-mock-v5";
+const CURRENT_SELECTOR_CONTRACT = "homis-mock-v6";
 const DEFAULT_MAX_DRAFTS = 10_000;
 
-export function analyzeSidecarV5Migration(drafts = [], guards = [], options = {}) {
+export function analyzeSidecarV6Migration(drafts = [], guards = [], options = {}) {
   const facilityId = required(options.facilityId, "facilityId");
   const guardByFingerprint = new Map(
     guards
@@ -129,6 +130,9 @@ export function analyzeSidecarV5Migration(drafts = [], guards = [], options = {}
   return { report, backfills };
 }
 
+// Keep the old export while rollout automation migrates to the v6 function name.
+export const analyzeSidecarV5Migration = analyzeSidecarV6Migration;
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const projectId = required(args.get("project-id"), "project-id");
@@ -138,7 +142,7 @@ async function main() {
   const outputDir = path.resolve(required(args.get("output-dir"), "output-dir"));
   const applyBackfill = args.has("apply-backfill");
   const { db, drafts, guards } = await readFirestoreState({ projectId, orgId, facilityId, maxDrafts });
-  let analysis = analyzeSidecarV5Migration(drafts, guards, { projectId, orgId, facilityId });
+  let analysis = analyzeSidecarV6Migration(drafts, guards, { projectId, orgId, facilityId });
 
   if (applyBackfill) {
     const hardBlockers = analysis.report.blockerCodes.filter((code) => code !== "adoption_guard_backfill_required");
@@ -149,7 +153,7 @@ async function main() {
       await backfillGuard(db, orgId, item);
     }
     const refreshed = await readFirestoreState({ projectId, orgId, facilityId, maxDrafts, db });
-    analysis = analyzeSidecarV5Migration(refreshed.drafts, refreshed.guards, {
+    analysis = analyzeSidecarV6Migration(refreshed.drafts, refreshed.guards, {
       projectId,
       orgId,
       facilityId
@@ -157,7 +161,7 @@ async function main() {
   }
 
   await mkdir(outputDir, { recursive: true });
-  const outputPath = path.join(outputDir, "sidecar-v5-migration-audit.json");
+  const outputPath = path.join(outputDir, "sidecar-v6-migration-audit.json");
   await writeFile(outputPath, `${JSON.stringify(analysis.report, null, 2)}\n`, "utf8");
   process.stdout.write(`${JSON.stringify(analysis.report, null, 2)}\nresult=${outputPath}\n`);
   if (!analysis.report.migrationReady) {

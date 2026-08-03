@@ -48,13 +48,16 @@ a:hover { text-decoration: underline; }
 .list-count { color: #6b7684; margin-bottom: 6px; }
 table { border-collapse: collapse; background: #fff; width: 100%; }
 .patient-list th, .patient-list td, .problem-list th, .problem-list td,
+.encounter-history th, .encounter-history td,
 .docs-table th, .docs-table td {
   border: 1px solid #dbe0e6; padding: 7px 9px; text-align: left; }
-.patient-list thead th, .problem-list thead th, .docs-table thead th {
+.patient-list thead th, .problem-list thead th, .encounter-history thead th,
+.docs-table thead th {
   background: #eaf1f8; color: #33465a; font-weight: 600; }
 .patient-list tbody tr:hover { background: #f5f9ff; }
 .patient-list .pid { color: #6b7684; font-variant-numeric: tabular-nums; }
 .pname a { font-weight: 600; }
+.list-completeness-status { margin: 0 0 6px; color: #56616e; font-size: 11px; }
 
 /* 患者ヘッダ */
 .patient-header { background: #fff; border: 1px solid #dbe0e6; border-radius: 6px;
@@ -94,6 +97,7 @@ table { border-collapse: collapse; background: #fff; width: 100%; }
 .kaigo-box, .houkan-box, .shougai-box, .device-box, .shohou-box { margin-bottom: 10px; }
 .kaigo-text { padding: 4px 8px; }
 .houkan-box { padding: 4px 8px; background: #fbfbf4; border: 1px dashed #d9d9b0; min-height: 20px; }
+.condition-management-list-status { padding: 0 8px 4px; color: #56616e; font-size: 11px; }
 .shougai-text, .device-text { padding: 4px 8px; background: #f7f9fb; border: 1px solid #e4e9ef;
   min-height: 20px; }
 
@@ -147,6 +151,7 @@ table { border-collapse: collapse; background: #fff; width: 100%; }
 .vinfo-label { font-weight: 700; color: #33465a; margin-bottom: 6px; }
 .panel { padding: 4px; }
 .panel h2 { font-size: 15px; margin: 4px 0 10px; color: #14406e; }
+.panel h3 { font-size: 14px; margin: 16px 0 8px; color: #14406e; }
 .docs-panel { margin-top: 4px; }
 .docs-toolbar { background: #eef3f8; padding: 4px 8px; font-weight: 600; margin-bottom: 4px; }
 .pager { margin-top: 8px; }

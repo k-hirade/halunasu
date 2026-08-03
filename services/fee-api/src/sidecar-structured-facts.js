@@ -1,3 +1,7 @@
+import { createHash } from "node:crypto";
+
+import { resolveC002SpecialDiseaseStatus } from "./sidecar-c002-special-disease.js";
+
 const DEVICE_DEFINITIONS = Object.freeze([
   { type: "ventilator", pattern: /(?:人工呼吸器|TPPV|NPPV)/u },
   { type: "tracheostomy_cannula", pattern: /(?:気管切開|気管カニューレ|カニューレ)/u },
@@ -14,19 +18,78 @@ const DEVICE_DEFINITIONS = Object.freeze([
 
 export function normalizeSidecarStructuredFacts({
   sourceSurfaces = {},
-  serviceDate = null
+  serviceDate = null,
+  privateResidence = null,
+  sameBuilding = null,
+  singleBuildingPatientCount = null,
+  sourceRevisionHash = null,
+  selectorContractVersion = null,
+  observedAt = null
 } = {}) {
+  const enhancedSelectionSurfaces = selectorContractVersion === "homis-mock-v6";
   const current = sourceSurfaces.currentChart;
   const documents = sourceSurfaces.documents;
+  const problemsSurface = sourceSurfaces.problems;
+  const visitPlanSurface = sourceSurfaces.visitPlan;
   const currentAvailable = current?.status === "ok";
   const documentsAvailable = documents?.status === "ok";
+  const problemsAvailable = enhancedSelectionSurfaces && problemsSurface?.status === "ok";
+  const visitPlanAvailable = enhancedSelectionSurfaces && visitPlanSurface?.status === "ok";
   const raw = currentAvailable && isPlainObject(current.raw) ? current.raw : {};
+  const problems = problemsAvailable
+    ? asArray(problemsSurface.raw?.rows).map(normalizeProblemFact).filter(Boolean)
+    : [];
+  const monthlyEncounterRows = visitPlanAvailable
+    ? asArray(visitPlanSurface.raw?.rows).map(normalizeMonthlyEncounterRow).filter(Boolean)
+    : [];
+  const problemCompleteness = problemsAvailable
+    ? normalizeCompleteness(problemsSurface.raw?.listCompleteness)
+    : sourceCompleteness(problemsSurface);
+  const stateCompleteness = currentAvailable
+    ? enhancedSelectionSurfaces
+      ? normalizeCompleteness(raw.deviceManagementListCompleteness)
+      : "unknown"
+    : sourceCompleteness(current);
+  const devices = currentAvailable ? normalizeDevices(raw.deviceManagementText) : [];
+  const resolvedSpecialDisease = resolveC002SpecialDiseaseStatus({
+    problems,
+    problemsCompleteness: problemCompleteness,
+    devices: enhancedSelectionSurfaces ? devices : [],
+    stateTexts: enhancedSelectionSurfaces && currentAvailable ? [raw.deviceManagementText] : [],
+    stateCompleteness,
+    serviceDate
+  });
+  const specialDisease = {
+    ...resolvedSpecialDisease,
+    source: "homis.problems+currentChart.devices+feeRule.c002SpecialDisease.r8",
+    sourceRevision: combinedSourceRevision(
+      enhancedSelectionSurfaces ? problemsSurface?.surfaceHash : null,
+      enhancedSelectionSurfaces ? current?.surfaceHash : null,
+      resolvedSpecialDisease.sourceRevision
+    ),
+    ...optionalObservedAt(latestSurfaceObservedAt(problemsSurface, current))
+  };
+  const buildingCount = deriveSingleBuildingPatientCountFact({
+    privateResidence,
+    sameBuilding,
+    singleBuildingPatientCount,
+    sourceRevision: sourceRevisionHash,
+    observedAt
+  });
+  const qualifyingMonthlyVisits = qualifyingMonthlyVisitFact({
+    currentSurface: enhancedSelectionSurfaces ? current : null,
+    planSurface: enhancedSelectionSurfaces ? visitPlanSurface : null,
+    rows: monthlyEncounterRows,
+    serviceDate
+  });
 
   return {
-    schemaVersion: "fee-sidecar-structured-facts-v1",
+    schemaVersion: "fee-sidecar-structured-facts-v2",
     sourceStatus: {
       currentChart: sourceStatus(current),
-      documents: sourceStatus(documents)
+      documents: sourceStatus(documents),
+      problems: sourceStatus(problemsSurface),
+      visitPlan: sourceStatus(visitPlanSurface)
     },
     care: {
       certificationLevel: currentAvailable
@@ -50,7 +113,11 @@ export function normalizeSidecarStructuredFacts({
           : "known")
         : "unavailable"
     },
-    devices: currentAvailable ? normalizeDevices(raw.deviceManagementText) : [],
+    devices,
+    problems: {
+      listCompleteness: problemCompleteness,
+      rows: problems
+    },
     prescriptions: currentAvailable
       ? asArray(raw.prescriptionRows).map((text, index) => ({
         sourceIndex: index,
@@ -70,9 +137,55 @@ export function normalizeSidecarStructuredFacts({
       monthlyVisitDays: currentAvailable
         ? uniqueStrings(asArray(raw.calendarVisitDates).filter(isIsoDate))
         : [],
+      monthlyEncounterRows,
+      qualifyingMonthlyVisits,
       serviceDate: isIsoDate(serviceDate) ? serviceDate : null
+    },
+    selection: {
+      singleBuildingPatientCount: buildingCount,
+      qualifyingMonthlyVisits,
+      specialDisease
     }
   };
+}
+
+export function deriveSingleBuildingPatientCountFact({
+  privateResidence = null,
+  sameBuilding = null,
+  singleBuildingPatientCount = null,
+  sourceRevision = null,
+  observedAt = null
+} = {}) {
+  const explicitCount = positiveInteger(singleBuildingPatientCount);
+  if (explicitCount !== null) {
+    if ((sameBuilding === false && explicitCount !== 1)
+      || (sameBuilding === true && explicitCount < 2)) {
+      return evidenceFact(
+        null,
+        "conflict",
+        "screen.singleBuildingPatientCount",
+        sourceRevision,
+        observedAt
+      );
+    }
+    return evidenceFact(
+      explicitCount,
+      "known",
+      "screen.singleBuildingPatientCount",
+      sourceRevision,
+      observedAt
+    );
+  }
+  if (privateResidence === true && sameBuilding === false) {
+    return evidenceFact(
+      1,
+      "known",
+      "derived:screen.privateResidence+screen.sameBuildingOutside",
+      sourceRevision,
+      observedAt
+    );
+  }
+  return evidenceFact(null, "unknown", null, sourceRevision, observedAt);
 }
 
 function sourceStatus(surface) {
@@ -86,6 +199,187 @@ function sourceStatus(surface) {
     };
   }
   return { status: "unknown", unavailableReason: null };
+}
+
+function normalizeProblemFact(value) {
+  if (!isPlainObject(value)) return null;
+  const name = normalizedText(value.name);
+  if (!name) return null;
+  const outcome = normalizedText(value.outcome);
+  return {
+    name,
+    main: value.main === true,
+    suspected: value.suspected === true || /(?:疑い|疑診)/u.test(name),
+    startDate: isIsoDate(value.startDate) && validDateOnly(value.startDate)
+      ? value.startDate
+      : null,
+    outcome,
+    activeStatus: problemActiveStatus(outcome)
+  };
+}
+
+function problemActiveStatus(value) {
+  const text = normalizedText(value);
+  if (/(?:継続|治療中|不変|経過観察|active)/iu.test(text)) return "active";
+  if (/(?:治癒|中止|終了|転医|死亡|inactive)/iu.test(text)) return "inactive";
+  return "unknown";
+}
+
+function normalizeMonthlyEncounterRow(value) {
+  if (!isPlainObject(value) || !isIsoDate(value.serviceDate) || !validDateOnly(value.serviceDate)) {
+    return null;
+  }
+  const encounterType = ["home_visit", "house_call", "outpatient"].includes(value.encounterType)
+    ? value.encounterType
+    : null;
+  const status = ["planned", "completed", "cancelled"].includes(value.status)
+    ? value.status
+    : "unknown";
+  return {
+    serviceDate: value.serviceDate,
+    encounterType,
+    visitKind: nullableString(value.visitKind),
+    status,
+    sourceRecordId: nullableString(value.sourceRecordId)
+  };
+}
+
+function qualifyingMonthlyVisitFact({ currentSurface, planSurface, rows, serviceDate }) {
+  const source = "homis.encounterHistory+currentChart.calendar";
+  const sourceRevision = combinedSourceRevision(
+    currentSurface?.surfaceHash,
+    planSurface?.surfaceHash
+  );
+  const observedAt = latestSurfaceObservedAt(currentSurface, planSurface);
+  if (planSurface?.status !== "ok" || currentSurface?.status !== "ok") {
+    const unavailable = planSurface?.status === "unavailable"
+      || currentSurface?.status === "unavailable";
+    return evidenceFact(
+      null,
+      unavailable ? "unavailable" : "unknown",
+      null,
+      sourceRevision,
+      observedAt
+    );
+  }
+  const planCompleteness = normalizeCompleteness(planSurface.raw?.listCompleteness);
+  const calendarCompleteness = normalizeCompleteness(
+    currentSurface.raw?.calendarVisitListCompleteness
+  );
+  const planMonth = String(planSurface.raw?.calendarMonth || "");
+  const basis = String(planSurface.raw?.basis || "unknown");
+  const calendarMonth = String(currentSurface.raw?.calendarMonth || "");
+  const validServiceDate = isIsoDate(serviceDate) && validDateOnly(serviceDate);
+  const serviceMonth = validServiceDate ? serviceDate.slice(0, 7) : "";
+  if (
+    basis !== "encounter_history"
+    || planCompleteness !== "complete"
+    || calendarCompleteness !== "complete"
+    || !serviceMonth
+    || planMonth !== serviceMonth
+    || calendarMonth !== serviceMonth
+  ) {
+    return evidenceFact(null, "incomplete", source, sourceRevision, observedAt);
+  }
+  if (rows.some((row) => (
+    !row.encounterType
+    || row.status !== "completed"
+    || !row.sourceRecordId
+    || !row.serviceDate.startsWith(`${serviceMonth}-`)
+  ))) {
+    return evidenceFact(null, "incomplete", source, sourceRevision, observedAt);
+  }
+  const calendarDates = asArray(currentSurface.raw?.calendarVisitDates);
+  if (calendarDates.some((date) => (
+    !isIsoDate(date)
+    || !validDateOnly(date)
+    || !date.startsWith(`${serviceMonth}-`)
+  ))) {
+    return evidenceFact(null, "incomplete", source, sourceRevision, observedAt);
+  }
+  const rowsByRecordId = new Map();
+  for (const row of rows) {
+    const existing = rowsByRecordId.get(row.sourceRecordId);
+    if (existing && JSON.stringify(existing) !== JSON.stringify(row)) {
+      return evidenceFact(null, "incomplete", source, sourceRevision, observedAt);
+    }
+    rowsByRecordId.set(row.sourceRecordId, row);
+  }
+  const deduplicatedRows = [...rowsByRecordId.values()];
+  if (new Set(deduplicatedRows.map((row) => row.serviceDate)).size !== deduplicatedRows.length) {
+    return evidenceFact(null, "incomplete", source, sourceRevision, observedAt);
+  }
+  const calendarDateSet = new Set(calendarDates);
+  const historyDateSet = new Set(deduplicatedRows.map((row) => row.serviceDate));
+  if (!sameStringSet(calendarDateSet, historyDateSet)) {
+    return evidenceFact(null, "incomplete", source, sourceRevision, observedAt);
+  }
+  const qualifying = uniqueStrings(deduplicatedRows
+    .filter((row) => (
+      row.encounterType === "home_visit"
+      && row.serviceDate <= serviceDate
+    ))
+    .map((row) => row.serviceDate));
+  return {
+    ...evidenceFact(qualifying.length, "complete", source, sourceRevision, observedAt),
+    serviceDates: qualifying
+  };
+}
+
+function evidenceFact(value, status, source, sourceRevision, observedAt = null) {
+  return {
+    value,
+    status,
+    source,
+    sourceRevision: nullableString(sourceRevision),
+    ...optionalObservedAt(observedAt)
+  };
+}
+
+function normalizeCompleteness(value) {
+  return ["complete", "incomplete", "unavailable"].includes(value) ? value : "unknown";
+}
+
+function sourceCompleteness(surface) {
+  return surface?.status === "unavailable" ? "unavailable" : "unknown";
+}
+
+function combinedSourceRevision(...values) {
+  const revisions = values.map(nullableString).filter(Boolean);
+  if (!revisions.length) return null;
+  const digest = createHash("sha256")
+    .update(JSON.stringify(revisions))
+    .digest("base64url");
+  return `sha256-${digest}`;
+}
+
+function sameStringSet(left, right) {
+  return left.size === right.size && [...left].every((value) => right.has(value));
+}
+
+function latestSurfaceObservedAt(...surfaces) {
+  const timestamps = surfaces
+    .map((surface) => normalizedIsoTimestamp(surface?.observedAt))
+    .filter(Boolean)
+    .sort();
+  return timestamps.at(-1) || null;
+}
+
+function optionalObservedAt(value) {
+  const timestamp = normalizedIsoTimestamp(value);
+  return timestamp ? { observedAt: timestamp } : {};
+}
+
+function normalizedIsoTimestamp(value) {
+  const timestamp = String(value || "");
+  return timestamp.includes("T") && Number.isFinite(Date.parse(timestamp))
+    ? new Date(timestamp).toISOString()
+    : null;
+}
+
+function positiveInteger(value) {
+  const numeric = Number(value);
+  return Number.isInteger(numeric) && numeric > 0 ? numeric : null;
 }
 
 function careCertificationLevel(value) {

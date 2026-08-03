@@ -7,6 +7,7 @@ import {
   validateCreateFeeSessionInput,
   validateSidecarCandidateAcknowledgementInput,
   validateSidecarCalculationInput,
+  validateSidecarPatientChargeSettingInput,
   validateUpdateFeeSessionInput,
   validateCreateFeeCalculationInput,
   validateMonthlyExclusionResolutionInput,
@@ -19,6 +20,71 @@ import {
   splitClinicalEvidenceClauses,
   validateReviewDecisionInput
 } from "../src/index.js";
+
+test("validates Sidecar patient transport charge settings without accepting patient identity", () => {
+  assert.deepEqual(validateSidecarPatientChargeSettingInput({
+    contractVersion: "v1",
+    handling: "charge",
+    expectedRevision: 0,
+    expectedSourceRevision: 1,
+    expectedCalculationRevision: 1
+  }), {
+    contractVersion: "v1",
+    chargeType: "home_medical_transport",
+    handling: "charge",
+    amountMode: "actual",
+    amountYen: null,
+    effectiveTo: null,
+    expectedRevision: 0,
+    expectedSourceRevision: 1,
+    expectedCalculationRevision: 1
+  });
+  assert.deepEqual(validateSidecarPatientChargeSettingInput({
+    contractVersion: "v1",
+    chargeType: "home_medical_transport",
+    handling: "charge",
+    amountMode: "fixed",
+    amountYen: 550,
+    effectiveFrom: "2026-08-03",
+    effectiveTo: "2026-12-31",
+    expectedRevision: 2,
+    expectedSourceRevision: 4,
+    expectedCalculationRevision: 5,
+    canonicalPatientId: "must_be_derived_by_the_server",
+    facilityId: "must_be_derived_by_the_server"
+  }), {
+    contractVersion: "v1",
+    chargeType: "home_medical_transport",
+    handling: "charge",
+    amountMode: "fixed",
+    amountYen: 550,
+    effectiveFrom: "2026-08-03",
+    effectiveTo: "2026-12-31",
+    expectedRevision: 2,
+    expectedSourceRevision: 4,
+    expectedCalculationRevision: 5
+  });
+  for (const invalid of [
+    { handling: "unknown" },
+    { handling: "waive", amountYen: 500 },
+    { handling: "charge", amountMode: "fixed" },
+    { handling: "charge", amountMode: "actual", amountYen: 500 },
+    { handling: "charge", expectedRevision: -1 },
+    { handling: "charge", expectedRevision: "0" },
+    { handling: "charge", expectedSourceRevision: 0 },
+    { handling: "charge", expectedCalculationRevision: 1.5 },
+    { handling: "charge", effectiveFrom: "2026/08/03" },
+    { handling: "charge", effectiveFrom: "2026-08-04", effectiveTo: "2026-08-03" }
+  ]) {
+    assert.throws(() => validateSidecarPatientChargeSettingInput({
+      contractVersion: "v1",
+      expectedRevision: 0,
+      expectedSourceRevision: 1,
+      expectedCalculationRevision: 1,
+      ...invalid
+    }));
+  }
+});
 
 test("validates sidecar candidate acknowledgement optimistic-lock input", () => {
   const fingerprint = "a".repeat(64);
@@ -227,7 +293,7 @@ test("validates the sidecar v1 extraction and atomic identity contract", () => {
   assert.equal(Object.hasOwn(input, "sourceUrl"), false);
 });
 
-test("validates homis-mock-v5 multi-surface inputs and matching surface proofs", () => {
+test("validates homis-mock-v6 multi-surface inputs and matching surface proofs", () => {
   const sourceRecordId = [
     "homis-visible-record-v1",
     "homis",
@@ -247,10 +313,12 @@ test("validates homis-mock-v5 multi-surface inputs and matching surface proofs",
         careInsuranceText: "要介護5",
         visitingNurseText: "訪問看護 週4回 MCS連携",
         deviceManagementText: "気管切開・複管カニューレ 8.0mm",
+        deviceManagementListCompleteness: "complete",
         prescriptionRows: ["薬剤A 1錠"],
         patientStartDate: "2026-05-01",
         calendarMonth: "2026-07",
-        calendarVisitDates: ["2026-07-18"]
+        calendarVisitDates: ["2026-07-04", "2026-07-18"],
+        calendarVisitListCompleteness: "complete"
       }
     },
     documents: {
@@ -259,6 +327,48 @@ test("validates homis-mock-v5 multi-surface inputs and matching surface proofs",
       observedAt: "2026-07-18T01:00:00.000Z",
       surfaceHash,
       unavailableReason: "timeout"
+    },
+    problems: {
+      status: "ok",
+      patientId: "1001",
+      observedAt: "2026-07-18T01:00:00.000Z",
+      surfaceHash,
+      raw: {
+        listCompleteness: "complete",
+        rows: [{
+          name: "筋萎縮性側索硬化症",
+          main: true,
+          startDate: "2025-01-01",
+          outcome: "継続",
+          suspected: false
+        }]
+      }
+    },
+    visitPlan: {
+      status: "ok",
+      patientId: "1001",
+      observedAt: "2026-07-18T01:00:00.000Z",
+      surfaceHash,
+      raw: {
+        calendarMonth: "2026-07",
+        category: "在宅診療",
+        patternText: "第1・3週",
+        basis: "encounter_history",
+        listCompleteness: "complete",
+        rows: [{
+          serviceDate: "2026-07-04",
+          encounterType: "home_visit",
+          visitKind: null,
+          status: "completed",
+          sourceRecordId: "10010704"
+        }, {
+          serviceDate: "2026-07-18",
+          encounterType: "home_visit",
+          visitKind: null,
+          status: "completed",
+          sourceRecordId: "10010718"
+        }]
+      }
     }
   };
   const input = validateSidecarCalculationInput({
@@ -277,7 +387,7 @@ test("validates homis-mock-v5 multi-surface inputs and matching surface proofs",
       patientIdAfter: "1001",
       sourceRecordIdBefore: sourceRecordId,
       sourceRecordIdAfter: sourceRecordId,
-      selectorContractVersion: "homis-mock-v5",
+      selectorContractVersion: "homis-mock-v6",
       extractedAt: "2026-07-18T01:00:00.000Z",
       domMutationDetected: false,
       contractValidationPassed: true,
@@ -297,16 +407,51 @@ test("validates homis-mock-v5 multi-surface inputs and matching surface proofs",
           patientId: "1001",
           observedAt: "2026-07-18T01:00:00.000Z",
           surfaceHash
+        },
+        problems: {
+          status: "ok",
+          patientId: "1001",
+          observedAt: "2026-07-18T01:00:00.000Z",
+          surfaceHash
+        },
+        visitPlan: {
+          status: "ok",
+          patientId: "1001",
+          observedAt: "2026-07-18T01:00:00.000Z",
+          surfaceHash
         }
       }
     }
   });
 
-  assert.equal(input.sourceSurfaces.currentChart.raw.calendarVisitDates[0], "2026-07-18");
+  assert.deepEqual(
+    input.sourceSurfaces.currentChart.raw.calendarVisitDates,
+    ["2026-07-04", "2026-07-18"]
+  );
   assert.equal(input.sourceRecordId, sourceRecordId);
   assert.equal(input.sourceSurfaces.currentChart.raw.patientStartDate, "2026-05-01");
+  assert.equal(input.sourceSurfaces.currentChart.raw.deviceManagementListCompleteness, "complete");
+  assert.equal(input.sourceSurfaces.currentChart.raw.calendarVisitListCompleteness, "complete");
   assert.equal(input.sourceSurfaces.documents.unavailableReason, "timeout");
+  assert.equal(input.sourceSurfaces.problems.raw.rows[0].name, "筋萎縮性側索硬化症");
+  assert.equal(input.sourceSurfaces.visitPlan.raw.rows.length, 2);
+  assert.equal(input.sourceSurfaces.visitPlan.raw.basis, "encounter_history");
+  assert.equal(input.sourceSurfaces.visitPlan.raw.rows[0].sourceRecordId, "10010704");
   assert.equal(input.extractionProof.surfaceProofs.documents.status, "unavailable");
+
+  const legacy = validateSidecarCalculationInput({
+    ...input,
+    extractionProof: {
+      ...input.extractionProof,
+      selectorContractVersion: "homis-mock-v5",
+      surfaceProofs: {
+        currentChart: input.extractionProof.surfaceProofs.currentChart,
+        documents: input.extractionProof.surfaceProofs.documents
+      }
+    }
+  });
+  assert.equal(Object.hasOwn(legacy.sourceSurfaces, "problems"), false);
+  assert.equal(Object.hasOwn(legacy.sourceSurfaces, "visitPlan"), false);
 
   assert.throws(() => validateSidecarCalculationInput({
     ...input,
@@ -335,7 +480,7 @@ test("validates homis-mock-v5 multi-surface inputs and matching surface proofs",
       ...input.extractionProof,
       surfaceProofs: undefined
     }
-  }), /sourceSurfaces is required for homis-mock-v5/);
+  }), /sourceSurfaces is required for homis-mock-v6/);
 });
 
 test("validates three-state same-building sidecar inputs without treating unknown as outside", () => {

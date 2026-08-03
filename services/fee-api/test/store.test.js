@@ -63,6 +63,18 @@ test("LazyFirestoreFeeStore forwards sidecar acknowledgement operations", async 
     await store.completeSidecarCandidateAcknowledgementAudit("org_123", "sidecar_123", "aud_123"),
     ["completeSidecarCandidateAcknowledgementAudit", "org_123", "sidecar_123", "aud_123"]
   );
+  assert.deepEqual(
+    await store.getPatientChargeContract("org_123", "fac_123", "pat_123", "home_medical_transport"),
+    ["getPatientChargeContract", "org_123", "fac_123", "pat_123", "home_medical_transport"]
+  );
+  assert.deepEqual(
+    await store.putPatientChargeContractSetting("org_123", { handling: "waive" }),
+    ["putPatientChargeContractSetting", "org_123", { handling: "waive" }]
+  );
+  assert.deepEqual(
+    await store.completePatientChargeContractAudit("org_123", "pcc_123", "aud_123"),
+    ["completePatientChargeContractAudit", "org_123", "pcc_123", "aud_123"]
+  );
 });
 
 test("stores fee sessions by organization and saves calculation results", () => {
@@ -1390,6 +1402,174 @@ test("MemoryFeeStore stores, selects, and deletes dedicated extraction snapshots
   assert.equal(
     store.getLatestExtractionSnapshotForPatient("org_1", ["pat_1"])?.sourceSessionId,
     "fee_1"
+  );
+});
+
+test("patient charge contracts are effective-dated and revision locked in memory", () => {
+  const store = new MemoryFeeStore({
+    now: () => new Date("2026-08-03T10:00:00.000Z")
+  });
+  store.upsertSidecarCalculationDraft(acknowledgementSidecarDraftInput({
+    orgId: "org_1",
+    sidecarDraftId: "sidecar_charge_1",
+    sidecarPatientKey: "pat_1",
+    canonicalPatientId: "pat_1",
+    canonicalPatientIdSource: "patient_identifier",
+    canonicalPatientResolutionStatus: "resolved",
+    facilityId: "fac_1",
+    serviceDate: "2026-08-03",
+    expiresAt: "2026-08-17T00:00:00.000Z"
+  }));
+  const base = {
+    sidecarDraftId: "sidecar_charge_1",
+    expectedDraftSourceRevision: 1,
+    expectedDraftCalculationRevision: 0,
+    expectedDraftServiceDate: "2026-08-03",
+    facilityId: "fac_1",
+    canonicalPatientId: "pat_1",
+    chargeType: "home_medical_transport",
+    handling: "charge",
+    amountMode: "actual",
+    amountYen: null,
+    effectiveFrom: "2026-08-03",
+    effectiveTo: null,
+    expectedRevision: 0,
+    updatedByMemberId: "mem_1",
+    updatedByLoginId: "member@example.test",
+    updatedFromDeviceId: "device_1"
+  };
+  const created = store.putPatientChargeContractSetting("org_1", base);
+  assert.equal(created.patientChargeContract.revision, 1);
+  assert.equal(created.patientChargeContract.settingEvents[0].handling, "charge");
+  assert.equal(store.getPatientChargeContract(
+    "org_1",
+    "fac_1",
+    "pat_1",
+    "home_medical_transport"
+  )?.patientChargeContractId, created.patientChargeContract.patientChargeContractId);
+  assert.equal(Object.keys(created.patientChargeContract.auditOutbox).length, 1);
+
+  const revised = store.putPatientChargeContractSetting("org_1", {
+    ...base,
+    handling: "waive",
+    amountMode: null,
+    expectedRevision: 1,
+    effectiveFrom: "2026-09-01"
+  });
+  assert.equal(revised.previousSetting.handling, "charge");
+  assert.equal(revised.patientChargeContract.revision, 2);
+  assert.deepEqual(
+    revised.patientChargeContract.settingEvents.map((event) => [event.effectiveFrom, event.handling]),
+    [["2026-08-03", "charge"], ["2026-09-01", "waive"]]
+  );
+  assert.equal(Object.keys(revised.patientChargeContract.auditOutbox).length, 2);
+  assert.throws(() => store.putPatientChargeContractSetting("org_1", {
+    ...base,
+    handling: "included_in_contract",
+    amountMode: null,
+    expectedRevision: 1
+  }), /revision mismatch/u);
+});
+
+test("Firestore patient charge contract updates use a deterministic document and transaction", async () => {
+  const docs = new Map();
+  const db = fakeFirestoreDb(docs);
+  const store = new FirestoreFeeStore({
+    db,
+    now: () => new Date("2026-08-03T10:00:00.000Z")
+  });
+  docs.set("organizations/org_1/sidecar_calculation_drafts/sidecar_charge_1", {
+    orgId: "org_1",
+    sidecarDraftId: "sidecar_charge_1",
+    facilityId: "fac_1",
+    canonicalPatientId: "pat_1",
+    canonicalPatientResolutionStatus: "resolved",
+    lifecycleStatus: "draft",
+    setting: "home_visit",
+    serviceDate: "2026-08-03",
+    sourceRevision: 1,
+    calculationRevision: 1,
+    expiresAt: "2026-08-17T00:00:00.000Z"
+  });
+  const created = await store.putPatientChargeContractSetting("org_1", {
+    sidecarDraftId: "sidecar_charge_1",
+    expectedDraftSourceRevision: 1,
+    expectedDraftCalculationRevision: 1,
+    expectedDraftServiceDate: "2026-08-03",
+    facilityId: "fac_1",
+    canonicalPatientId: "pat_1",
+    chargeType: "home_medical_transport",
+    handling: "included_in_contract",
+    amountMode: null,
+    amountYen: null,
+    effectiveFrom: "2026-08-03",
+    effectiveTo: null,
+    expectedRevision: 0,
+    updatedByMemberId: "mem_1",
+    updatedByLoginId: "member@example.test",
+    updatedFromDeviceId: "device_1"
+  });
+  const path = `organizations/org_1/fee_patient_charge_contracts/${created.patientChargeContract.patientChargeContractId}`;
+  assert.equal(docs.get(path).revision, 1);
+  assert.equal(docs.get(path).canonicalPatientId, "pat_1");
+  assert.equal(Object.keys(docs.get(path).auditOutbox).length, 1);
+  assert.equal(db.transactionCount, 1);
+  assert.deepEqual(
+    await store.getPatientChargeContract("org_1", "fac_1", "pat_1", "home_medical_transport"),
+    docs.get(path)
+  );
+  const eventId = Object.keys(docs.get(path).auditOutbox)[0];
+  const completed = await store.completePatientChargeContractAudit(
+    "org_1",
+    created.patientChargeContract.patientChargeContractId,
+    eventId
+  );
+  assert.equal(completed.changed, true);
+  assert.deepEqual(docs.get(path).auditOutbox, {});
+});
+
+test("Firestore patient charge contract update rejects a changed draft inside its transaction", async () => {
+  const docs = new Map();
+  const db = fakeFirestoreDb(docs);
+  const store = new FirestoreFeeStore({
+    db,
+    now: () => new Date("2026-08-03T10:00:00.000Z")
+  });
+  docs.set("organizations/org_1/sidecar_calculation_drafts/sidecar_charge_stale", {
+    orgId: "org_1",
+    sidecarDraftId: "sidecar_charge_stale",
+    facilityId: "fac_1",
+    canonicalPatientId: "pat_1",
+    canonicalPatientResolutionStatus: "resolved",
+    lifecycleStatus: "adopted",
+    setting: "home_visit",
+    serviceDate: "2026-08-03",
+    sourceRevision: 2,
+    calculationRevision: 2,
+    expiresAt: "2026-08-17T00:00:00.000Z"
+  });
+
+  await assert.rejects(store.putPatientChargeContractSetting("org_1", {
+    sidecarDraftId: "sidecar_charge_stale",
+    expectedDraftSourceRevision: 1,
+    expectedDraftCalculationRevision: 1,
+    expectedDraftServiceDate: "2026-08-03",
+    facilityId: "fac_1",
+    canonicalPatientId: "pat_1",
+    chargeType: "home_medical_transport",
+    handling: "waive",
+    amountMode: null,
+    amountYen: null,
+    effectiveFrom: "2026-08-03",
+    effectiveTo: null,
+    expectedRevision: 0,
+    updatedByMemberId: "mem_1",
+    updatedByLoginId: "member@example.test",
+    updatedFromDeviceId: "device_1"
+  }), /sidecar draft changed/u);
+  assert.equal(
+    [...docs.keys()].some((path) => path.includes("fee_patient_charge_contracts")),
+    false
   );
 });
 

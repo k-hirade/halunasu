@@ -25,6 +25,7 @@ export const collections = Object.freeze({
   feeExtractionSnapshots: "fee_extraction_snapshots",
   feeExtractionFeedbackEvents: "fee_extraction_feedback_events",
   feeStandingBillingProfiles: "fee_standing_billing_profiles",
+  feePatientChargeContracts: "fee_patient_charge_contracts",
   feeMonthlyExclusionResolutions: "fee_monthly_exclusion_resolutions",
   feeCareEvidenceOutbox: "fee_care_evidence_outbox",
   sidecarCalculationDrafts: "sidecar_calculation_drafts",
@@ -162,6 +163,15 @@ export function feeStandingBillingProfilePath(orgId, standingFactId) {
     collections.feeStandingBillingProfiles,
     standingFactId,
     "standingFactId"
+  );
+}
+
+export function feePatientChargeContractPath(orgId, patientChargeContractId) {
+  return orgDocPath(
+    orgId,
+    collections.feePatientChargeContracts,
+    patientChargeContractId,
+    "patientChargeContractId"
   );
 }
 

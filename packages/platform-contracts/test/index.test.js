@@ -271,7 +271,7 @@ test("validates product entitlements and audit events", () => {
       deviceAuthId: "sda_123",
       extensionId: "nhbmaniknlcaaelpaoogepmkhphmmjof",
       grantRecordId: "sgr_123",
-      scopes: ["sidecar:calculate", "sidecar:acknowledge"],
+      scopes: ["sidecar:calculate", "sidecar:acknowledge", "sidecar:patient_charge_write"],
       pairKey: "same_month:114005410:140003810",
       scopeKey: "2026-05",
       ruleFingerprint: "fingerprint-test",
@@ -288,6 +288,15 @@ test("validates product entitlements and audit events", () => {
       deviceId: "sidecar_device_authorized_01",
       occurredAt: "2026-08-03T09:35:00.000Z",
       staleReason: "candidate_changed",
+      patientChargeContractId: "pcc_123",
+      chargeType: "home_medical_transport",
+      beforeHandling: "inherit",
+      afterHandling: "charge",
+      effectiveFrom: "2026-08-03",
+      effectiveTo: null,
+      revision: 2,
+      amountMode: "actual",
+      amountYen: null,
       clinicalText: "S) patient clinical narrative",
       patientName: "Yamada Hanako",
       reason: "free-form clinical reason"
@@ -305,7 +314,11 @@ test("validates product entitlements and audit events", () => {
   assert.equal(auditEvent.safePayload.deviceAuthId, "sda_123");
   assert.equal(auditEvent.safePayload.extensionId, "nhbmaniknlcaaelpaoogepmkhphmmjof");
   assert.equal(auditEvent.safePayload.grantRecordId, "sgr_123");
-  assert.deepEqual(auditEvent.safePayload.scopes, ["sidecar:calculate", "sidecar:acknowledge"]);
+  assert.deepEqual(auditEvent.safePayload.scopes, [
+    "sidecar:calculate",
+    "sidecar:acknowledge",
+    "sidecar:patient_charge_write"
+  ]);
   assert.equal(auditEvent.safePayload.pairKey, "same_month:114005410:140003810");
   assert.equal(auditEvent.safePayload.scopeKey, "2026-05");
   assert.equal(auditEvent.safePayload.ruleFingerprint, "fingerprint-test");
@@ -322,6 +335,15 @@ test("validates product entitlements and audit events", () => {
   assert.equal(auditEvent.safePayload.deviceId, "sidecar_device_authorized_01");
   assert.equal(auditEvent.safePayload.occurredAt, "2026-08-03T09:35:00.000Z");
   assert.equal(auditEvent.safePayload.staleReason, "candidate_changed");
+  assert.equal(auditEvent.safePayload.patientChargeContractId, "pcc_123");
+  assert.equal(auditEvent.safePayload.chargeType, "home_medical_transport");
+  assert.equal(auditEvent.safePayload.beforeHandling, "inherit");
+  assert.equal(auditEvent.safePayload.afterHandling, "charge");
+  assert.equal(auditEvent.safePayload.effectiveFrom, "2026-08-03");
+  assert.equal(auditEvent.safePayload.effectiveTo, null);
+  assert.equal(auditEvent.safePayload.revision, 2);
+  assert.equal(auditEvent.safePayload.amountMode, "actual");
+  assert.equal(auditEvent.safePayload.amountYen, null);
   assert.equal(auditEvent.safePayload.displayName, undefined);
   assert.equal(auditEvent.safePayload.birthDate, undefined);
   assert.equal(auditEvent.safePayload.clinicalText, undefined);

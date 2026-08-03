@@ -564,3 +564,88 @@ test("calculation revision and set diff detect simultaneous additions and remova
     pointDelta: 0
   });
 });
+
+test("sidecar calculation keeps only structured selection evidence in metrics", () => {
+  const current = buildSidecarCalculationDraft(draftInput(), {
+    now: new Date("2026-07-18T00:00:00.000Z")
+  });
+  const calculated = applySidecarCalculationResult(current, {
+    provider: "test",
+    status: "completed",
+    totalPoints: 0,
+    lineItems: [],
+    metrics: {
+      sidecarSelectionContext: {
+        facilityStandardKeys: ["home_support_clinic", "home_support_clinic", ""],
+        facilityStandardKeysSource: "facility_profile",
+        setting: "home_visit",
+        selection: {
+          singleBuildingPatientCount: {
+            value: 1,
+            status: "known",
+            source: "derived:screen.privateResidence+screen.sameBuildingOutside",
+            sourceRevision: "a".repeat(64),
+            observedAt: "2026-07-18T00:00:00.000Z",
+            clinicalText: "must not persist"
+          },
+          qualifyingMonthlyVisits: {
+            value: 2,
+            status: "complete",
+            source: "homis.encounterHistory+currentChart.calendar",
+            sourceRevision: "b".repeat(64),
+            observedAt: "2026-07-18T00:00:01.000Z",
+            serviceDates: ["2026-07-02", "2026-07-02", "2026-07-16"],
+            rows: [{ clinicalText: "must not persist" }]
+          },
+          specialDisease: {
+            value: true,
+            status: "known",
+            source: "c002-special-disease-2026",
+            sourceRevision: "c".repeat(64),
+            observedAt: "not-an-iso-timestamp",
+            evidence: [{ name: "must not persist" }]
+          },
+          unknownFact: {
+            value: true,
+            clinicalText: "must not persist"
+          }
+        }
+      }
+    }
+  }, {
+    calculationId: "sidecar_calc_selection_metrics",
+    now: new Date("2026-07-18T00:01:00.000Z")
+  });
+
+  assert.deepEqual(calculated.calculationResult.metrics.sidecarSelectionContext, {
+    facilityStandardKeys: ["home_support_clinic"],
+    facilityStandardKeysSource: "facility_profile",
+    currentMonthEncounterCount: null,
+    singleBuildingPatientCount: null,
+    setting: "home_visit",
+    specialDiseaseStatus: "unknown",
+    selection: {
+      singleBuildingPatientCount: {
+        value: 1,
+        status: "known",
+        source: "derived:screen.privateResidence+screen.sameBuildingOutside",
+        sourceRevision: "a".repeat(64),
+        observedAt: "2026-07-18T00:00:00.000Z"
+      },
+      qualifyingMonthlyVisits: {
+        value: 2,
+        status: "complete",
+        source: "homis.encounterHistory+currentChart.calendar",
+        sourceRevision: "b".repeat(64),
+        observedAt: "2026-07-18T00:00:01.000Z",
+        serviceDates: ["2026-07-02", "2026-07-16"]
+      },
+      specialDisease: {
+        value: true,
+        status: "known",
+        source: "c002-special-disease-2026",
+        sourceRevision: "c".repeat(64)
+      }
+    }
+  });
+});

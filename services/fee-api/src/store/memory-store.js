@@ -23,6 +23,16 @@ import {
   applyStandingBillingStatus,
   standingBillingProfileId
 } from "../standing-billing-profiles.js";
+import {
+  applyPatientChargeContractSetting,
+  assertPatientChargeDraftWriteScope,
+  buildPatientChargeContract,
+  completePatientChargeContractAudit,
+  isPatientChargeSettingRetry,
+  patientChargeContractId,
+  resolvePatientChargeSetting,
+  resolvePatientChargeSettingBeforeRevision
+} from "../patient-charge-contracts.js";
 
 export class MemoryFeeStore {
   constructor(options = {}) {
@@ -39,6 +49,7 @@ export class MemoryFeeStore {
     this.extractionSnapshotsByOrg = new Map();
     this.extractionFeedbackEventsByOrg = new Map();
     this.standingBillingProfilesByOrg = new Map();
+    this.patientChargeContractsByOrg = new Map();
     this.careFeeEvidenceOutboxByOrg = new Map();
   }
 
@@ -64,6 +75,66 @@ export class MemoryFeeStore {
 
   getSidecarCalculationDraft(orgId, sidecarDraftId) {
     return this.sidecarDraftsForOrg(orgId).get(sidecarDraftId) || null;
+  }
+
+  getPatientChargeContract(orgId, facilityId, canonicalPatientId, chargeType) {
+    const contractId = patientChargeContractId({
+      orgId,
+      facilityId,
+      canonicalPatientId,
+      chargeType
+    });
+    return this.patientChargeContractsForOrg(orgId).get(contractId) || null;
+  }
+
+  putPatientChargeContractSetting(orgId, input) {
+    const identity = {
+      ...input,
+      orgId
+    };
+    const operationNow = input.writeAt || this.timestamp();
+    assertPatientChargeDraftWriteScope(
+      this.getSidecarCalculationDraft(orgId, input.sidecarDraftId),
+      identity,
+      { now: operationNow }
+    );
+    const contractId = patientChargeContractId(identity);
+    const contracts = this.patientChargeContractsForOrg(orgId);
+    const current = contracts.get(contractId) || null;
+    if (isPatientChargeSettingRetry(current, identity)) {
+      return {
+        changed: false,
+        previousSetting: resolvePatientChargeSettingBeforeRevision(
+          current,
+          input.effectiveFrom,
+          current.revision
+        ),
+        patientChargeContract: current
+      };
+    }
+    const previousSetting = resolvePatientChargeSetting(current, input.effectiveFrom);
+    const patientChargeContract = current
+      ? applyPatientChargeContractSetting(current, identity, { now: operationNow })
+      : buildPatientChargeContract(identity, { now: operationNow });
+    contracts.set(contractId, patientChargeContract);
+    return {
+      changed: true,
+      previousSetting,
+      patientChargeContract
+    };
+  }
+
+  completePatientChargeContractAudit(orgId, patientChargeContractId, eventId) {
+    const contracts = this.patientChargeContractsForOrg(orgId);
+    const current = contracts.get(patientChargeContractId) || null;
+    if (!current) {
+      throw notFoundError("patient charge contract not found");
+    }
+    const result = completePatientChargeContractAudit(current, eventId);
+    if (result.changed) {
+      contracts.set(patientChargeContractId, result.patientChargeContract);
+    }
+    return result;
   }
 
   listSidecarCalculationDrafts(orgId, options = {}) {
@@ -1014,6 +1085,13 @@ export class MemoryFeeStore {
       this.careFeeEvidenceOutboxByOrg.set(orgId, new Map());
     }
     return this.careFeeEvidenceOutboxByOrg.get(orgId);
+  }
+
+  patientChargeContractsForOrg(orgId) {
+    if (!this.patientChargeContractsByOrg.has(orgId)) {
+      this.patientChargeContractsByOrg.set(orgId, new Map());
+    }
+    return this.patientChargeContractsByOrg.get(orgId);
   }
 
   timestamp() {
