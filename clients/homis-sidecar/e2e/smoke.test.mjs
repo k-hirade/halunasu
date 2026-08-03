@@ -90,12 +90,11 @@ test("patient 1006 can authorize, auto-read, and calculate through the side pane
     const totalPointsText = await panel.locator("#total-points").textContent();
     const totalPoints = Number(String(totalPointsText || "").replace(/[^0-9]/gu, ""));
     assert.ok(totalPoints > 0, `sidecar calculation must produce billable points: ${totalPointsText}`);
-    assert.match(await panel.locator("#revision-copy").textContent(), /現行マスタ換算/u);
     const rows = panel.locator(".candidate-row").filter({ hasNotText: "候補はありません" });
     assert.ok(await rows.count() >= 1);
     assert.equal(await panel.locator(".candidate-context-badge").count(), 0);
     assert.equal(await panel.locator(".candidate-comment").count(), 0);
-    assert.match(await panel.locator("#decision-count").textContent(), /^\d+件$/u);
+    assert.equal(await panel.locator("#decision-count, #calculation-diff, #revision-copy").count(), 0);
   } finally {
     await context.close();
     await rm(profilePath, { recursive: true, force: true });

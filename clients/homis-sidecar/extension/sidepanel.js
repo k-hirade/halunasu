@@ -15,7 +15,6 @@
   let autoReadTimer = null;
   let previewAgeTimer = null;
   let isConnected = false;
-  let lastCalculationContext = null;
   let encounterTypeSource = null;
   let visitKindSource = null;
   let sameBuildingSource = null;
@@ -29,9 +28,8 @@
     "telephone-scheduled-management",
     "same-building-control", "same-building-copy",
     "calculate-button",
-    "result-section", "total-points", "decision-count", "calculation-diff", "revision-copy",
-    "included-group", "line-candidates", "review-group", "proposal-candidates",
-    "selection-group", "selection-candidates",
+    "result-section", "total-points",
+    "included-group", "line-candidates", "decision-group", "decision-candidates",
     "status-message"
   ].map((id) => [id, document.getElementById(id)]));
 
@@ -156,12 +154,6 @@
         extractionProof: prepared.extractionProof
       });
       assertCurrentPreview(expectedPreviewFingerprint);
-      lastCalculationContext = {
-        externalPatientId: prepared.externalPatientId,
-        serviceDate: prepared.serviceDate,
-        settingLabel: encounterType.label,
-        sameBuildingLabel: sameBuilding.label
-      };
       renderResult(result.sidecarDraft);
       setStatus("");
     } catch (error) {
@@ -241,7 +233,6 @@
       }
 
       preview = response;
-      lastCalculationContext = null;
       elements["result-section"].hidden = true;
       renderPreview(response);
       elements["setting-control"].disabled = false;
@@ -274,7 +265,6 @@
     clearInterval(previewAgeTimer);
     previewAgeTimer = null;
     preview = null;
-    lastCalculationContext = null;
     encounterTypeSource = null;
     visitKindSource = null;
     sameBuildingSource = null;
@@ -372,24 +362,15 @@
     const calculation = sidecarDraft.calculation || {};
     const candidates = (Array.isArray(calculation.candidates) ? calculation.candidates : [])
       .map((candidate) => normalizeCandidateZone(candidate));
-    elements["total-points"].textContent = `${Number(calculation.estimatedTotalPoints || 0).toLocaleString("ja-JP")}点`;
-    const visibleDecisionCount = candidates.filter((candidate) => (
+    const decisionCandidates = candidates.filter((candidate) => (
       ["review_required", "selection_required"].includes(candidate.zone)
-    )).length;
-    elements["decision-count"].textContent = `${visibleDecisionCount.toLocaleString("ja-JP")}件`;
-    elements["revision-copy"].textContent = [
-      lastCalculationContext
-        ? `患者${lastCalculationContext.externalPatientId} / ${lastCalculationContext.serviceDate} / ${lastCalculationContext.settingLabel} / ${lastCalculationContext.sameBuildingLabel}`
-        : "",
-      `再計算 ${Number(sidecarDraft.calculationRevision || 1)}回目`,
-      calculation.pricingBasis?.mode === "current_master"
-        ? `現行マスタ換算 ${calculation.pricingBasis.masterVersion || calculation.pricingBasis.masterLookupDate || ""}`.trim()
-        : ""
-    ].filter(Boolean).join(" ・ ");
-    renderCalculationDiff(sidecarDraft.calculationDiff);
+    ));
+    elements["total-points"].textContent = `${Number(calculation.estimatedTotalPoints || 0).toLocaleString("ja-JP")}点`;
     renderCandidateGroup("included-group", "line-candidates", candidates.filter((item) => item.zone === "included"));
-    renderCandidateGroup("review-group", "proposal-candidates", candidates.filter((item) => item.zone === "review_required"));
-    renderCandidateGroup("selection-group", "selection-candidates", candidates.filter((item) => item.zone === "selection_required"));
+    renderDecisionGroup(
+      decisionCandidates,
+      Array.isArray(calculation.notices) ? calculation.notices : []
+    );
     elements["result-section"].hidden = false;
   }
 
@@ -409,23 +390,141 @@
     return `${Math.floor(minutes / 60)}時間前`;
   }
 
-  function renderCalculationDiff(diff) {
-    if (!diff || typeof diff !== "object") {
-      elements["calculation-diff"].hidden = true;
-      elements["calculation-diff"].textContent = "";
-      return;
-    }
-    const added = Number(diff.candidates?.addedCount || 0);
-    const removed = Number(diff.candidates?.removedCount || 0);
-    const pointDelta = Number(diff.pointDelta || 0);
-    const pointPrefix = pointDelta > 0 ? "+" : pointDelta < 0 ? "−" : "±";
-    elements["calculation-diff"].textContent = `前回から: 候補+${added}/−${removed}・点数${pointPrefix}${Math.abs(pointDelta).toLocaleString("ja-JP")}`;
-    elements["calculation-diff"].hidden = false;
-  }
-
   function renderCandidateGroup(groupId, containerId, candidates) {
     elements[groupId].hidden = candidates.length === 0;
     renderCandidates(elements[containerId], candidates);
+  }
+
+  function renderDecisionGroup(candidates, notices) {
+    elements["decision-group"].hidden = candidates.length === 0;
+    replaceChildren(
+      elements["decision-candidates"],
+      candidates.map((candidate) => createDecisionRow(candidate, notices))
+    );
+  }
+
+  function createDecisionRow(candidate, notices) {
+    const row = document.createElement("div");
+    row.className = `decision-row zone-${candidate.zone}`;
+    row.dataset.candidateId = String(candidate.candidateId || "");
+    row.dataset.zone = candidate.zone;
+    row.setAttribute("role", "listitem");
+
+    const kind = document.createElement("span");
+    kind.className = `decision-kind decision-kind-${candidate.zone}`;
+    kind.textContent = candidate.zone === "selection_required" ? "区分確認" : "要確認";
+
+    const name = document.createElement("strong");
+    name.className = "decision-name";
+    name.textContent = decisionCandidateName(candidate);
+
+    const separator = document.createElement("span");
+    separator.className = "decision-separator";
+    separator.setAttribute("aria-hidden", "true");
+    separator.textContent = "｜";
+
+    const summary = document.createElement("span");
+    summary.className = "decision-summary";
+    summary.textContent = candidate.zone === "selection_required"
+      ? selectionDecisionSummary(candidate)
+      : reviewDecisionSummary(candidate, notices);
+
+    row.append(kind, name, separator, summary);
+    return row;
+  }
+
+  function decisionCandidateName(candidate) {
+    const display = candidate.display && typeof candidate.display === "object"
+      ? candidate.display
+      : null;
+    const exactOption = candidate.selectionResolution === "exact"
+      ? candidate.selectionNarrowing?.remainingOptions?.[0]
+      : null;
+    const stem = display?.stem || candidate.name || candidate.code || "名称未確定";
+    const qualifier = exactOption?.qualifierLabel
+      || (candidate.zone === "review_required" ? display?.qualifier : "");
+    return qualifier
+      ? appendQualifierLabel(stem, qualifier)
+      : stem;
+  }
+
+  function reviewDecisionSummary(candidate, notices) {
+    const exactOption = candidate.selectionResolution === "exact"
+      ? candidate.selectionNarrowing?.remainingOptions?.[0]
+      : null;
+    const pointValue = finiteNumber(
+      exactOption?.points ?? candidate.estimatedTotalPoints ?? candidate.points
+    );
+    const points = pointValue !== null && pointValue > 0
+      ? `${formatPoints(pointValue)}点`
+      : "点数未確定";
+    const reason = humanDecisionReason(candidate, notices, exactOption?.axisQuestion)
+      || "算定要件を確認してください";
+    return `${points}｜${reason}`;
+  }
+
+  function selectionDecisionSummary(candidate) {
+    const narrowing = candidate.selectionNarrowing && typeof candidate.selectionNarrowing === "object"
+      ? candidate.selectionNarrowing
+      : {};
+    const options = Array.isArray(narrowing.remainingOptions) ? narrowing.remainingOptions : [];
+    const question = options.find((option) => String(option?.axisQuestion || "").trim())?.axisQuestion
+      || "算定区分を確認してください";
+    if (options.length > 0 && options.length <= 2) {
+      const choices = options.map((option) => {
+        const label = String(option?.qualifierLabel || "区分名未設定").trim();
+        const points = finiteNumber(option?.points);
+        return `${label} ${points !== null && points > 0 ? `${formatPoints(points)}点` : "点数未確定"}`;
+      }).join(" / ");
+      return `${question}｜${choices}`;
+    }
+
+    const count = Math.max(0, Number(
+      narrowing.remainingOptionCount
+      ?? (options.length || candidate.codeCandidates?.length || 0)
+    ));
+    const range = selectionPointRange(narrowing);
+    const pointSummary = range
+      ? range.min === range.max
+        ? `${formatPoints(range.min)}点`
+        : `${formatPoints(range.min)}〜${formatPoints(range.max)}点`
+      : "点数未確定";
+    const countSummary = count > 0 ? `（${count.toLocaleString("ja-JP")}区分）` : "";
+    return `${pointSummary}${countSummary}｜${question}`;
+  }
+
+  function humanDecisionReason(candidate, notices, exactQuestion = "") {
+    const candidateReason = normalizedDisplayText(candidate?.reason);
+    if (candidateReason && !/^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/iu.test(candidateReason)) {
+      return candidateReason;
+    }
+    const candidateId = String(candidate?.candidateId || "").trim();
+    const code = String(candidate?.code || "").trim();
+    const related = notices
+      .filter((notice) => (
+        (candidateId && String(notice?.candidateId || "").trim() === candidateId)
+        || (code && String(notice?.targetCode || "").trim() === code)
+      ))
+      .sort((left, right) => noticePriority(left) - noticePriority(right));
+    const specificNotice = related.find((notice) => (
+      String(notice?.badge || "") !== "requires_selection"
+      && normalizedDisplayText(notice?.shortText) !== "算定区分の確認が必要です。"
+    ));
+    return normalizedDisplayText(specificNotice?.shortText)
+      || normalizedDisplayText(exactQuestion)
+      || normalizedDisplayText(related[0]?.shortText);
+  }
+
+  function normalizedDisplayText(value) {
+    return String(value || "").replace(/\s+/gu, " ").trim();
+  }
+
+  function noticePriority(notice) {
+    const checklistRank = notice?.checklist === true ? 0 : 10;
+    const attentionRank = { required: 0, recommended: 1, reference: 2 }[
+      String(notice?.attentionLevel || "reference")
+    ] ?? 2;
+    return checklistRank + attentionRank;
   }
 
   function renderCandidates(container, candidates) {
@@ -482,12 +581,12 @@
 
   function normalizeCandidateZone(candidate) {
     if (!candidate || typeof candidate !== "object") {
-      return { zone: "review_required" };
+      return { zone: "unknown" };
     }
     if (["included", "review_required", "selection_required", "blocked"].includes(candidate.zone)) {
       return candidate;
     }
-    return { ...candidate, zone: "review_required" };
+    return { ...candidate, zone: "unknown" };
   }
 
   function candidatePointLabel(candidate, exactOption) {
@@ -498,6 +597,33 @@
       return "";
     }
     return `${formatPoints(candidate.estimatedTotalPoints ?? candidate.points ?? 0)}点`;
+  }
+
+  function selectionPointRange(narrowing) {
+    const explicitMinimum = finiteNumber(narrowing?.pointRange?.min);
+    const explicitMaximum = finiteNumber(narrowing?.pointRange?.max);
+    if (
+      explicitMinimum !== null
+      && explicitMaximum !== null
+      && explicitMinimum > 0
+      && explicitMaximum > 0
+    ) {
+      return {
+        min: Math.min(explicitMinimum, explicitMaximum),
+        max: Math.max(explicitMinimum, explicitMaximum)
+      };
+    }
+    const options = Array.isArray(narrowing?.remainingOptions) ? narrowing.remainingOptions : [];
+    const values = options.map((option) => finiteNumber(option?.points));
+    return values.length > 0 && values.every((value) => value !== null && value > 0)
+      ? { min: Math.min(...values), max: Math.max(...values) }
+      : null;
+  }
+
+  function finiteNumber(value) {
+    if (value === null || value === undefined || value === "") return null;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
   }
 
   function formatPoints(value) {

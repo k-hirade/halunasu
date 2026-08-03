@@ -299,29 +299,9 @@ h3 {
   gap: 5px;
 }
 
-.result-primary-metric > span,
-.result-secondary-metrics {
+.result-primary-metric > span {
   color: #617083;
   font-size: 11px;
-}
-
-.result-secondary-metrics {
-  display: flex;
-  min-width: 0;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px 10px;
-}
-
-.result-secondary-metrics strong {
-  color: #253449;
-}
-
-.calculation-diff {
-  min-width: 0;
-  color: #334257;
-  overflow-wrap: anywhere;
 }
 
 .result-group {
@@ -331,10 +311,60 @@ h3 {
 }
 
 .candidate-list,
+.decision-list,
 .checklist-list,
 .detail-log-list {
   display: grid;
   gap: 7px;
+}
+
+.decision-row {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 3px 6px;
+  padding: 8px 9px;
+  border: 1px solid #dfe5eb;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.decision-kind {
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  border: 1px solid #c6d0db;
+  border-radius: 4px;
+  color: #526175;
+  background: #f5f7f9;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.decision-kind-selection_required {
+  color: #785400;
+  border-color: #d9bd7d;
+  background: #fff8e8;
+}
+
+.decision-name,
+.decision-summary {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.decision-name {
+  color: #253449;
+}
+
+.decision-separator {
+  flex: 0 0 auto;
+  color: #a0aab6;
+}
+
+.decision-summary {
+  color: #526175;
 }
 
 .candidate-row,
@@ -423,11 +453,6 @@ h3 {
   color: #8a97a8;
   font-size: 11px;
   overflow-wrap: anywhere;
-}
-
-.result-meta {
-  margin-top: -6px;
-  font-size: 12px;
 }
 
 .detail-log-audience {
