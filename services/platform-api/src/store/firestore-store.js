@@ -1119,16 +1119,27 @@ export class FirestorePlatformStore {
     await this.requireOrganization(orgId);
     const normalized = validateCreateAuditEventInput(input);
     const now = this.timestamp();
-    const eventId = this.idFactory("aud");
+    const eventId = normalized.eventId || this.idFactory("aud");
+    const eventRef = this.doc(auditEventPath(orgId, eventId));
     const event = compactObject({
+      ...normalized,
       eventId,
       orgId,
-      ...normalized,
       createdAt: now,
       schemaVersion: 1
     });
 
-    await this.doc(auditEventPath(orgId, eventId)).set(event);
+    if (normalized.eventId) {
+      return this.db.runTransaction(async (transaction) => {
+        const existing = docDataOrNull(await transaction.get(eventRef));
+        if (existing) {
+          return existing;
+        }
+        transaction.set(eventRef, event);
+        return event;
+      });
+    }
+    await eventRef.set(event);
     return event;
   }
 

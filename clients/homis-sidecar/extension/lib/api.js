@@ -98,23 +98,61 @@
   }
 
   async function calculate(payload) {
+    return authorizedFeeRequest("/v1/integrations/sidecar/calculate", {
+      method: "POST",
+      body: (access) => ({
+        ...payload,
+        facilityId: access.sidecarContext?.facilityId,
+        departmentId: access.sidecarContext?.departmentId || undefined
+      })
+    });
+  }
+
+  async function setCandidateAcknowledgement(input = {}) {
+    const sidecarDraftId = String(input.sidecarDraftId || "").trim();
+    const candidateKey = String(input.candidateKey || "").trim();
+    if (!sidecarDraftId || !candidateKey) {
+      throw apiError(
+        "candidate_acknowledgement_target_missing",
+        "確認状態の保存先を特定できません。算定案を作成し直してください。",
+        400
+      );
+    }
+    return authorizedFeeRequest(
+      `/v1/integrations/sidecar/drafts/${encodeURIComponent(sidecarDraftId)}`
+        + `/candidate-acknowledgements/${encodeURIComponent(candidateKey)}`,
+      {
+        method: "PUT",
+        body: {
+          contractVersion: "v1",
+          acknowledged: input.acknowledged === true,
+          expectedSourceRevision: input.expectedSourceRevision,
+          expectedCalculationRevision: input.expectedCalculationRevision,
+          expectedAcknowledgementVersion: input.expectedAcknowledgementVersion,
+          candidateFingerprint: input.candidateFingerprint
+        }
+      }
+    );
+  }
+
+  async function authorizedFeeRequest(path, options = {}) {
     const stored = await storageGet([GRANT_ID_KEY]);
     if (!stored[GRANT_ID_KEY]) {
       throw apiError("grant_missing", "端末を接続してください。", 401);
     }
     await refreshGrant(stored[GRANT_ID_KEY]);
-    const response = await fetch(`${FEE_BASE_URL}/v1/integrations/sidecar/calculate`, {
-      method: "POST",
+    const access = currentAccess;
+    const requestBody = typeof options.body === "function"
+      ? options.body(access)
+      : options.body;
+    const response = await fetch(`${FEE_BASE_URL}${path}`, {
+      method: options.method || "GET",
       headers: {
-        authorization: `Bearer ${currentAccess.accessToken}`,
+        authorization: `Bearer ${access.accessToken}`,
         "content-type": "application/json",
-        "x-sidecar-code-verifier": currentAccess.verifier
+        "x-sidecar-code-verifier": access.verifier
       },
-      body: JSON.stringify({
-        ...payload,
-        facilityId: currentAccess.sidecarContext?.facilityId,
-        departmentId: currentAccess.sidecarContext?.departmentId || undefined
-      })
+      body: requestBody === undefined ? undefined : JSON.stringify(requestBody)
     });
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -266,6 +304,7 @@
     connectWithStoredGrant,
     environment: configuration.environment,
     pollDeviceAuthorization,
+    setCandidateAcknowledgement,
     startDeviceAuthorization
   });
 })(globalThis);

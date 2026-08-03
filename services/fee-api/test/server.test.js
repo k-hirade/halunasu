@@ -9650,6 +9650,50 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
   };
   const sidecarHeaders = await signedSidecarHeaders(stores);
   const requestBody = sidecarCalculationBody();
+  const otherFacility = stores.platformStore.createFacility("org_001", {
+    displayName: "Other Clinic",
+    medicalInstitutionCode: "9999999"
+  });
+  const otherDepartment = stores.platformStore.createDepartment("org_001", {
+    facilityId: otherFacility.facilityId,
+    displayName: "Other Department"
+  });
+  const wrongFacilityCalculation = await request(
+    stores,
+    "POST",
+    "/v1/integrations/sidecar/calculate",
+    requestBody,
+    await signedSidecarHeaders(stores, { facilityId: "fac_other" }),
+    sidecarRequestOptions()
+  );
+  const wrongDepartmentCalculation = await request(
+    stores,
+    "POST",
+    "/v1/integrations/sidecar/calculate",
+    requestBody,
+    await signedSidecarHeaders(stores, { departmentId: "dep_other" }),
+    sidecarRequestOptions()
+  );
+  const departmentlessGrantCalculation = await request(
+    stores,
+    "POST",
+    "/v1/integrations/sidecar/calculate",
+    requestBody,
+    await signedSidecarHeaders(stores, { departmentId: null }),
+    sidecarRequestOptions()
+  );
+  const mismatchedDepartmentFacilityCalculation = await request(
+    stores,
+    "POST",
+    "/v1/integrations/sidecar/calculate",
+    { ...requestBody, departmentId: otherDepartment.departmentId },
+    await signedSidecarHeaders(stores, { departmentId: otherDepartment.departmentId }),
+    sidecarRequestOptions()
+  );
+  assert.equal(wrongFacilityCalculation.statusCode, 403);
+  assert.equal(wrongDepartmentCalculation.statusCode, 403);
+  assert.equal(departmentlessGrantCalculation.statusCode, 403);
+  assert.equal(mismatchedDepartmentFacilityCalculation.statusCode, 403);
   const first = await request(
     stores,
     "POST",
@@ -9682,6 +9726,13 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
   assert.equal(ambiguousCandidate.billingEligibility, "review_required");
   assert.equal(ambiguousCandidate.selectionResolution, "insufficient");
   assert.equal(ambiguousCandidate.estimatedTotalPoints, 0);
+  assert.match(ambiguousCandidate.candidateKey, /^sca_[a-f0-9]{26}$/u);
+  assert.match(ambiguousCandidate.candidateFingerprint, /^[a-f0-9]{64}$/u);
+  assert.deepEqual(ambiguousCandidate.acknowledgement, {
+    status: "unacknowledged",
+    version: 0,
+    updatedAt: null
+  });
   assert.deepEqual(ambiguousCandidate.display, {
     stem: "在宅酸素療法指導管理料",
     qualifier: ""
@@ -9697,6 +9748,117 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
   assert.equal(stores.feeStore.listSessionsForClaimMonth("org_001", "2026-05").length, 0);
 
   const firstDraftId = first.body.sidecarDraft.sidecarDraftId;
+  const acknowledgementPath = `/v1/integrations/sidecar/drafts/${firstDraftId}`
+    + `/candidate-acknowledgements/${ambiguousCandidate.candidateKey}`;
+  const acknowledgementBody = {
+    contractVersion: "v1",
+    acknowledged: true,
+    expectedSourceRevision: first.body.sidecarDraft.sourceRevision,
+    expectedCalculationRevision: first.body.sidecarDraft.calculationRevision,
+    expectedAcknowledgementVersion: ambiguousCandidate.acknowledgement.version,
+    candidateFingerprint: ambiguousCandidate.candidateFingerprint
+  };
+  const missingScope = await request(
+    stores,
+    "PUT",
+    acknowledgementPath,
+    acknowledgementBody,
+    await signedSidecarHeaders(stores, { scopes: ["sidecar:calculate"] }),
+    sidecarRequestOptions()
+  );
+  assert.equal(missingScope.statusCode, 403);
+  const wrongFacility = await request(
+    stores,
+    "PUT",
+    acknowledgementPath,
+    acknowledgementBody,
+    await signedSidecarHeaders(stores, { facilityId: "fac_other" }),
+    sidecarRequestOptions()
+  );
+  assert.equal(wrongFacility.statusCode, 403);
+  const acknowledged = await request(
+    stores,
+    "PUT",
+    acknowledgementPath,
+    acknowledgementBody,
+    sidecarHeaders,
+    sidecarRequestOptions()
+  );
+  assert.equal(acknowledged.statusCode, 200);
+  assert.equal(acknowledged.body.changed, true);
+  assert.match(acknowledged.headers["access-control-allow-methods"], /\bPUT\b/u);
+  const acknowledgedCandidate = acknowledged.body.sidecarDraft.calculation.candidates
+    .find((candidate) => candidate.candidateKey === ambiguousCandidate.candidateKey);
+  assert.deepEqual(acknowledgedCandidate.acknowledgement, {
+    status: "acknowledged",
+    version: 1,
+    updatedAt: "2026-05-28T00:00:00.000Z"
+  });
+  assert.equal(acknowledged.body.sidecarDraft.calculation.estimatedTotalPoints, first.body.sidecarDraft.calculation.estimatedTotalPoints);
+  assert.equal(acknowledgedCandidate.zone, ambiguousCandidate.zone);
+  assert.equal(acknowledgedCandidate.candidateOnly, true);
+  const acknowledgementRetry = await request(
+    stores,
+    "PUT",
+    acknowledgementPath,
+    acknowledgementBody,
+    sidecarHeaders,
+    sidecarRequestOptions()
+  );
+  assert.equal(acknowledgementRetry.statusCode, 200);
+  assert.equal(acknowledgementRetry.body.changed, false);
+  assert.equal(acknowledgementRetry.body.sidecarDraft.calculation.candidates
+    .find((candidate) => candidate.candidateKey === ambiguousCandidate.candidateKey)
+    .acknowledgement.version, 1);
+  const unacknowledged = await request(
+    stores,
+    "PUT",
+    acknowledgementPath,
+    {
+      ...acknowledgementBody,
+      acknowledged: false,
+      expectedAcknowledgementVersion: 1
+    },
+    sidecarHeaders,
+    sidecarRequestOptions()
+  );
+  assert.equal(unacknowledged.statusCode, 200);
+  assert.equal(unacknowledged.body.changed, true);
+  assert.deepEqual(unacknowledged.body.sidecarDraft.calculation.candidates
+    .find((candidate) => candidate.candidateKey === ambiguousCandidate.candidateKey)
+    .acknowledgement.status, "unacknowledged");
+  const reacknowledged = await request(
+    stores,
+    "PUT",
+    acknowledgementPath,
+    {
+      ...acknowledgementBody,
+      expectedAcknowledgementVersion: 2
+    },
+    sidecarHeaders,
+    sidecarRequestOptions()
+  );
+  assert.equal(reacknowledged.statusCode, 200);
+  assert.equal(reacknowledged.body.changed, true);
+  assert.equal(reacknowledged.body.sidecarDraft.calculation.candidates
+    .find((candidate) => candidate.candidateKey === ambiguousCandidate.candidateKey)
+    .acknowledgement.version, 3);
+  const unchangedCalculation = await request(
+    stores,
+    "POST",
+    "/v1/integrations/sidecar/calculate",
+    requestBody,
+    sidecarHeaders,
+    sidecarRequestOptions()
+  );
+  const unchangedCandidate = unchangedCalculation.body.sidecarDraft.calculation.candidates
+    .find((candidate) => candidate.candidateKey === ambiguousCandidate.candidateKey);
+  assert.equal(unchangedCalculation.statusCode, 200);
+  assert.equal(unchangedCalculation.body.sidecarDraft.sourceRevision, 1);
+  assert.equal(unchangedCalculation.body.sidecarDraft.calculationRevision, 2);
+  assert.equal(unchangedCandidate.candidateFingerprint, ambiguousCandidate.candidateFingerprint);
+  assert.equal(unchangedCandidate.acknowledgement.status, "acknowledged");
+  assert.equal(unchangedCandidate.acknowledgement.version, 3);
   const storedFirst = stores.feeStore.getSidecarCalculationDraft("org_001", firstDraftId);
   assert.equal(storedFirst.recordType, "sidecar_calculation_draft");
   assert.equal(storedFirst.canonicalPatientId, storedFirst.patientId);
@@ -9728,7 +9890,7 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
   assert.equal(second.statusCode, 200);
   assert.equal(second.body.sidecarDraft.sidecarDraftId, firstDraftId);
   assert.equal(second.body.sidecarDraft.sourceRevision, 2);
-  assert.equal(second.body.sidecarDraft.calculationRevision, 2);
+  assert.equal(second.body.sidecarDraft.calculationRevision, 3);
   assert.ok(second.body.sidecarDraft.calculationDiff);
   assert.deepEqual(second.body.sidecarDraft.encounterDetails, {
     sameBuilding: true,
@@ -9739,6 +9901,25 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
     visitKindSource: null,
     telephoneEligibility: null
   });
+  const staleAcknowledgementCandidate = second.body.sidecarDraft.calculation.candidates
+    .find((candidate) => candidate.candidateKey === ambiguousCandidate.candidateKey);
+  assert.equal(staleAcknowledgementCandidate.acknowledgement.status, "stale");
+  assert.equal(staleAcknowledgementCandidate.acknowledgement.version, 4);
+  assert.equal(stores.feeStore.getSidecarCalculationDraft("org_001", firstDraftId)
+    .candidateAcknowledgements[ambiguousCandidate.candidateKey].status, "stale");
+  const acknowledgementAudits = stores.platformStore.listAuditEvents("org_001")
+    .filter((event) => event.eventType.startsWith("fee.sidecar_candidate_acknowledgement_"));
+  assert.equal(acknowledgementAudits.filter((event) => (
+    event.eventType === "fee.sidecar_candidate_acknowledgement_changed"
+  )).length, 3);
+  assert.equal(acknowledgementAudits.filter((event) => (
+    event.eventType === "fee.sidecar_candidate_acknowledgement_invalidated"
+  )).length, 1);
+  assert.equal(acknowledgementAudits.every((event) => (
+    !Object.hasOwn(event.safePayload, "clinicalText")
+    && !Object.hasOwn(event.safePayload, "patientName")
+    && !Object.hasOwn(event.safePayload, "reason")
+  )), true);
   assert.equal(stores.feeStore.sidecarDraftsForOrg("org_001").size, 1);
   assert.equal(stores.feeStore.listSessions("org_001").length, 0);
 
@@ -9813,6 +9994,21 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
     feeHeaders,
     { sidecarEnabled: true }
   );
+  const adoptedAcknowledgement = await request(
+    stores,
+    "PUT",
+    acknowledgementPath,
+    {
+      contractVersion: "v1",
+      acknowledged: false,
+      expectedSourceRevision: second.body.sidecarDraft.sourceRevision,
+      expectedCalculationRevision: second.body.sidecarDraft.calculationRevision,
+      expectedAcknowledgementVersion: staleAcknowledgementCandidate.acknowledgement.version,
+      candidateFingerprint: staleAcknowledgementCandidate.candidateFingerprint
+    },
+    sidecarHeaders,
+    sidecarRequestOptions()
+  );
 
   assert.equal(adopted.statusCode, 201);
   assert.equal(adopted.body.feeSession.sourceSystem, "homis_sidecar_adopted");
@@ -9828,7 +10024,9 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
     telephoneEligibility: null
   });
   assert.equal(adopted.body.feeSession.calculationResult, null);
+  assert.equal(Object.hasOwn(adopted.body.feeSession, "candidateAcknowledgements"), false);
   assert.equal(adopted.body.sidecarDraft.lifecycleStatus, "adopted");
+  assert.equal(adoptedAcknowledgement.statusCode, 409);
   const adoptedDraft = stores.feeStore.getSidecarCalculationDraft("org_001", firstDraftId);
   assert.equal(adoptedDraft.canonicalPatientId, patient.patientId);
   assert.ok(adoptedDraft.patientIdentityAliases.includes(storedFirst.patientId));
@@ -9854,6 +10052,337 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
   assert.equal(adoptedList.statusCode, 200);
   assert.equal(adoptedList.body.totalCount, 1);
   assert.equal(adoptedList.body.sidecarDrafts[0].lifecycleStatus, "adopted");
+});
+
+test("sidecar acknowledgement post-processing failure does not mark a completed calculation failed", async () => {
+  const stores = createStores();
+  const sidecarHeaders = await signedSidecarHeaders(stores);
+  stores.feeStore.reconcileSidecarCandidateAcknowledgements = () => {
+    const error = new Error("acknowledgement reconciliation unavailable");
+    error.statusCode = 500;
+    throw error;
+  };
+
+  const response = await request(
+    stores,
+    "POST",
+    "/v1/integrations/sidecar/calculate",
+    sidecarCalculationBody(),
+    sidecarHeaders,
+    sidecarRequestOptions()
+  );
+  const [storedDraft] = [...stores.feeStore.sidecarDraftsForOrg("org_001").values()];
+
+  assert.equal(response.statusCode, 500);
+  assert.ok(storedDraft.calculationResult);
+  assert.notEqual(storedDraft.status, "failed");
+  assert.equal(storedDraft.calculationProgress.phase, "complete");
+});
+
+test("sidecar acknowledgement audits recover idempotently after a transient audit failure", async () => {
+  const stores = createStores();
+  const originalCalculate = stores.feeCalculator.calculate;
+  stores.feeCalculator.calculate = async (feeSession) => {
+    const calculated = await originalCalculate(feeSession);
+    return {
+      ...calculated,
+      candidateProposals: [
+        ...(Array.isArray(calculated.candidateProposals) ? calculated.candidateProposals : []),
+        {
+          proposalId: "audit_recovery_candidate",
+          title: "在宅酸素療法指導管理料の区分確認",
+          orderType: "procedure",
+          potentialPoints: 0,
+          codeCandidates: ["114009210", "114009310"],
+          source: "clinical_billing_knowledge:management_signal"
+        }
+      ]
+    };
+  };
+  const sidecarHeaders = await signedSidecarHeaders(stores);
+  const requestBody = sidecarCalculationBody();
+  const first = await request(
+    stores,
+    "POST",
+    "/v1/integrations/sidecar/calculate",
+    requestBody,
+    sidecarHeaders,
+    sidecarRequestOptions()
+  );
+  const candidate = first.body.sidecarDraft.calculation.candidates.find((item) => (
+    item.candidateId === "audit_recovery_candidate"
+  ));
+  const acknowledgementPath = `/v1/integrations/sidecar/drafts/${first.body.sidecarDraft.sidecarDraftId}`
+    + `/candidate-acknowledgements/${candidate.candidateKey}`;
+  const acknowledgementBody = {
+    contractVersion: "v1",
+    acknowledged: true,
+    expectedSourceRevision: first.body.sidecarDraft.sourceRevision,
+    expectedCalculationRevision: first.body.sidecarDraft.calculationRevision,
+    expectedAcknowledgementVersion: 0,
+    candidateFingerprint: candidate.candidateFingerprint
+  };
+  const createAuditEvent = stores.platformStore.createAuditEvent.bind(stores.platformStore);
+  let acknowledgementAuditFailuresRemaining = 2;
+  stores.platformStore.createAuditEvent = (orgId, auditInput) => {
+    if (
+      acknowledgementAuditFailuresRemaining > 0
+      && auditInput.eventType === "fee.sidecar_candidate_acknowledgement_changed"
+    ) {
+      acknowledgementAuditFailuresRemaining -= 1;
+      throw new Error("transient acknowledgement audit failure");
+    }
+    return createAuditEvent(orgId, auditInput);
+  };
+
+  const failedAcknowledgement = await request(
+    stores,
+    "PUT",
+    acknowledgementPath,
+    acknowledgementBody,
+    sidecarHeaders,
+    sidecarRequestOptions()
+  );
+  const storedAfterAcknowledgementFailure = stores.feeStore.getSidecarCalculationDraft(
+    "org_001",
+    first.body.sidecarDraft.sidecarDraftId
+  );
+  assert.equal(failedAcknowledgement.statusCode, 500);
+  assert.equal(
+    storedAfterAcknowledgementFailure.candidateAcknowledgements[candidate.candidateKey].status,
+    "acknowledged"
+  );
+  assert.equal(
+    Object.keys(storedAfterAcknowledgementFailure.candidateAcknowledgementAuditOutbox).length,
+    1
+  );
+
+  const failedUnacknowledgement = await request(
+    stores,
+    "PUT",
+    acknowledgementPath,
+    {
+      ...acknowledgementBody,
+      acknowledged: false,
+      expectedAcknowledgementVersion: 1
+    },
+    sidecarHeaders,
+    sidecarRequestOptions()
+  );
+  assert.equal(failedUnacknowledgement.statusCode, 500);
+  assert.equal(Object.keys(stores.feeStore.getSidecarCalculationDraft(
+    "org_001",
+    first.body.sidecarDraft.sidecarDraftId
+  ).candidateAcknowledgementAuditOutbox).length, 2);
+
+  const repairedAcknowledgement = await request(
+    stores,
+    "PUT",
+    acknowledgementPath,
+    {
+      ...acknowledgementBody,
+      acknowledged: false,
+      expectedAcknowledgementVersion: 1
+    },
+    sidecarHeaders,
+    sidecarRequestOptions()
+  );
+  assert.equal(repairedAcknowledgement.statusCode, 200);
+  assert.equal(repairedAcknowledgement.body.changed, false);
+  assert.equal(stores.platformStore.listAuditEvents("org_001").filter((event) => (
+    event.eventType === "fee.sidecar_candidate_acknowledgement_changed"
+  )).length, 2);
+  assert.deepEqual(stores.feeStore.getSidecarCalculationDraft(
+    "org_001",
+    first.body.sidecarDraft.sidecarDraftId
+  ).candidateAcknowledgementAuditOutbox, {});
+
+  const reacknowledged = await request(
+    stores,
+    "PUT",
+    acknowledgementPath,
+    {
+      ...acknowledgementBody,
+      expectedAcknowledgementVersion: 2
+    },
+    sidecarHeaders,
+    sidecarRequestOptions()
+  );
+  assert.equal(reacknowledged.statusCode, 200);
+  assert.equal(reacknowledged.body.changed, true);
+
+  let failInvalidationAudit = true;
+  stores.platformStore.createAuditEvent = (orgId, auditInput) => {
+    if (
+      failInvalidationAudit
+      && auditInput.eventType === "fee.sidecar_candidate_acknowledgement_invalidated"
+    ) {
+      failInvalidationAudit = false;
+      throw new Error("transient acknowledgement invalidation audit failure");
+    }
+    return createAuditEvent(orgId, auditInput);
+  };
+  const revisedBody = {
+    ...requestBody,
+    sameBuilding: true,
+    sameBuildingSource: "user",
+    singleBuildingPatientCount: 4,
+    residenceType: "facility"
+  };
+  const failedInvalidation = await request(
+    stores,
+    "POST",
+    "/v1/integrations/sidecar/calculate",
+    revisedBody,
+    sidecarHeaders,
+    sidecarRequestOptions()
+  );
+  assert.equal(failedInvalidation.statusCode, 500);
+  assert.equal(stores.feeStore.getSidecarCalculationDraft(
+    "org_001",
+    first.body.sidecarDraft.sidecarDraftId
+  ).candidateAcknowledgements[candidate.candidateKey].status, "stale");
+
+  const repairedInvalidation = await request(
+    stores,
+    "POST",
+    "/v1/integrations/sidecar/calculate",
+    revisedBody,
+    sidecarHeaders,
+    sidecarRequestOptions()
+  );
+  assert.equal(repairedInvalidation.statusCode, 200);
+  assert.equal(stores.platformStore.listAuditEvents("org_001").filter((event) => (
+    event.eventType === "fee.sidecar_candidate_acknowledgement_invalidated"
+  )).length, 1);
+  assert.deepEqual(stores.feeStore.getSidecarCalculationDraft(
+    "org_001",
+    first.body.sidecarDraft.sidecarDraftId
+  ).candidateAcknowledgementAuditOutbox, {});
+});
+
+test("sidecar acknowledgement audit worker continues after one draft fails and retries idempotently", async () => {
+  const stores = createStores();
+  const drafts = stores.feeStore.sidecarDraftsForOrg("org_001");
+  const pendingDraft = (sidecarDraftId, occurredAt) => ({
+    orgId: "org_001",
+    sidecarDraftId,
+    candidateAcknowledgementAuditPending: true,
+    candidateAcknowledgementAuditOutbox: {
+      [`aud_${sidecarDraftId}`]: {
+        eventId: `aud_${sidecarDraftId}`,
+        eventType: "fee.sidecar_candidate_acknowledgement_changed",
+        candidateKey: `proposal:${sidecarDraftId}`,
+        candidateFingerprint: "a".repeat(64),
+        sourceRevision: 1,
+        calculationRevision: 1,
+        acknowledgementVersion: 1,
+        acknowledged: true,
+        actorMemberId: "mem_001",
+        actorLoginId: "admin@example.com",
+        deviceId: "sidecar-device-001",
+        staleReason: null,
+        occurredAt
+      }
+    },
+    updatedAt: occurredAt,
+    expiresAt: "2026-09-02T00:00:00.000Z"
+  });
+  const failingDraft = pendingDraft(
+    "sidecar_worker_failing",
+    "2026-08-03T00:00:00.000Z"
+  );
+  const [firstFailingEntry] = Object.values(failingDraft.candidateAcknowledgementAuditOutbox);
+  failingDraft.candidateAcknowledgementAuditOutbox.aud_sidecar_worker_failing_second = {
+    ...firstFailingEntry,
+    eventId: "aud_sidecar_worker_failing_second",
+    candidateKey: "proposal:sidecar_worker_failing:second",
+    acknowledgementVersion: 2,
+    occurredAt: "2026-08-03T00:00:30.000Z"
+  };
+  drafts.set("sidecar_worker_failing", failingDraft);
+  drafts.set(
+    "sidecar_worker_succeeding",
+    pendingDraft("sidecar_worker_succeeding", "2026-08-03T00:01:00.000Z")
+  );
+  const workerPath = "/v1/fee/internal/sidecar-acknowledgement-audit-outbox/run";
+  const workerEnv = {
+    SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_AUTH_MODE: "token",
+    SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_TOKEN: "sidecar-audit-worker-token"
+  };
+  const denied = await request(stores, "POST", workerPath, {}, {}, {
+    processEnv: workerEnv
+  });
+  const unsupportedIam = await request(stores, "POST", workerPath, {}, {}, {
+    env: "prod",
+    processEnv: {
+      SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_AUTH_MODE: "iam"
+    }
+  });
+  const createAuditEvent = stores.platformStore.createAuditEvent.bind(stores.platformStore);
+  stores.platformStore.createAuditEvent = (orgId, auditInput) => {
+    if (auditInput.eventId === "aud_sidecar_worker_failing_second") {
+      throw new Error("transient worker delivery failure");
+    }
+    return createAuditEvent(orgId, auditInput);
+  };
+
+  const partiallyDelivered = await request(
+    stores,
+    "POST",
+    workerPath,
+    { limit: 20 },
+    { authorization: "Bearer sidecar-audit-worker-token" },
+    { processEnv: workerEnv }
+  );
+
+  assert.equal(denied.statusCode, 401);
+  assert.equal(unsupportedIam.statusCode, 503);
+  assert.equal(partiallyDelivered.statusCode, 200);
+  assert.deepEqual({
+    selectedDraftCount: partiallyDelivered.body.delivery.selectedDraftCount,
+    succeededDraftCount: partiallyDelivered.body.delivery.succeededDraftCount,
+    failedDraftCount: partiallyDelivered.body.delivery.failedDraftCount,
+    deliveredEventCount: partiallyDelivered.body.delivery.deliveredEventCount
+  }, {
+    selectedDraftCount: 2,
+    succeededDraftCount: 1,
+    failedDraftCount: 1,
+    deliveredEventCount: 2
+  });
+  assert.equal(drafts.get("sidecar_worker_failing").candidateAcknowledgementAuditPending, true);
+  assert.equal(Object.keys(
+    drafts.get("sidecar_worker_failing").candidateAcknowledgementAuditOutbox
+  ).length, 1);
+  assert.equal(drafts.get("sidecar_worker_succeeding").candidateAcknowledgementAuditPending, false);
+
+  stores.platformStore.createAuditEvent = createAuditEvent;
+  const repaired = await request(
+    stores,
+    "POST",
+    workerPath,
+    { limit: 1 },
+    { "x-fee-worker-token": "sidecar-audit-worker-token" },
+    { processEnv: workerEnv }
+  );
+  const emptyRetry = await request(
+    stores,
+    "POST",
+    workerPath,
+    {},
+    { authorization: "Bearer sidecar-audit-worker-token" },
+    { processEnv: workerEnv }
+  );
+  const workerAuditEvents = stores.platformStore.listAuditEvents("org_001")
+    .filter((event) => event.eventId.startsWith("aud_sidecar_worker_"));
+
+  assert.equal(repaired.statusCode, 200);
+  assert.equal(repaired.body.delivery.deliveredEventCount, 1);
+  assert.equal(drafts.get("sidecar_worker_failing").candidateAcknowledgementAuditPending, false);
+  assert.equal(emptyRetry.statusCode, 200);
+  assert.equal(emptyRetry.body.delivery.selectedDraftCount, 0);
+  assert.equal(workerAuditEvents.length, 3);
+  assert.equal(new Set(workerAuditEvents.map((event) => event.eventId)).size, 3);
 });
 
 test("sidecar notices deduplicate warning and review issue paths and honor encounter applicability", async () => {
@@ -10781,12 +11310,32 @@ test("fee sidecar runtime configuration fails closed outside test environments",
       HOMIS_SIDECAR_DRAFT_RETENTION_DAYS: "0"
     }
   }), /1 to 90/);
-  assert.doesNotThrow(() => assertFeeSidecarRuntimeConfiguration({
+  assert.throws(() => assertFeeSidecarRuntimeConfiguration({
     env: "prod",
     processEnv: {
       HOMIS_SIDECAR_ENABLED: "true",
       HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS: TEST_SIDECAR_EXTENSION_ID,
       HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS: "homis-test-v1"
+    }
+  }), /SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_TOKEN/);
+  assert.throws(() => assertFeeSidecarRuntimeConfiguration({
+    env: "prod",
+    processEnv: {
+      HOMIS_SIDECAR_ENABLED: "true",
+      HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS: TEST_SIDECAR_EXTENSION_ID,
+      HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS: "homis-test-v1",
+      SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_AUTH_MODE: "iam",
+      SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_TOKEN: "sidecar-audit-worker-token"
+    }
+  }), /AUTH_MODE must be token/);
+  assert.doesNotThrow(() => assertFeeSidecarRuntimeConfiguration({
+    env: "prod",
+    processEnv: {
+      HOMIS_SIDECAR_ENABLED: "true",
+      HOMIS_SIDECAR_ALLOWED_EXTENSION_IDS: TEST_SIDECAR_EXTENSION_ID,
+      HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS: "homis-test-v1",
+      SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_AUTH_MODE: "token",
+      SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_TOKEN: "sidecar-audit-worker-token"
     }
   }));
 });
@@ -10942,7 +11491,7 @@ const TEST_SIDECAR_EXTENSION_ID = "abcdefghijklmnopabcdefghijklmnop";
 const TEST_SIDECAR_DEVICE_ID = "sidecar_device_0001";
 const TEST_SIDECAR_VERIFIER = "sidecar-proof-verifier-0123456789ABCDEFGHIJK";
 
-async function signedSidecarHeaders(stores) {
+async function signedSidecarHeaders(stores, options = {}) {
   const identity = stores.platformStore.getLoginIdentity("clinic", "admin@example.com");
   stores.platformStore.updateMember(identity.orgId, identity.memberId, {
     productRoles: {
@@ -10975,9 +11524,11 @@ async function signedSidecarHeaders(stores) {
     tokenType: "scoped_product_access",
     productId: "homis_sidecar",
     audience: "fee-api",
-    scopes: ["sidecar:calculate"],
+    scopes: options.scopes || ["sidecar:calculate", "sidecar:acknowledge"],
     extensionId: TEST_SIDECAR_EXTENSION_ID,
     deviceId: TEST_SIDECAR_DEVICE_ID,
+    facilityId: options.facilityId || "fac_001",
+    departmentId: Object.hasOwn(options, "departmentId") ? options.departmentId : "dep_001",
     proofKeyChallenge: crypto.createHash("sha256").update(TEST_SIDECAR_VERIFIER).digest("base64url")
   }, {
     now: new Date("2026-05-28T00:00:00.000Z"),

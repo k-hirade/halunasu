@@ -1496,7 +1496,9 @@ test("sidecar device authorization issues and refreshes an MFA-bound scoped toke
   assert.equal(session.tokenType, "scoped_product_access");
   assert.equal(session.productId, "homis_sidecar");
   assert.equal(session.audience, "fee-api");
-  assert.deepEqual(session.scopes, ["sidecar:calculate"]);
+  const expectedScopes = ["sidecar:calculate", "sidecar:acknowledge"];
+  assert.deepEqual(issued.body.scopes, expectedScopes);
+  assert.deepEqual(session.scopes, expectedScopes);
   assert.equal(session.extensionId, fixture.extensionId);
   assert.equal(session.deviceId, fixture.deviceId);
   assert.equal(session.proofKeyChallenge, fixture.codeChallenge);
@@ -1515,12 +1517,15 @@ test("sidecar device authorization issues and refreshes an MFA-bound scoped toke
     now: fixture.now,
     sessionSecret: "test-session-secret"
   });
+  assert.deepEqual(refreshed.body.scopes, expectedScopes);
+  assert.deepEqual(refreshedSession.scopes, expectedScopes);
   assert.equal(refreshedSession.proofKeyChallenge, refreshChallenge);
   const audits = store.listAuditEvents(fixture.organization.orgId);
   assert.ok(audits.some((event) => event.eventType === "auth.sidecar_device_approved"));
   assert.ok(audits.some((event) => (
     event.eventType === "auth.sidecar_token_issued"
     && event.safePayload.authMode === "device_poll"
+    && JSON.stringify(event.safePayload.scopes) === JSON.stringify(expectedScopes)
   )));
   assert.ok(audits.some((event) => (
     event.eventType === "auth.sidecar_token_issued"

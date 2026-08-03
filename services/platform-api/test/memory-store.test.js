@@ -254,6 +254,17 @@ test("stores login identities and shared master data", () => {
     productIds: ["charting", "unknown"],
     safePayload: { patientId: "pat_123", displayName: "Patient" }
   });
+  const deterministicAuditInput = {
+    eventId: "aud_sidecar_candidate_v1",
+    eventType: "fee.sidecar_candidate_acknowledgement_changed",
+    actorMemberId: member.memberId,
+    safePayload: { candidateKey: "sca_123", acknowledgementVersion: 1 }
+  };
+  const deterministicAudit = store.createAuditEvent(organization.orgId, deterministicAuditInput);
+  const deterministicAuditRetry = store.createAuditEvent(organization.orgId, {
+    ...deterministicAuditInput,
+    safePayload: { candidateKey: "sca_changed", acknowledgementVersion: 99 }
+  });
 
   assert.equal(member.loginId, "admin");
   assert.equal(identity.memberId, member.memberId);
@@ -263,12 +274,14 @@ test("stores login identities and shared master data", () => {
   assert.equal(department.departmentId, "dep_004");
   assert.equal(entitlement.productId, "charting");
   assert.equal(auditEvent.eventId, "aud_005");
+  assert.equal(deterministicAudit.eventId, deterministicAuditInput.eventId);
+  assert.deepEqual(deterministicAuditRetry, deterministicAudit);
   assert.equal(auditEvent.safePayload.displayName, undefined);
   assert.equal(dataRequest.requestId, "drq_006");
   assert.deepEqual(dataRequest.productIds, ["charting"]);
   assert.equal(dataRequest.safePayload.displayName, undefined);
   assert.equal(store.listDataRequests(organization.orgId).length, 1);
-  assert.equal(store.listAuditEvents(organization.orgId).length, 1);
+  assert.equal(store.listAuditEvents(organization.orgId).length, 2);
 });
 
 test("updates platform resources and applies rate limits", () => {

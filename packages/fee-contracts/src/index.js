@@ -295,6 +295,48 @@ export function validateSidecarCalculationInput(input = {}) {
   });
 }
 
+export function validateSidecarCandidateAcknowledgementInput(input = {}) {
+  if (!isPlainObject(input)) {
+    throw validationError("request body must be an object", "body");
+  }
+  const contractVersion = boundedRequiredString(
+    input.contractVersion ?? input.contract_version,
+    "contractVersion",
+    16
+  );
+  if (!sidecarContractVersions.includes(contractVersion)) {
+    throw validationError(
+      `contractVersion must be one of: ${sidecarContractVersions.join(", ")}`,
+      "contractVersion"
+    );
+  }
+  const candidateFingerprint = input.candidateFingerprint ?? input.candidate_fingerprint;
+  if (typeof candidateFingerprint !== "string" || !/^[a-f0-9]{64}$/u.test(candidateFingerprint)) {
+    throw validationError(
+      "candidateFingerprint must be a 64-character lowercase hexadecimal value",
+      "candidateFingerprint"
+    );
+  }
+
+  return {
+    contractVersion,
+    acknowledged: strictBoolean(input.acknowledged, "acknowledged"),
+    expectedSourceRevision: requiredPositiveInteger(
+      input.expectedSourceRevision ?? input.expected_source_revision,
+      "expectedSourceRevision"
+    ),
+    expectedCalculationRevision: requiredPositiveInteger(
+      input.expectedCalculationRevision ?? input.expected_calculation_revision,
+      "expectedCalculationRevision"
+    ),
+    expectedAcknowledgementVersion: requiredNonNegativeInteger(
+      input.expectedAcknowledgementVersion ?? input.expected_acknowledgement_version,
+      "expectedAcknowledgementVersion"
+    ),
+    candidateFingerprint
+  };
+}
+
 function validateSidecarExtractionProof(value, expected) {
   if (!isPlainObject(value)) {
     throw validationError("extractionProof is required", "extractionProof");
@@ -1893,6 +1935,26 @@ function optionalPositiveInteger(value, field) {
     throw validationError(`${field} must be a positive integer`, field);
   }
   return number;
+}
+
+function requiredPositiveInteger(value, field) {
+  if (value === undefined || value === null || value === "") {
+    throw validationError(`${field} is required`, field);
+  }
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+    throw validationError(`${field} must be a positive integer`, field);
+  }
+  return value;
+}
+
+function requiredNonNegativeInteger(value, field) {
+  if (value === undefined || value === null || value === "") {
+    throw validationError(`${field} is required`, field);
+  }
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    throw validationError(`${field} must be a non-negative integer`, field);
+  }
+  return value;
 }
 
 function nullablePositiveInteger(value, field) {

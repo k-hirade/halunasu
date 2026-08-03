@@ -13,6 +13,7 @@ import {
   validateCreateFeeCalculationInput,
   validateCreateFeePatientInput,
   validateCreateFeeSessionInput,
+  validateSidecarCandidateAcknowledgementInput,
   validateSidecarCalculationInput,
   validateMonthlyExclusionResolutionInput,
   validateReviewDecisionInput,
@@ -95,6 +96,11 @@ import {
 import { buildSidecarNoticePresentation } from "./sidecar-notice-view.js";
 import { narrowSidecarCandidateSelection } from "./sidecar-selection-narrowing.js";
 import {
+  decorateSidecarCandidateAcknowledgements,
+  findSidecarAcknowledgementCandidate,
+  sidecarAcknowledgementTargets
+} from "./sidecar-candidate-acknowledgements.js";
+import {
   dispatchPendingCareFeeEvidence,
   enqueueCareFeeEvidenceForSession
 } from "./care-fee-evidence-outbox.js";
@@ -102,7 +108,8 @@ import {
 const PRODUCT_ID = "fee";
 const CARE_FEE_PRODUCT_ID = productIds.careFee;
 const SIDECAR_PRODUCT_ID = productIds.homisSidecar;
-const SIDECAR_TOKEN_SCOPE = "sidecar:calculate";
+const SIDECAR_CALCULATE_SCOPE = "sidecar:calculate";
+const SIDECAR_ACKNOWLEDGE_SCOPE = "sidecar:acknowledge";
 const SIDECAR_CONTRACT_VERSION = "v1";
 const SIDECAR_PRODUCT_ROLES = ["admin", "doctor", "nurse", "medical_clerk"];
 const FEE_PRODUCT_ROLES = ["admin", "doctor", "nurse", "medical_clerk", "viewer"];
@@ -271,10 +278,12 @@ async function routeFeeApiRequest(input = {}) {
     const context = await requireSidecarContext(input, platformStore);
     await consumeSidecarCalculationRateLimit(input, platformStore, context);
     const normalized = validateSidecarCalculationInput(input.body || {});
+    requireSidecarResourceScope(context, normalized);
     requireAllowedSidecarSelectorContract(input, normalized.extractionProof.selectorContractVersion);
     assertFreshSidecarExtraction(normalized.extractionProof, input.now || new Date());
     const facility = await requireFacility(context, platformStore, normalized.facilityId);
     const department = await resolveDepartment(context, platformStore, normalized.departmentId);
+    assertSidecarDepartmentFacility(facility, department);
     const identity = sidecarSourceIdentity(context.session.orgId, normalized);
     let canonicalIdentity = await resolveCanonicalSidecarPatientIdentity({
       platformStore,
@@ -365,8 +374,9 @@ async function routeFeeApiRequest(input = {}) {
       lastCalculatedByMemberId: context.session.memberId,
       expiresAt: sidecarDraftExpiry(now, input.processEnv || process.env)
     });
+    let calculation;
     try {
-      const calculation = await calculateFeeSessionNow({
+      calculation = await calculateFeeSessionNow({
         context,
         feeCalculator,
         feeStore: draftStore,
@@ -376,9 +386,6 @@ async function routeFeeApiRequest(input = {}) {
         current: upserted.sidecarDraft,
         calculationInput: validateCreateFeeCalculationInput({})
       });
-      return upserted.created
-        ? created(sidecarCalculationResponse(calculation.feeSession))
-        : ok(sidecarCalculationResponse(calculation.feeSession));
     } catch (error) {
       await markFeeCalculationFailed({
         context,
@@ -389,6 +396,71 @@ async function routeFeeApiRequest(input = {}) {
       });
       throw error;
     }
+    const reconciledDraft = await reconcileSidecarAcknowledgementsAfterCalculation({
+      feeStore,
+      platformStore,
+      context,
+      sidecarDraft: calculation.feeSession
+    });
+    return upserted.created
+      ? created(sidecarCalculationResponse(reconciledDraft))
+      : ok(sidecarCalculationResponse(reconciledDraft));
+  }
+
+  if (method === "PUT" && isSidecarCandidateAcknowledgementRoute(parts)) {
+    requireSidecarFeature(input);
+    const context = await requireSidecarContext(input, platformStore, {
+      requiredScope: SIDECAR_ACKNOWLEDGE_SCOPE
+    });
+    await consumeSidecarAcknowledgementRateLimit(input, platformStore, context);
+    const sidecarDraftId = decodeURIComponent(parts[4]);
+    const candidateKey = decodeURIComponent(parts[6]);
+    const normalized = validateSidecarCandidateAcknowledgementInput(input.body || {});
+    const current = await feeStore.getSidecarCalculationDraft(context.session.orgId, sidecarDraftId);
+    if (!current) {
+      return notFound("sidecar calculation draft not found");
+    }
+    requireSidecarResourceScope(context, current);
+    assertMutableSidecarDraft(current, input.now || new Date());
+    const facility = await requireFacility(context, platformStore, current.facilityId);
+    const department = await resolveDepartment(context, platformStore, current.departmentId);
+    assertSidecarDepartmentFacility(facility, department);
+
+    const currentView = sidecarCalculationResponse(current).sidecarDraft;
+    const candidate = findSidecarAcknowledgementCandidate(
+      currentView.calculation?.candidates,
+      candidateKey
+    );
+    if (!candidate || !safeStringEqual(candidate.candidateFingerprint, normalized.candidateFingerprint)) {
+      throw sidecarAcknowledgementConflict(
+        "算定案が更新されています。表示中のカルテから算定案を再作成してください。"
+      );
+    }
+
+    const result = await feeStore.setSidecarCandidateAcknowledgement(
+      context.session.orgId,
+      sidecarDraftId,
+      {
+        ...normalized,
+        candidateKey,
+        candidateId: candidate.candidateId,
+        sourceType: candidate.sourceType,
+        updatedByMemberId: context.session.memberId,
+        updatedByLoginId: context.session.loginId,
+        updatedFromDeviceId: context.session.deviceId || null
+      }
+    );
+    const auditedDraft = await flushSidecarAcknowledgementAuditOutbox({
+      feeStore,
+      platformStore,
+      orgId: context.session.orgId,
+      sidecarDraft: result.sidecarDraft
+    });
+    return ok({
+      contractVersion: SIDECAR_CONTRACT_VERSION,
+      changed: result.changed === true,
+      sidecarDraft: sidecarCalculationResponse(auditedDraft).sidecarDraft
+    });
   }
 
   if (!url.pathname.startsWith("/v1/fee/")) {
@@ -454,6 +526,27 @@ async function routeFeeApiRequest(input = {}) {
     return ok({ backfill, delivery });
   }
 
+  if (
+    method === "POST"
+    && matches(parts, ["v1", "fee", "internal", "sidecar-acknowledgement-audit-outbox", "run"])
+  ) {
+    requireSidecarAcknowledgementAuditWorkerAuth(input);
+    const payload = validateSidecarAcknowledgementAuditWorkerInput(input.body || {});
+    const delivery = await dispatchPendingSidecarAcknowledgementAudits({
+      feeStore,
+      platformStore,
+      limit: payload.limit
+    });
+    console.info(JSON.stringify({
+      event: "fee.sidecar_acknowledgement_audit_outbox.run",
+      selectedDraftCount: delivery.selectedDraftCount,
+      succeededDraftCount: delivery.succeededDraftCount,
+      failedDraftCount: delivery.failedDraftCount,
+      deliveredEventCount: delivery.deliveredEventCount
+    }));
+    return ok({ delivery });
+  }
+
   const context = await requireFeeContext(input, platformStore);
   if (["POST", "PATCH", "PUT", "DELETE"].includes(method)) {
     requireFeeWriteAccess(context);
@@ -478,20 +571,32 @@ async function routeFeeApiRequest(input = {}) {
 
   if (method === "GET" && isSidecarDraftDocument(parts)) {
     requireSidecarFeature(input);
-    const sidecarDraft = await feeStore.getSidecarCalculationDraft(context.session.orgId, parts[3]);
+    let sidecarDraft = await feeStore.getSidecarCalculationDraft(context.session.orgId, parts[3]);
     if (!sidecarDraft) {
       return notFound("sidecar calculation draft not found");
     }
+    sidecarDraft = await flushSidecarAcknowledgementAuditOutbox({
+      feeStore,
+      platformStore,
+      orgId: context.session.orgId,
+      sidecarDraft
+    });
     return ok({ sidecarDraft: sidecarDraftDetailView(sidecarDraft) });
   }
 
   if (method === "POST" && isSidecarDraftAdoptionRoute(parts)) {
     requireSidecarFeature(input);
     requireMutationCsrf(input, context.session);
-    const sidecarDraft = await feeStore.getSidecarCalculationDraft(context.session.orgId, parts[3]);
+    let sidecarDraft = await feeStore.getSidecarCalculationDraft(context.session.orgId, parts[3]);
     if (!sidecarDraft) {
       return notFound("sidecar calculation draft not found");
     }
+    sidecarDraft = await flushSidecarAcknowledgementAuditOutbox({
+      feeStore,
+      platformStore,
+      orgId: context.session.orgId,
+      sidecarDraft
+    });
     const patientId = String(input.body?.patientId || "").trim();
     if (!patientId) {
       throw requestValidationError("patientId is required to adopt a sidecar draft");
@@ -540,6 +645,12 @@ async function routeFeeApiRequest(input = {}) {
       sourceRecordId: sidecarDraft.sourceRecordId,
       createdByMemberId: context.session.memberId
     });
+    const auditedAdoptedDraft = await flushSidecarAcknowledgementAuditOutbox({
+      feeStore,
+      platformStore,
+      orgId: context.session.orgId,
+      sidecarDraft: adopted.sidecarDraft
+    });
     await platformStore.createAuditEvent(context.session.orgId, {
       eventType: "fee.sidecar_draft_adopted",
       actorMemberId: context.session.memberId,
@@ -563,8 +674,8 @@ async function routeFeeApiRequest(input = {}) {
       feeSession: adopted.feeSession
     });
     return adopted.alreadyAdopted
-      ? ok({ feeSession: adopted.feeSession, sidecarDraft: sidecarDraftSummaryView(adopted.sidecarDraft), alreadyAdopted: true })
-      : created({ feeSession: adopted.feeSession, sidecarDraft: sidecarDraftSummaryView(adopted.sidecarDraft), alreadyAdopted: false });
+      ? ok({ feeSession: adopted.feeSession, sidecarDraft: sidecarDraftSummaryView(auditedAdoptedDraft), alreadyAdopted: true })
+      : created({ feeSession: adopted.feeSession, sidecarDraft: sidecarDraftSummaryView(auditedAdoptedDraft), alreadyAdopted: false });
   }
 
   if (method === "GET" && matches(parts, ["v1", "fee", "bootstrap"])) {
@@ -1921,7 +2032,7 @@ async function requireFeeContext(input, platformStore) {
   });
 }
 
-async function requireSidecarContext(input, platformStore) {
+async function requireSidecarContext(input, platformStore, options = {}) {
   const authorization = headerValue(input.headers || {}, "authorization");
   if (!authorization.startsWith("Bearer ")) {
     const error = new Error("Sidecar bearer token is required");
@@ -1937,10 +2048,13 @@ async function requireSidecarContext(input, platformStore) {
     requireScopedToken: true,
     tokenType: "scoped_product_access",
     audience: "fee-api",
-    requiredScope: SIDECAR_TOKEN_SCOPE
+    requiredScope: options.requiredScope || SIDECAR_CALCULATE_SCOPE
   });
   if (!sidecarAllowedExtensionIds(input).includes(String(context.session.extensionId || ""))) {
     throw forbiddenError("Sidecar extension is not allowed");
+  }
+  if (!String(context.session.deviceId || "").trim()) {
+    throw forbiddenError("Sidecar device identity is required");
   }
   if (sidecarRevokedDeviceIds(input).includes(String(context.session.deviceId || ""))) {
     throw forbiddenError("Sidecar device is revoked");
@@ -1975,6 +2089,61 @@ async function consumeSidecarCalculationRateLimit(input, platformStore, context)
       windowSeconds: Number(input.sidecarRateLimit?.windowSeconds || 60)
     }
   );
+}
+
+async function consumeSidecarAcknowledgementRateLimit(input, platformStore, context) {
+  if (typeof platformStore.consumeRateLimit !== "function") {
+    return;
+  }
+  await platformStore.consumeRateLimit(
+    `sidecar-acknowledge:${context.session.orgId}:${context.session.memberId}:${context.session.deviceId || "unknown"}`,
+    {
+      limit: Number(input.sidecarAcknowledgementRateLimit?.limit || 60),
+      windowSeconds: Number(input.sidecarAcknowledgementRateLimit?.windowSeconds || 60)
+    }
+  );
+}
+
+function requireSidecarResourceScope(context = {}, resource = {}) {
+  const tokenFacilityId = String(context.session?.facilityId || "").trim();
+  const resourceFacilityId = String(resource.facilityId || "").trim();
+  if (!tokenFacilityId || tokenFacilityId !== resourceFacilityId) {
+    throw forbiddenError("Sidecar resource is outside the authorized facility");
+  }
+  const tokenDepartmentId = String(context.session?.departmentId || "").trim();
+  const resourceDepartmentId = String(resource.departmentId || "").trim();
+  if (tokenDepartmentId !== resourceDepartmentId) {
+    throw forbiddenError("Sidecar resource is outside the authorized department");
+  }
+}
+
+function assertSidecarDepartmentFacility(facility = {}, department = null) {
+  if (!department) {
+    return;
+  }
+  const facilityId = String(facility.facilityId || "").trim();
+  const departmentFacilityId = String(department.facilityId || "").trim();
+  if (!facilityId || departmentFacilityId !== facilityId) {
+    throw forbiddenError("Sidecar department is outside the authorized facility");
+  }
+}
+
+function assertMutableSidecarDraft(sidecarDraft = {}, nowInput = new Date()) {
+  if (sidecarDraft.lifecycleStatus !== "draft") {
+    throw sidecarAcknowledgementConflict("採用済みの算定案は確認状態を変更できません。");
+  }
+  const expiresAt = Date.parse(String(sidecarDraft.expiresAt || ""));
+  const now = nowInput instanceof Date ? nowInput : new Date(nowInput);
+  if (!Number.isFinite(expiresAt) || expiresAt <= now.getTime()) {
+    throw sidecarAcknowledgementConflict("算定案の有効期限が切れています。算定案を再作成してください。");
+  }
+}
+
+function sidecarAcknowledgementConflict(message) {
+  const error = new Error(message);
+  error.name = "ConflictError";
+  error.statusCode = 409;
+  return error;
 }
 
 function safeStringEqual(left, right) {
@@ -2299,6 +2468,155 @@ function uniqueHistoryRecords(records = []) {
   return [...byId.values()];
 }
 
+async function reconcileSidecarAcknowledgementsAfterCalculation({
+  feeStore,
+  platformStore,
+  context,
+  sidecarDraft
+} = {}) {
+  const presented = sidecarCalculationResponse(sidecarDraft).sidecarDraft;
+  const result = await feeStore.reconcileSidecarCandidateAcknowledgements(
+    context.session.orgId,
+    sidecarDraft.sidecarDraftId,
+    {
+      expectedSourceRevision: Number(sidecarDraft.sourceRevision || 1),
+      expectedCalculationRevision: Number(sidecarDraft.calculationRevision || 0),
+      activeCandidates: sidecarAcknowledgementTargets(presented.calculation?.candidates),
+      invalidatedByMemberId: context.session.memberId,
+      invalidatedByLoginId: context.session.loginId,
+      invalidatedFromDeviceId: context.session.deviceId
+    }
+  );
+  return flushSidecarAcknowledgementAuditOutbox({
+    feeStore,
+    platformStore,
+    orgId: context.session.orgId,
+    sidecarDraft: result.sidecarDraft
+  });
+}
+
+async function flushSidecarAcknowledgementAuditOutbox({
+  feeStore,
+  platformStore,
+  orgId,
+  sidecarDraft
+} = {}) {
+  let current = sidecarDraft;
+  const entries = Object.values(
+    current?.candidateAcknowledgementAuditOutbox || {}
+  ).sort((left, right) => (
+    String(left?.occurredAt || "").localeCompare(String(right?.occurredAt || ""))
+    || String(left?.eventId || "").localeCompare(String(right?.eventId || ""))
+  ));
+  for (const entry of entries) {
+    await platformStore.createAuditEvent(orgId, {
+      eventId: entry.eventId,
+      eventType: entry.eventType,
+      actorMemberId: entry.actorMemberId,
+      actorLoginId: entry.actorLoginId,
+      targetType: "sidecar_candidate_acknowledgement",
+      targetId: entry.candidateKey,
+      productId: PRODUCT_ID,
+      safePayload: {
+        sidecarDraftId: current.sidecarDraftId,
+        candidateKey: entry.candidateKey,
+        candidateFingerprint: entry.candidateFingerprint,
+        sourceRevision: Number(entry.sourceRevision || 0),
+        calculationRevision: Number(entry.calculationRevision || 0),
+        acknowledgementVersion: Number(entry.acknowledgementVersion || 0),
+        acknowledged: entry.acknowledged === true,
+        occurredAt: entry.occurredAt,
+        ...(entry.eventType === "fee.sidecar_candidate_acknowledgement_invalidated"
+          ? {
+            previousAcknowledged: true,
+            staleReason: entry.staleReason || "candidate_changed"
+          }
+          : {}),
+        deviceId: entry.deviceId
+      }
+    });
+    const completed = await feeStore.completeSidecarCandidateAcknowledgementAudit(
+      orgId,
+      current.sidecarDraftId,
+      entry.eventId
+    );
+    current = completed.sidecarDraft;
+  }
+  return current;
+}
+
+async function dispatchPendingSidecarAcknowledgementAudits({
+  feeStore,
+  platformStore,
+  limit
+} = {}) {
+  if (typeof feeStore?.listSidecarDraftsWithPendingAcknowledgementAudits !== "function") {
+    throw new TypeError("feeStore with sidecar acknowledgement audit outbox support is required");
+  }
+  const sidecarDrafts = await feeStore.listSidecarDraftsWithPendingAcknowledgementAudits({ limit });
+  const results = [];
+  for (const sidecarDraft of sidecarDrafts) {
+    const orgId = String(sidecarDraft?.orgId || "").trim();
+    const sidecarDraftId = String(sidecarDraft?.sidecarDraftId || "").trim();
+    const pendingEventCount = Object.keys(
+      sidecarDraft?.candidateAcknowledgementAuditOutbox || {}
+    ).length;
+    try {
+      const deliveredDraft = await flushSidecarAcknowledgementAuditOutbox({
+        feeStore,
+        platformStore,
+        orgId,
+        sidecarDraft
+      });
+      const remainingEventCount = Object.keys(
+        deliveredDraft?.candidateAcknowledgementAuditOutbox || {}
+      ).length;
+      results.push({
+        orgId,
+        sidecarDraftId,
+        delivered: true,
+        deliveredEventCount: Math.max(0, pendingEventCount - remainingEventCount),
+        remainingEventCount,
+        errorCode: null
+      });
+    } catch (error) {
+      let remainingEventCount = pendingEventCount;
+      try {
+        const latestDraft = await feeStore.getSidecarCalculationDraft(orgId, sidecarDraftId);
+        remainingEventCount = Object.keys(
+          latestDraft?.candidateAcknowledgementAuditOutbox || {}
+        ).length;
+      } catch {
+        // The original delivery error remains the actionable failure for this draft.
+      }
+      console.warn(JSON.stringify({
+        event: "fee.sidecar_acknowledgement_audit_outbox.delivery_failed",
+        orgId: orgId || null,
+        sidecarDraftId: sidecarDraftId || null,
+        error: safeLogError(error)
+      }));
+      results.push({
+        orgId,
+        sidecarDraftId,
+        delivered: false,
+        deliveredEventCount: Math.max(0, pendingEventCount - remainingEventCount),
+        remainingEventCount,
+        errorCode: String(error?.code || error?.name || "delivery_failed").slice(0, 120)
+      });
+    }
+  }
+  return {
+    selectedDraftCount: results.length,
+    succeededDraftCount: results.filter((result) => result.delivered).length,
+    failedDraftCount: results.filter((result) => !result.delivered).length,
+    deliveredEventCount: results.reduce(
+      (total, result) => total + Number(result.deliveredEventCount || 0),
+      0
+    ),
+    results
+  };
+}
+
 function sidecarCalculationResponse(sidecarDraft = {}) {
   const calculation = sidecarDraft.calculationResult || {};
   const warnings = Array.isArray(calculation.warnings) ? calculation.warnings : [];
@@ -2365,7 +2683,7 @@ function sidecarCalculationResponse(sidecarDraft = {}) {
     setting: sidecarDraft.encounterDetails?.visitKind || sidecarDraft.setting || "",
     specialDiseaseStatus: "unknown"
   };
-  const candidates = presentation.candidates.map((candidate) => {
+  const zonedCandidates = presentation.candidates.map((candidate) => {
     const facilityRuleConfirmed = candidate.sourceType === "proposal"
       && candidate.badges?.includes("facility_rule")
       && Boolean(candidate.code);
@@ -2390,6 +2708,13 @@ function sidecarCalculationResponse(sidecarDraft = {}) {
       selectionResolution: selectionNarrowing?.selectionResolution || null,
       selectionNarrowing
     };
+  });
+  const candidates = decorateSidecarCandidateAcknowledgements({
+    candidates: zonedCandidates,
+    notices: presentation.notices,
+    pricingBasis: isPlainObject(calculation.pricingBasis) ? calculation.pricingBasis : null,
+    sourceRevision: Number(sidecarDraft.sourceRevision || 1),
+    candidateAcknowledgements: sidecarDraft.candidateAcknowledgements || {}
   });
   const estimatedTotalPoints = candidates
     .filter((candidate) => candidate.zone === "included")
@@ -2501,6 +2826,12 @@ function isSidecarDraftAdoptionRoute(parts = []) {
     && parts[4] === "adopt";
 }
 
+function isSidecarCandidateAcknowledgementRoute(parts = []) {
+  return parts.length === 7
+    && matches(parts.slice(0, 4), ["v1", "integrations", "sidecar", "drafts"])
+    && parts[5] === "candidate-acknowledgements";
+}
+
 function requireSidecarFeature(input = {}) {
   if (sidecarFeatureEnabled(input)) {
     return;
@@ -2588,7 +2919,19 @@ export function assertFeeSidecarRuntimeConfiguration(input = {}) {
   if (sidecarAllowedSelectorContractVersions(input).some((version) => !/^[A-Za-z0-9._-]{1,128}$/.test(version))) {
     throw new Error("HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS contains an invalid version");
   }
-  sidecarDraftRetentionDays(input.processEnv || process.env);
+  const runtimeEnv = input.processEnv || process.env;
+  sidecarDraftRetentionDays(runtimeEnv);
+  const auditWorkerAuthMode = String(
+    runtimeEnv.SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_AUTH_MODE || "token"
+  ).trim().toLowerCase();
+  if (auditWorkerAuthMode !== "token") {
+    throw new Error("SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_AUTH_MODE must be token");
+  }
+  if (!String(runtimeEnv.SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_TOKEN || "").trim()) {
+    throw new Error(
+      "SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_TOKEN is required when HOMIS Sidecar is enabled"
+    );
+  }
 }
 
 function requireFeeWriteAccess(context) {
@@ -10375,7 +10718,7 @@ function corsHeaders(input) {
   return {
     "access-control-allow-origin": origin,
     "access-control-allow-credentials": "true",
-    "access-control-allow-methods": "GET, POST, PATCH, OPTIONS",
+    "access-control-allow-methods": "GET, POST, PUT, PATCH, OPTIONS",
     "access-control-allow-headers": "authorization, content-type, x-csrf-token, x-sidecar-code-verifier",
     "vary": "Origin"
   };
@@ -10608,6 +10951,12 @@ function validateCareFeeOutboxWorkerInput(body = {}) {
   };
 }
 
+function validateSidecarAcknowledgementAuditWorkerInput(body = {}) {
+  return {
+    limit: parsePositiveInteger(body.limit, 20, 100)
+  };
+}
+
 function requireCareFeeOutboxWorkerAuth(input = {}) {
   const env = input.processEnv || process.env;
   const expected = String(env.CARE_FEE_OUTBOX_WORKER_TOKEN || "").trim();
@@ -10623,6 +10972,34 @@ function requireCareFeeOutboxWorkerAuth(input = {}) {
   const provided = workerTokenFromHeaders(input.headers || {});
   if (!provided || !timingSafeEqualString(provided, expected)) {
     const error = new Error("invalid care fee outbox worker token");
+    error.name = "UnauthorizedError";
+    error.statusCode = 401;
+    throw error;
+  }
+}
+
+function requireSidecarAcknowledgementAuditWorkerAuth(input = {}) {
+  const env = input.processEnv || process.env;
+  const expected = String(env.SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_TOKEN || "").trim();
+  const authMode = String(
+    env.SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_AUTH_MODE || "token"
+  ).trim().toLowerCase();
+  if (authMode !== "token") {
+    const error = new Error("sidecar acknowledgement audit worker auth mode is unsupported");
+    error.name = "ConfigurationError";
+    error.statusCode = 503;
+    throw error;
+  }
+  if (!expected && isTestEnvironment(input.env)) return;
+  if (!expected) {
+    const error = new Error("sidecar acknowledgement audit worker token is not configured");
+    error.name = "ServiceUnavailableError";
+    error.statusCode = 503;
+    throw error;
+  }
+  const provided = workerTokenFromHeaders(input.headers || {});
+  if (!provided || !timingSafeEqualString(provided, expected)) {
+    const error = new Error("invalid sidecar acknowledgement audit worker token");
     error.name = "UnauthorizedError";
     error.statusCode = 401;
     throw error;

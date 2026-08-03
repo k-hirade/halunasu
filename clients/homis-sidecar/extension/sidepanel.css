@@ -333,19 +333,40 @@ h3 {
 
 .decision-kind {
   flex: 0 0 auto;
-  padding: 1px 5px;
+  min-width: 5.5em;
+  min-height: 28px;
+  padding: 3px 6px;
   border: 1px solid #c6d0db;
   border-radius: 4px;
   color: #526175;
   background: #f5f7f9;
+  font-family: inherit;
   font-size: 11px;
   font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
 }
 
 .decision-kind-selection_required {
   color: #785400;
   border-color: #d9bd7d;
   background: #fff8e8;
+}
+
+.decision-kind.is-acknowledged {
+  color: #08665a;
+  border-color: #78bfb4;
+  background: #eaf7f4;
+}
+
+.decision-kind:focus-visible {
+  outline: 2px solid #1769aa;
+  outline-offset: 2px;
+}
+
+.decision-kind:disabled {
+  cursor: wait;
+  opacity: 0.72;
 }
 
 .decision-name,

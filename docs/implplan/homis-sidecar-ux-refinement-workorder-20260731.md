@@ -196,3 +196,20 @@ UX10(表示停止のみ・最小)→UX12(削除)→UX9(要求生成停止)→UX1
 - Sidecar内に採用・却下操作は追加せず、`candidateOnly` 境界を維持する。
 
 検証: Sidecar unit/UI 29件がpass。STG/PROD拡張とZIPを再生成し、生成物にも要判断一覧が含まれることを確認した。
+
+## 追記(2026-08-03): 候補の目視確認トグル
+
+`review_required` と `selection_required` の種別バッジを操作可能にし、
+「要確認／区分確認」と「確認済み」をワンクリックで切り替える。
+
+- 「確認済み」はSidecar上で候補内容を目視確認したことだけを表す。採用、却下、区分選択、請求確定を意味しない。
+- 確認前後で `candidateOnly`、zone、区分解決状態、コード、点数、合計点、noticeを変更しない。
+- UI上はトグルでも、APIは目標状態を明示する冪等な更新とし、再送による二重反転を防ぐ。
+- 確認状態はSidecar draft内の専用フィールドへ、候補fingerprint・source/calculation revision・確認者・端末・日時とともに保存する。通常Feeの `reviewDecisions` は流用しない。
+- 同一内容の再計算では確認を維持し、入力、マスタ、候補コード、点数、理由、区分候補が変わった場合は失効させる。
+- 更新対象は最新計算の `review_required` / `selection_required` だけとし、included、blocked、採用済み・期限切れdraftはサーバ側で拒否する。
+- 算定と確認更新の両方で、端末tokenの施設・診療科scopeを照合する。診療科が対象施設に属さない場合も拒否する。
+- 状態変更と失効はdraft内の監査outboxへ同じtransactionで積み、event IDをdraft・候補・versionから決定する。Platform監査への冪等書き込み成功後にoutboxから削除し、失敗時は次の操作でも古いtransitionから順に補完する。
+- 未配送outboxは `candidateAcknowledgementAuditPending` で索引し、専用tokenで保護した内部workerが全組織を横断して再送する。1 draftの失敗は他draftの配送を止めない。
+- 本番運用では `candidateAcknowledgementAuditPending` のcollection-group index、`SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_TOKEN`、定期Schedulerを必須とし、Sidecar有効な非local環境でtoken未設定なら起動時に失敗させる。
+- 既存の「操作追加なし」は、算定結果を変更する採用・却下・区分選択を対象外とする方針として維持し、目視確認トグルだけを例外とする。

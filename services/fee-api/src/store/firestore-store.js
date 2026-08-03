@@ -8,10 +8,13 @@ import {
   createId
 } from "../../../../packages/fee-core/src/index.js";
 import {
+  applySidecarCandidateAcknowledgement,
   applySidecarCalculationResult,
   applySidecarDraftInput,
   buildSidecarCalculationDraft,
+  completeSidecarCandidateAcknowledgementAudit,
   markSidecarDraftAdopted,
+  reconcileSidecarCandidateAcknowledgements as reconcileCandidateAcknowledgements,
   sidecarVisitAdoptionFingerprint
 } from "../../../../packages/fee-core/src/sidecar-drafts.js";
 import {
@@ -147,6 +150,15 @@ export class FirestoreFeeStore {
     };
   }
 
+  async listSidecarDraftsWithPendingAcknowledgementAudits(options = {}) {
+    const limit = Math.min(100, Math.max(1, Number.parseInt(options.limit, 10) || 20));
+    const snapshot = await this.db.collectionGroup(collections.sidecarCalculationDrafts)
+      .where("candidateAcknowledgementAuditPending", "==", true)
+      .limit(limit)
+      .get();
+    return docsFromSnapshot(snapshot);
+  }
+
   async listSidecarDraftsForServiceDate(orgId, options = {}) {
     const serviceDate = String(options.serviceDate || "").trim();
     const facilityId = String(options.facilityId || "").trim();
@@ -196,6 +208,37 @@ export class FirestoreFeeStore {
       sidecarDraft: updated,
       calculationResult: updated.calculationResult
     };
+  }
+
+  async setSidecarCandidateAcknowledgement(orgId, sidecarDraftId, input) {
+    let result = null;
+    const { updated } = await this.mutateSidecarDraft(orgId, sidecarDraftId, (current) => {
+      result = applySidecarCandidateAcknowledgement(current, input, {
+        now: this.timestamp()
+      });
+      return result.sidecarDraft;
+    });
+    return { ...result, sidecarDraft: updated };
+  }
+
+  async reconcileSidecarCandidateAcknowledgements(orgId, sidecarDraftId, input) {
+    let result = null;
+    const { updated } = await this.mutateSidecarDraft(orgId, sidecarDraftId, (current) => {
+      result = reconcileCandidateAcknowledgements(current, input, {
+        now: this.timestamp()
+      });
+      return result.sidecarDraft;
+    });
+    return { ...result, sidecarDraft: updated };
+  }
+
+  async completeSidecarCandidateAcknowledgementAudit(orgId, sidecarDraftId, eventId) {
+    let result = null;
+    const { updated } = await this.mutateSidecarDraft(orgId, sidecarDraftId, (current) => {
+      result = completeSidecarCandidateAcknowledgementAudit(current, eventId);
+      return result.sidecarDraft;
+    });
+    return { ...result, sidecarDraft: updated };
   }
 
   async listPriorSidecarDraftsForPatient(orgId, patientId, options = {}) {

@@ -42,6 +42,9 @@ export function buildSidecarCalculationDraft(input = {}, options = {}) {
     calculationRevision: 0,
     calculationSnapshot: null,
     calculationDiff: null,
+    candidateAcknowledgements: {},
+    candidateAcknowledgementAuditOutbox: {},
+    candidateAcknowledgementAuditPending: false,
     encounterTypeSource: requiredString(input.encounterTypeSource, "encounterTypeSource"),
     extractionProof: input.extractionProof || null,
     lastCalculatedByMemberId: input.createdByMemberId,
@@ -78,6 +81,7 @@ export function applySidecarDraftInput(current = {}, input = {}, options = {}) {
       status: "ready"
     }, { now })
     : current;
+  const auditOutbox = acknowledgementAuditOutbox(current.candidateAcknowledgementAuditOutbox);
   return {
     ...patched,
     sourceRecordDisplayId: input.sourceRecordDisplayId || current.sourceRecordDisplayId || null,
@@ -103,6 +107,7 @@ export function applySidecarDraftInput(current = {}, input = {}, options = {}) {
       || null,
     extractionProof: input.extractionProof || null,
     lastCalculatedByMemberId: input.lastCalculatedByMemberId || current.lastCalculatedByMemberId,
+    candidateAcknowledgementAuditPending: hasAcknowledgementAuditEntries(auditOutbox),
     expiresAt: input.expiresAt || current.expiresAt || null,
     updatedAt: now
   };
@@ -126,6 +131,236 @@ export function applySidecarCalculationResult(current = {}, calculationResult = 
       : null,
     reviewDecisions: {}
   };
+}
+
+export function applySidecarCandidateAcknowledgement(current = {}, input = {}, options = {}) {
+  assertSidecarAcknowledgementDraft(current);
+  const candidateKey = requiredString(input.candidateKey, "candidateKey");
+  const candidateFingerprint = requiredSha256Hex(
+    input.candidateFingerprint,
+    "candidateFingerprint"
+  );
+  const expectedSourceRevision = requiredPositiveInteger(
+    input.expectedSourceRevision,
+    "expectedSourceRevision"
+  );
+  const expectedCalculationRevision = requiredPositiveInteger(
+    input.expectedCalculationRevision,
+    "expectedCalculationRevision"
+  );
+  const expectedVersion = requiredNonNegativeInteger(
+    input.expectedAcknowledgementVersion,
+    "expectedAcknowledgementVersion"
+  );
+  if (typeof input.acknowledged !== "boolean") {
+    throw new TypeError("acknowledged must be a boolean");
+  }
+  const desiredStatus = input.acknowledged ? "acknowledged" : "unacknowledged";
+  const updatedByMemberId = requiredString(input.updatedByMemberId, "updatedByMemberId");
+  const updatedByLoginId = requiredString(input.updatedByLoginId, "updatedByLoginId");
+  const updatedFromDeviceId = requiredString(input.updatedFromDeviceId, "updatedFromDeviceId");
+  const acknowledgements = acknowledgementMap(current.candidateAcknowledgements);
+  const previousAcknowledgement = acknowledgements[candidateKey] || null;
+  const desiredAlreadyPersisted = previousAcknowledgement
+    && previousAcknowledgement.status === desiredStatus
+    && previousAcknowledgement.candidateFingerprint === candidateFingerprint
+    && Number(previousAcknowledgement.sourceRevision) === Number(current.sourceRevision);
+  if (desiredAlreadyPersisted) {
+    return {
+      sidecarDraft: current,
+      acknowledgement: previousAcknowledgement,
+      previousAcknowledgement,
+      changed: false
+    };
+  }
+
+  assertSidecarAcknowledgementRevisionValues(current, {
+    expectedSourceRevision,
+    expectedCalculationRevision
+  });
+  const currentVersion = Number(previousAcknowledgement?.version || 0);
+  if (expectedVersion !== currentVersion) {
+    throw conflictError(
+      "sidecar candidate acknowledgement version mismatch",
+      "SIDECAR_CANDIDATE_ACKNOWLEDGEMENT_CONFLICT"
+    );
+  }
+  const now = timestamp(options.now);
+  const acknowledgement = {
+    candidateKey,
+    candidateFingerprint,
+    status: desiredStatus,
+    sourceRevision: Number(current.sourceRevision),
+    calculationRevision: Number(current.calculationRevision),
+    version: currentVersion + 1,
+    updatedByMemberId,
+    updatedByLoginId,
+    updatedFromDeviceId,
+    updatedAt: now
+  };
+  const auditEntry = sidecarAcknowledgementAuditEntry(current, acknowledgement, now);
+  const nextAuditOutbox = {
+    ...acknowledgementAuditOutbox(current.candidateAcknowledgementAuditOutbox),
+    [auditEntry.eventId]: auditEntry
+  };
+  return {
+    sidecarDraft: {
+      ...current,
+      candidateAcknowledgements: {
+        ...acknowledgements,
+        [candidateKey]: acknowledgement
+      },
+      candidateAcknowledgementAuditOutbox: nextAuditOutbox,
+      candidateAcknowledgementAuditPending: true,
+      updatedAt: now
+    },
+    acknowledgement,
+    previousAcknowledgement,
+    changed: true
+  };
+}
+
+export function reconcileSidecarCandidateAcknowledgements(current = {}, input = {}, options = {}) {
+  assertSidecarAcknowledgementDraft(current);
+  assertSidecarAcknowledgementRevisions(current, input);
+  if (!Array.isArray(input.activeCandidates)) {
+    throw new TypeError("activeCandidates must be an array");
+  }
+  const activeCandidates = new Map(input.activeCandidates.map((candidate, index) => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+      throw new TypeError(`activeCandidates[${index}] must be an object`);
+    }
+    return [
+      requiredString(candidate.candidateKey, `activeCandidates[${index}].candidateKey`),
+      requiredSha256Hex(
+        candidate.candidateFingerprint,
+        `activeCandidates[${index}].candidateFingerprint`
+      )
+    ];
+  }));
+  const acknowledgements = acknowledgementMap(current.candidateAcknowledgements);
+  const nextAcknowledgements = { ...acknowledgements };
+  const nextAuditOutbox = {
+    ...acknowledgementAuditOutbox(current.candidateAcknowledgementAuditOutbox)
+  };
+  const invalidated = [];
+  const now = timestamp(options.now);
+
+  for (const [candidateKey, record] of Object.entries(acknowledgements)) {
+    if (!record || record.status !== "acknowledged") {
+      continue;
+    }
+    let staleReason = null;
+    if (Number(record.sourceRevision) !== Number(current.sourceRevision)) {
+      staleReason = "source_revision_changed";
+    } else if (!activeCandidates.has(candidateKey)) {
+      staleReason = "candidate_missing";
+    } else if (activeCandidates.get(candidateKey) !== record.candidateFingerprint) {
+      staleReason = "candidate_fingerprint_changed";
+    }
+    if (!staleReason) {
+      continue;
+    }
+    const staleRecord = {
+      ...record,
+      status: "stale",
+      version: Number(record.version || 0) + 1,
+      updatedAt: now,
+      staleReason,
+      invalidationSourceRevision: Number(current.sourceRevision),
+      invalidationCalculationRevision: Number(current.calculationRevision),
+      invalidatedByMemberId: requiredString(
+        input.invalidatedByMemberId,
+        "invalidatedByMemberId"
+      ),
+      invalidatedByLoginId: requiredString(
+        input.invalidatedByLoginId,
+        "invalidatedByLoginId"
+      ),
+      invalidatedFromDeviceId: requiredString(
+        input.invalidatedFromDeviceId,
+        "invalidatedFromDeviceId"
+      ),
+      invalidatedAt: now
+    };
+    nextAcknowledgements[candidateKey] = staleRecord;
+    const auditEntry = sidecarAcknowledgementAuditEntry(current, staleRecord, now);
+    nextAuditOutbox[auditEntry.eventId] = auditEntry;
+    invalidated.push(staleRecord);
+  }
+
+  if (!invalidated.length) {
+    return { sidecarDraft: current, invalidated, changed: false };
+  }
+  return {
+    sidecarDraft: {
+      ...current,
+      candidateAcknowledgements: nextAcknowledgements,
+      candidateAcknowledgementAuditOutbox: nextAuditOutbox,
+      candidateAcknowledgementAuditPending: true,
+      updatedAt: now
+    },
+    invalidated,
+    changed: true
+  };
+}
+
+export function completeSidecarCandidateAcknowledgementAudit(current = {}, eventIdInput = "") {
+  const eventId = requiredString(eventIdInput, "eventId");
+  const outbox = acknowledgementAuditOutbox(current.candidateAcknowledgementAuditOutbox);
+  if (!outbox[eventId]) {
+    return { sidecarDraft: current, changed: false };
+  }
+  const nextOutbox = { ...outbox };
+  delete nextOutbox[eventId];
+  return {
+    sidecarDraft: {
+      ...current,
+      candidateAcknowledgementAuditOutbox: nextOutbox,
+      candidateAcknowledgementAuditPending: hasAcknowledgementAuditEntries(nextOutbox)
+    },
+    changed: true
+  };
+}
+
+function sidecarAcknowledgementAuditEntry(current, record, occurredAt) {
+  const invalidated = record.status === "stale";
+  const eventType = invalidated
+    ? "fee.sidecar_candidate_acknowledgement_invalidated"
+    : "fee.sidecar_candidate_acknowledgement_changed";
+  const eventId = sidecarAcknowledgementAuditEventId(
+    invalidated ? "invalidated" : "changed",
+    current.sidecarDraftId,
+    record.candidateKey,
+    record.version
+  );
+  return {
+    eventId,
+    eventType,
+    candidateKey: record.candidateKey,
+    candidateFingerprint: record.candidateFingerprint,
+    sourceRevision: invalidated
+      ? record.invalidationSourceRevision
+      : record.sourceRevision,
+    calculationRevision: invalidated
+      ? record.invalidationCalculationRevision
+      : record.calculationRevision,
+    acknowledgementVersion: record.version,
+    acknowledged: record.status === "acknowledged",
+    actorMemberId: invalidated ? record.invalidatedByMemberId : record.updatedByMemberId,
+    actorLoginId: invalidated ? record.invalidatedByLoginId : record.updatedByLoginId,
+    deviceId: invalidated ? record.invalidatedFromDeviceId : record.updatedFromDeviceId,
+    staleReason: invalidated ? record.staleReason : null,
+    occurredAt
+  };
+}
+
+function sidecarAcknowledgementAuditEventId(eventType, sidecarDraftId, candidateKey, version) {
+  const fingerprint = createHash("sha256")
+    .update([eventType, sidecarDraftId, candidateKey, Number(version || 0)].join("\u001f"))
+    .digest("hex")
+    .slice(0, 40);
+  return `aud_sidecar_${fingerprint}`;
 }
 
 function buildSidecarCalculationSnapshot(calculation = {}) {
@@ -288,6 +523,75 @@ function requiredString(value, field) {
     throw new TypeError(`${field} is required`);
   }
   return normalized;
+}
+
+function requiredSha256Hex(value, field) {
+  if (typeof value !== "string" || !/^[a-f0-9]{64}$/u.test(value)) {
+    throw new TypeError(`${field} must be a 64-character lowercase hexadecimal value`);
+  }
+  return value;
+}
+
+function requiredPositiveInteger(value, field) {
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+    throw new TypeError(`${field} must be a positive integer`);
+  }
+  return value;
+}
+
+function requiredNonNegativeInteger(value, field) {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    throw new TypeError(`${field} must be a non-negative integer`);
+  }
+  return value;
+}
+
+function acknowledgementMap(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function acknowledgementAuditOutbox(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function hasAcknowledgementAuditEntries(value) {
+  return Object.keys(acknowledgementAuditOutbox(value)).length > 0;
+}
+
+function assertSidecarAcknowledgementDraft(current) {
+  if (current.lifecycleStatus !== "draft") {
+    throw conflictError(
+      "adopted sidecar draft candidate acknowledgement cannot be changed",
+      "SIDECAR_CANDIDATE_ACKNOWLEDGEMENT_CONFLICT"
+    );
+  }
+}
+
+function assertSidecarAcknowledgementRevisions(current, input) {
+  const expectedSourceRevision = requiredPositiveInteger(
+    input.expectedSourceRevision,
+    "expectedSourceRevision"
+  );
+  const expectedCalculationRevision = requiredPositiveInteger(
+    input.expectedCalculationRevision,
+    "expectedCalculationRevision"
+  );
+  assertSidecarAcknowledgementRevisionValues(current, {
+    expectedSourceRevision,
+    expectedCalculationRevision
+  });
+}
+
+function assertSidecarAcknowledgementRevisionValues(current, expected) {
+  if (
+    expected.expectedSourceRevision !== Number(current.sourceRevision)
+    || expected.expectedCalculationRevision !== Number(current.calculationRevision)
+  ) {
+    throw conflictError(
+      "sidecar draft revision mismatch",
+      "SIDECAR_CANDIDATE_ACKNOWLEDGEMENT_CONFLICT"
+    );
+  }
 }
 
 function timestamp(value) {

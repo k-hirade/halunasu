@@ -43,6 +43,11 @@ test("result UI renders review and selection candidates as compact decision rows
       decisionListRole: document.querySelector("#decision-candidates")?.getAttribute("role"),
       decisionListLabelledBy: document.querySelector("#decision-candidates")?.getAttribute("aria-labelledby"),
       decisionKinds: decisionRows.map((node) => node.querySelector(".decision-kind")?.textContent),
+      decisionKindTags: decisionRows.map((node) => node.querySelector(".decision-kind")?.tagName),
+      decisionPressed: decisionRows.map((node) => node.querySelector(".decision-kind")?.getAttribute("aria-pressed")),
+      decisionLabels: decisionRows.map((node) => node.querySelector(".decision-kind")?.getAttribute("aria-label")),
+      decisionDisabled: decisionRows.map((node) => node.querySelector(".decision-kind")?.disabled),
+      decisionCandidateKeys: decisionRows.map((node) => node.querySelector(".decision-kind")?.dataset.candidateKey),
       decisionIds: decisionRows.map((node) => node.dataset.candidateId),
       decisionZones: decisionRows.map((node) => node.dataset.zone),
       decisionRoles: decisionRows.map((node) => node.getAttribute("role")),
@@ -81,7 +86,17 @@ test("result UI renders review and selection candidates as compact decision rows
   assert.equal(result.decisionRowCount, 3);
   assert.equal(result.decisionListRole, "list");
   assert.equal(result.decisionListLabelledBy, "decision-heading");
-  assert.deepEqual(result.decisionKinds, ["区分確認", "要確認", "区分確認"]);
+  assert.deepEqual(result.decisionKinds, ["区分確認", "確認済み", "区分確認"]);
+  assert.deepEqual(result.decisionKindTags, ["BUTTON", "BUTTON", "BUTTON"]);
+  assert.deepEqual(result.decisionPressed, ["false", "true", "false"]);
+  assert.deepEqual(result.decisionDisabled, [false, false, false]);
+  assert.deepEqual(result.decisionCandidateKeys, [
+    "candidate_management",
+    "candidate_exact_management",
+    "candidate_six_option_management"
+  ]);
+  assert.match(result.decisionLabels[0], /施設入居時等医学総合管理料.+区分確認.+確認済み/u);
+  assert.match(result.decisionLabels[1], /在宅患者訪問診療料.+確認済みを取り消す/u);
   assert.deepEqual(result.decisionIds, ["management", "exact-management", "six-option-management"]);
   assert.deepEqual(result.decisionZones, ["selection_required", "review_required", "selection_required"]);
   assert.deepEqual(result.decisionRoles, ["listitem", "listitem", "listitem"]);
@@ -114,6 +129,146 @@ test("result UI renders review and selection candidates as compact decision rows
   assert.equal(result.candidateCodeTag, "SPAN");
   assert.equal(result.candidateExternalLinkCount, 0);
   assert.equal(result.horizontalOverflow, false);
+  await page.close();
+});
+
+test("decision badge persists explicit acknowledgement changes in both directions", async () => {
+  const page = await openPanel(380);
+  const button = page.locator(".decision-row", { hasText: "施設入居時等医学総合管理料" })
+    .locator(".decision-kind");
+
+  await button.click();
+  await button.filter({ hasText: "確認済み" }).waitFor();
+  assert.equal(await button.getAttribute("aria-pressed"), "true");
+
+  await button.press("Space");
+  await button.filter({ hasText: "区分確認" }).waitFor();
+  assert.equal(await button.getAttribute("aria-pressed"), "false");
+
+  const calls = await page.evaluate(() => globalThis.__sidecarTest.acknowledgementCalls);
+  assert.deepEqual(calls, [
+    {
+      sidecarDraftId: "sidecar_result_ui",
+      candidateKey: "candidate_management",
+      acknowledged: true,
+      expectedSourceRevision: 4,
+      expectedCalculationRevision: 2,
+      expectedAcknowledgementVersion: 0,
+      candidateFingerprint: "fingerprint_management"
+    },
+    {
+      sidecarDraftId: "sidecar_result_ui",
+      candidateKey: "candidate_management",
+      acknowledged: false,
+      expectedSourceRevision: 4,
+      expectedCalculationRevision: 2,
+      expectedAcknowledgementVersion: 1,
+      candidateFingerprint: "fingerprint_management"
+    }
+  ]);
+  await page.close();
+});
+
+test("decision badge exposes a stable busy state and restores the prior state on conflict", async () => {
+  const page = await openPanel(380);
+  const row = page.locator(".decision-row", { hasText: "特定疾患療養管理料" });
+  const button = row.locator(".decision-kind");
+  await page.evaluate(() => { globalThis.__sidecarTest.acknowledgementMode = "deferred"; });
+
+  await button.click();
+  await page.waitForFunction(() => (
+    document.querySelector('[data-candidate-key="candidate_six_option_management"]')?.getAttribute("aria-busy") === "true"
+  ));
+  assert.equal(await button.textContent(), "保存中");
+  assert.equal(await button.isDisabled(), true);
+  assert.equal(await button.getAttribute("aria-pressed"), "false");
+  assert.equal(await page.locator("#decision-candidates .decision-kind:disabled").count(), 1);
+
+  await page.evaluate(() => (
+    globalThis.__sidecarTest.releaseAcknowledgement("candidate_six_option_management")
+  ));
+  await button.filter({ hasText: "確認済み" }).waitFor();
+  assert.equal(await button.getAttribute("aria-busy"), null);
+  assert.equal(await button.isEnabled(), true);
+
+  await page.evaluate(() => { globalThis.__sidecarTest.acknowledgementMode = "conflict"; });
+  await button.press("Enter");
+  await page.locator("#status-message").filter({
+    hasText: "算定案が更新されたため、算定案を作成し直してください。"
+  }).waitFor();
+  assert.equal(await button.textContent(), "確認済み");
+  assert.equal(await button.getAttribute("aria-pressed"), "true");
+  assert.equal(await button.isEnabled(), true);
+  await page.close();
+});
+
+test("different decision badges update independently without losing an earlier success", async () => {
+  const page = await openPanel(380);
+  const management = page.locator('[data-candidate-key="candidate_management"]');
+  const sixOption = page.locator('[data-candidate-key="candidate_six_option_management"]');
+  const exact = page.locator('[data-candidate-key="candidate_exact_management"]');
+  await page.evaluate(() => { globalThis.__sidecarTest.acknowledgementMode = "deferred"; });
+
+  await management.click();
+  await sixOption.click();
+  await page.waitForFunction(() => (
+    document.querySelectorAll('#decision-candidates .decision-kind[aria-busy="true"]').length === 2
+  ));
+  assert.equal(await management.isDisabled(), true);
+  assert.equal(await sixOption.isDisabled(), true);
+  assert.equal(await exact.isEnabled(), true);
+
+  await page.evaluate(() => (
+    globalThis.__sidecarTest.releaseAcknowledgement("candidate_six_option_management")
+  ));
+  await sixOption.filter({ hasText: "確認済み" }).waitFor();
+  assert.equal(await management.textContent(), "保存中");
+
+  await page.evaluate(() => (
+    globalThis.__sidecarTest.releaseAcknowledgement("candidate_management")
+  ));
+  await management.filter({ hasText: "確認済み" }).waitFor();
+  assert.equal(await sixOption.textContent(), "確認済み");
+  assert.equal(await management.getAttribute("aria-pressed"), "true");
+  assert.equal(await sixOption.getAttribute("aria-pressed"), "true");
+  await page.close();
+});
+
+test("late acknowledgement response cannot restore a result after recalculation", async () => {
+  const page = await openPanel(380);
+  const button = page.locator('[data-candidate-key="candidate_management"]');
+  await page.evaluate(() => { globalThis.__sidecarTest.acknowledgementMode = "deferred"; });
+  await button.click();
+  await page.waitForFunction(() => (
+    document.querySelector('[data-candidate-key="candidate_management"]')?.getAttribute("aria-busy") === "true"
+  ));
+
+  await page.click("#calculate-button");
+  await page.waitForFunction(() => (
+    document.querySelector('[data-candidate-key="candidate_management"]')?.textContent === "区分確認"
+  ));
+  await page.evaluate(() => (
+    globalThis.__sidecarTest.releaseAcknowledgement("candidate_management")
+  ));
+  await page.waitForFunction(() => globalThis.__sidecarTest.acknowledgementCompleted === 1);
+  assert.equal(await page.locator('[data-candidate-key="candidate_management"]').textContent(), "区分確認");
+  assert.equal(await page.locator('[data-candidate-key="candidate_management"]').getAttribute("aria-pressed"), "false");
+  await page.close();
+});
+
+test("authorization failure clears the Sidecar connection and result", async () => {
+  const page = await openPanel(380);
+  await page.evaluate(() => { globalThis.__sidecarTest.acknowledgementMode = "unauthorized"; });
+
+  await page.locator('[data-candidate-key="candidate_management"]').click();
+  await page.locator("#status-message").filter({
+    hasText: "端末の接続が無効です。もう一度接続してください。"
+  }).waitFor();
+
+  assert.equal(await page.locator("#connection-badge").textContent(), "未接続");
+  assert.equal(await page.locator("#calculation-section").isHidden(), true);
+  assert.equal(await page.locator("#result-section").isHidden(), true);
+  assert.equal(await page.evaluate(() => globalThis.__sidecarTest.clearGrantCalls), 1);
   await page.close();
 });
 
@@ -158,6 +313,18 @@ async function openPanel(width) {
       extractionProof: { selectorContractVersion: "homis-mock-v5" }
     };
     const codeCandidates = Array.from({ length: 175 }, (_, index) => String(900000001 + index));
+    globalThis.__sidecarTest = {
+      acknowledgementCalls: [],
+      acknowledgementCompleted: 0,
+      acknowledgementMode: "success",
+      acknowledgementResolvers: {},
+      clearGrantCalls: 0,
+      releaseAcknowledgement(candidateKey) {
+        const resolve = this.acknowledgementResolvers[candidateKey];
+        delete this.acknowledgementResolvers[candidateKey];
+        resolve?.();
+      }
+    };
     globalThis.chrome = {
       runtime: { onMessage: { addListener() {} } },
       tabs: {
@@ -176,6 +343,8 @@ async function openPanel(width) {
       async calculate() {
         return {
           sidecarDraft: {
+            sidecarDraftId: "sidecar_result_ui",
+            sourceRevision: 4,
             calculationRevision: 2,
             calculationDiff: {
               candidates: { addedCount: 1, removedCount: 1 },
@@ -213,6 +382,9 @@ async function openPanel(width) {
                 },
                 {
                   candidateId: "management",
+                  candidateKey: "candidate_management",
+                  candidateFingerprint: "fingerprint_management",
+                  acknowledgement: { status: "unacknowledged", version: 0, updatedAt: null },
                   sourceType: "proposal",
                   zone: "selection_required",
                   code: null,
@@ -238,6 +410,9 @@ async function openPanel(width) {
                 },
                 {
                   candidateId: "exact-management",
+                  candidateKey: "candidate_exact_management",
+                  candidateFingerprint: "fingerprint_exact_management",
+                  acknowledgement: { status: "acknowledged", version: 3, updatedAt: "2026-08-03T00:00:00.000Z" },
                   sourceType: "proposal",
                   zone: "review_required",
                   code: null,
@@ -259,6 +434,9 @@ async function openPanel(width) {
                 },
                 {
                   candidateId: "six-option-management",
+                  candidateKey: "candidate_six_option_management",
+                  candidateFingerprint: "fingerprint_six_option_management",
+                  acknowledgement: { status: "stale", version: 2, updatedAt: "2026-08-02T00:00:00.000Z" },
                   sourceType: "proposal",
                   zone: "selection_required",
                   code: null,
@@ -305,6 +483,41 @@ async function openPanel(width) {
           }
         };
       },
+      async setCandidateAcknowledgement(input) {
+        globalThis.__sidecarTest.acknowledgementCalls.push(structuredClone(input));
+        if (globalThis.__sidecarTest.acknowledgementMode === "deferred") {
+          await new Promise((resolve) => {
+            globalThis.__sidecarTest.acknowledgementResolvers[input.candidateKey] = resolve;
+          });
+        }
+        if (globalThis.__sidecarTest.acknowledgementMode === "failure") {
+          const error = new Error("確認状態を保存できませんでした。");
+          error.status = 500;
+          throw error;
+        }
+        if (globalThis.__sidecarTest.acknowledgementMode === "conflict") {
+          const error = new Error("candidate acknowledgement version conflict");
+          error.status = 409;
+          throw error;
+        }
+        if (globalThis.__sidecarTest.acknowledgementMode === "unauthorized") {
+          const error = new Error("access token expired");
+          error.status = 401;
+          throw error;
+        }
+        const response = await this.calculate();
+        const candidate = response.sidecarDraft.calculation.candidates.find((item) => (
+          item.candidateKey === input.candidateKey
+        ));
+        candidate.acknowledgement = {
+          status: input.acknowledged ? "acknowledged" : "unacknowledged",
+          version: Number(input.expectedAcknowledgementVersion || 0) + 1,
+          updatedAt: "2026-08-03T00:00:01.000Z"
+        };
+        globalThis.__sidecarTest.acknowledgementCompleted += 1;
+        return { contractVersion: "v1", changed: true, sidecarDraft: response.sidecarDraft };
+      },
+      async clearGrant() { globalThis.__sidecarTest.clearGrantCalls += 1; },
       async pollDeviceAuthorization() {},
       async startDeviceAuthorization() { throw new Error("not used"); }
     };

@@ -386,6 +386,7 @@ export function validateCreateAuditEventInput(input = {}) {
   }
 
   return {
+    eventId: optionalAuditEventId(input.eventId),
     eventType: requiredString(input.eventType, "eventType"),
     actorMemberId: optionalString(input.actorMemberId),
     actorLoginId: optionalString(input.actorLoginId),
@@ -578,6 +579,17 @@ function optionalString(value) {
   return trimmed || undefined;
 }
 
+function optionalAuditEventId(value) {
+  const eventId = optionalString(value);
+  if (eventId === undefined) {
+    return undefined;
+  }
+  if (!/^aud_[A-Za-z0-9_-]{1,96}$/u.test(eventId)) {
+    throw validationError("eventId must be a safe audit event identifier", "eventId");
+  }
+  return eventId;
+}
+
 function optionalEnum(value, allowed, field) {
   if (value === undefined || value === null || value === "") {
     return undefined;
@@ -766,6 +778,8 @@ function sanitizeSafePayload(value) {
   }
 
   const allowed = new Set([
+    "acknowledged",
+    "acknowledgementVersion",
     "applicationId",
     "assignedMemberId",
     "authMode",
@@ -774,7 +788,10 @@ function sanitizeSafePayload(value) {
     "baselineFormat",
     "beforeAction",
     "calculationId",
+    "calculationRevision",
     "calculationPayloadCount",
+    "candidateFingerprint",
+    "candidateKey",
     "changedFields",
     "claimMonth",
     "count",
@@ -782,6 +799,7 @@ function sanitizeSafePayload(value) {
     "datasetWarningCount",
     "departmentId",
     "deviceAuthId",
+    "deviceId",
     "encounterId",
     "eventId",
     "expiresAt",
@@ -796,19 +814,24 @@ function sanitizeSafePayload(value) {
     "missingCandidateCount",
     "needsReviewCount",
     "orgId",
+    "occurredAt",
     "pairKey",
     "patientId",
     "pdfPlaceholderId",
     "productId",
     "productIds",
     "provider",
+    "previousAcknowledged",
     "referralId",
     "requestType",
     "revokedAt",
     "ruleFingerprint",
     "scopes",
     "scopeKey",
+    "sidecarDraftId",
     "soapDraftId",
+    "sourceRevision",
+    "staleReason",
     "status",
     "considerCount",
     "sessionCount",

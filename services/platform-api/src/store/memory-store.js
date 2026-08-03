@@ -883,11 +883,15 @@ export class MemoryPlatformStore {
     this.requireOrganization(orgId);
     const normalized = validateCreateAuditEventInput(input);
     const now = this.timestamp();
-    const eventId = this.idFactory("aud");
+    const eventId = normalized.eventId || this.idFactory("aud");
+    const existing = this.auditEventsForOrg(orgId).get(eventId);
+    if (existing) {
+      return structuredClone(existing);
+    }
     const event = compactObject({
+      ...normalized,
       eventId,
       orgId,
-      ...normalized,
       createdAt: now,
       schemaVersion: 1
     });

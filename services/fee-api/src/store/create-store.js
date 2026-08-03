@@ -43,6 +43,10 @@ export class LazyFirestoreFeeStore {
     return this.call("listSidecarCalculationDrafts", orgId, options);
   }
 
+  async listSidecarDraftsWithPendingAcknowledgementAudits(options) {
+    return this.call("listSidecarDraftsWithPendingAcknowledgementAudits", options);
+  }
+
   async listSidecarDraftsForServiceDate(orgId, options) {
     return this.call("listSidecarDraftsForServiceDate", orgId, options);
   }
@@ -53,6 +57,23 @@ export class LazyFirestoreFeeStore {
 
   async saveSidecarCalculation(orgId, sidecarDraftId, calculationResult) {
     return this.call("saveSidecarCalculation", orgId, sidecarDraftId, calculationResult);
+  }
+
+  async setSidecarCandidateAcknowledgement(orgId, sidecarDraftId, input) {
+    return this.call("setSidecarCandidateAcknowledgement", orgId, sidecarDraftId, input);
+  }
+
+  async reconcileSidecarCandidateAcknowledgements(orgId, sidecarDraftId, input) {
+    return this.call("reconcileSidecarCandidateAcknowledgements", orgId, sidecarDraftId, input);
+  }
+
+  async completeSidecarCandidateAcknowledgementAudit(orgId, sidecarDraftId, eventId) {
+    return this.call(
+      "completeSidecarCandidateAcknowledgementAudit",
+      orgId,
+      sidecarDraftId,
+      eventId
+    );
   }
 
   async listPriorSidecarDraftsForPatient(orgId, patientId, options) {

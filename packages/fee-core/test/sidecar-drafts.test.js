@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  applySidecarCandidateAcknowledgement,
   applySidecarCalculationResult,
   applySidecarDraftInput,
   buildSidecarCalculationDraft,
+  completeSidecarCandidateAcknowledgementAudit,
   markSidecarDraftAdopted,
+  reconcileSidecarCandidateAcknowledgements,
   sidecarVisitAdoptionFingerprint
 } from "../src/sidecar-drafts.js";
 
@@ -53,6 +56,9 @@ test("sidecar draft revisions the same immutable record instead of creating a fe
 
   assert.equal(current.recordType, "sidecar_calculation_draft");
   assert.equal(current.lifecycleStatus, "draft");
+  assert.deepEqual(current.candidateAcknowledgements, {});
+  assert.deepEqual(current.candidateAcknowledgementAuditOutbox, {});
+  assert.equal(current.candidateAcknowledgementAuditPending, false);
   assert.equal(revised.sidecarDraftId, current.sidecarDraftId);
   assert.equal(revised.sourceRecordId, current.sourceRecordId);
   assert.equal(revised.sourceRevision, 2);
@@ -67,6 +73,280 @@ test("sidecar draft revisions the same immutable record instead of creating a fe
   });
   assert.match(revised.clinicalText, /継続/);
   assert.throws(() => applySidecarDraftInput(current, draftInput({ sourceRecordId: "record-002" })), /identity mismatch/);
+});
+
+test("sidecar candidate acknowledgement is explicit, idempotent, and revision locked", () => {
+  const calculated = applySidecarCalculationResult(
+    buildSidecarCalculationDraft(draftInput(), {
+      now: new Date("2026-07-18T00:00:00.000Z")
+    }),
+    {
+      provider: "test",
+      status: "completed",
+      totalPoints: 890,
+      lineItems: [{ lineId: "line_1", code: "114001110", name: "訪問診療料" }]
+    },
+    {
+      calculationId: "calc_1",
+      now: new Date("2026-07-18T00:01:00.000Z")
+    }
+  );
+  const calculationBefore = structuredClone(calculated.calculationResult);
+  const common = {
+    expectedSourceRevision: 1,
+    expectedCalculationRevision: 1,
+    candidateKey: "review_issue:issue_1",
+    candidateId: "issue_1",
+    candidateFingerprint: "c".repeat(64),
+    updatedByMemberId: "mem_001",
+    updatedByLoginId: "admin@example.com",
+    updatedFromDeviceId: "device_001"
+  };
+  const acknowledged = applySidecarCandidateAcknowledgement(calculated, {
+    ...common,
+    acknowledged: true,
+    expectedAcknowledgementVersion: 0
+  }, {
+    now: new Date("2026-07-18T00:02:00.000Z")
+  });
+  const repeated = applySidecarCandidateAcknowledgement(acknowledged.sidecarDraft, {
+    ...common,
+    acknowledged: true,
+    expectedAcknowledgementVersion: 0
+  }, {
+    now: new Date("2026-07-18T00:03:00.000Z")
+  });
+
+  assert.equal(acknowledged.changed, true);
+  assert.deepEqual(acknowledged.acknowledgement, {
+    candidateKey: common.candidateKey,
+    candidateFingerprint: common.candidateFingerprint,
+    status: "acknowledged",
+    sourceRevision: 1,
+    calculationRevision: 1,
+    version: 1,
+    updatedByMemberId: "mem_001",
+    updatedByLoginId: "admin@example.com",
+    updatedFromDeviceId: "device_001",
+    updatedAt: "2026-07-18T00:02:00.000Z"
+  });
+  assert.equal(Object.hasOwn(acknowledged.acknowledgement, "candidateId"), false);
+  assert.equal(Object.keys(acknowledged.sidecarDraft.candidateAcknowledgementAuditOutbox).length, 1);
+  assert.equal(acknowledged.sidecarDraft.candidateAcknowledgementAuditPending, true);
+  assert.equal(repeated.changed, false);
+  assert.strictEqual(repeated.sidecarDraft, acknowledged.sidecarDraft);
+  assert.deepEqual(repeated.sidecarDraft.calculationResult, calculationBefore);
+  assert.throws(() => applySidecarCandidateAcknowledgement(acknowledged.sidecarDraft, {
+    ...common,
+    acknowledged: false,
+    expectedAcknowledgementVersion: 0
+  }), (error) => (
+    error.statusCode === 409
+    && error.code === "SIDECAR_CANDIDATE_ACKNOWLEDGEMENT_CONFLICT"
+  ));
+
+  const unacknowledged = applySidecarCandidateAcknowledgement(acknowledged.sidecarDraft, {
+    ...common,
+    acknowledged: false,
+    expectedAcknowledgementVersion: 1
+  }, {
+    now: new Date("2026-07-18T00:04:00.000Z")
+  });
+  assert.equal(unacknowledged.acknowledgement.status, "unacknowledged");
+  assert.equal(unacknowledged.acknowledgement.version, 2);
+  assert.equal(Object.keys(unacknowledged.sidecarDraft.candidateAcknowledgementAuditOutbox).length, 2);
+  const [completedEventId] = Object.keys(
+    unacknowledged.sidecarDraft.candidateAcknowledgementAuditOutbox
+  );
+  const completedAudit = completeSidecarCandidateAcknowledgementAudit(
+    unacknowledged.sidecarDraft,
+    completedEventId
+  );
+  assert.equal(completedAudit.changed, true);
+  assert.equal(Object.keys(completedAudit.sidecarDraft.candidateAcknowledgementAuditOutbox).length, 1);
+  assert.equal(completedAudit.sidecarDraft.candidateAcknowledgementAuditPending, true);
+  assert.equal(completeSidecarCandidateAcknowledgementAudit(
+    completedAudit.sidecarDraft,
+    completedEventId
+  ).changed, false);
+  const [remainingEventId] = Object.keys(
+    completedAudit.sidecarDraft.candidateAcknowledgementAuditOutbox
+  );
+  const fullyCompletedAudit = completeSidecarCandidateAcknowledgementAudit(
+    completedAudit.sidecarDraft,
+    remainingEventId
+  );
+  assert.deepEqual(fullyCompletedAudit.sidecarDraft.candidateAcknowledgementAuditOutbox, {});
+  assert.equal(fullyCompletedAudit.sidecarDraft.candidateAcknowledgementAuditPending, false);
+  assert.deepEqual(unacknowledged.sidecarDraft.calculationResult, calculationBefore);
+
+  const adopted = markSidecarDraftAdopted(acknowledged.sidecarDraft, "fee_001");
+  assert.throws(() => applySidecarCandidateAcknowledgement(adopted, {
+    ...common,
+    acknowledged: false,
+    expectedAcknowledgementVersion: 1
+  }), /cannot be changed/u);
+});
+
+test("sidecar acknowledgement reconciliation only stales acknowledged candidates", () => {
+  const calculationResult = {
+    provider: "test",
+    status: "completed",
+    totalPoints: 890,
+    lineItems: [{ lineId: "line_1", code: "114001110", name: "訪問診療料" }]
+  };
+  const calculated = applySidecarCalculationResult(
+    buildSidecarCalculationDraft(draftInput()),
+    calculationResult,
+    { calculationId: "calc_1", now: new Date("2026-07-18T00:01:00.000Z") }
+  );
+  const makeRecord = (candidateKey, candidateFingerprint, overrides = {}) => ({
+    candidateKey,
+    candidateFingerprint,
+    status: "acknowledged",
+    sourceRevision: 1,
+    calculationRevision: 1,
+    version: 1,
+    updatedByMemberId: "mem_001",
+    updatedByLoginId: "admin@example.com",
+    updatedFromDeviceId: "device_001",
+    updatedAt: "2026-07-18T00:02:00.000Z",
+    ...overrides
+  });
+  const keepFingerprint = "a".repeat(64);
+  const changedFingerprint = "b".repeat(64);
+  const current = {
+    ...calculated,
+    candidateAcknowledgements: {
+      keep: makeRecord("keep", keepFingerprint),
+      missing: makeRecord("missing", "c".repeat(64)),
+      changed: makeRecord("changed", changedFingerprint),
+      old_source: makeRecord("old_source", "d".repeat(64), { sourceRevision: 0 }),
+      opted_out: makeRecord("opted_out", "e".repeat(64), { status: "unacknowledged" }),
+      already_stale: makeRecord("already_stale", "f".repeat(64), {
+        status: "stale",
+        staleReason: "candidate_missing"
+      })
+    }
+  };
+  const calculationBefore = structuredClone(current.calculationResult);
+  const reconciled = reconcileSidecarCandidateAcknowledgements(current, {
+    expectedSourceRevision: 1,
+    expectedCalculationRevision: 1,
+    activeCandidates: [
+      { candidateKey: "keep", candidateFingerprint: keepFingerprint },
+      { candidateKey: "changed", candidateFingerprint: "9".repeat(64) },
+      { candidateKey: "old_source", candidateFingerprint: "d".repeat(64) },
+      { candidateKey: "opted_out", candidateFingerprint: "e".repeat(64) },
+      { candidateKey: "already_stale", candidateFingerprint: "f".repeat(64) }
+    ],
+    invalidatedByMemberId: "mem_recalculator",
+    invalidatedByLoginId: "recalculator@example.com",
+    invalidatedFromDeviceId: "device_recalculator"
+  }, {
+    now: new Date("2026-07-18T00:03:00.000Z")
+  });
+
+  assert.equal(reconciled.changed, true);
+  assert.deepEqual(reconciled.invalidated.map((record) => [
+    record.candidateKey,
+    record.staleReason,
+    record.version
+  ]), [
+    ["missing", "candidate_missing", 2],
+    ["changed", "candidate_fingerprint_changed", 2],
+    ["old_source", "source_revision_changed", 2]
+  ]);
+  assert.equal(reconciled.sidecarDraft.candidateAcknowledgements.keep.status, "acknowledged");
+  assert.equal(reconciled.sidecarDraft.candidateAcknowledgements.opted_out.status, "unacknowledged");
+  assert.equal(reconciled.sidecarDraft.candidateAcknowledgements.already_stale.version, 1);
+  assert.equal(reconciled.invalidated[0].invalidatedByMemberId, "mem_recalculator");
+  assert.equal(reconciled.invalidated[0].invalidatedByLoginId, "recalculator@example.com");
+  assert.equal(reconciled.invalidated[0].invalidationCalculationRevision, 1);
+  assert.equal(Object.keys(reconciled.sidecarDraft.candidateAcknowledgementAuditOutbox).length, 3);
+  assert.equal(reconciled.sidecarDraft.candidateAcknowledgementAuditPending, true);
+  assert.deepEqual(reconciled.sidecarDraft.calculationResult, calculationBefore);
+
+  const repeated = reconcileSidecarCandidateAcknowledgements(reconciled.sidecarDraft, {
+    expectedSourceRevision: 1,
+    expectedCalculationRevision: 1,
+    activeCandidates: [{ candidateKey: "keep", candidateFingerprint: keepFingerprint }]
+  });
+  assert.equal(repeated.changed, false);
+  assert.deepEqual(repeated.invalidated, []);
+  assert.strictEqual(repeated.sidecarDraft, reconciled.sidecarDraft);
+  assert.throws(() => reconcileSidecarCandidateAcknowledgements(current, {
+    expectedSourceRevision: 2,
+    expectedCalculationRevision: 1,
+    activeCandidates: []
+  }), (error) => error.statusCode === 409);
+});
+
+test("same-fingerprint acknowledgement survives recalculation but not a source revision change", () => {
+  const calculationResult = {
+    provider: "test",
+    status: "completed",
+    totalPoints: 890,
+    lineItems: [{ lineId: "line_1", code: "114001110", name: "訪問診療料" }]
+  };
+  const firstCalculation = applySidecarCalculationResult(
+    buildSidecarCalculationDraft(draftInput()),
+    calculationResult,
+    { calculationId: "calc_1", now: new Date("2026-07-18T00:01:00.000Z") }
+  );
+  const candidateFingerprint = "7".repeat(64);
+  const acknowledgementInput = {
+    acknowledged: true,
+    expectedSourceRevision: 1,
+    expectedCalculationRevision: 1,
+    expectedAcknowledgementVersion: 0,
+    candidateKey: "candidate_1",
+    candidateFingerprint,
+    updatedByMemberId: "mem_001",
+    updatedByLoginId: "admin@example.com",
+    updatedFromDeviceId: "device_001"
+  };
+  const acknowledged = applySidecarCandidateAcknowledgement(
+    firstCalculation,
+    acknowledgementInput
+  ).sidecarDraft;
+  const recalculated = applySidecarCalculationResult(acknowledged, calculationResult, {
+    calculationId: "calc_2",
+    now: new Date("2026-07-18T00:02:00.000Z")
+  });
+  const retained = reconcileSidecarCandidateAcknowledgements(recalculated, {
+    expectedSourceRevision: 1,
+    expectedCalculationRevision: 2,
+    activeCandidates: [{ candidateKey: "candidate_1", candidateFingerprint }]
+  });
+  const oldRequestReplay = applySidecarCandidateAcknowledgement(retained.sidecarDraft, {
+    ...acknowledgementInput,
+    expectedCalculationRevision: 1
+  });
+
+  assert.equal(retained.changed, false);
+  assert.equal(retained.sidecarDraft.candidateAcknowledgements.candidate_1.status, "acknowledged");
+  assert.equal(retained.sidecarDraft.candidateAcknowledgements.candidate_1.calculationRevision, 1);
+  assert.equal(oldRequestReplay.changed, false);
+
+  const revisedSource = applySidecarDraftInput(retained.sidecarDraft, draftInput({
+    sourceRevisionHash: "9".repeat(64),
+    clinicalText: "O: 訪問診療を実施。所見を更新。"
+  }));
+  const recalculatedSource = applySidecarCalculationResult(revisedSource, calculationResult, {
+    calculationId: "calc_3",
+    now: new Date("2026-07-18T00:03:00.000Z")
+  });
+  const invalidated = reconcileSidecarCandidateAcknowledgements(recalculatedSource, {
+    expectedSourceRevision: 2,
+    expectedCalculationRevision: 3,
+    activeCandidates: [{ candidateKey: "candidate_1", candidateFingerprint }],
+    invalidatedByMemberId: "mem_recalculator",
+    invalidatedByLoginId: "recalculator@example.com",
+    invalidatedFromDeviceId: "device_recalculator"
+  });
+  assert.equal(invalidated.changed, true);
+  assert.equal(invalidated.invalidated[0].staleReason, "source_revision_changed");
 });
 
 test("visit adoption fingerprint is independent of v4 and v5 source record keys", () => {

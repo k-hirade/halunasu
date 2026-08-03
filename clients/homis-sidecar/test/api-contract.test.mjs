@@ -19,6 +19,12 @@ test("calculate request snapshot keeps the v1 sidecar boundary", () => {
     assert.match(panelSource, new RegExp(`\\b${field}\\b`));
   }
   assert.match(apiSource, /\/v1\/integrations\/sidecar\/calculate/);
+  assert.match(apiSource, /\/candidate-acknowledgements\//);
+  assert.match(apiSource, /setCandidateAcknowledgement/);
+  assert.match(apiSource, /expectedSourceRevision/);
+  assert.match(apiSource, /expectedCalculationRevision/);
+  assert.match(apiSource, /expectedAcknowledgementVersion/);
+  assert.match(apiSource, /candidateFingerprint/);
   assert.doesNotMatch(apiSource, /\/v1\/fee\/(?:sessions|patients|calculate)/);
 });
 
@@ -28,6 +34,7 @@ test("only the revocable grant and public device id enter extension storage", ()
   assert.match(apiSource, /LEGACY_GRANT_ID_KEY/);
   assert.doesNotMatch(apiSource, /storageSet\([^)]*accessToken/s);
   assert.doesNotMatch(apiSource, /storageSet\([^)]*verifier/s);
+  assert.doesNotMatch(apiSource, /storageSet\([^)]*(?:candidateKey|candidateFingerprint|acknowledgement)/s);
 });
 
 test("API endpoints come from validated build-time environment config", () => {

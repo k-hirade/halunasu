@@ -1161,7 +1161,7 @@ async function issueSidecarScopedToken(input, store, principal, tokenInput) {
     tokenType: "scoped_product_access",
     productId: SIDECAR_PRODUCT_ID,
     audience: "fee-api",
-    scopes: ["sidecar:calculate"],
+    scopes: ["sidecar:calculate", "sidecar:acknowledge"],
     extensionId: tokenInput.extensionId,
     deviceId: tokenInput.deviceId,
     proofKeyChallenge: tokenInput.codeChallenge,

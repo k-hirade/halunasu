@@ -262,6 +262,9 @@ deploy_service() {
   if [[ "${service}" == fee-api-* ]] && secret_exists "${project}" "CARE_FEE_OUTBOX_WORKER_TOKEN"; then
     secret_vars="${secret_vars},CARE_FEE_OUTBOX_WORKER_TOKEN=CARE_FEE_OUTBOX_WORKER_TOKEN:latest"
   fi
+  if [[ "${service}" == fee-api-* ]] && secret_exists "${project}" "SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_TOKEN"; then
+    secret_vars="${secret_vars},SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_TOKEN=SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_TOKEN:latest"
+  fi
   if [[ "${service}" == care-fee-api-* ]] && secret_exists "${project}" "CARE_FEE_INGEST_TOKEN"; then
     secret_vars="${secret_vars},CARE_FEE_INGEST_TOKEN=CARE_FEE_INGEST_TOKEN:latest"
   fi
@@ -821,6 +824,7 @@ deploy_env() {
     "HOMIS_SIDECAR_ALLOWED_SELECTOR_CONTRACT_VERSIONS=${sidecar_allowed_selector_contract_versions}" \
     "HOMIS_SIDECAR_REVOKED_DEVICE_IDS=${sidecar_revoked_device_ids}" \
     "HOMIS_SIDECAR_DRAFT_RETENTION_DAYS=${sidecar_draft_retention_days}" \
+    "SIDECAR_ACKNOWLEDGEMENT_AUDIT_WORKER_AUTH_MODE=token" \
     "FEE_CALCULATION_CLOUD_TASKS_QUEUE=${fee_calculation_queue_path}" \
     "FEE_CALCULATION_WORKER_URL=${fee_calculation_worker_url}" \
     "CARE_FEE_INGEST_URL=${care_fee_ingest_url}" \

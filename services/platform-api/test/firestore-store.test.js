@@ -296,6 +296,20 @@ test("stores login identities and shared master data", async () => {
     productIds: ["charting", "unknown"],
     safePayload: { patientId: "pat_123", displayName: "Patient" }
   });
+  const deterministicAuditInput = {
+    eventId: "aud_sidecar_candidate_v1",
+    eventType: "fee.sidecar_candidate_acknowledgement_changed",
+    actorMemberId: member.memberId,
+    safePayload: { candidateKey: "sca_123", acknowledgementVersion: 1 }
+  };
+  const deterministicAudit = await store.createAuditEvent(
+    organization.orgId,
+    deterministicAuditInput
+  );
+  const deterministicAuditRetry = await store.createAuditEvent(organization.orgId, {
+    ...deterministicAuditInput,
+    safePayload: { candidateKey: "sca_changed", acknowledgementVersion: 99 }
+  });
 
   assert.equal(member.loginId, "admin");
   assert.equal(identity.memberId, member.memberId);
@@ -306,12 +320,14 @@ test("stores login identities and shared master data", async () => {
   assert.equal(entitlement.productId, "charting");
   assert.equal((await store.getProductEntitlement(organization.orgId, "charting")).status, "enabled");
   assert.equal(auditEvent.eventType, "member.created");
+  assert.equal(deterministicAudit.eventId, deterministicAuditInput.eventId);
+  assert.deepEqual(deterministicAuditRetry, deterministicAudit);
   assert.equal(auditEvent.safePayload.displayName, undefined);
   assert.equal(dataRequest.requestId, "drq_006");
   assert.deepEqual(dataRequest.productIds, ["charting"]);
   assert.equal(dataRequest.safePayload.displayName, undefined);
   assert.equal((await store.listDataRequests(organization.orgId)).length, 1);
-  assert.equal((await store.listAuditEvents(organization.orgId)).length, 1);
+  assert.equal((await store.listAuditEvents(organization.orgId)).length, 2);
 });
 
 test("updates login identity auth state", async () => {

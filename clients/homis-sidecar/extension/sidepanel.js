@@ -18,6 +18,9 @@
   let encounterTypeSource = null;
   let visitKindSource = null;
   let sameBuildingSource = null;
+  let currentSidecarDraft = null;
+  let resultGeneration = 0;
+  const acknowledgementMutationsInFlight = new Set();
 
   const elements = Object.fromEntries([
     "connection-badge", "connection-copy", "connect-button", "connection-section",
@@ -116,6 +119,7 @@
       return;
     }
     const expectedPreviewFingerprint = preview.previewFingerprint;
+    invalidateRenderedResult();
     setBusy(elements["calculate-button"], true, "作成中");
     setStatus("表示中のカルテを再確認して算定案を作成しています。");
     try {
@@ -161,6 +165,7 @@
         resetChartState();
       }
       if ([401, 403].includes(error.status)) {
+        await api.clearGrant().catch(() => {});
         setConnected(false);
       }
       setStatus(errorMessage(error), true);
@@ -233,7 +238,7 @@
       }
 
       preview = response;
-      elements["result-section"].hidden = true;
+      invalidateRenderedResult();
       renderPreview(response);
       elements["setting-control"].disabled = false;
       elements["same-building-control"].disabled = false;
@@ -269,7 +274,7 @@
     visitKindSource = null;
     sameBuildingSource = null;
     elements["chart-preview"].hidden = true;
-    elements["result-section"].hidden = true;
+    invalidateRenderedResult();
     elements["setting-control"].disabled = true;
     elements["same-building-control"].disabled = true;
     elements["telephone-eligibility-control"].hidden = true;
@@ -359,6 +364,7 @@
   }
 
   function renderResult(sidecarDraft = {}) {
+    currentSidecarDraft = sidecarDraft;
     const calculation = sidecarDraft.calculation || {};
     const candidates = (Array.isArray(calculation.candidates) ? calculation.candidates : [])
       .map((candidate) => normalizeCandidateZone(candidate));
@@ -410,13 +416,21 @@
     row.dataset.zone = candidate.zone;
     row.setAttribute("role", "listitem");
 
-    const kind = document.createElement("span");
+    const candidateName = decisionCandidateName(candidate);
+    const kind = document.createElement("button");
+    kind.type = "button";
     kind.className = `decision-kind decision-kind-${candidate.zone}`;
-    kind.textContent = candidate.zone === "selection_required" ? "区分確認" : "要確認";
+    kind.dataset.candidateKey = String(candidate.candidateKey || "");
+    renderAcknowledgementButton(kind, candidate, candidateName, {
+      busy: acknowledgementMutationsInFlight.has(String(candidate.candidateKey || ""))
+    });
+    kind.addEventListener("click", () => {
+      void toggleCandidateAcknowledgement(kind, candidate, candidateName);
+    });
 
     const name = document.createElement("strong");
     name.className = "decision-name";
-    name.textContent = decisionCandidateName(candidate);
+    name.textContent = candidateName;
 
     const separator = document.createElement("span");
     separator.className = "decision-separator";
@@ -431,6 +445,143 @@
 
     row.append(kind, name, separator, summary);
     return row;
+  }
+
+  function renderAcknowledgementButton(button, candidate, candidateName, options = {}) {
+    const acknowledgement = candidateAcknowledgement(candidate);
+    const acknowledged = acknowledgement.status === "acknowledged";
+    const pendingLabel = candidate.zone === "selection_required" ? "区分確認" : "要確認";
+    const busy = options.busy === true;
+    const canSave = Boolean(
+      currentSidecarDraft?.sidecarDraftId
+      && candidate.candidateKey
+      && candidate.candidateFingerprint
+    );
+    button.dataset.acknowledgementAvailable = canSave ? "true" : "";
+    button.textContent = busy ? "保存中" : acknowledged ? "確認済み" : pendingLabel;
+    button.classList.toggle("is-acknowledged", acknowledged);
+    button.disabled = busy || !canSave;
+    button.setAttribute("aria-pressed", String(acknowledged));
+    if (busy) {
+      button.setAttribute("aria-busy", "true");
+    } else {
+      button.removeAttribute("aria-busy");
+    }
+    button.setAttribute(
+      "aria-label",
+      busy
+        ? `${candidateName}の確認状態を保存中`
+        : acknowledged
+          ? `${candidateName}の確認済みを取り消す`
+          : `${candidateName}の${pendingLabel}を確認済みにする`
+    );
+  }
+
+  function candidateAcknowledgement(candidate = {}) {
+    const acknowledgement = candidate.acknowledgement && typeof candidate.acknowledgement === "object"
+      ? candidate.acknowledgement
+      : {};
+    const status = ["acknowledged", "unacknowledged", "stale"].includes(acknowledgement.status)
+      ? acknowledgement.status
+      : "unacknowledged";
+    return {
+      ...acknowledgement,
+      status,
+      version: Math.max(0, Number(acknowledgement.version || 0))
+    };
+  }
+
+  async function toggleCandidateAcknowledgement(button, candidate, candidateName) {
+    const candidateKey = String(candidate.candidateKey || "");
+    if (acknowledgementMutationsInFlight.has(candidateKey) || button.disabled) {
+      return;
+    }
+    const draft = currentSidecarDraft;
+    const generation = resultGeneration;
+    const acknowledgement = candidateAcknowledgement(candidate);
+    const acknowledged = acknowledgement.status === "acknowledged";
+    acknowledgementMutationsInFlight.add(candidateKey);
+    renderAcknowledgementButton(button, candidate, candidateName, { busy: true });
+    setStatus("");
+    try {
+      const response = await api.setCandidateAcknowledgement({
+        sidecarDraftId: draft.sidecarDraftId,
+        candidateKey: candidate.candidateKey,
+        acknowledged: !acknowledged,
+        expectedSourceRevision: Number(draft.sourceRevision || 0),
+        expectedCalculationRevision: Number(draft.calculationRevision || 0),
+        expectedAcknowledgementVersion: acknowledgement.version,
+        candidateFingerprint: candidate.candidateFingerprint
+      });
+      if (!isCurrentResult(draft, generation)) {
+        return;
+      }
+      currentSidecarDraft = mergeAcknowledgementResponse(
+        currentSidecarDraft,
+        response.sidecarDraft,
+        candidateKey
+      );
+      setStatus(acknowledged
+        ? `${candidateName}を未確認に戻しました。`
+        : `${candidateName}を確認済みにしました。`);
+    } catch (error) {
+      if ([401, 403].includes(error.status)) {
+        await api.clearGrant().catch(() => {});
+        setConnected(false);
+        setStatus(errorMessage(error), true);
+        return;
+      }
+      if (!isCurrentResult(draft, generation)) {
+        return;
+      }
+      setStatus(errorMessage(error), true);
+    } finally {
+      if (generation === resultGeneration) {
+        acknowledgementMutationsInFlight.delete(candidateKey);
+      }
+      if (isCurrentResult(draft, generation)) {
+        renderResult(currentSidecarDraft);
+      }
+    }
+  }
+
+  function mergeAcknowledgementResponse(currentDraft, responseDraft, candidateKey) {
+    if (!isSameDraftRevision(currentDraft, responseDraft)) {
+      throw responseError({ status: 409, error: "算定案が更新されています。" });
+    }
+    const responseCandidate = (responseDraft.calculation?.candidates || []).find((item) => (
+      String(item.candidateKey || "") === candidateKey
+    ));
+    if (!responseCandidate) {
+      throw responseError({ status: 409, error: "算定候補が更新されています。" });
+    }
+    return {
+      ...currentDraft,
+      calculation: {
+        ...currentDraft.calculation,
+        candidates: (currentDraft.calculation?.candidates || []).map((item) => (
+          String(item.candidateKey || "") === candidateKey ? responseCandidate : item
+        ))
+      }
+    };
+  }
+
+  function isCurrentResult(draft, generation) {
+    return generation === resultGeneration
+      && isSameDraftRevision(currentSidecarDraft, draft);
+  }
+
+  function isSameDraftRevision(left, right) {
+    return left?.sidecarDraftId === right?.sidecarDraftId
+      && Number(left?.sourceRevision || 0) === Number(right?.sourceRevision || 0)
+      && Number(left?.calculationRevision || 0) === Number(right?.calculationRevision || 0);
+  }
+
+  function invalidateRenderedResult() {
+    resultGeneration += 1;
+    acknowledgementMutationsInFlight.clear();
+    currentSidecarDraft = null;
+    elements["result-section"].hidden = true;
   }
 
   function decisionCandidateName(candidate) {
@@ -835,6 +986,9 @@
     }
     if (error.status === 429) {
       return "処理が集中しています。しばらく待ってから再度お試しください。";
+    }
+    if (error.status === 409) {
+      return "算定案が更新されたため、算定案を作成し直してください。";
     }
     return String(error?.message || "処理を完了できませんでした。");
   }

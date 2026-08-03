@@ -256,6 +256,7 @@ test("validates product entitlements and audit events", () => {
     startsAt: "2026-05-27T00:00:00.000Z"
   });
   const auditEvent = validateCreateAuditEventInput({
+    eventId: "aud_sidecar_candidate_v2",
     eventType: "member.created",
     actorMemberId: "mem_123",
     productId: "charting",
@@ -270,17 +271,32 @@ test("validates product entitlements and audit events", () => {
       deviceAuthId: "sda_123",
       extensionId: "nhbmaniknlcaaelpaoogepmkhphmmjof",
       grantRecordId: "sgr_123",
-      scopes: ["sidecar:calculate"],
+      scopes: ["sidecar:calculate", "sidecar:acknowledge"],
       pairKey: "same_month:114005410:140003810",
       scopeKey: "2026-05",
       ruleFingerprint: "fingerprint-test",
       beforeAction: null,
-      afterAction: "acknowledge_auto"
+      afterAction: "acknowledge_auto",
+      sidecarDraftId: "sidecar_123",
+      candidateKey: "candidate_123",
+      candidateFingerprint: "sha256:candidate-fingerprint",
+      sourceRevision: 4,
+      calculationRevision: 7,
+      acknowledgementVersion: 2,
+      acknowledged: true,
+      previousAcknowledged: false,
+      deviceId: "sidecar_device_authorized_01",
+      occurredAt: "2026-08-03T09:35:00.000Z",
+      staleReason: "candidate_changed",
+      clinicalText: "S) patient clinical narrative",
+      patientName: "Yamada Hanako",
+      reason: "free-form clinical reason"
     }
   });
 
   assert.equal(entitlement.productId, "charting");
   assert.equal(entitlement.startsAt, "2026-05-27T00:00:00.000Z");
+  assert.equal(auditEvent.eventId, "aud_sidecar_candidate_v2");
   assert.deepEqual(auditEvent.safePayload.changedFields, ["displayName"]);
   assert.equal(auditEvent.safePayload.memberId, "mem_123");
   assert.deepEqual(auditEvent.safePayload.warningCodes, ["meisaisho_hakko_facility_type_unconfirmed"]);
@@ -289,14 +305,32 @@ test("validates product entitlements and audit events", () => {
   assert.equal(auditEvent.safePayload.deviceAuthId, "sda_123");
   assert.equal(auditEvent.safePayload.extensionId, "nhbmaniknlcaaelpaoogepmkhphmmjof");
   assert.equal(auditEvent.safePayload.grantRecordId, "sgr_123");
-  assert.deepEqual(auditEvent.safePayload.scopes, ["sidecar:calculate"]);
+  assert.deepEqual(auditEvent.safePayload.scopes, ["sidecar:calculate", "sidecar:acknowledge"]);
   assert.equal(auditEvent.safePayload.pairKey, "same_month:114005410:140003810");
   assert.equal(auditEvent.safePayload.scopeKey, "2026-05");
   assert.equal(auditEvent.safePayload.ruleFingerprint, "fingerprint-test");
   assert.equal(auditEvent.safePayload.beforeAction, null);
   assert.equal(auditEvent.safePayload.afterAction, "acknowledge_auto");
+  assert.equal(auditEvent.safePayload.sidecarDraftId, "sidecar_123");
+  assert.equal(auditEvent.safePayload.candidateKey, "candidate_123");
+  assert.equal(auditEvent.safePayload.candidateFingerprint, "sha256:candidate-fingerprint");
+  assert.equal(auditEvent.safePayload.sourceRevision, 4);
+  assert.equal(auditEvent.safePayload.calculationRevision, 7);
+  assert.equal(auditEvent.safePayload.acknowledgementVersion, 2);
+  assert.equal(auditEvent.safePayload.acknowledged, true);
+  assert.equal(auditEvent.safePayload.previousAcknowledged, false);
+  assert.equal(auditEvent.safePayload.deviceId, "sidecar_device_authorized_01");
+  assert.equal(auditEvent.safePayload.occurredAt, "2026-08-03T09:35:00.000Z");
+  assert.equal(auditEvent.safePayload.staleReason, "candidate_changed");
   assert.equal(auditEvent.safePayload.displayName, undefined);
   assert.equal(auditEvent.safePayload.birthDate, undefined);
+  assert.equal(auditEvent.safePayload.clinicalText, undefined);
+  assert.equal(auditEvent.safePayload.patientName, undefined);
+  assert.equal(auditEvent.safePayload.reason, undefined);
+  assert.throws(() => validateCreateAuditEventInput({
+    eventId: "aud_invalid/path",
+    eventType: "member.created"
+  }), /eventId/u);
 });
 
 test("validates data request model for deletion and retention workflows", () => {

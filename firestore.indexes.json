@@ -231,6 +231,16 @@
   ],
   "fieldOverrides": [
     {
+      "collectionGroup": "sidecar_calculation_drafts",
+      "fieldPath": "candidateAcknowledgementAuditPending",
+      "indexes": [
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        }
+      ]
+    },
+    {
       "collectionGroup": "sidecar_device_authorizations",
       "fieldPath": "purgeAt",
       "ttl": true,

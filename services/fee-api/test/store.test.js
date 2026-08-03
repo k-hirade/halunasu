@@ -8,6 +8,31 @@ import {
 import { FirestoreFeeStore } from "../src/store/firestore-store.js";
 import { MemoryFeeStore } from "../src/store/memory-store.js";
 
+function acknowledgementSidecarDraftInput(overrides = {}) {
+  return {
+    orgId: "org_123",
+    sidecarDraftId: "sidecar_ack_001",
+    sidecarPatientKey: "sidecar_patient_001",
+    contractVersion: "v1",
+    externalSourceSystem: "homis",
+    externalPatientId: "1001",
+    sourceRecordId: "record-ack-001",
+    sourceRecordDisplayId: "10010718",
+    idempotencyKeyHash: "a".repeat(64),
+    sourceRevisionHash: "b".repeat(64),
+    encounterTypeSource: "user",
+    extractionProof: { domMutationDetected: false },
+    facilityId: "fac_123",
+    serviceDate: "2026-07-18",
+    receptionTime: "14:30",
+    setting: "home_visit",
+    clinicalText: "O: 訪問診療を実施。",
+    createdByMemberId: "mem_123",
+    expiresAt: "2026-08-17T00:00:00.000Z",
+    ...overrides
+  };
+}
+
 test("uses fee product project for Firestore", () => {
   const env = {
     FEE_STORE_BACKEND: "firestore",
@@ -20,6 +45,28 @@ test("uses fee product project for Firestore", () => {
   assert.ok(store instanceof LazyFirestoreFeeStore);
   assert.equal(feeProjectId(env), "halunasu-fee-stg");
   assert.equal(store.options.projectId, "halunasu-fee-stg");
+});
+
+test("LazyFirestoreFeeStore forwards sidecar acknowledgement operations", async () => {
+  const store = new LazyFirestoreFeeStore();
+  store.call = async (...args) => args;
+
+  assert.deepEqual(
+    await store.setSidecarCandidateAcknowledgement("org_123", "sidecar_123", { acknowledged: true }),
+    ["setSidecarCandidateAcknowledgement", "org_123", "sidecar_123", { acknowledged: true }]
+  );
+  assert.deepEqual(
+    await store.reconcileSidecarCandidateAcknowledgements("org_123", "sidecar_123", { activeCandidates: [] }),
+    ["reconcileSidecarCandidateAcknowledgements", "org_123", "sidecar_123", { activeCandidates: [] }]
+  );
+  assert.deepEqual(
+    await store.completeSidecarCandidateAcknowledgementAudit("org_123", "sidecar_123", "aud_123"),
+    ["completeSidecarCandidateAcknowledgementAudit", "org_123", "sidecar_123", "aud_123"]
+  );
+  assert.deepEqual(
+    await store.listSidecarDraftsWithPendingAcknowledgementAudits({ limit: 10 }),
+    ["listSidecarDraftsWithPendingAcknowledgementAudits", { limit: 10 }]
+  );
 });
 
 test("stores fee sessions by organization and saves calculation results", () => {
@@ -597,6 +644,258 @@ test("Firestore atomically reserves the latest job and rejects stale claims and 
   assert.equal(completedSession.activeCalculationJobId, null);
   assert.equal(completedSession.latestCalculationJobId, second.calculationJobId);
   assert.equal(completedSession.calculationResult.totalPoints, 2);
+});
+
+test("MemoryFeeStore versions and reconciles sidecar candidate acknowledgements", () => {
+  let counter = 0;
+  const store = new MemoryFeeStore({
+    now: () => new Date("2026-07-18T00:00:00.000Z"),
+    idFactory: (prefix) => `${prefix}_${String(++counter).padStart(3, "0")}`
+  });
+  const created = store.upsertSidecarCalculationDraft(acknowledgementSidecarDraftInput());
+  const calculated = store.saveSidecarCalculation("org_123", created.sidecarDraft.sidecarDraftId, {
+    provider: "test",
+    status: "completed",
+    totalPoints: 890,
+    lineItems: [{
+      lineId: "line_1",
+      code: "114001110",
+      name: "在宅患者訪問診療料",
+      points: 890,
+      totalPoints: 890
+    }]
+  });
+  const calculationBefore = structuredClone(calculated.calculationResult);
+  const input = {
+    acknowledged: true,
+    expectedSourceRevision: 1,
+    expectedCalculationRevision: 1,
+    expectedAcknowledgementVersion: 0,
+    candidateKey: "review_issue:issue_1",
+    candidateId: "issue_1",
+    candidateFingerprint: "c".repeat(64),
+    updatedByMemberId: "mem_123",
+    updatedByLoginId: "admin@example.com",
+    updatedFromDeviceId: "device_123"
+  };
+  const acknowledged = store.setSidecarCandidateAcknowledgement(
+    "org_123",
+    created.sidecarDraft.sidecarDraftId,
+    input
+  );
+  const repeated = store.setSidecarCandidateAcknowledgement(
+    "org_123",
+    created.sidecarDraft.sidecarDraftId,
+    input
+  );
+
+  assert.equal(acknowledged.changed, true);
+  assert.equal(acknowledged.acknowledgement.status, "acknowledged");
+  assert.equal(acknowledged.acknowledgement.version, 1);
+  assert.equal(Object.keys(acknowledged.sidecarDraft.candidateAcknowledgementAuditOutbox).length, 1);
+  assert.equal(acknowledged.sidecarDraft.candidateAcknowledgementAuditPending, true);
+  assert.equal(repeated.changed, false);
+  assert.deepEqual(repeated.sidecarDraft.calculationResult, calculationBefore);
+  assert.throws(() => store.setSidecarCandidateAcknowledgement(
+    "org_123",
+    created.sidecarDraft.sidecarDraftId,
+    { ...input, acknowledged: false }
+  ), (error) => error.statusCode === 409);
+
+  const reconciled = store.reconcileSidecarCandidateAcknowledgements(
+    "org_123",
+    created.sidecarDraft.sidecarDraftId,
+    {
+      expectedSourceRevision: 1,
+      expectedCalculationRevision: 1,
+      activeCandidates: [],
+      invalidatedByMemberId: "mem_recalculator",
+      invalidatedByLoginId: "recalculator@example.com",
+      invalidatedFromDeviceId: "device_recalculator"
+    }
+  );
+  assert.equal(reconciled.changed, true);
+  assert.equal(reconciled.invalidated[0].status, "stale");
+  assert.equal(reconciled.invalidated[0].staleReason, "candidate_missing");
+  const [firstAuditEventId] = Object.keys(reconciled.sidecarDraft.candidateAcknowledgementAuditOutbox);
+  const completedAudit = store.completeSidecarCandidateAcknowledgementAudit(
+    "org_123",
+    created.sidecarDraft.sidecarDraftId,
+    firstAuditEventId
+  );
+  assert.equal(completedAudit.changed, true);
+  assert.equal(
+    Object.hasOwn(completedAudit.sidecarDraft.candidateAcknowledgementAuditOutbox, firstAuditEventId),
+    false
+  );
+  assert.equal(completedAudit.sidecarDraft.candidateAcknowledgementAuditPending, true);
+  assert.deepEqual(reconciled.sidecarDraft.calculationResult, calculationBefore);
+});
+
+test("MemoryFeeStore lists pending sidecar acknowledgement audits across organizations", () => {
+  const store = new MemoryFeeStore();
+  const pendingDraft = (orgId, sidecarDraftId, occurredAt) => ({
+    orgId,
+    sidecarDraftId,
+    candidateAcknowledgementAuditPending: true,
+    candidateAcknowledgementAuditOutbox: {
+      [`aud_${sidecarDraftId}`]: {
+        eventId: `aud_${sidecarDraftId}`,
+        occurredAt
+      }
+    },
+    updatedAt: occurredAt
+  });
+  store.sidecarDraftsForOrg("org_001").set(
+    "sidecar_newer",
+    pendingDraft("org_001", "sidecar_newer", "2026-08-03T00:02:00.000Z")
+  );
+  store.sidecarDraftsForOrg("org_002").set(
+    "sidecar_oldest",
+    pendingDraft("org_002", "sidecar_oldest", "2026-08-03T00:00:00.000Z")
+  );
+  store.sidecarDraftsForOrg("org_003").set("sidecar_complete", {
+    orgId: "org_003",
+    sidecarDraftId: "sidecar_complete",
+    candidateAcknowledgementAuditPending: false,
+    candidateAcknowledgementAuditOutbox: {}
+  });
+
+  assert.deepEqual(
+    store.listSidecarDraftsWithPendingAcknowledgementAudits({ limit: 1 })
+      .map((draft) => [draft.orgId, draft.sidecarDraftId]),
+    [["org_002", "sidecar_oldest"]]
+  );
+});
+
+test("Firestore transactions persist sidecar acknowledgement CAS and stale reconciliation", async () => {
+  let counter = 0;
+  const docs = new Map();
+  const db = fakeFirestoreDb(docs);
+  const store = new FirestoreFeeStore({
+    db,
+    now: () => new Date("2026-07-18T00:00:00.000Z"),
+    idFactory: (prefix) => `${prefix}_${String(++counter).padStart(3, "0")}`
+  });
+  const draftInput = acknowledgementSidecarDraftInput({ sidecarDraftId: "sidecar_firestore_ack" });
+  await store.upsertSidecarCalculationDraft(draftInput);
+  const calculated = await store.saveSidecarCalculation("org_123", draftInput.sidecarDraftId, {
+    provider: "test",
+    status: "completed",
+    totalPoints: 890,
+    lineItems: [{
+      lineId: "line_1",
+      code: "114001110",
+      name: "在宅患者訪問診療料",
+      points: 890,
+      totalPoints: 890
+    }]
+  });
+  const calculationBefore = structuredClone(calculated.calculationResult);
+  const acknowledgementInput = {
+    acknowledged: true,
+    expectedSourceRevision: 1,
+    expectedCalculationRevision: 1,
+    expectedAcknowledgementVersion: 0,
+    candidateKey: "line_item:line_1",
+    candidateId: "line_1",
+    candidateFingerprint: "d".repeat(64),
+    updatedByMemberId: "mem_123",
+    updatedByLoginId: "admin@example.com",
+    updatedFromDeviceId: "device_123"
+  };
+  const acknowledged = await store.setSidecarCandidateAcknowledgement(
+    "org_123",
+    draftInput.sidecarDraftId,
+    acknowledgementInput
+  );
+  const repeated = await store.setSidecarCandidateAcknowledgement(
+    "org_123",
+    draftInput.sidecarDraftId,
+    acknowledgementInput
+  );
+
+  assert.equal(acknowledged.changed, true);
+  assert.equal(repeated.changed, false);
+  await assert.rejects(
+    store.setSidecarCandidateAcknowledgement("org_123", draftInput.sidecarDraftId, {
+      ...acknowledgementInput,
+      acknowledged: false
+    }),
+    (error) => error.statusCode === 409
+  );
+  const reconciled = await store.reconcileSidecarCandidateAcknowledgements(
+    "org_123",
+    draftInput.sidecarDraftId,
+    {
+      expectedSourceRevision: 1,
+      expectedCalculationRevision: 1,
+      activeCandidates: [{
+        candidateKey: acknowledgementInput.candidateKey,
+        candidateFingerprint: "e".repeat(64)
+      }],
+      invalidatedByMemberId: "mem_recalculator",
+      invalidatedByLoginId: "recalculator@example.com",
+      invalidatedFromDeviceId: "device_recalculator"
+    }
+  );
+  const stored = docs.get(
+    "organizations/org_123/sidecar_calculation_drafts/sidecar_firestore_ack"
+  );
+
+  assert.equal(reconciled.changed, true);
+  assert.equal(reconciled.invalidated[0].staleReason, "candidate_fingerprint_changed");
+  const [firstAuditEventId] = Object.keys(stored.candidateAcknowledgementAuditOutbox);
+  const completedAudit = await store.completeSidecarCandidateAcknowledgementAudit(
+    "org_123",
+    draftInput.sidecarDraftId,
+    firstAuditEventId
+  );
+  assert.equal(completedAudit.changed, true);
+  assert.equal(stored.candidateAcknowledgements[acknowledgementInput.candidateKey].status, "stale");
+  assert.deepEqual(stored.calculationResult, calculationBefore);
+  assert.equal(stored.calculationResult.totalPoints, 890);
+  assert.ok(db.transactionCount >= 6);
+});
+
+test("Firestore queries pending sidecar acknowledgement audits through a collection group", async () => {
+  const calls = [];
+  const db = {
+    collectionGroup(name) {
+      calls.push(["collectionGroup", name]);
+      return {
+        where(field, operator, value) {
+          calls.push(["where", field, operator, value]);
+          return this;
+        },
+        limit(value) {
+          calls.push(["limit", value]);
+          return this;
+        },
+        async get() {
+          return {
+            docs: [{
+              data: () => ({
+                orgId: "org_123",
+                sidecarDraftId: "sidecar_pending",
+                candidateAcknowledgementAuditPending: true
+              })
+            }]
+          };
+        }
+      };
+    }
+  };
+  const store = new FirestoreFeeStore({ db });
+
+  const drafts = await store.listSidecarDraftsWithPendingAcknowledgementAudits({ limit: 500 });
+
+  assert.deepEqual(calls, [
+    ["collectionGroup", "sidecar_calculation_drafts"],
+    ["where", "candidateAcknowledgementAuditPending", "==", true],
+    ["limit", 100]
+  ]);
+  assert.deepEqual(drafts.map((draft) => draft.sidecarDraftId), ["sidecar_pending"]);
 });
 
 test("Firestore keeps sidecar drafts isolated and adopts exactly once in one transaction", async () => {

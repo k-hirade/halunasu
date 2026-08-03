@@ -5,6 +5,7 @@ import {
   clinicalServiceContextCuesForMention,
   validateCreateFeePatientInput,
   validateCreateFeeSessionInput,
+  validateSidecarCandidateAcknowledgementInput,
   validateSidecarCalculationInput,
   validateUpdateFeeSessionInput,
   validateCreateFeeCalculationInput,
@@ -18,6 +19,55 @@ import {
   splitClinicalEvidenceClauses,
   validateReviewDecisionInput
 } from "../src/index.js";
+
+test("validates sidecar candidate acknowledgement optimistic-lock input", () => {
+  const fingerprint = "a".repeat(64);
+  assert.deepEqual(validateSidecarCandidateAcknowledgementInput({
+    contractVersion: "v1",
+    acknowledged: true,
+    expectedSourceRevision: 2,
+    expectedCalculationRevision: 3,
+    expectedAcknowledgementVersion: 0,
+    candidateFingerprint: fingerprint,
+    candidateKey: "must_be_derived_by_the_server"
+  }), {
+    contractVersion: "v1",
+    acknowledged: true,
+    expectedSourceRevision: 2,
+    expectedCalculationRevision: 3,
+    expectedAcknowledgementVersion: 0,
+    candidateFingerprint: fingerprint
+  });
+
+  for (const invalid of [
+    { acknowledged: "true" },
+    { expectedSourceRevision: 0 },
+    { expectedSourceRevision: "1" },
+    { expectedCalculationRevision: 1.5 },
+    { expectedAcknowledgementVersion: false },
+    { expectedAcknowledgementVersion: -1 },
+    { candidateFingerprint: "A".repeat(64) },
+    { candidateFingerprint: "a".repeat(63) },
+    { candidateFingerprint: ` ${"a".repeat(64)}` }
+  ]) {
+    assert.throws(() => validateSidecarCandidateAcknowledgementInput({
+      contractVersion: "v1",
+      acknowledged: true,
+      expectedSourceRevision: 1,
+      expectedCalculationRevision: 1,
+      expectedAcknowledgementVersion: 0,
+      candidateFingerprint: fingerprint,
+      ...invalid
+    }));
+  }
+  assert.throws(() => validateSidecarCandidateAcknowledgementInput({
+    acknowledged: true,
+    expectedSourceRevision: 1,
+    expectedCalculationRevision: 1,
+    expectedAcknowledgementVersion: 0,
+    candidateFingerprint: fingerprint
+  }), /contractVersion/u);
+});
 
 test("validates structured extraction reject reasons", () => {
   assert.deepEqual(validateReviewDecisionInput({
