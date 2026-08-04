@@ -68,7 +68,7 @@ test("v6 preparation shifts fixture data without changing legacy DOM assets", ()
   }
 });
 
-test("runtime extraction ignores the action list on the legacy DOM", async () => {
+test("v7 runtime crawls legacy DOM history without reading the action list", async () => {
   for (const fixture of fixturePages) {
     const detailPage = await browser.newPage();
     await detailPage.route("http://fixture.local/**", async (route) => {
@@ -122,18 +122,40 @@ test("runtime extraction ignores the action list on the legacy DOM", async () =>
     assert.equal(baselinePrepared.ok, true, `${fixture.patientId}: baseline prepare`);
     assert.equal(
       baselinePrepared.sourceSurfaces.currentChart.raw.deviceManagementListCompleteness,
-      "unknown",
+      "complete",
       fixture.patientId
     );
     assert.equal(
       baselinePrepared.sourceSurfaces.problems.raw.listCompleteness,
-      "incomplete",
+      "complete",
       fixture.patientId
     );
-    assert.equal(baselinePrepared.sourceSurfaces.visitPlan.raw.basis, "schedule_only", fixture.patientId);
+    assert.equal(baselinePrepared.sourceSurfaces.visitPlan.raw.basis, "encounter_history", fixture.patientId);
     assert.equal(
       baselinePrepared.sourceSurfaces.visitPlan.raw.listCompleteness,
-      "incomplete",
+      "complete",
+      fixture.patientId
+    );
+    assert.equal(
+      baselinePrepared.sourceSurfaces.visitPlan.raw.collectionMethod,
+      "chart_navigation",
+      fixture.patientId
+    );
+    assert.equal(baselinePrepared.sourceSurfaces.visitPlan.raw.traversalComplete, true, fixture.patientId);
+    assert.equal(baselinePrepared.sourceSurfaces.visitPlan.raw.calendarReconciled, true, fixture.patientId);
+    assert.equal(
+      baselinePrepared.sourceSurfaces.visitPlan.raw.originalSourceRecordId,
+      baselinePrepared.sourceRecordId,
+      fixture.patientId
+    );
+    assert.equal(
+      baselinePrepared.sourceSurfaces.visitPlan.raw.restoredSourceRecordId,
+      baselinePrepared.sourceRecordId,
+      fixture.patientId
+    );
+    assert.deepEqual(
+      baselinePrepared.sourceSurfaces.visitPlan.raw.rows.map((row) => row.serviceDate),
+      fixture.targetMonthVisitDates.slice().sort(),
       fixture.patientId
     );
     const baselineSourceInput = runtimeCalculationSourceInput(baselinePrepared);

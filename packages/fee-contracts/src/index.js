@@ -259,7 +259,7 @@ export function validateSidecarCalculationInput(input = {}) {
   );
   const sourceSurfaces = validateSidecarSourceSurfaces(
     input.sourceSurfaces ?? input.source_surfaces,
-    { externalPatientId, selectorContractVersion }
+    { externalPatientId, sourceRecordId, selectorContractVersion }
   );
   const proof = validateSidecarExtractionProof(
     input.extractionProof ?? input.extraction_proof,
@@ -527,8 +527,9 @@ function validateSidecarExtractionProof(value, expected) {
 }
 
 function validateSidecarSourceSurfaces(value, expected) {
-  const enhancedSelectionSurfaces = expected.selectorContractVersion === "homis-mock-v6";
-  const required = ["homis-mock-v4", "homis-mock-v5", "homis-mock-v6"]
+  const enhancedSelectionSurfaces = ["homis-mock-v6", "homis-mock-v7"]
+    .includes(expected.selectorContractVersion);
+  const required = ["homis-mock-v4", "homis-mock-v5", "homis-mock-v6", "homis-mock-v7"]
     .includes(expected.selectorContractVersion);
   if (value === undefined || value === null) {
     if (required) {
@@ -563,6 +564,8 @@ function validateSidecarSourceSurfaces(value, expected) {
     ? validateSidecarSourceSurface(value.visitPlan ?? value.visit_plan, {
       name: "visitPlan",
       externalPatientId: expected.externalPatientId,
+      sourceRecordId: expected.sourceRecordId,
+      selectorContractVersion: expected.selectorContractVersion,
       allowUnavailable: true
     })
     : undefined;
@@ -572,9 +575,9 @@ function validateSidecarSourceSurfaces(value, expected) {
       "sourceSurfaces"
     );
   }
-  if (expected.selectorContractVersion === "homis-mock-v6" && (!problems || !visitPlan)) {
+  if (enhancedSelectionSurfaces && (!problems || !visitPlan)) {
     throw validationError(
-      "problems and visitPlan source surfaces are required for homis-mock-v6",
+      `problems and visitPlan source surfaces are required for ${expected.selectorContractVersion}`,
       "sourceSurfaces"
     );
   }
@@ -630,15 +633,15 @@ function validateSidecarSourceSurface(value, options) {
     patientId,
     observedAt,
     surfaceHash,
-    raw: validateSidecarSourceSurfaceRaw(options.name, value.raw, `${field}.raw`)
+    raw: validateSidecarSourceSurfaceRaw(options.name, value.raw, `${field}.raw`, options)
   };
 }
 
-function validateSidecarSourceSurfaceRaw(name, value, field) {
+function validateSidecarSourceSurfaceRaw(name, value, field, options = {}) {
   if (name === "currentChart") return validateSidecarCurrentChartRaw(value, field);
   if (name === "documents") return validateSidecarDocumentsRaw(value, field);
   if (name === "problems") return validateSidecarProblemsRaw(value, field);
-  if (name === "visitPlan") return validateSidecarVisitPlanRaw(value, field);
+  if (name === "visitPlan") return validateSidecarVisitPlanRaw(value, field, options);
   throw validationError(`unsupported source surface: ${name}`, field);
 }
 
@@ -702,7 +705,7 @@ function validateSidecarProblemsRaw(value, field) {
   };
 }
 
-function validateSidecarVisitPlanRaw(value, field) {
+function validateSidecarVisitPlanRaw(value, field, options = {}) {
   if (!isPlainObject(value)) {
     throw validationError(`${field} must be an object`, field);
   }
@@ -712,7 +715,58 @@ function validateSidecarVisitPlanRaw(value, field) {
     ["encounter_history", "schedule_only", "unknown"],
     `${field}.basis`
   ) || "unknown";
-  return {
+  const collectionMethod = optionalEnum(
+    value.collectionMethod ?? value.collection_method,
+    ["chart_navigation"],
+    `${field}.collectionMethod`
+  ) || null;
+  const traversalComplete = hasOwn(value, "traversalComplete") || hasOwn(value, "traversal_complete")
+    ? strictBoolean(
+      value.traversalComplete ?? value.traversal_complete,
+      `${field}.traversalComplete`
+    )
+    : null;
+  const calendarReconciled = hasOwn(value, "calendarReconciled") || hasOwn(value, "calendar_reconciled")
+    ? strictBoolean(
+      value.calendarReconciled ?? value.calendar_reconciled,
+      `${field}.calendarReconciled`
+    )
+    : null;
+  const originalSourceRecordId = optionalBoundedSourceRecordId(
+    value.originalSourceRecordId ?? value.original_source_record_id,
+    `${field}.originalSourceRecordId`
+  );
+  const restoredSourceRecordId = optionalBoundedSourceRecordId(
+    value.restoredSourceRecordId ?? value.restored_source_record_id,
+    `${field}.restoredSourceRecordId`
+  );
+  if (collectionMethod === "chart_navigation") {
+    if (
+      traversalComplete === null
+      || calendarReconciled === null
+      || !originalSourceRecordId
+      || !restoredSourceRecordId
+    ) {
+      throw validationError(
+        `${field} chart_navigation integrity fields are required`,
+        field
+      );
+    }
+    if (
+      options.selectorContractVersion === "homis-mock-v7"
+      && options.sourceRecordId
+      && (
+        originalSourceRecordId !== options.sourceRecordId
+        || restoredSourceRecordId !== options.sourceRecordId
+      )
+    ) {
+      throw validationError(
+        `${field} chart_navigation did not restore the displayed chart`,
+        `${field}.restoredSourceRecordId`
+      );
+    }
+  }
+  const normalized = {
     calendarMonth: optionalClaimMonth(value.calendarMonth ?? value.calendar_month) || null,
     category: multilineStringValue(value.category, 256),
     patternText: multilineStringValue(value.patternText ?? value.pattern_text, 2_000),
@@ -763,6 +817,21 @@ function validateSidecarVisitPlanRaw(value, field) {
       };
     })
   };
+  if (collectionMethod) {
+    normalized.collectionMethod = collectionMethod;
+    normalized.traversalComplete = traversalComplete;
+    normalized.calendarReconciled = calendarReconciled;
+    normalized.originalSourceRecordId = originalSourceRecordId;
+    normalized.restoredSourceRecordId = restoredSourceRecordId;
+  }
+  return normalized;
+}
+
+function optionalBoundedSourceRecordId(value, field) {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+  return boundedRequiredString(value, field, 512);
 }
 
 function boundedObjectRows(value, field, maxItems) {

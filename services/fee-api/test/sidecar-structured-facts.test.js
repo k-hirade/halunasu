@@ -361,6 +361,66 @@ test("counts only typed completed home visits through the selected service date"
   assert.deepEqual(facts.selection.qualifyingMonthlyVisits.serviceDates, ["2026-07-25"]);
 });
 
+test("v7 accepts only restored and reconciled visible-chart navigation as complete history", () => {
+  const sourceRecordId = "homis-visible-record-v1\u001fhomis\u001f1001\u001f2026-07-25\u001f10010725\u001f10:30";
+  const buildFacts = (integrity = {}) => normalizeSidecarStructuredFacts({
+    selectorContractVersion: "homis-mock-v7",
+    serviceDate: "2026-07-25",
+    sourceSurfaces: {
+      currentChart: {
+        status: "ok",
+        surfaceHash: "sha256-current",
+        raw: {
+          calendarMonth: "2026-07",
+          calendarVisitDates: ["2026-07-11", "2026-07-25"],
+          calendarVisitListCompleteness: "complete"
+        }
+      },
+      visitPlan: {
+        status: "ok",
+        surfaceHash: "sha256-plan",
+        raw: {
+          calendarMonth: "2026-07",
+          basis: "encounter_history",
+          listCompleteness: "complete",
+          collectionMethod: "chart_navigation",
+          traversalComplete: true,
+          calendarReconciled: true,
+          originalSourceRecordId: sourceRecordId,
+          restoredSourceRecordId: sourceRecordId,
+          ...integrity,
+          rows: [{
+            serviceDate: "2026-07-11", encounterType: "home_visit",
+            status: "completed", sourceRecordId: "record-0711"
+          }, {
+            serviceDate: "2026-07-25", encounterType: "home_visit",
+            status: "completed", sourceRecordId
+          }]
+        }
+      }
+    }
+  });
+
+  const complete = buildFacts();
+  assert.equal(complete.selection.qualifyingMonthlyVisits.value, 2);
+  assert.equal(complete.selection.qualifyingMonthlyVisits.status, "complete");
+  assert.equal(
+    complete.selection.qualifyingMonthlyVisits.source,
+    "homis.chartNavigation+currentChart.calendar"
+  );
+
+  for (const integrity of [
+    { traversalComplete: false },
+    { calendarReconciled: false },
+    { restoredSourceRecordId: "different-record" },
+    { collectionMethod: null }
+  ]) {
+    const failed = buildFacts(integrity);
+    assert.equal(failed.selection.qualifyingMonthlyVisits.value, null);
+    assert.equal(failed.selection.qualifyingMonthlyVisits.status, "incomplete");
+  }
+});
+
 test("does not collapse distinct same-day encounter records into one monthly visit", () => {
   const facts = normalizeSidecarStructuredFacts({
     selectorContractVersion: "homis-mock-v6",

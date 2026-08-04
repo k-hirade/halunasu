@@ -2389,7 +2389,9 @@ function sidecarSourceRevisionHash(input = {}) {
 }
 
 function assertSidecarSourceSurfaceIntegrity(input = {}) {
-  if (input.extractionProof?.selectorContractVersion !== "homis-mock-v6") {
+  if (!["homis-mock-v6", "homis-mock-v7"].includes(
+    input.extractionProof?.selectorContractVersion
+  )) {
     return;
   }
   for (const [name, surface] of Object.entries(input.sourceSurfaces || {})) {
@@ -8568,7 +8570,8 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
     primaryPreparedWithStandingFacts,
     {
       session: baseSession,
-      facilityProfile: effectiveFacilityProfile
+      facilityProfile: effectiveFacilityProfile,
+      priorSessions: priorSessionsResult.sessions
     }
   );
   const primaryPrepared = await measureStage(stageTimings, "candidateProposalGovernance", () => (
@@ -8781,11 +8784,24 @@ function countCurrentMonthEncounters(session = {}, priorSessions = []) {
 
 function applySidecarSelectionContextToPreparation(prepared = {}, {
   session = {},
-  facilityProfile = {}
+  facilityProfile = {},
+  priorSessions = []
 } = {}) {
   if (session.sourceSystem !== "homis_sidecar") {
     return prepared;
   }
+  const storedSelection = isPlainObject(session.structuredSourceFacts?.selection)
+    ? session.structuredSourceFacts.selection
+    : {};
+  const historyMonthlyVisitFact = completeSidecarMonthlyVisitFactFromHistory(
+    session,
+    priorSessions
+  );
+  const qualifyingMonthlyVisits = trustedCompletePositiveIntegerFact(
+    storedSelection.qualifyingMonthlyVisits
+  )
+    ? storedSelection.qualifyingMonthlyVisits
+    : historyMonthlyVisitFact;
   return {
     ...prepared,
     metrics: {
@@ -8794,12 +8810,106 @@ function applySidecarSelectionContextToPreparation(prepared = {}, {
         facilityStandardKeys: uniqueStrings(facilityProfile.facilityStandardKeys),
         facilityStandardKeysSource: facilityProfile.facilityStandardKeysSource || facilityProfile.source || "",
         setting: session.encounterDetails?.visitKind || session.setting || "",
-        selection: isPlainObject(session.structuredSourceFacts?.selection)
-          ? session.structuredSourceFacts.selection
-          : {}
+        selection: {
+          ...storedSelection,
+          ...(qualifyingMonthlyVisits ? { qualifyingMonthlyVisits } : {})
+        }
       }
     }
   };
+}
+
+function completeSidecarMonthlyVisitFactFromHistory(session = {}, priorSessions = []) {
+  const currentChart = session.sourceSurfaces?.currentChart;
+  const calendarMonth = String(currentChart?.raw?.calendarMonth || "");
+  const serviceDate = String(session.serviceDate || "");
+  const externalPatientId = String(session.externalPatientId || "").trim();
+  const facilityId = String(session.facilityId || "").trim();
+  const selectorContractVersion = String(session.extractionProof?.selectorContractVersion || "");
+  const calendarDates = uniqueStrings(asArrayValue(currentChart?.raw?.calendarVisitDates));
+  if (
+    selectorContractVersion !== "homis-mock-v7"
+    || currentChart?.status !== "ok"
+    || currentChart?.raw?.calendarVisitListCompleteness !== "complete"
+    || !/^\d{4}-\d{2}$/u.test(calendarMonth)
+    || !serviceDate.startsWith(`${calendarMonth}-`)
+    || !externalPatientId
+    || !calendarDates.length
+    || calendarDates.some((date) => !/^\d{4}-\d{2}-\d{2}$/u.test(date) || !date.startsWith(`${calendarMonth}-`))
+  ) {
+    return null;
+  }
+
+  const recordsBySourceId = new Map();
+  for (const record of [session, ...asArrayValue(priorSessions)]) {
+    if (String(record?.sourceSystem || "") !== "homis_sidecar") continue;
+    if (String(record?.externalPatientId || "").trim() !== externalPatientId) continue;
+    if (facilityId && String(record?.facilityId || "").trim() !== facilityId) continue;
+    const recordDate = String(record?.serviceDate || "");
+    const sourceRecordId = String(record?.sourceRecordId || "").trim();
+    const setting = String(record?.setting || "").trim();
+    if (
+      !recordDate.startsWith(`${calendarMonth}-`)
+      || !sourceRecordId
+      || record?.encounterTypeSource !== "dom"
+      || !["home_visit", "house_call", "outpatient"].includes(setting)
+    ) {
+      continue;
+    }
+    const normalized = {
+      serviceDate: recordDate,
+      encounterType: setting,
+      visitKind: record?.encounterDetails?.visitKind || null,
+      sourceRecordId
+    };
+    const existing = recordsBySourceId.get(sourceRecordId);
+    if (existing && JSON.stringify(existing) !== JSON.stringify(normalized)) {
+      return null;
+    }
+    recordsBySourceId.set(sourceRecordId, normalized);
+  }
+
+  const records = [...recordsBySourceId.values()];
+  if (!records.length || new Set(records.map((record) => record.serviceDate)).size !== records.length) {
+    return null;
+  }
+  if (!sameSidecarStringSet(new Set(calendarDates), new Set(records.map((record) => record.serviceDate)))) {
+    return null;
+  }
+  const serviceDates = uniqueStrings(records
+    .filter((record) => record.encounterType === "home_visit" && record.serviceDate <= serviceDate)
+    .map((record) => record.serviceDate));
+  if (!serviceDates.length) {
+    return null;
+  }
+  const revisionPayload = records
+    .slice()
+    .sort((left, right) => left.sourceRecordId.localeCompare(right.sourceRecordId));
+  return {
+    value: serviceDates.length,
+    status: "complete",
+    completeness: "complete",
+    source: "fee.sidecarHistory+homis.currentChart.calendar",
+    sourceRevision: crypto.createHash("sha256").update(JSON.stringify({
+      calendarMonth,
+      calendarDates: [...calendarDates].sort(),
+      records: revisionPayload
+    })).digest("hex"),
+    serviceDates
+  };
+}
+
+function trustedCompletePositiveIntegerFact(value) {
+  if (!isPlainObject(value) || !["known", "complete"].includes(String(value.status || ""))) {
+    return false;
+  }
+  const count = Number(value.value);
+  return Number.isInteger(count) && count > 0;
+}
+
+function sameSidecarStringSet(left, right) {
+  if (left.size !== right.size) return false;
+  return [...left].every((value) => right.has(value));
 }
 
 async function applyStandingFactsToPreparation(prepared = {}, {

@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { analyzeSidecarV6Migration } from "./audit_homis_sidecar_v5_migration.mjs";
+import {
+  analyzeSidecarV6Migration,
+  analyzeSidecarV7Migration
+} from "./audit_homis_sidecar_v5_migration.mjs";
 
 function adoptedDraft(overrides = {}) {
   return {
@@ -67,4 +70,15 @@ test("migration audit blocks two adopted legacy drafts for the same visit", () =
     draftRef: result.report.fingerprintErrors[0].draftRef,
     reason: "duplicate_adopted_visit_fingerprint"
   }]);
+});
+
+test("v7 migration audit treats an active v6 draft as a rollout blocker", () => {
+  const result = analyzeSidecarV7Migration([adoptedDraft({
+    lifecycleStatus: "draft",
+    adoptedFeeSessionId: null,
+    extractionProof: { selectorContractVersion: "homis-mock-v6" }
+  })], [], { facilityId: "fac_001" });
+  assert.equal(result.report.selectorContractTarget, "homis-mock-v7");
+  assert.equal(result.report.activeOldDraftCount, 1);
+  assert.deepEqual(result.report.blockerCodes, ["active_old_drafts_present"]);
 });

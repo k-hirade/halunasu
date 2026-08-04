@@ -26,7 +26,8 @@ export function normalizeSidecarStructuredFacts({
   selectorContractVersion = null,
   observedAt = null
 } = {}) {
-  const enhancedSelectionSurfaces = selectorContractVersion === "homis-mock-v6";
+  const enhancedSelectionSurfaces = ["homis-mock-v6", "homis-mock-v7"]
+    .includes(selectorContractVersion);
   const current = sourceSurfaces.currentChart;
   const documents = sourceSurfaces.documents;
   const problemsSurface = sourceSurfaces.problems;
@@ -80,7 +81,8 @@ export function normalizeSidecarStructuredFacts({
     currentSurface: enhancedSelectionSurfaces ? current : null,
     planSurface: enhancedSelectionSurfaces ? visitPlanSurface : null,
     rows: monthlyEncounterRows,
-    serviceDate
+    serviceDate,
+    selectorContractVersion
   });
 
   return {
@@ -244,8 +246,17 @@ function normalizeMonthlyEncounterRow(value) {
   };
 }
 
-function qualifyingMonthlyVisitFact({ currentSurface, planSurface, rows, serviceDate }) {
-  const source = "homis.encounterHistory+currentChart.calendar";
+function qualifyingMonthlyVisitFact({
+  currentSurface,
+  planSurface,
+  rows,
+  serviceDate,
+  selectorContractVersion
+}) {
+  const v7Navigation = selectorContractVersion === "homis-mock-v7";
+  const source = v7Navigation
+    ? "homis.chartNavigation+currentChart.calendar"
+    : "homis.encounterHistory+currentChart.calendar";
   const sourceRevision = combinedSourceRevision(
     currentSurface?.surfaceHash,
     planSurface?.surfaceHash
@@ -271,8 +282,18 @@ function qualifyingMonthlyVisitFact({ currentSurface, planSurface, rows, service
   const calendarMonth = String(currentSurface.raw?.calendarMonth || "");
   const validServiceDate = isIsoDate(serviceDate) && validDateOnly(serviceDate);
   const serviceMonth = validServiceDate ? serviceDate.slice(0, 7) : "";
+  const originalSourceRecordId = nullableString(planSurface.raw?.originalSourceRecordId);
+  const restoredSourceRecordId = nullableString(planSurface.raw?.restoredSourceRecordId);
+  const v7IntegrityComplete = !v7Navigation || (
+    planSurface.raw?.collectionMethod === "chart_navigation"
+    && planSurface.raw?.traversalComplete === true
+    && planSurface.raw?.calendarReconciled === true
+    && Boolean(originalSourceRecordId)
+    && originalSourceRecordId === restoredSourceRecordId
+  );
   if (
     basis !== "encounter_history"
+    || !v7IntegrityComplete
     || planCompleteness !== "complete"
     || calendarCompleteness !== "complete"
     || !serviceMonth

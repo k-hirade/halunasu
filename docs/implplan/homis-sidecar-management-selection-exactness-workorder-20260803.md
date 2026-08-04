@@ -1,7 +1,7 @@
 # HOMIS Sidecar 管理料区分 13/13 exact 化ワークオーダー
 
 - 作成日: 2026-08-03
-- status: mock DOM constraint corrected / 13-patient remeasurement pending
+- status: homis-mock-v7 implemented / verification and 13-patient remeasurement pending
 - 対象: `clients/homis-sidecar`、`services/fee-api`、mock HOMIS 評価ハーネス
 - 目的: 現行の令和8年度 `sidecar-selection-axes` artifactを変えず、正当なHOMIS入力を補完して、mock 13患者の在医総管・施医総管を `13/13` で正しい1コードへ絞る。
 
@@ -66,6 +66,93 @@
 
 新データと旧DOMを組み合わせた13患者の判定結果は、評価担当者が別途測定する。本書では
 件数や達成率を先取りして記録しない。行為欄は引き続きruntime入力に使用しない。
+
+### 2.4 AS-IS / TO-BE（2026-08-04合意）
+
+#### AS-IS（v7導入前）
+
+v7導入前のSidecarがカルテ本文としてruntime抽出していたのは、HOMISで表示中の1カルテである。
+病名、書類、診療予定は補助画面から取得するが、HOMISの「前のカルテ／次のカルテ」を
+巡回して対象月の実績カルテを収集してはいない。
+
+Fee APIは過去のfee sessionとSidecar draftを参照する。しかし、既存の
+`countCurrentMonthEncounters` は同月sessionを受診種別に関係なく数えるため、電話再診、
+外来、往診をC002/C002-2の定期訪問回数へ混入させ得る。この件数は管理料区分の
+`qualifyingMonthlyVisits` の正本にしない。現行の管理料narrowingが使うのは
+`structuredSourceFacts.selection.qualifyingMonthlyVisits` であり、診療予定面だけから作った
+`basis=schedule_only` は完全な実績履歴ではないため `incomplete` になる。
+
+疾病等判定は、有効な病名・状態・機器の陽性根拠があれば、一覧の完全性が不明でも
+`eligible` にできる。一方、該当語が見つからないことだけでは非該当を証明できず、病名面と
+状態管理面の両方がcompleteでない限り `not_eligible` にできない。旧DOMにはその全件性を
+直接示す専用マーカーがない。
+
+#### TO-BE（v7で実装）
+
+1. 表示中カルテの患者ID、record ID、診療日、受診種別とsource fingerprintを固定する。
+2. Fee APIは、v7の現在カルテにある完全なカレンダーと日付集合が一致する場合だけ、現在および
+   過去のSidecar sessionを当月履歴として再利用する。同一患者・施設・対象月、record ID、
+   DOM由来受診種別を満たさない行や、保存件数だけから完全性を推測した値は使わない。
+3. Sidecarは算定準備時にHOMISカレンダーの対象月について既存の「前のカルテ／次のカルテ」を
+   巡回する。開始位置が月途中でも取りこぼさないよう、新しい方向の境界を確認してから古い方向へ
+   対象月を通過するまで走査する。Fee APIのDB履歴fallbackはこのDOM巡回とは独立して照合する。
+4. 各カルテから許可された患者ID、record ID、診療日、受診種別だけを収集し、record IDで
+   dedupする。電話再診、外来、臨時往診は定期訪問回数へ含めない。
+5. カレンダーと巡回結果を照合し、対象月の履歴が完全と証明できた場合だけ
+   `basis=encounter_history`、`listCompleteness=complete` として
+   `qualifyingMonthlyVisits` を生成する。
+6. 巡回後は元のrecordへ戻し、患者ID、record ID、診療日、fingerprintが開始時と一致することを
+   再確認する。復元後の表示中カルテから通常の算定snapshotを改めて作る。
+7. 月1回なら疾病等軸を適用せず月1回区分へ絞る。月2回以上では、陽性根拠を自動採用し、
+   安全なnegative proofがある場合だけ通常区分へ絞る。それ以外は `unknown` とし、将来の
+   手動補完対象にする。
+
+カルテ巡回では、mock専用の `window.KARTE_HTML`、`window.KARTE_DATES`、患者fixtureへ
+アクセスしない。実HOMISにも存在する日めくり操作と可視DOMだけを使う。また、現在・過去を
+問わず `#action_list`、`.koui-area`、`.koui-item` とその子孫は抽出、完全性判定、hash、
+停止条件のすべてから除外する。
+
+### 2.5 exactの停止条件
+
+次のいずれかが発生した場合は当月履歴を `incomplete` または `conflict` とし、区分を
+一意化しない。
+
+- 巡回中に患者IDが変わる、record IDまたは診療日を取得できない、並び順が逆転する
+- 画面遷移のtimeout、同一recordでの予期しない停止、巡回上限超過
+- カレンダーにある日付を履歴で説明できない、または履歴のrecordをカレンダーと照合できない
+- 同一record IDに異なる内容がある、同一日複数recordの全件性を証明できない
+- 表示中カルテを開始時のrecordへ復元できない、または復元後fingerprintが一致しない
+- DB履歴と新規DOM抽出で受診種別、状態、患者、施設、対象月が矛盾する
+- 実HOMISの画面契約で「カルテが存在すること=実施済み」を保証できない
+- selector contractが未対応、または対象年度の制度artifactが存在しない
+
+巡回開始後に利用者がカルテを操作した場合も競合として中断する。巡回のためのDOM mutationと
+通常の自動再読取を分離し、途中カルテを別の算定requestとして送らない。件数が1件に見える、
+病名が見つからない、またはtimeoutしたことを理由に月1回・非該当へdefaultしない。
+
+### 2.6 疾病等のnegative proofと手動補完
+
+自動判定の優先順位を次のように固定する。
+
+1. 診療日時点で有効な対象疾病・状態・機器の陽性根拠がある場合は `eligible`。
+2. 実HOMISの版管理された画面/API契約により病名面と状態管理面の全件性が証明され、対象根拠が
+   ない場合は `not_eligible`。
+3. 全件性を証明できない場合は `unknown` とする。将来の手動補完では、Sidecarで人が「対象／対象外／未確認」を選ぶ。
+
+v7で実装済みなのは上記1と2、およびcompleteでなければ `unknown` に戻す境界である。疾病等軸の
+手動確認保存は未実装で、将来実装する場合は患者・施設・対象月、判断値、actor、判断日時、
+根拠artifact revision、確認時の病名面・状態管理面source revisionをFee APIへ保存する。
+病名、機器、対象月、selector contract、artifact revisionのいずれかが変わった場合はstaleにし、
+新しい陽性根拠と手動の `対象外` が衝突した場合は陽性根拠を優先する。手動確認を追加しても
+既存のcandidate-only/review-required境界は維持する。
+
+### 2.7 旧2025年mockのartifact要件
+
+旧mockの診療日は2025年1月であり、令和8年度C002/C002-2疾病等artifactの適用開始前である。
+現行2026 artifactを過去日へ遡及適用してexactにしてはならない。旧mockも制度日時点で判定する
+場合は、2025年1月に適用可能なC002/C002-2疾病等artifactとselection artifactを別versionで
+用意し、`serviceDate` により選択する。対応artifactがなければ `artifact_not_effective` として
+fail closedにする。offlineの行為欄goldへ合わせるために現行artifactの有効期間を広げない。
 
 ## 3. 入力境界
 
@@ -139,7 +226,7 @@ raw値は上書きせず、導出値と根拠を別フィールドに残す。�
 ### MS3: 種別付き月内受診集約
 
 - 日付だけの `calendarVisitDates` を `currentMonthEncounterCount` の正本にしない。
-- HOMISの診療予定・受診履歴面、または保存済みSidecar履歴から、少なくとも `serviceDate`、`setting/visitKind`、`status`、`sourceRecordId` を持つ受診行を取得する。
+- v7 Sidecarは可視カルテを日めくりし、少なくとも `serviceDate`、`setting/visitKind`、`status`、`sourceRecordId` を持つ受診行を作る。Fee APIは別経路として、カレンダーと完全一致する保存済みSidecar履歴だけをfallbackに使う。
 - 同一患者、施設、対象月、同一recordをdedupして集約する。
 - C002/C002-2の回数に含める受診種別は一次資料に基づく版管理ルールにする。電話再診、外来、臨時往診を単純に定期訪問回数へ加算しない。
 - カレンダーに存在する全日付の種別を確認できない場合は `incomplete` とし、回数軸を適用しない。
@@ -156,7 +243,7 @@ mockへ新しい履歴表やhidden metadataを追加してはならない。旧D
 - authenticated same-origin fetchでHOMIS病名画面を取得し、`problems` source surfaceを追加する。
 - 患者ID一致、selector contract、timeout、unavailable reason、proof sealを既存の書類面と同じ契約で実装する。
 - 病名は名称だけでなく、状態、有効期間、疑い、転帰が画面にあれば構造化して保持する。
-- `homis-mock-v6` を追加し、旧v5では疾病等を `unknown` のままfail closedにする。
+- 現行selector contractを `homis-mock-v7` とする。v7では `problems` と `visitPlan` を必須surfaceにし、旧v5では疾病等を `unknown` のままfail closedにする。v6はrollout互換として受理する。
 - C002/C002-2専用の疾病等artifactを一次資料から生成する。別制度向け疾病表を流用しない。
 - resolverは `eligible|not_eligible|unknown` と、該当根拠、artifact revisionを返す。
 - `eligible` は有効な陽性根拠がある場合だけ確定する。
@@ -193,25 +280,27 @@ mockへ新しい履歴表やhidden metadataを追加してはならない。旧D
 6. STG 13/13のartifact revision、request/source hash、applied filtersを保存。
 7. wrong exactが0であることを確認してからprodへ進む。
 
-### 実装結果の訂正（2026-08-04）
+### 実装結果（2026-08-04、`homis-mock-v7`）
 
-- selector contractを `homis-mock-v6` へ更新した。v6では `problems` と `visitPlan` source surfaceを必須とし、旧v5から同名surfaceを送ってもvalidator/normalizerは選択根拠として採用しない。
+- extensionの既定selector contractを `homis-mock-v7` へ更新した。v7は `currentChart`、`documents`、`problems`、`visitPlan` surfaceを送り、v6はrollout互換として受理する。旧v5の同名surfaceは疾病等・月内回数の選択根拠にしない。
+- 算定準備時にSidecarが可視の「次のカルテ／前のカルテ」を新しい側から古い側へ最大100遷移まで巡回する。患者、record、診療日、時刻、受診種別を安定読取し、対象月と巡回方向から1月/12月の年境界を補正する。並び順、未知種別、同日複数record、timeout、境界不整合ではcompleteにしない。
+- 巡回中は通常のカルテ変更通知を抑止する。終了時に元recordへ戻してidentityとpreview fingerprintを再検証し、復元できなければ算定を停止する。
+- 巡回行がカレンダー日付集合と完全一致した場合だけ、既存の `visitPlan` surfaceを `basis=encounter_history`、`collectionMethod=chart_navigation`、`traversalComplete=true`、`calendarReconciled=true` で置き換える。巡回不能時は補助画面由来の `schedule_only/incomplete` を維持する。
+- Fee contractsとFee APIは、v7のchart-navigation integrity fields、開始・復元record一致、surface hashを検証する。v7 requestでは復元・照合済みhistoryだけを `qualifyingMonthlyVisits` に採用し、`home_visit` だけを診療日以前の回数へ数える。v6は移行互換として従来契約を維持する。
+- Fee APIの履歴fallbackは、v7の完全な現在カレンダーに対し、現在および過去のSidecar sessionから同一患者・施設・対象月、record IDあり、`encounterTypeSource=dom` の行だけを集約する。record競合、同日複数record、日付集合不一致では再利用せず、保存件数だけを回数へ変換しない。
+- v7の病名面は、表が存在し全行を解析でき、追加ページがない場合にcompleteとする。状態管理面は明示的な「登録なし」、または空・読込中・エラーでない表示をcompleteとする。この全件性契約はmock provider向けであり、実HOMISへの適用はSTG確認を残す。
 - 個人宅1人の導出根拠revisionには、居住区分・同一建物区分を含むrequest全体の `sourceRevisionHash` を使う。selector contract versionもrevision hashへ含める。
-- C002/C002-2疾病等artifactは、令和8年別表第八の二の直接疾病・状態と指定難病348件を版・checksum付きで固定した。未来開始病名、疑い、時点を証明できない病名はfail closedにする。
-- `clients/homis-sidecar/test/management-selection-fixture.test.mjs` は、期間shift後も旧DOMを維持し、行為欄の変更がruntime抽出入力へ入らないことだけをfixture側の回帰条件とする。13患者の区分結果はこのテストで合格扱いにしない。
-- 2026-08-03に追加した病名・状態管理の完全性マーカーと当月受診履歴テーブルは削除した。`render.py`、`app.py`、CSS、JavaScriptなど非データ実装は旧mockと同一にする。
-- Fee APIは各v6 surfaceの正規化rawをcanonical JSONへ変換してhashを再計算し、クライアント申告hashとの不一致を400で拒否する。確認済み状態の失効に使うsource revisionへ、未検証hashを採用しない。
-- C002/C002-2の複合条件は病名面と状態管理面を横断して照合する。同日異recordは1回へ縮約せず `incomplete` とする。両方に回帰テストを置いた。
-- 旧DOMを変更して得た `exactMatchCount=13` は無効化した。再測定値は評価担当者が確定するまで未記載とする。
-- 別のFee API route integration testで手書きのv6 surface 1症例が保存後の `sidecarSelectionContext` まで到達し、候補がexactになってもcandidate-onlyとreview-requiredを維持することを確認した。Side PanelからFee APIまで13症例を連続実行するMS6の単一E2Eは未実施であり、prod受入条件として残す。
-- 残作業は、旧DOMから取得可能な既存情報だけで月内受診種別と一覧完全性を構成する方法の確認、および評価担当者による13症例の再測定である。
+- C002/C002-2疾病等artifactは、令和8年別表第八の二の直接疾病・状態と指定難病348件を版・checksum付きで固定した。未来開始病名、疑い、時点を証明できない病名はfail closedにする。複合条件は病名面と状態管理面を横断して照合する。
+- `prepare_homis_mock_v6.py` は日付shift用コマンド名として残るが、生成後のDOM、CSS、JavaScriptへ完全性マーカー、履歴表、hidden metadataを追加しない。v7 runtimeも `window.KARTE_HTML`、`window.KARTE_DATES`、行為欄を入力にしない。
+- chart crawl・復元・未知種別・同日複数record、v7 integrity、DB履歴照合、行為欄mutation、candidate-only/review-required境界の回帰テストを追加した。
+- 旧DOMを変更して得た `exactMatchCount=13` は無効のままである。Side PanelからFee APIまで13症例を連続実行するMS6とSTG再測定は未実施で、prod受入条件として残す。
 
 ### デプロイと移行順
 
 1. C002 artifactの `--check`、extension/Fee APIテスト、mock DOM parity検証を実行する。
-2. v6 selector contractを許可するFee APIをSTGへ先にデプロイする。
-3. `npm run audit:homis-sidecar-v6-migration` を実行し、STGでv5入力の残存状況とv6受入状態を確認する。
-4. v6 Sidecar extensionをSTGへ配布し、実HOMISの各一覧面と完全性判定を確認する。
+2. v7 selector contractを許可するFee APIをSTGへ先にデプロイする。
+3. `npm run audit:homis-sidecar-v7-migration` を実行し、STGでv6以前のactive draft/sessionとv7受入状態を確認する。
+4. v7 Sidecar extensionをSTGへ配布し、実HOMISの日めくり順序、完了状態、カレンダー、病名・状態管理面の全件性判定を確認する。
 5. 実HOMISで表示される別表第八の二の全状態表現をartifactへmappingできることを陽性fixtureで確認する。未収載の表現がある面を `complete` として扱わない。
 6. MS6の単一E2EとSTG 13/13を満たすまでprodへ進めない。prodもFee APIを先、extensionを後にする。
 
@@ -247,3 +336,23 @@ mockへ新しい履歴表やhidden metadataを追加してはならない。旧D
 - mock gold boundary: `tmp/mock_homis/data/patients.py`
 - official R8 source index: https://www.mhlw.go.jp/stf/newpage_67729.html
 - current C002/C002-2 table: https://www.mhlw.go.jp/web/t_doc?dataId=84aa9729&dataType=0&pageNo=7
+
+## 8. アーキテクチャレビューとリスク
+
+| 重要度 | リスク | 対応 |
+| --- | --- | --- |
+| Critical | 実HOMISで「カルテが存在すること」が実施済みを意味する保証がない場合、予定・中止を実績として数え得る | STGで画面/APIの状態意味を確認し、版管理selector contractへ固定する。保証できない環境では月内回数を `incomplete` にする |
+| Critical | カレンダーが予定日と実績日を混在させる場合、日付集合は完全性の正本にならない | 日めくり履歴の境界到達を全件性の主証拠にし、カレンダーは意味が確認済みの場合だけreconciliationへ使う |
+| High | 同一日に電話再診と定期訪問など複数recordがあると、日付集合だけではrecord件数を証明できない | v7はカレンダー一致で巡回を早期終了せず月境界まで走査し、同日複数recordを `incomplete` にする。算入規則を確定するまで縮約しない |
+| High | 巡回中のDOM mutationが自動読取や利用者操作と競合し、途中カルテを算定する可能性がある | v7は巡回中の変更通知を抑止し、安定読取と元record復元後のidentity/fingerprint再検証を必須にする。復元失敗時は算定を停止する |
+| High | DBの過去session/draftが古いDOM、別selector version、誤った受診種別から作られている可能性がある | 現行fallbackは現在requestがv7で、同一患者・施設・月、record ID、DOM由来受診種別、カレンダー日付集合の完全一致を満たす場合だけ再利用する。rollout前にv7 migration auditも実行する |
+| High | `#pdetail_karte` 全体のinnerText/innerHTML/hashを使うと、禁止対象の行為欄が間接的にsource proofへ混入する | allowlistした構造化rawだけをhashし、行為欄の文言・要素数・有無を変更するmutation testでrequest/source revision/responseの不変を検証する |
+| High | 一覧に対象疾病がないことを、全件性なしで非該当と誤判定する | 陽性は自動、陰性はcompleteな2 surfaceだけに限定する。手動補完は未実装で、追加時はrevision付きにする |
+| Medium | 手動の `対象外` が病名・機器更新後も残り続ける | source/artifact/selector revision変更時にstale化し、陽性根拠との競合は陽性優先で監査する |
+| Medium | 2025年データを2026 artifactで判定すると制度時点が壊れる | `serviceDate` でartifactを選び、過去版がなければexactにしない |
+| Medium | 全履歴巡回は画面のちらつき、処理時間、HOMIS負荷を増やす | v7は対象月と境界確認、最大100遷移、遷移timeout、必須の元record復元に制限する。crawl省略cacheは将来最適化とする |
+
+この方式で完全自動exactが成立する条件は、実HOMISについて、日めくりが対象患者のカルテを
+単調順序で漏れなく列挙すること、各recordの実施状態を判別できること、病名・状態一覧の全件性を
+証明できることの3点である。いずれかを証明できない症例では、ロジックで欠落情報を推測せず、
+回数軸は `incomplete`、疾病等軸は `unknown` に戻す。手動補完は将来範囲とする。

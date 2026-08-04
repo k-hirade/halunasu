@@ -486,6 +486,47 @@ test("validates homis-mock-v6 multi-surface inputs and matching surface proofs",
   assert.equal(input.sourceSurfaces.visitPlan.raw.rows[0].sourceRecordId, "10010704");
   assert.equal(input.extractionProof.surfaceProofs.documents.status, "unavailable");
 
+  const v7Input = validateSidecarCalculationInput({
+    ...input,
+    sourceSurfaces: {
+      ...input.sourceSurfaces,
+      visitPlan: {
+        ...input.sourceSurfaces.visitPlan,
+        raw: {
+          ...input.sourceSurfaces.visitPlan.raw,
+          collectionMethod: "chart_navigation",
+          traversalComplete: true,
+          calendarReconciled: true,
+          originalSourceRecordId: sourceRecordId,
+          restoredSourceRecordId: sourceRecordId
+        }
+      }
+    },
+    extractionProof: {
+      ...input.extractionProof,
+      selectorContractVersion: "homis-mock-v7"
+    }
+  });
+  assert.equal(v7Input.sourceSurfaces.visitPlan.raw.collectionMethod, "chart_navigation");
+  assert.equal(v7Input.sourceSurfaces.visitPlan.raw.traversalComplete, true);
+  assert.equal(v7Input.sourceSurfaces.visitPlan.raw.calendarReconciled, true);
+  assert.equal(v7Input.sourceSurfaces.visitPlan.raw.originalSourceRecordId, sourceRecordId);
+  assert.equal(v7Input.sourceSurfaces.visitPlan.raw.restoredSourceRecordId, sourceRecordId);
+
+  assert.throws(() => validateSidecarCalculationInput({
+    ...v7Input,
+    sourceSurfaces: {
+      ...v7Input.sourceSurfaces,
+      visitPlan: {
+        ...v7Input.sourceSurfaces.visitPlan,
+        raw: {
+          ...v7Input.sourceSurfaces.visitPlan.raw,
+          restoredSourceRecordId: "another-record"
+        }
+      }
+    }
+  }), /did not restore the displayed chart/u);
+
   const legacy = validateSidecarCalculationInput({
     ...input,
     extractionProof: {

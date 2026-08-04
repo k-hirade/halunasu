@@ -9792,6 +9792,183 @@ test("sidecar v6 structured surfaces reach management selection through the Fee 
   assert.equal(candidate.billingEligibility, "review_required");
 });
 
+test("sidecar v7 reuses only calendar-reconciled DOM encounter history for management selection", async () => {
+  const stores = createStores({ facilityStandardKeys: ["3055", "3057"] });
+  const originalCalculate = stores.feeCalculator.calculate;
+  const selectionArtifact = JSON.parse(readFileSync(new URL(
+    "../src/fee-rule-data/sidecar-selection-axes-2026.generated.json",
+    import.meta.url
+  ), "utf8"));
+  const homeManagementCodes = selectionArtifact.options
+    .filter((option) => option.familyName === "在医総管")
+    .map((option) => option.code);
+  stores.feeCalculator.calculate = async (feeSession) => {
+    const calculated = await originalCalculate(feeSession);
+    return {
+      ...calculated,
+      candidateProposals: [
+        ...(Array.isArray(calculated.candidateProposals) ? calculated.candidateProposals : []),
+        {
+          proposalId: "v7_history_management_selection",
+          title: "在医総管の算定区分確認",
+          orderType: "procedure",
+          potentialPoints: 0,
+          codeCandidates: homeManagementCodes,
+          source: "test:v7_history_management_selection"
+        }
+      ]
+    };
+  };
+
+  const observedAt = "2026-05-28T00:00:00.000Z";
+  const calendarDates = ["2026-05-14", "2026-05-28"];
+  const buildRequest = ({ serviceDate, sourceRecordId, displayId, setting, visitKind = null }) => {
+    const base = sidecarCalculationBody();
+    const sourceSurfaces = {
+      currentChart: {
+        status: "ok",
+        patientId: "1001",
+        observedAt,
+        surfaceHash: "",
+        raw: {
+          careInsuranceText: "要介護2",
+          visitingNurseText: "",
+          deviceManagementText: "（在宅医療機器の登録なし）",
+          deviceManagementListCompleteness: "complete",
+          prescriptionRows: [],
+          patientStartDate: "2020-01-01",
+          calendarMonth: "2026-05",
+          calendarVisitDates: calendarDates,
+          calendarVisitListCompleteness: "complete"
+        }
+      },
+      documents: {
+        status: "ok",
+        patientId: "1001",
+        observedAt,
+        surfaceHash: "",
+        raw: { rows: [] }
+      },
+      problems: {
+        status: "ok",
+        patientId: "1001",
+        observedAt,
+        surfaceHash: "",
+        raw: {
+          listCompleteness: "complete",
+          rows: [{
+            name: "高血圧症",
+            main: true,
+            startDate: "2020-01-01",
+            outcome: "継続",
+            suspected: false
+          }]
+        }
+      },
+      visitPlan: {
+        status: "ok",
+        patientId: "1001",
+        observedAt,
+        surfaceHash: "",
+        raw: {
+          calendarMonth: "2026-05",
+          category: "在宅診療",
+          patternText: "第2・4週",
+          basis: "schedule_only",
+          listCompleteness: "incomplete",
+          rows: calendarDates.map((date) => ({
+            serviceDate: date,
+            encounterType: "home_visit",
+            visitKind: null,
+            status: "planned",
+            sourceRecordId: null
+          }))
+        }
+      }
+    };
+    for (const surface of Object.values(sourceSurfaces)) {
+      surface.surfaceHash = testSidecarSurfaceHash(surface);
+    }
+    return {
+      ...base,
+      sourceRecordId,
+      sourceRecordDisplayId: displayId,
+      serviceDate,
+      setting,
+      encounterTypeSource: "dom",
+      visitKind,
+      visitKindSource: visitKind ? "dom" : null,
+      residenceType: "private",
+      sameBuilding: false,
+      sameBuildingSource: "dom",
+      singleBuildingPatientCount: null,
+      sourceSurfaces,
+      extractionProof: {
+        ...base.extractionProof,
+        patientIdBefore: "1001",
+        patientIdAfter: "1001",
+        sourceRecordIdBefore: sourceRecordId,
+        sourceRecordIdAfter: sourceRecordId,
+        selectorContractVersion: "homis-mock-v7",
+        surfaceProofs: Object.fromEntries(Object.entries(sourceSurfaces).map(([name, surface]) => [
+          name,
+          {
+            status: surface.status,
+            patientId: surface.patientId,
+            observedAt: surface.observedAt,
+            surfaceHash: surface.surfaceHash
+          }
+        ]))
+      }
+    };
+  };
+  const options = sidecarRequestOptions({
+    sidecarAllowedSelectorContractVersions: ["homis-mock-v7"]
+  });
+  const headers = await signedSidecarHeaders(stores);
+  const telephone = await request(
+    stores,
+    "POST",
+    "/v1/integrations/sidecar/calculate",
+    buildRequest({
+      serviceDate: "2026-05-14",
+      sourceRecordId: "homis-record-v7-20260514",
+      displayId: "10010514",
+      setting: "outpatient",
+      visitKind: "telephone_revisit"
+    }),
+    headers,
+    options
+  );
+  assert.equal(telephone.statusCode, 201);
+
+  const homeVisit = await request(
+    stores,
+    "POST",
+    "/v1/integrations/sidecar/calculate",
+    buildRequest({
+      serviceDate: "2026-05-28",
+      sourceRecordId: "homis-record-v7-20260528",
+      displayId: "10010528",
+      setting: "home_visit"
+    }),
+    headers,
+    options
+  );
+  assert.equal(homeVisit.statusCode, 201);
+  const candidate = homeVisit.body.sidecarDraft.calculation.candidates.find((item) => (
+    item.candidateId === "v7_history_management_selection"
+  ));
+  assert.ok(candidate);
+  assert.equal(candidate.selectionResolution, "exact");
+  assert.equal(candidate.selectionNarrowing.remainingOptions[0].code, "114031310");
+  const monthlyFilter = candidate.selectionNarrowing.appliedFilters.find((filter) => (
+    filter.axis === "monthlyVisits"
+  ));
+  assert.equal(monthlyFilter.value, 1);
+  assert.equal(monthlyFilter.evidenceSource, "fee.sidecarHistory+homis.currentChart.calendar");
+});
+
 test("sidecar calculation remains candidate-only and isolated until explicit adoption", async () => {
   const stores = createStores();
   const originalCalculate = stores.feeCalculator.calculate;

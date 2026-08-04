@@ -6,17 +6,30 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { sidecarVisitAdoptionFingerprint } from "../packages/fee-core/src/sidecar-drafts.js";
 
-const OLD_SELECTOR_CONTRACTS = new Set([
+const LEGACY_SELECTOR_CONTRACTS = Object.freeze([
   "homis-mock-v2",
   "homis-mock-v3",
   "homis-mock-v4",
-  "homis-mock-v5"
+  "homis-mock-v5",
+  "homis-mock-v6"
 ]);
-const CURRENT_SELECTOR_CONTRACT = "homis-mock-v6";
+const CURRENT_SELECTOR_CONTRACT = "homis-mock-v7";
 const DEFAULT_MAX_DRAFTS = 10_000;
 
-export function analyzeSidecarV6Migration(drafts = [], guards = [], options = {}) {
+export function analyzeSidecarV7Migration(drafts = [], guards = [], options = {}) {
   const facilityId = required(options.facilityId, "facilityId");
+  const targetSelectorContract = String(
+    options.targetSelectorContract || CURRENT_SELECTOR_CONTRACT
+  );
+  if (!["homis-mock-v6", "homis-mock-v7"].includes(targetSelectorContract)) {
+    throw new TypeError("targetSelectorContract must be homis-mock-v6 or homis-mock-v7");
+  }
+  const targetIndex = LEGACY_SELECTOR_CONTRACTS.indexOf(targetSelectorContract);
+  const oldSelectorContracts = new Set(
+    targetSelectorContract === CURRENT_SELECTOR_CONTRACT
+      ? LEGACY_SELECTOR_CONTRACTS
+      : LEGACY_SELECTOR_CONTRACTS.slice(0, Math.max(0, targetIndex))
+  );
   const guardByFingerprint = new Map(
     guards
       .filter((guard) => guard && typeof guard === "object")
@@ -40,10 +53,10 @@ export function analyzeSidecarV6Migration(drafts = [], guards = [], options = {}
     const countKey = `${selectorContractVersion}:${lifecycleStatus}`;
     versionLifecycleCounts[countKey] = Number(versionLifecycleCounts[countKey] || 0) + 1;
 
-    if (selectorContractVersion === CURRENT_SELECTOR_CONTRACT) {
+    if (selectorContractVersion === targetSelectorContract) {
       continue;
     }
-    if (!OLD_SELECTOR_CONTRACTS.has(selectorContractVersion)) {
+    if (!oldSelectorContracts.has(selectorContractVersion)) {
       if (["draft", "adopted"].includes(lifecycleStatus)) {
         unknownVersionRefs.push(opaqueRef(draft?.sidecarDraftId));
       }
@@ -111,7 +124,7 @@ export function analyzeSidecarV6Migration(drafts = [], guards = [], options = {}
     projectId: String(options.projectId || ""),
     orgId: String(options.orgId || ""),
     facilityId,
-    selectorContractTarget: CURRENT_SELECTOR_CONTRACT,
+    selectorContractTarget: targetSelectorContract,
     draftCount: scopedDrafts.length,
     versionLifecycleCounts: Object.fromEntries(Object.entries(versionLifecycleCounts).sort()),
     activeOldDraftCount: activeOldDraftRefs.length,
@@ -130,7 +143,13 @@ export function analyzeSidecarV6Migration(drafts = [], guards = [], options = {}
   return { report, backfills };
 }
 
-// Keep the old export while rollout automation migrates to the v6 function name.
+export function analyzeSidecarV6Migration(drafts = [], guards = [], options = {}) {
+  return analyzeSidecarV7Migration(drafts, guards, {
+    ...options,
+    targetSelectorContract: "homis-mock-v6"
+  });
+}
+
 export const analyzeSidecarV5Migration = analyzeSidecarV6Migration;
 
 async function main() {
@@ -140,9 +159,17 @@ async function main() {
   const facilityId = required(args.get("facility-id"), "facility-id");
   const maxDrafts = positiveInteger(args.get("max-drafts"), DEFAULT_MAX_DRAFTS);
   const outputDir = path.resolve(required(args.get("output-dir"), "output-dir"));
+  const targetSelectorContract = String(
+    args.get("target-selector-contract") || CURRENT_SELECTOR_CONTRACT
+  );
   const applyBackfill = args.has("apply-backfill");
   const { db, drafts, guards } = await readFirestoreState({ projectId, orgId, facilityId, maxDrafts });
-  let analysis = analyzeSidecarV6Migration(drafts, guards, { projectId, orgId, facilityId });
+  let analysis = analyzeSidecarV7Migration(drafts, guards, {
+    projectId,
+    orgId,
+    facilityId,
+    targetSelectorContract
+  });
 
   if (applyBackfill) {
     const hardBlockers = analysis.report.blockerCodes.filter((code) => code !== "adoption_guard_backfill_required");
@@ -153,15 +180,17 @@ async function main() {
       await backfillGuard(db, orgId, item);
     }
     const refreshed = await readFirestoreState({ projectId, orgId, facilityId, maxDrafts, db });
-    analysis = analyzeSidecarV6Migration(refreshed.drafts, refreshed.guards, {
+    analysis = analyzeSidecarV7Migration(refreshed.drafts, refreshed.guards, {
       projectId,
       orgId,
-      facilityId
+      facilityId,
+      targetSelectorContract
     });
   }
 
   await mkdir(outputDir, { recursive: true });
-  const outputPath = path.join(outputDir, "sidecar-v6-migration-audit.json");
+  const targetLabel = targetSelectorContract.replace(/[^A-Za-z0-9_-]/g, "_");
+  const outputPath = path.join(outputDir, `sidecar-${targetLabel}-migration-audit.json`);
   await writeFile(outputPath, `${JSON.stringify(analysis.report, null, 2)}\n`, "utf8");
   process.stdout.write(`${JSON.stringify(analysis.report, null, 2)}\nresult=${outputPath}\n`);
   if (!analysis.report.migrationReady) {
@@ -236,7 +265,8 @@ function parseArgs(values) {
     "org-id",
     "facility-id",
     "max-drafts",
-    "output-dir"
+    "output-dir",
+    "target-selector-contract"
   ]);
   for (let index = 0; index < values.length; index += 1) {
     const raw = values[index];

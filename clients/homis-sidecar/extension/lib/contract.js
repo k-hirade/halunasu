@@ -1,8 +1,8 @@
 (function registerSidecarContract(global) {
   "use strict";
 
-  const VERSION = "homis-mock-v6";
-  const SUPPORTED_VERSIONS = Object.freeze([VERSION]);
+  const VERSION = "homis-mock-v7";
+  const SUPPORTED_VERSIONS = Object.freeze([VERSION, "homis-mock-v6"]);
   const SOURCE_SYSTEM = "homis";
   const RECORD_KEY_VERSION = "homis-visible-record-v1";
   const RECORD_KEY_SEPARATOR = "\u001f";
@@ -103,12 +103,15 @@
       clinicalTextNodeCount: soapNodes.length
     };
     snapshot.sourceSurfaces = {
-      currentChart: readCurrentChartSurface(documentRef, container, identity.patientId)
+      currentChart: readCurrentChartSurface(documentRef, container, identity.patientId, {
+        selectorContractVersion
+      })
     };
     return snapshot;
   }
 
-  function readCurrentChartSurface(documentRef, container, patientId) {
+  function readCurrentChartSurface(documentRef, container, patientId, options = {}) {
+    const selectorContractVersion = options.selectorContractVersion || VERSION;
     const deviceElement = container?.querySelector(".device-text") || null;
     const conditionManagementListMarker = text(
       container?.querySelector(".condition-management-list-status")
@@ -116,7 +119,7 @@
     const calendarElement = documentRef.querySelector("#calendar3") || null;
     const calendarMonth = readCalendarMonth(documentRef);
     const calendarVisitNodes = calendarElement
-      ? [...calendarElement.querySelectorAll("td.visit .cal-day[data-iso]")]
+      ? [...calendarElement.querySelectorAll("td.visit")]
       : [];
     const calendarVisitDates = readCalendarVisitDates(documentRef);
     return {
@@ -127,7 +130,9 @@
         visitingNurseText: text(container?.querySelector(".houkan-box")),
         deviceManagementText: text(deviceElement),
         deviceManagementListCompleteness: deviceElement
-          && conditionManagementListMarker === COMPLETE_CONDITION_MANAGEMENT_LIST_MARKER
+          && (selectorContractVersion === "homis-mock-v7"
+            ? isCompleteV7DeviceManagementList(deviceElement)
+            : conditionManagementListMarker === COMPLETE_CONDITION_MANAGEMENT_LIST_MARKER)
           ? "complete"
           : "unknown",
         prescriptionRows: readTextRows(container, ".shohou-wrap table tr"),
@@ -164,35 +169,60 @@
 
   function readProblemsSurface(documentRef, options = {}) {
     const patientId = options.patientId || readIdentity(documentRef, options).patientId;
+    const selectorContractVersion = options.selectorContractVersion || VERSION;
     const table = documentRef.querySelector(".problem-list");
-    const rows = table
-      ? [...table.querySelectorAll("tbody tr")]
-        .map((row) => [...row.querySelectorAll("td")].map(text))
-        .filter((cells) => cells.length >= 4)
-        .map((cells) => {
-          const displayedName = cells[1];
-          return {
-            name: displayedName.replace(/\s*[（(]主病[）)]\s*$/u, "").trim(),
-            main: /[（(]主病[）)]\s*$/u.test(displayedName),
-            startDate: cells[2],
-            outcome: cells[3],
-            suspected: /(?:疑い|疑診)/u.test(displayedName)
-          };
-        })
-        .filter((row) => row.name)
-      : [];
+    const rowNodes = table ? [...table.querySelectorAll("tbody tr")] : [];
+    const parsedRows = rowNodes.map(readProblemRow);
+    const rows = parsedRows.filter(Boolean);
+    const v7Complete = Boolean(
+      table
+      && parsedRows.length === rows.length
+      && !hasAdditionalPages(documentRef)
+    );
+    const v6Complete = Boolean(
+      table
+      && hasExactCompletenessMarker(documentRef, ".problem-list-status", COMPLETE_PROBLEM_LIST_MARKER)
+      && !hasAdditionalPages(documentRef)
+    );
     return {
       status: "ok",
       patientId,
       raw: {
         rows,
-        listCompleteness: table
-          && hasExactCompletenessMarker(documentRef, ".problem-list-status", COMPLETE_PROBLEM_LIST_MARKER)
-          && !hasAdditionalPages(documentRef)
+        listCompleteness: (selectorContractVersion === "homis-mock-v7"
+          ? v7Complete
+          : v6Complete)
           ? "complete"
           : "incomplete"
       }
     };
+  }
+
+  function readProblemRow(node) {
+    const cells = [...node.querySelectorAll("td")].map(text);
+    if (cells.length < 4 || !cells[1]) {
+      return null;
+    }
+    const displayedName = cells[1];
+    const name = displayedName.replace(/\s*[（(]主病[）)]\s*$/u, "").trim();
+    return name ? {
+      name,
+      main: /[（(]主病[）)]\s*$/u.test(displayedName),
+      startDate: cells[2],
+      outcome: cells[3],
+      suspected: /(?:疑い|疑診)/u.test(displayedName)
+    } : null;
+  }
+
+  function isCompleteV7DeviceManagementList(deviceElement) {
+    const value = text(deviceElement).normalize("NFKC").replace(/\s+/gu, "");
+    if (!value) {
+      return false;
+    }
+    if (/^\(?在宅医療機器の登録なし\)?$/u.test(value)) {
+      return true;
+    }
+    return !/(?:読込中|読み込み中|確認中|取得中|エラー)/u.test(value);
   }
 
   function readVisitPlanSurface(documentRef, options = {}) {
@@ -364,6 +394,41 @@
     };
   }
 
+  function readVisibleEncounterEntry(documentRef, options = {}) {
+    const selectorContractVersion = options.selectorContractVersion || VERSION;
+    if (!SUPPORTED_VERSIONS.includes(selectorContractVersion)) {
+      const error = new Error("画面の読取契約バージョンが未対応です");
+      error.code = "selector_contract_version_unsupported";
+      error.contractVersion = selectorContractVersion;
+      throw error;
+    }
+    const identity = readIdentity(documentRef, options);
+    const encounter = readEncounterType(documentRef.querySelector("#pdetail_karte"));
+    if (
+      !identity.patientId
+      || !identity.sourceRecordId
+      || !identity.sourceRecordDisplayId
+      || !identity.serviceDate
+      || !identity.receptionTime
+      || !encounter.encounterType
+    ) {
+      const error = new Error("表示中カルテの受診情報を確認できません");
+      error.code = "visible_encounter_entry_incomplete";
+      error.retryable = true;
+      error.contractVersion = selectorContractVersion;
+      throw error;
+    }
+    return {
+      patientId: identity.patientId,
+      sourceRecordId: identity.sourceRecordId,
+      sourceRecordDisplayId: identity.sourceRecordDisplayId,
+      serviceDate: identity.serviceDate,
+      receptionTime: identity.receptionTime,
+      encounterType: encounter.encounterType,
+      visitKind: encounter.visitKind
+    };
+  }
+
   function readResidenceDetails(documentRef, container, metaText = "") {
     const facilityResidence = Boolean(documentRef.querySelector(".patient-header .badge.facility"));
     const privateResidence = Boolean(documentRef.querySelector(".patient-header .badge.home"));
@@ -479,6 +544,7 @@
     readDocumentsSurface,
     readProblemsSurface,
     readVisitPlanSurface,
+    readVisibleEncounterEntry,
     readEncounterType,
     readResidenceDetails,
     readIdentity
