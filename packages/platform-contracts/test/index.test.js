@@ -283,6 +283,8 @@ test("validates product entitlements and audit events", () => {
       sourceRevision: 4,
       calculationRevision: 7,
       acknowledgementVersion: 2,
+      decisionStatus: "excluded",
+      previousDecisionStatus: "acknowledged",
       acknowledged: true,
       previousAcknowledged: false,
       deviceId: "sidecar_device_authorized_01",
@@ -330,6 +332,8 @@ test("validates product entitlements and audit events", () => {
   assert.equal(auditEvent.safePayload.sourceRevision, 4);
   assert.equal(auditEvent.safePayload.calculationRevision, 7);
   assert.equal(auditEvent.safePayload.acknowledgementVersion, 2);
+  assert.equal(auditEvent.safePayload.decisionStatus, "excluded");
+  assert.equal(auditEvent.safePayload.previousDecisionStatus, "acknowledged");
   assert.equal(auditEvent.safePayload.acknowledged, true);
   assert.equal(auditEvent.safePayload.previousAcknowledged, false);
   assert.equal(auditEvent.safePayload.deviceId, "sidecar_device_authorized_01");

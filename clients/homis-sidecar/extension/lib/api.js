@@ -10,7 +10,11 @@
   const GRANT_ID_KEY = `${STORAGE_PREFIX}:grantId`;
   const LEGACY_DEVICE_ID_KEY = "halunasuSidecarDeviceId";
   const LEGACY_GRANT_ID_KEY = "halunasuSidecarGrantId";
+  const ACCESS_REUSE_WINDOW_MS = 30_000;
+  let accessGeneration = 0;
+  let grantResetInProgress = false;
   let pendingAuthorization = null;
+  let pendingAccessRefresh = null;
   let currentAccess = null;
 
   async function startDeviceAuthorization() {
@@ -41,18 +45,22 @@
     if (!pendingAuthorization) {
       throw apiError("device_authorization_missing", "接続手続きを最初からやり直してください。", 400);
     }
+    const authorization = pendingAuthorization;
+    const generation = accessGeneration;
     const response = await jsonRequest(`${PLATFORM_BASE_URL}/v1/auth/sidecar-token`, {
       method: "POST",
       body: {
-        deviceAuthId: pendingAuthorization.deviceAuthId,
-        deviceId: pendingAuthorization.deviceId,
-        codeChallenge: await challengeForVerifier(pendingAuthorization.verifier)
+        deviceAuthId: authorization.deviceAuthId,
+        deviceId: authorization.deviceId,
+        codeChallenge: await challengeForVerifier(authorization.verifier)
       }
     });
+    assertAccessGeneration(generation);
     currentAccess = {
       accessToken: response.accessToken,
       expiresAt: response.expiresAt,
-      verifier: pendingAuthorization.verifier,
+      grantId: response.grantId,
+      verifier: authorization.verifier,
       sidecarContext: response.sidecarContext
     };
     await storageSet({ [GRANT_ID_KEY]: response.grantId });
@@ -78,19 +86,37 @@
   }
 
   async function refreshGrant(grantIdInput) {
+    const grantId = String(grantIdInput || "").trim();
+    if (pendingAccessRefresh?.grantId === grantId) {
+      return pendingAccessRefresh.promise;
+    }
+    const promise = refreshGrantOnce(grantId, accessGeneration);
+    pendingAccessRefresh = { grantId, promise };
+    try {
+      return await promise;
+    } finally {
+      if (pendingAccessRefresh?.promise === promise) {
+        pendingAccessRefresh = null;
+      }
+    }
+  }
+
+  async function refreshGrantOnce(grantId, generation) {
     const deviceId = await getOrCreateDeviceId();
     const proofKey = await createProofKey();
     const response = await jsonRequest(`${PLATFORM_BASE_URL}/v1/auth/sidecar-token`, {
       method: "POST",
       body: {
-        grantId: grantIdInput,
+        grantId,
         deviceId,
         codeChallenge: proofKey.challenge
       }
     });
+    assertAccessGeneration(generation);
     currentAccess = {
       accessToken: response.accessToken,
       expiresAt: response.expiresAt,
+      grantId,
       verifier: proofKey.verifier,
       sidecarContext: response.sidecarContext
     };
@@ -111,7 +137,12 @@
   async function setCandidateAcknowledgement(input = {}) {
     const sidecarDraftId = String(input.sidecarDraftId || "").trim();
     const candidateKey = String(input.candidateKey || "").trim();
-    if (!sidecarDraftId || !candidateKey) {
+    const status = String(input.status || "").trim();
+    if (
+      !sidecarDraftId
+      || !candidateKey
+      || !["unacknowledged", "acknowledged", "excluded"].includes(status)
+    ) {
       throw apiError(
         "candidate_acknowledgement_target_missing",
         "確認状態の保存先を特定できません。算定案を作成し直してください。",
@@ -125,7 +156,7 @@
         method: "PUT",
         body: {
           contractVersion: "v1",
-          acknowledged: input.acknowledged === true,
+          status,
           expectedSourceRevision: input.expectedSourceRevision,
           expectedCalculationRevision: input.expectedCalculationRevision,
           expectedAcknowledgementVersion: input.expectedAcknowledgementVersion,
@@ -137,7 +168,7 @@
 
   async function setPatientChargeSetting(input = {}) {
     const sidecarDraftId = String(input.sidecarDraftId || "").trim();
-    const allowedHandlings = new Set(["inherit", "charge", "waive", "included_in_contract"]);
+    const allowedHandlings = new Set(["unknown", "charge", "waive"]);
     const handling = String(input.handling || "").trim();
     if (!sidecarDraftId || !allowedHandlings.has(handling)) {
       throw apiError(
@@ -153,7 +184,7 @@
         body: {
           contractVersion: "v1",
           chargeType: "home_medical_transport",
-          handling,
+          ...(handling === "unknown" ? { clear: true } : { handling }),
           amountMode: input.amountMode,
           amountYen: input.amountYen,
           effectiveFrom: input.effectiveFrom,
@@ -167,11 +198,17 @@
   }
 
   async function authorizedFeeRequest(path, options = {}) {
-    const stored = await storageGet([GRANT_ID_KEY]);
-    if (!stored[GRANT_ID_KEY]) {
-      throw apiError("grant_missing", "端末を接続してください。", 401);
+    if (grantResetInProgress) {
+      throw grantMissingError();
     }
-    await refreshGrant(stored[GRANT_ID_KEY]);
+    const stored = await storageGet([GRANT_ID_KEY]);
+    if (grantResetInProgress || !stored[GRANT_ID_KEY]) {
+      throw grantMissingError();
+    }
+    const grantId = String(stored[GRANT_ID_KEY]);
+    if (!canReuseCurrentAccess(grantId)) {
+      await refreshGrant(grantId);
+    }
     const access = currentAccess;
     const requestBody = typeof options.body === "function"
       ? options.body(access)
@@ -198,9 +235,37 @@
   }
 
   async function clearGrant() {
+    grantResetInProgress = true;
+    accessGeneration += 1;
     currentAccess = null;
+    pendingAccessRefresh = null;
     pendingAuthorization = null;
-    await storageRemove([GRANT_ID_KEY]);
+    try {
+      await storageRemove([GRANT_ID_KEY]);
+    } finally {
+      grantResetInProgress = false;
+    }
+  }
+
+  function assertAccessGeneration(generation) {
+    if (generation !== accessGeneration || grantResetInProgress) {
+      throw grantMissingError();
+    }
+  }
+
+  function grantMissingError() {
+    return apiError("grant_missing", "端末を接続してください。", 401);
+  }
+
+  function canReuseCurrentAccess(grantId) {
+    const expiresAtMs = Date.parse(String(currentAccess?.expiresAt || ""));
+    return currentAccess?.grantId === grantId
+      && typeof currentAccess.accessToken === "string"
+      && currentAccess.accessToken.length > 0
+      && typeof currentAccess.verifier === "string"
+      && currentAccess.verifier.length > 0
+      && Number.isFinite(expiresAtMs)
+      && expiresAtMs > Date.now() + ACCESS_REUSE_WINDOW_MS;
   }
 
   async function getOrCreateDeviceId() {

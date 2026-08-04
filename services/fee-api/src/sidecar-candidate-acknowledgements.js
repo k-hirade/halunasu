@@ -127,13 +127,13 @@ function acknowledgementView(record, expected = {}) {
   if (!record) {
     return { status: "unacknowledged", version: 0, updatedAt: null };
   }
-  const acknowledgedIsCurrent = record.status === "acknowledged"
+  const decisionIsCurrent = ["acknowledged", "excluded"].includes(record.status)
     && Number(record.sourceRevision || 0) === Number(expected.sourceRevision || 0)
     && record.candidateFingerprint === expected.candidateFingerprint;
   return {
-    status: acknowledgedIsCurrent
-      ? "acknowledged"
-      : record.status === "acknowledged" || record.status === "stale"
+    status: decisionIsCurrent
+      ? record.status
+      : ["acknowledged", "excluded", "stale"].includes(record.status)
         ? "stale"
         : "unacknowledged",
     version,

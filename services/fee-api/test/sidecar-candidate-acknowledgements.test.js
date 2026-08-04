@@ -24,7 +24,7 @@ test("sidecar acknowledgement identity is stable while decision content changes 
   );
 });
 
-test("decision candidates receive current, stale, and unacknowledged acknowledgement views", () => {
+test("decision candidates receive current, excluded, stale, and unacknowledged acknowledgement views", () => {
   const candidate = decisionCandidate();
   const candidateKey = sidecarCandidateKey(candidate);
   const fingerprint = sidecarCandidateFingerprint(candidate, {
@@ -54,6 +54,42 @@ test("decision candidates receive current, stale, and unacknowledged acknowledge
     candidateFingerprint: fingerprint
   }]);
   assert.equal(findSidecarAcknowledgementCandidate(current, candidateKey)?.candidateId, candidate.candidateId);
+
+  const excluded = decorateSidecarCandidateAcknowledgements({
+    candidates: [candidate],
+    pricingBasis: { referenceDataDate: "2026-06-15" },
+    sourceRevision: 2,
+    candidateAcknowledgements: {
+      [candidateKey]: {
+        status: "excluded",
+        candidateFingerprint: fingerprint,
+        sourceRevision: 2,
+        version: 4,
+        updatedAt: "2026-08-03T00:01:00.000Z"
+      }
+    }
+  });
+  assert.deepEqual(excluded[0].acknowledgement, {
+    status: "excluded",
+    version: 4,
+    updatedAt: "2026-08-03T00:01:00.000Z"
+  });
+  assert.equal(excluded[0].candidateOnly, candidate.candidateOnly);
+  assert.equal(excluded[0].estimatedTotalPoints, candidate.estimatedTotalPoints);
+
+  const staleExcluded = decorateSidecarCandidateAcknowledgements({
+    candidates: [{ ...candidate, points: 200 }],
+    sourceRevision: 2,
+    candidateAcknowledgements: {
+      [candidateKey]: {
+        status: "excluded",
+        candidateFingerprint: fingerprint,
+        sourceRevision: 2,
+        version: 4
+      }
+    }
+  });
+  assert.equal(staleExcluded[0].acknowledgement.status, "stale");
 
   const stale = decorateSidecarCandidateAcknowledgements({
     candidates: [{ ...candidate, points: 200 }],
@@ -105,6 +141,7 @@ function decisionCandidate() {
     points: 100,
     quantity: 1,
     estimatedTotalPoints: 100,
+    candidateOnly: true,
     reason: "算定要件を確認してください。",
     selectionResolution: null,
     selectionNarrowing: null

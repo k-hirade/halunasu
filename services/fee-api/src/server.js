@@ -467,12 +467,22 @@ async function routeFeeApiRequest(input = {}) {
         updatedFromDeviceId: context.session.deviceId || null
       }
     );
-    const auditedDraft = await flushSidecarAcknowledgementAuditOutbox({
-      feeStore,
-      platformStore,
-      orgId: context.session.orgId,
-      sidecarDraft: result.sidecarDraft
-    });
+    let auditedDraft = result.sidecarDraft;
+    try {
+      auditedDraft = await flushSidecarAcknowledgementAuditOutbox({
+        feeStore,
+        platformStore,
+        orgId: context.session.orgId,
+        sidecarDraft: result.sidecarDraft
+      });
+    } catch (error) {
+      console.warn(JSON.stringify({
+        event: "fee.sidecar_candidate_acknowledgement_audit_deferred",
+        orgId: context.session.orgId,
+        sidecarDraftId,
+        error: safeLogError(error)
+      }));
+    }
     const response = await sidecarCalculationResponseWithPatientCharges({
       feeStore,
       orgId: context.session.orgId,
@@ -551,12 +561,22 @@ async function routeFeeApiRequest(input = {}) {
       }
     );
     const patientChargeContract = result.patientChargeContract;
-    await flushPatientChargeAuditOutbox({
-      feeStore,
-      platformStore,
-      orgId: context.session.orgId,
-      patientChargeContract
-    });
+    try {
+      await flushPatientChargeAuditOutbox({
+        feeStore,
+        platformStore,
+        orgId: context.session.orgId,
+        patientChargeContract
+      });
+    } catch (error) {
+      console.warn(JSON.stringify({
+        event: "fee.patient_charge_contract_audit_deferred",
+        orgId: context.session.orgId,
+        sidecarDraftId,
+        patientChargeContractId: patientChargeContract.patientChargeContractId,
+        error: safeLogError(error)
+      }));
+    }
     const response = await sidecarCalculationResponseWithPatientCharges({
       feeStore,
       orgId: context.session.orgId,
@@ -2675,6 +2695,11 @@ async function flushSidecarAcknowledgementAuditOutbox({
     || String(left?.eventId || "").localeCompare(String(right?.eventId || ""))
   ));
   for (const entry of entries) {
+    const invalidated = entry.eventType === "fee.sidecar_candidate_acknowledgement_invalidated";
+    const decisionStatus = entry.status || (invalidated
+      ? "stale"
+      : entry.acknowledged === true ? "acknowledged" : "unacknowledged");
+    const previousDecisionStatus = entry.previousStatus || (invalidated ? "acknowledged" : null);
     await platformStore.createAuditEvent(orgId, {
       eventId: entry.eventId,
       eventType: entry.eventType,
@@ -2690,11 +2715,13 @@ async function flushSidecarAcknowledgementAuditOutbox({
         sourceRevision: Number(entry.sourceRevision || 0),
         calculationRevision: Number(entry.calculationRevision || 0),
         acknowledgementVersion: Number(entry.acknowledgementVersion || 0),
+        decisionStatus,
+        previousDecisionStatus,
         acknowledged: entry.acknowledged === true,
         occurredAt: entry.occurredAt,
-        ...(entry.eventType === "fee.sidecar_candidate_acknowledgement_invalidated"
+        ...(invalidated
           ? {
-            previousAcknowledged: true,
+            previousAcknowledged: previousDecisionStatus === "acknowledged",
             staleReason: entry.staleReason || "candidate_changed"
           }
           : {}),

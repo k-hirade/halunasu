@@ -708,6 +708,20 @@ test("MemoryFeeStore versions and reconciles sidecar candidate acknowledgements"
     created.sidecarDraft.sidecarDraftId,
     { ...input, acknowledged: false }
   ), (error) => error.statusCode === 409);
+  const excluded = store.setSidecarCandidateAcknowledgement(
+    "org_123",
+    created.sidecarDraft.sidecarDraftId,
+    {
+      ...input,
+      acknowledged: undefined,
+      status: "excluded",
+      expectedAcknowledgementVersion: 1
+    }
+  );
+  assert.equal(excluded.changed, true);
+  assert.equal(excluded.acknowledgement.status, "excluded");
+  assert.equal(excluded.acknowledgement.version, 2);
+  assert.deepEqual(excluded.sidecarDraft.calculationResult, calculationBefore);
 
   const reconciled = store.reconcileSidecarCandidateAcknowledgements(
     "org_123",
@@ -723,6 +737,7 @@ test("MemoryFeeStore versions and reconciles sidecar candidate acknowledgements"
   );
   assert.equal(reconciled.changed, true);
   assert.equal(reconciled.invalidated[0].status, "stale");
+  assert.equal(reconciled.invalidated[0].staleFromStatus, "excluded");
   assert.equal(reconciled.invalidated[0].staleReason, "candidate_missing");
   const [firstAuditEventId] = Object.keys(reconciled.sidecarDraft.candidateAcknowledgementAuditOutbox);
   const completedAudit = store.completeSidecarCandidateAcknowledgementAudit(
@@ -794,6 +809,19 @@ test("Firestore transactions persist sidecar acknowledgement CAS and stale recon
     }),
     (error) => error.statusCode === 409
   );
+  const excluded = await store.setSidecarCandidateAcknowledgement(
+    "org_123",
+    draftInput.sidecarDraftId,
+    {
+      ...acknowledgementInput,
+      acknowledged: undefined,
+      status: "excluded",
+      expectedAcknowledgementVersion: 1
+    }
+  );
+  assert.equal(excluded.changed, true);
+  assert.equal(excluded.acknowledgement.status, "excluded");
+  assert.equal(excluded.acknowledgement.version, 2);
   const reconciled = await store.reconcileSidecarCandidateAcknowledgements(
     "org_123",
     draftInput.sidecarDraftId,
@@ -815,6 +843,7 @@ test("Firestore transactions persist sidecar acknowledgement CAS and stale recon
 
   assert.equal(reconciled.changed, true);
   assert.equal(reconciled.invalidated[0].staleReason, "candidate_fingerprint_changed");
+  assert.equal(reconciled.invalidated[0].staleFromStatus, "excluded");
   const [firstAuditEventId] = Object.keys(stored.candidateAcknowledgementAuditOutbox);
   const completedAudit = await store.completeSidecarCandidateAcknowledgementAudit(
     "org_123",
@@ -1469,6 +1498,48 @@ test("patient charge contracts are effective-dated and revision locked in memory
     amountMode: null,
     expectedRevision: 1
   }), /revision mismatch/u);
+
+  const cleared = store.putPatientChargeContractSetting("org_1", {
+    ...base,
+    clear: true,
+    handling: null,
+    amountMode: null,
+    amountYen: null,
+    expectedRevision: 2,
+    effectiveFrom: "2026-10-01"
+  });
+  assert.equal(cleared.previousSetting.handling, "waive");
+  assert.equal(cleared.patientChargeContract.revision, 3);
+  assert.deepEqual(cleared.patientChargeContract.settingEvents[2], {
+    revision: 3,
+    action: "clear",
+    handling: null,
+    amountMode: null,
+    amountYen: null,
+    effectiveFrom: "2026-10-01",
+    effectiveTo: null,
+    source: "homis_sidecar",
+    updatedByMemberId: "mem_1",
+    updatedFromDeviceId: "device_1",
+    updatedAt: "2026-08-03T10:00:00.000Z"
+  });
+  const clearAudit = Object.values(cleared.patientChargeContract.auditOutbox)
+    .find((entry) => entry.safePayload.revision === 3);
+  assert.equal(clearAudit.safePayload.beforeHandling, "waive");
+  assert.equal(clearAudit.safePayload.afterHandling, null);
+
+  const clearRetry = store.putPatientChargeContractSetting("org_1", {
+    ...base,
+    clear: true,
+    handling: null,
+    amountMode: null,
+    amountYen: null,
+    expectedRevision: 2,
+    effectiveFrom: "2026-10-01"
+  });
+  assert.equal(clearRetry.changed, false);
+  assert.equal(clearRetry.patientChargeContract.revision, 3);
+  assert.equal(clearRetry.patientChargeContract.settingEvents.length, 3);
 });
 
 test("Firestore patient charge contract updates use a deterministic document and transaction", async () => {

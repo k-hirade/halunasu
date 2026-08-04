@@ -45,6 +45,7 @@ test("result UI renders review and selection candidates as compact decision rows
       decisionKinds: decisionRows.map((node) => node.querySelector(".decision-kind")?.textContent),
       decisionKindTags: decisionRows.map((node) => node.querySelector(".decision-kind")?.tagName),
       decisionPressed: decisionRows.map((node) => node.querySelector(".decision-kind")?.getAttribute("aria-pressed")),
+      decisionStatuses: decisionRows.map((node) => node.querySelector(".decision-kind")?.dataset.decisionStatus),
       decisionLabels: decisionRows.map((node) => node.querySelector(".decision-kind")?.getAttribute("aria-label")),
       decisionDisabled: decisionRows.map((node) => node.querySelector(".decision-kind")?.disabled),
       decisionCandidateKeys: decisionRows.map((node) => node.querySelector(".decision-kind")?.dataset.candidateKey),
@@ -73,6 +74,8 @@ test("result UI renders review and selection candidates as compact decision rows
       selectionStateLabelVisible: document.body.textContent.includes("要選択"),
       patientChargeGroupHidden: document.querySelector("#patient-charge-group")?.hidden,
       patientChargeHandling: document.querySelector("#patient-charge-handling")?.value,
+      patientChargeOptions: [...document.querySelectorAll("#patient-charge-handling option")]
+        .map((option) => [option.value, option.textContent]),
       patientChargeSaveDisabled: document.querySelector("#patient-charge-save")?.disabled,
       patientChargeStatus: document.querySelector("#patient-charge-status")?.textContent,
       candidateCodeTag: included.querySelector(".candidate-code").tagName,
@@ -92,7 +95,8 @@ test("result UI renders review and selection candidates as compact decision rows
   assert.equal(result.decisionListLabelledBy, "decision-heading");
   assert.deepEqual(result.decisionKinds, ["区分確認", "確認済み", "区分確認"]);
   assert.deepEqual(result.decisionKindTags, ["BUTTON", "BUTTON", "BUTTON"]);
-  assert.deepEqual(result.decisionPressed, ["false", "true", "false"]);
+  assert.deepEqual(result.decisionPressed, [null, null, null]);
+  assert.deepEqual(result.decisionStatuses, ["unacknowledged", "acknowledged", "stale"]);
   assert.deepEqual(result.decisionDisabled, [false, false, false]);
   assert.deepEqual(result.decisionCandidateKeys, [
     "candidate_management",
@@ -100,7 +104,7 @@ test("result UI renders review and selection candidates as compact decision rows
     "candidate_six_option_management"
   ]);
   assert.match(result.decisionLabels[0], /施設入居時等医学総合管理料.+区分確認.+確認済み/u);
-  assert.match(result.decisionLabels[1], /在宅患者訪問診療料.+確認済みを取り消す/u);
+  assert.match(result.decisionLabels[1], /在宅患者訪問診療料.+対象外にする/u);
   assert.deepEqual(result.decisionIds, ["management", "exact-management", "six-option-management"]);
   assert.deepEqual(result.decisionZones, ["selection_required", "review_required", "selection_required"]);
   assert.deepEqual(result.decisionRoles, ["listitem", "listitem", "listitem"]);
@@ -132,6 +136,11 @@ test("result UI renders review and selection candidates as compact decision rows
   assert.equal(result.selectionStateLabelVisible, false);
   assert.equal(result.patientChargeGroupHidden, false);
   assert.equal(result.patientChargeHandling, "unknown");
+  assert.deepEqual(result.patientChargeOptions, [
+    ["unknown", "未設定"],
+    ["charge", "請求する"],
+    ["waive", "請求しない"]
+  ]);
   assert.equal(result.patientChargeSaveDisabled, true);
   assert.equal(result.patientChargeStatus, "未設定です。選択するまで請求に含めません。");
   assert.equal(result.candidateCodeTag, "SPAN");
@@ -167,28 +176,91 @@ test("patient transport handling is persisted without changing insurance points"
   assert.equal(result.handling, "charge");
   assert.equal(result.totalPoints, "940点");
   assert.equal(result.saveDisabled, true);
+
+  await page.selectOption("#patient-charge-handling", "unknown");
+  assert.equal(await page.locator("#patient-charge-save").isEnabled(), true);
+  await page.click("#patient-charge-save");
+  await page.locator("#patient-charge-status").filter({ hasText: "未設定です" }).waitFor();
+  const reset = await page.evaluate(() => ({
+    calls: globalThis.__sidecarTest.patientChargeCalls,
+    handling: document.querySelector("#patient-charge-handling")?.value,
+    totalPoints: document.querySelector("#total-points")?.textContent
+  }));
+  assert.equal(reset.calls.length, 2);
+  assert.deepEqual(reset.calls[1], {
+    sidecarDraftId: "sidecar_result_ui",
+    handling: "unknown",
+    amountMode: null,
+    amountYen: null,
+    effectiveFrom: "2026-06-25",
+    effectiveTo: null,
+    expectedRevision: 1,
+    expectedSourceRevision: 4,
+    expectedCalculationRevision: 2
+  });
+  assert.equal(reset.handling, "unknown");
+  assert.equal(reset.totalPoints, "940点");
   await page.close();
 });
 
-test("decision badge persists explicit acknowledgement changes in both directions", async () => {
+test("legacy patient transport settings are projected without rewriting stored reasons", async () => {
+  const inherited = await openPanel(380, {
+    initialPatientCharge: {
+      chargeType: "home_medical_transport",
+      status: "pending",
+      handling: "inherit",
+      billingHandling: "unknown",
+      revision: 3,
+      writable: true,
+      unavailableReason: "facility_default_not_configured"
+    }
+  });
+  assert.equal(await inherited.inputValue("#patient-charge-handling"), "unknown");
+  assert.equal(await inherited.locator("#patient-charge-save").textContent(), "設定解除");
+  assert.equal(await inherited.locator("#patient-charge-save").isEnabled(), true);
+  assert.match(await inherited.locator("#patient-charge-status").textContent(), /旧設定「施設設定を継承」/u);
+  await inherited.close();
+
+  const included = await openPanel(380, {
+    initialPatientCharge: {
+      chargeType: "home_medical_transport",
+      status: "configured",
+      handling: "included_in_contract",
+      billingHandling: "included_in_contract",
+      revision: 2,
+      writable: true,
+      unavailableReason: null
+    }
+  });
+  assert.equal(await included.inputValue("#patient-charge-handling"), "waive");
+  assert.equal(await included.locator("#patient-charge-save").isDisabled(), true);
+  assert.match(await included.locator("#patient-charge-status").textContent(), /患者へ交通費を別請求しません/u);
+  await included.close();
+});
+
+test("decision badge persists the review, acknowledged, and excluded cycle", async () => {
   const page = await openPanel(380);
   const button = page.locator(".decision-row", { hasText: "施設入居時等医学総合管理料" })
     .locator(".decision-kind");
 
   await button.click();
   await button.filter({ hasText: "確認済み" }).waitFor();
-  assert.equal(await button.getAttribute("aria-pressed"), "true");
+  assert.equal(await button.getAttribute("data-decision-status"), "acknowledged");
+
+  await button.press("Space");
+  await button.filter({ hasText: "対象外" }).waitFor();
+  assert.equal(await button.getAttribute("data-decision-status"), "excluded");
 
   await button.press("Space");
   await button.filter({ hasText: "区分確認" }).waitFor();
-  assert.equal(await button.getAttribute("aria-pressed"), "false");
+  assert.equal(await button.getAttribute("data-decision-status"), "unacknowledged");
 
   const calls = await page.evaluate(() => globalThis.__sidecarTest.acknowledgementCalls);
   assert.deepEqual(calls, [
     {
       sidecarDraftId: "sidecar_result_ui",
       candidateKey: "candidate_management",
-      acknowledged: true,
+      status: "acknowledged",
       expectedSourceRevision: 4,
       expectedCalculationRevision: 2,
       expectedAcknowledgementVersion: 0,
@@ -197,10 +269,19 @@ test("decision badge persists explicit acknowledgement changes in both direction
     {
       sidecarDraftId: "sidecar_result_ui",
       candidateKey: "candidate_management",
-      acknowledged: false,
+      status: "excluded",
       expectedSourceRevision: 4,
       expectedCalculationRevision: 2,
       expectedAcknowledgementVersion: 1,
+      candidateFingerprint: "fingerprint_management"
+    },
+    {
+      sidecarDraftId: "sidecar_result_ui",
+      candidateKey: "candidate_management",
+      status: "unacknowledged",
+      expectedSourceRevision: 4,
+      expectedCalculationRevision: 2,
+      expectedAcknowledgementVersion: 2,
       candidateFingerprint: "fingerprint_management"
     }
   ]);
@@ -219,7 +300,7 @@ test("decision badge exposes a stable busy state and restores the prior state on
   ));
   assert.equal(await button.textContent(), "保存中");
   assert.equal(await button.isDisabled(), true);
-  assert.equal(await button.getAttribute("aria-pressed"), "false");
+  assert.equal(await button.getAttribute("data-decision-status"), "stale");
   assert.equal(await page.locator("#decision-candidates .decision-kind:disabled").count(), 1);
 
   await page.evaluate(() => (
@@ -235,7 +316,7 @@ test("decision badge exposes a stable busy state and restores the prior state on
     hasText: "算定案が更新されたため、算定案を作成し直してください。"
   }).waitFor();
   assert.equal(await button.textContent(), "確認済み");
-  assert.equal(await button.getAttribute("aria-pressed"), "true");
+  assert.equal(await button.getAttribute("data-decision-status"), "acknowledged");
   assert.equal(await button.isEnabled(), true);
   await page.close();
 });
@@ -255,24 +336,27 @@ test("different decision badges update independently without losing an earlier s
   assert.equal(await management.isDisabled(), true);
   assert.equal(await sixOption.isDisabled(), true);
   assert.equal(await exact.isEnabled(), true);
+  assert.equal(await page.locator("#calculate-button").isDisabled(), true);
 
   await page.evaluate(() => (
     globalThis.__sidecarTest.releaseAcknowledgement("candidate_six_option_management")
   ));
   await sixOption.filter({ hasText: "確認済み" }).waitFor();
   assert.equal(await management.textContent(), "保存中");
+  assert.equal(await page.locator("#calculate-button").isDisabled(), true);
 
   await page.evaluate(() => (
     globalThis.__sidecarTest.releaseAcknowledgement("candidate_management")
   ));
   await management.filter({ hasText: "確認済み" }).waitFor();
   assert.equal(await sixOption.textContent(), "確認済み");
-  assert.equal(await management.getAttribute("aria-pressed"), "true");
-  assert.equal(await sixOption.getAttribute("aria-pressed"), "true");
+  assert.equal(await management.getAttribute("data-decision-status"), "acknowledged");
+  assert.equal(await sixOption.getAttribute("data-decision-status"), "acknowledged");
+  assert.equal(await page.locator("#calculate-button").isEnabled(), true);
   await page.close();
 });
 
-test("late acknowledgement response cannot restore a result after recalculation", async () => {
+test("recalculation cannot supersede a pending acknowledgement mutation", async () => {
   const page = await openPanel(380);
   const button = page.locator('[data-candidate-key="candidate_management"]');
   await page.evaluate(() => { globalThis.__sidecarTest.acknowledgementMode = "deferred"; });
@@ -281,16 +365,17 @@ test("late acknowledgement response cannot restore a result after recalculation"
     document.querySelector('[data-candidate-key="candidate_management"]')?.getAttribute("aria-busy") === "true"
   ));
 
-  await page.click("#calculate-button");
-  await page.waitForFunction(() => (
-    document.querySelector('[data-candidate-key="candidate_management"]')?.textContent === "区分確認"
-  ));
+  assert.equal(await page.locator("#calculate-button").isDisabled(), true);
+  await page.evaluate(() => document.querySelector("#calculate-button")?.click());
+  assert.equal(await page.locator("#result-section").isVisible(), true);
+  assert.equal(await button.textContent(), "保存中");
+
   await page.evaluate(() => (
     globalThis.__sidecarTest.releaseAcknowledgement("candidate_management")
   ));
-  await page.waitForFunction(() => globalThis.__sidecarTest.acknowledgementCompleted === 1);
-  assert.equal(await page.locator('[data-candidate-key="candidate_management"]').textContent(), "区分確認");
-  assert.equal(await page.locator('[data-candidate-key="candidate_management"]').getAttribute("aria-pressed"), "false");
+  await button.filter({ hasText: "確認済み" }).waitFor();
+  assert.equal(await page.locator("#calculate-button").isEnabled(), true);
+  assert.equal(await button.getAttribute("data-decision-status"), "acknowledged");
   await page.close();
 });
 
@@ -327,11 +412,11 @@ for (const width of [320, 380]) {
   });
 }
 
-async function openPanel(width) {
+async function openPanel(width, options = {}) {
   const page = await browser.newPage({ viewport: { width, height: 900 } });
   await page.setContent(panelHtml);
   await page.addStyleTag({ path: path.join(extensionDir, "sidepanel.css") });
-  await page.evaluate(() => {
+  await page.evaluate((panelOptions) => {
     const snapshot = {
       ok: true,
       externalPatientId: "1001",
@@ -351,6 +436,14 @@ async function openPanel(width) {
       extractionProof: { selectorContractVersion: "homis-mock-v5" }
     };
     const codeCandidates = Array.from({ length: 175 }, (_, index) => String(900000001 + index));
+    const initialPatientCharge = panelOptions.initialPatientCharge || {
+      chargeType: "home_medical_transport",
+      displayName: "在宅医療交通費",
+      status: "unconfigured",
+      billingHandling: "unknown",
+      agreementRevision: 0,
+      writable: true
+    };
     globalThis.__sidecarTest = {
       acknowledgementCalls: [],
       acknowledgementCompleted: 0,
@@ -389,14 +482,7 @@ async function openPanel(width) {
             lifecycleStatus: "draft",
             sourceRevision: 4,
             calculationRevision: 2,
-            patientCharges: [{
-              chargeType: "home_medical_transport",
-              displayName: "在宅医療交通費",
-              status: "unconfigured",
-              billingHandling: "unknown",
-              agreementRevision: 0,
-              writable: true
-            }],
+            patientCharges: [structuredClone(initialPatientCharge)],
             calculationDiff: {
               candidates: { addedCount: 1, removedCount: 1 },
               notices: { addedCount: 1, removedCount: 0 },
@@ -561,7 +647,7 @@ async function openPanel(width) {
           item.candidateKey === input.candidateKey
         ));
         candidate.acknowledgement = {
-          status: input.acknowledged ? "acknowledged" : "unacknowledged",
+          status: input.status,
           version: Number(input.expectedAcknowledgementVersion || 0) + 1,
           updatedAt: "2026-08-03T00:00:01.000Z"
         };
@@ -574,7 +660,8 @@ async function openPanel(width) {
         response.sidecarDraft.patientCharges = [{
           chargeType: "home_medical_transport",
           displayName: "在宅医療交通費",
-          status: input.handling === "charge" ? "pending_actual" : "resolved",
+          status: input.handling === "charge" ? "pending_actual" : input.handling === "unknown" ? "pending" : "resolved",
+          handling: input.handling === "unknown" ? null : input.handling,
           billingHandling: input.handling,
           agreementRevision: Number(input.expectedRevision || 0) + 1,
           writable: true
@@ -585,7 +672,7 @@ async function openPanel(width) {
       async pollDeviceAuthorization() {},
       async startDeviceAuthorization() { throw new Error("not used"); }
     };
-  });
+  }, options);
   await page.addScriptTag({ path: path.join(extensionDir, "sidepanel.js") });
   await page.waitForFunction(() => document.querySelector("#preview-patient")?.textContent === "1001");
   await page.click("#calculate-button");

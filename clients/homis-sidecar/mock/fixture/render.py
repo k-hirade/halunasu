@@ -217,8 +217,7 @@ def karte_inner_html(patient, iso, y, m, v) -> str:
         '<div class="col-right">'
         '<div class="shougai-box"><div class="col-label">障害・公費</div>'
         f'<div class="shougai-text">{E(shougai)}</div></div>'
-        '<div class="device-box"><div class="col-label">疾病等・在宅医療機器　管理状況</div>'
-        '<div class="condition-management-list-status">疾病等状態管理一覧: 全件表示</div>'
+        '<div class="device-box"><div class="col-label">在宅医療機器　管理状況</div>'
         f'<div class="device-text">{device_text}</div></div>'
         '<div class="shohou-box"><div class="col-label">処方</div>'
         f'<div class="shohou-wrap">{_shohou_table_html(v.get("shohou"))}</div></div>'
@@ -454,7 +453,6 @@ def problem_page(patient) -> str:
         + _mini_patient_header(patient)
         + _tab_nav(patient, "problem")
         + '<div class="content"><div class="panel"><h2>病名（プロブレム）一覧</h2>'
-        + '<div class="problem-list-status list-completeness-status">病名一覧: 全件表示</div>'
         + table + '</div></div></div>'
     )
     return page(f'病名｜{patient["name"]}', inner)
@@ -545,39 +543,12 @@ def plan_page(patient) -> str:
         '</div>'
         '</div>'
     )
-    history_rows = []
-    target_month = f"{TARGET_YEAR}-{TARGET_MONTH:02d}"
-    encounter_labels = {
-        "定期": "定期訪問",
-        "臨時": "往診",
-        "電話": "電話再診",
-        "外来": "外来",
-    }
-    for visit in patient["visits"].get(target_month, []):
-        label = encounter_labels.get(visit["type"], visit["type"])
-        service_date = f"{TARGET_YEAR:04d}-{TARGET_MONTH:02d}-{visit['day']:02d}"
-        source_record_id = f"{patient['id']}{TARGET_MONTH:02d}{visit['day']:02d}"
-        history_rows.append(
-            '<tr>'
-            f'<td>{service_date}</td><td>{E(label)}</td>'
-            f'<td>完了</td><td>{E(source_record_id)}</td></tr>'
-        )
-    encounter_history = (
-        '<div class="encounter-history-status list-completeness-status">当月受診履歴: 全件表示</div>'
-        '<table class="encounter-history"><thead><tr>'
-        '<th>診療日</th><th>受診種別</th><th>状態</th><th>カルテID</th>'
-        '</tr></thead><tbody>'
-        + "".join(history_rows)
-        + '</tbody></table>'
-    )
     content = (
         '<div class="content"><div class="panel">'
         '<h2>診療予定（予約パターン）</h2>'
         + grid
         + f'<div class="plan-dates">当月予約日：{day_chips}</div>'
-        + '<h3>当月受診履歴</h3>'
-        + encounter_history
-        + '</div></div>'
+        '</div></div>'
     )
     inner = (
         topbar()

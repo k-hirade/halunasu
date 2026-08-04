@@ -131,7 +131,12 @@
 
   elements["calculate-button"].addEventListener("click", async () => {
     const encounterType = selectedEncounterType();
-    if (!preview || !encounterType.value || patientChargeMutationsInFlight.size > 0) {
+    if (
+      !preview
+      || !encounterType.value
+      || patientChargeMutationsInFlight.size > 0
+      || acknowledgementMutationsInFlight.size > 0
+    ) {
       return;
     }
     const sameBuilding = selectedSameBuilding();
@@ -458,6 +463,7 @@
 
     group.hidden = false;
     const persistedHandling = patientChargeHandling(patientCharge);
+    const rawHandling = patientChargeRawHandling(patientCharge);
     const selectedHandling = mutationInFlight
       ? mutation.handling
       : options.preserveSelection === true
@@ -470,9 +476,12 @@
     elements["patient-charge-handling"].disabled = mutationInFlight || !writable;
     elements["patient-charge-save"].disabled = mutationInFlight
       || !writable
-      || selectedHandling === "unknown"
-      || selectedHandling === persistedHandling;
-    elements["patient-charge-save"].textContent = mutationInFlight ? "保存中" : "保存";
+      || (selectedHandling === persistedHandling && rawHandling !== "inherit");
+    elements["patient-charge-save"].textContent = mutationInFlight
+      ? "保存中"
+      : selectedHandling === "unknown" && rawHandling
+        ? "設定解除"
+        : "保存";
     elements["patient-charge-status"].classList.remove("is-error");
     if (!mutationInFlight) {
       elements["patient-charge-status"].textContent = patientChargeStatusText(patientCharge);
@@ -487,7 +496,7 @@
       patientChargeMutationsInFlight.has(draft?.sidecarDraftId)
       || !draft?.sidecarDraftId
       || !patientCharge
-      || !["inherit", "charge", "waive", "included_in_contract"].includes(handling)
+      || !["unknown", "charge", "waive"].includes(handling)
     ) {
       return;
     }
@@ -562,10 +571,16 @@
   }
 
   function patientChargeHandling(patientCharge = {}) {
-    const value = String(patientCharge.handling || patientCharge.billingHandling || "unknown");
-    return ["inherit", "charge", "waive", "included_in_contract"].includes(value)
-      ? value
-      : "unknown";
+    const value = patientChargeRawHandling(patientCharge);
+    if (value === "included_in_contract") return "waive";
+    return ["charge", "waive"].includes(value) ? value : "unknown";
+  }
+
+  function patientChargeRawHandling(patientCharge = {}) {
+    const handling = String(patientCharge.handling || "");
+    if (handling) return handling;
+    const billingHandling = String(patientCharge.billingHandling || "");
+    return billingHandling === "unknown" ? "" : billingHandling;
   }
 
   function patientChargeRevision(patientCharge = {}) {
@@ -588,19 +603,19 @@
     if (patientCharge.writable === false) {
       return "この算定案では患者別設定を変更できません。";
     }
+    if (patientChargeRawHandling(patientCharge) === "inherit") {
+      return "旧設定「施設設定を継承」は未解決です。設定を解除するか、請求有無を選んでください。";
+    }
+    if (patientChargeRawHandling(patientCharge) === "included_in_contract") {
+      return "旧設定「契約内に含む」のため、患者へ交通費を別請求しません。";
+    }
     switch (patientChargeHandling(patientCharge)) {
-      case "inherit":
-        return patientCharge.unavailableReason === "facility_default_not_configured"
-          ? "施設設定が未登録のため、請求は未確定です。"
-          : "施設設定を継承します。";
       case "charge":
         return patientCharge.status === "ready"
           ? "請求する設定です。"
           : "請求する設定です。実費入力待ちです。";
       case "waive":
         return "この患者には請求しません。";
-      case "included_in_contract":
-        return "患者契約に含めます。";
       default:
         return "未設定です。選択するまで請求に含めません。";
     }
@@ -687,7 +702,7 @@
 
   function renderAcknowledgementButton(button, candidate, candidateName, options = {}) {
     const acknowledgement = candidateAcknowledgement(candidate);
-    const acknowledged = acknowledgement.status === "acknowledged";
+    const status = acknowledgement.status;
     const pendingLabel = candidate.zone === "selection_required" ? "区分確認" : "要確認";
     const busy = options.busy === true;
     const canSave = Boolean(
@@ -696,10 +711,18 @@
       && candidate.candidateFingerprint
     );
     button.dataset.acknowledgementAvailable = canSave ? "true" : "";
-    button.textContent = busy ? "保存中" : acknowledged ? "確認済み" : pendingLabel;
-    button.classList.toggle("is-acknowledged", acknowledged);
+    button.textContent = busy
+      ? "保存中"
+      : status === "acknowledged"
+        ? "確認済み"
+        : status === "excluded"
+          ? "対象外"
+          : pendingLabel;
+    button.classList.toggle("is-acknowledged", status === "acknowledged");
+    button.classList.toggle("is-excluded", status === "excluded");
     button.disabled = busy || !canSave;
-    button.setAttribute("aria-pressed", String(acknowledged));
+    button.dataset.decisionStatus = status;
+    button.removeAttribute("aria-pressed");
     if (busy) {
       button.setAttribute("aria-busy", "true");
     } else {
@@ -709,9 +732,11 @@
       "aria-label",
       busy
         ? `${candidateName}の確認状態を保存中`
-        : acknowledged
-          ? `${candidateName}の確認済みを取り消す`
-          : `${candidateName}の${pendingLabel}を確認済みにする`
+        : status === "acknowledged"
+          ? `${candidateName}を対象外にする`
+          : status === "excluded"
+            ? `${candidateName}を${pendingLabel}に戻す`
+            : `${candidateName}の${pendingLabel}を確認済みにする`
     );
   }
 
@@ -719,7 +744,7 @@
     const acknowledgement = candidate.acknowledgement && typeof candidate.acknowledgement === "object"
       ? candidate.acknowledgement
       : {};
-    const status = ["acknowledged", "unacknowledged", "stale"].includes(acknowledgement.status)
+    const status = ["acknowledged", "excluded", "unacknowledged", "stale"].includes(acknowledgement.status)
       ? acknowledgement.status
       : "unacknowledged";
     return {
@@ -737,15 +762,20 @@
     const draft = currentSidecarDraft;
     const generation = resultGeneration;
     const acknowledgement = candidateAcknowledgement(candidate);
-    const acknowledged = acknowledgement.status === "acknowledged";
+    const nextStatus = acknowledgement.status === "acknowledged"
+      ? "excluded"
+      : acknowledgement.status === "excluded"
+        ? "unacknowledged"
+        : "acknowledged";
     acknowledgementMutationsInFlight.add(candidateKey);
     renderAcknowledgementButton(button, candidate, candidateName, { busy: true });
+    updateCalculateButton();
     setStatus("");
     try {
       const response = await api.setCandidateAcknowledgement({
         sidecarDraftId: draft.sidecarDraftId,
         candidateKey: candidate.candidateKey,
-        acknowledged: !acknowledged,
+        status: nextStatus,
         expectedSourceRevision: Number(draft.sourceRevision || 0),
         expectedCalculationRevision: Number(draft.calculationRevision || 0),
         expectedAcknowledgementVersion: acknowledgement.version,
@@ -768,9 +798,11 @@
       ) {
         activeCalculationTask.sidecarDraft = currentSidecarDraft;
       }
-      setStatus(acknowledged
-        ? `${candidateName}を未確認に戻しました。`
-        : `${candidateName}を確認済みにしました。`);
+      setStatus(nextStatus === "acknowledged"
+        ? `${candidateName}を確認済みにしました。`
+        : nextStatus === "excluded"
+          ? `${candidateName}を対象外にしました。`
+          : `${candidateName}を未確認に戻しました。`);
     } catch (error) {
       if ([401, 403].includes(error.status)) {
         await api.clearGrant().catch(() => {});
@@ -786,6 +818,7 @@
       if (generation === resultGeneration) {
         acknowledgementMutationsInFlight.delete(candidateKey);
       }
+      updateCalculateButton();
       if (isCurrentResult(draft, generation)) {
         renderResult(currentSidecarDraft);
       }
@@ -1354,6 +1387,7 @@
     const calculationPending = ["extracting", "calculating"].includes(activeCalculationTask?.phase);
     elements["calculate-button"].disabled = calculationPending
       || patientChargeMutationsInFlight.size > 0
+      || acknowledgementMutationsInFlight.size > 0
       || !preview
       || !selectedEncounterType().value;
   }

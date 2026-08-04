@@ -5,6 +5,11 @@ export const sidecarEncounterTypeSources = Object.freeze(["dom", "user"]);
 export const feeResidenceTypes = Object.freeze(["private", "facility"]);
 export const feeVisitKinds = Object.freeze(["telephone_revisit"]);
 export const sidecarContractVersions = Object.freeze(["v1"]);
+export const sidecarCandidateDecisionStatuses = Object.freeze([
+  "unacknowledged",
+  "acknowledged",
+  "excluded"
+]);
 export const patientChargeTypes = Object.freeze(["home_medical_transport"]);
 export const patientChargeHandlings = Object.freeze([
   "inherit",
@@ -336,10 +341,25 @@ export function validateSidecarCandidateAcknowledgementInput(input = {}) {
       "candidateFingerprint"
     );
   }
+  const explicitStatus = optionalEnum(
+    input.status,
+    sidecarCandidateDecisionStatuses,
+    "status"
+  );
+  const hasLegacyAcknowledged = hasOwn(input, "acknowledged");
+  const legacyStatus = hasLegacyAcknowledged
+    ? (strictBoolean(input.acknowledged, "acknowledged") ? "acknowledged" : "unacknowledged")
+    : null;
+  if (!explicitStatus && !legacyStatus) {
+    throw validationError("status is required", "status");
+  }
+  if (explicitStatus && legacyStatus && explicitStatus !== legacyStatus) {
+    throw validationError("status and acknowledged must describe the same decision", "status");
+  }
 
   return {
     contractVersion,
-    acknowledged: strictBoolean(input.acknowledged, "acknowledged"),
+    status: explicitStatus || legacyStatus,
     expectedSourceRevision: requiredPositiveInteger(
       input.expectedSourceRevision ?? input.expected_source_revision,
       "expectedSourceRevision"
@@ -376,12 +396,21 @@ export function validateSidecarPatientChargeSettingInput(input = {}) {
     patientChargeTypes,
     "chargeType"
   );
+  const clear = hasOwn(input, "clear")
+    ? strictBoolean(input.clear, "clear")
+    : false;
+  const hasHandling = hasOwn(input, "handling")
+    || hasOwn(input, "billingHandling")
+    || hasOwn(input, "billing_handling");
+  if (clear && hasHandling) {
+    throw validationError("handling must be omitted when clear is true", "handling");
+  }
   const handling = optionalEnum(
     input.handling ?? input.billingHandling ?? input.billing_handling,
     patientChargeHandlings,
     "handling"
   );
-  if (!handling) {
+  if (!clear && !handling) {
     throw validationError("handling is required", "handling");
   }
   const suppliedAmountYen = input.amountYen ?? input.amount_yen;
@@ -418,7 +447,8 @@ export function validateSidecarPatientChargeSettingInput(input = {}) {
   return compactObject({
     contractVersion,
     chargeType,
-    handling,
+    clear: clear ? true : undefined,
+    handling: clear ? null : handling,
     amountMode: handling === "charge" ? amountMode : null,
     amountYen: handling === "charge" ? amountYen : null,
     effectiveFrom,

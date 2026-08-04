@@ -184,7 +184,78 @@ test("sidecar candidate acknowledgement is explicit, idempotent, and revision lo
   }), /cannot be changed/u);
 });
 
-test("sidecar acknowledgement reconciliation only stales acknowledged candidates", () => {
+test("sidecar candidate decisions cycle through acknowledged, excluded, and unacknowledged", () => {
+  const calculated = applySidecarCalculationResult(
+    buildSidecarCalculationDraft(draftInput()),
+    {
+      provider: "test",
+      status: "completed",
+      totalPoints: 890,
+      lineItems: [{ lineId: "line_1", code: "114001110", name: "訪問診療料" }]
+    },
+    { calculationId: "calc_1", now: new Date("2026-07-18T00:01:00.000Z") }
+  );
+  const calculationBefore = structuredClone(calculated.calculationResult);
+  const common = {
+    expectedSourceRevision: 1,
+    expectedCalculationRevision: 1,
+    candidateKey: "review_issue:issue_1",
+    candidateFingerprint: "c".repeat(64),
+    updatedByMemberId: "mem_001",
+    updatedByLoginId: "admin@example.com",
+    updatedFromDeviceId: "device_001"
+  };
+  const acknowledged = applySidecarCandidateAcknowledgement(calculated, {
+    ...common,
+    status: "acknowledged",
+    expectedAcknowledgementVersion: 0
+  }, { now: new Date("2026-07-18T00:02:00.000Z") });
+  const excluded = applySidecarCandidateAcknowledgement(acknowledged.sidecarDraft, {
+    ...common,
+    status: "excluded",
+    expectedAcknowledgementVersion: 1
+  }, { now: new Date("2026-07-18T00:03:00.000Z") });
+  const unacknowledged = applySidecarCandidateAcknowledgement(excluded.sidecarDraft, {
+    ...common,
+    status: "unacknowledged",
+    expectedAcknowledgementVersion: 2
+  }, { now: new Date("2026-07-18T00:04:00.000Z") });
+  const auditTransitions = Object.values(
+    unacknowledged.sidecarDraft.candidateAcknowledgementAuditOutbox
+  ).sort((left, right) => left.acknowledgementVersion - right.acknowledgementVersion);
+
+  assert.deepEqual([
+    acknowledged.acknowledgement.status,
+    excluded.acknowledgement.status,
+    unacknowledged.acknowledgement.status
+  ], ["acknowledged", "excluded", "unacknowledged"]);
+  assert.deepEqual([
+    acknowledged.acknowledgement.version,
+    excluded.acknowledgement.version,
+    unacknowledged.acknowledgement.version
+  ], [1, 2, 3]);
+  assert.deepEqual(auditTransitions.map((entry) => ({
+    previousStatus: entry.previousStatus,
+    status: entry.status,
+    acknowledged: entry.acknowledged
+  })), [{
+    previousStatus: "unacknowledged",
+    status: "acknowledged",
+    acknowledged: true
+  }, {
+    previousStatus: "acknowledged",
+    status: "excluded",
+    acknowledged: false
+  }, {
+    previousStatus: "excluded",
+    status: "unacknowledged",
+    acknowledged: false
+  }]);
+  assert.equal(new Set(auditTransitions.map((entry) => entry.eventId)).size, 3);
+  assert.deepEqual(unacknowledged.sidecarDraft.calculationResult, calculationBefore);
+});
+
+test("sidecar acknowledgement reconciliation stales acknowledged and excluded decisions", () => {
   const calculationResult = {
     provider: "test",
     status: "completed",
@@ -218,6 +289,12 @@ test("sidecar acknowledgement reconciliation only stales acknowledged candidates
       missing: makeRecord("missing", "c".repeat(64)),
       changed: makeRecord("changed", changedFingerprint),
       old_source: makeRecord("old_source", "d".repeat(64), { sourceRevision: 0 }),
+      excluded_keep: makeRecord("excluded_keep", "1".repeat(64), { status: "excluded" }),
+      excluded_changed: makeRecord("excluded_changed", "2".repeat(64), { status: "excluded" }),
+      excluded_old_source: makeRecord("excluded_old_source", "3".repeat(64), {
+        status: "excluded",
+        sourceRevision: 0
+      }),
       opted_out: makeRecord("opted_out", "e".repeat(64), { status: "unacknowledged" }),
       already_stale: makeRecord("already_stale", "f".repeat(64), {
         status: "stale",
@@ -233,6 +310,9 @@ test("sidecar acknowledgement reconciliation only stales acknowledged candidates
       { candidateKey: "keep", candidateFingerprint: keepFingerprint },
       { candidateKey: "changed", candidateFingerprint: "9".repeat(64) },
       { candidateKey: "old_source", candidateFingerprint: "d".repeat(64) },
+      { candidateKey: "excluded_keep", candidateFingerprint: "1".repeat(64) },
+      { candidateKey: "excluded_changed", candidateFingerprint: "8".repeat(64) },
+      { candidateKey: "excluded_old_source", candidateFingerprint: "3".repeat(64) },
       { candidateKey: "opted_out", candidateFingerprint: "e".repeat(64) },
       { candidateKey: "already_stale", candidateFingerprint: "f".repeat(64) }
     ],
@@ -251,21 +331,31 @@ test("sidecar acknowledgement reconciliation only stales acknowledged candidates
   ]), [
     ["missing", "candidate_missing", 2],
     ["changed", "candidate_fingerprint_changed", 2],
-    ["old_source", "source_revision_changed", 2]
+    ["old_source", "source_revision_changed", 2],
+    ["excluded_changed", "candidate_fingerprint_changed", 2],
+    ["excluded_old_source", "source_revision_changed", 2]
   ]);
   assert.equal(reconciled.sidecarDraft.candidateAcknowledgements.keep.status, "acknowledged");
+  assert.equal(reconciled.sidecarDraft.candidateAcknowledgements.excluded_keep.status, "excluded");
   assert.equal(reconciled.sidecarDraft.candidateAcknowledgements.opted_out.status, "unacknowledged");
   assert.equal(reconciled.sidecarDraft.candidateAcknowledgements.already_stale.version, 1);
   assert.equal(reconciled.invalidated[0].invalidatedByMemberId, "mem_recalculator");
   assert.equal(reconciled.invalidated[0].invalidatedByLoginId, "recalculator@example.com");
   assert.equal(reconciled.invalidated[0].invalidationCalculationRevision, 1);
-  assert.equal(Object.keys(reconciled.sidecarDraft.candidateAcknowledgementAuditOutbox).length, 3);
+  assert.deepEqual(reconciled.invalidated.slice(-2).map((record) => record.staleFromStatus), [
+    "excluded",
+    "excluded"
+  ]);
+  assert.equal(Object.keys(reconciled.sidecarDraft.candidateAcknowledgementAuditOutbox).length, 5);
   assert.deepEqual(reconciled.sidecarDraft.calculationResult, calculationBefore);
 
   const repeated = reconcileSidecarCandidateAcknowledgements(reconciled.sidecarDraft, {
     expectedSourceRevision: 1,
     expectedCalculationRevision: 1,
-    activeCandidates: [{ candidateKey: "keep", candidateFingerprint: keepFingerprint }]
+    activeCandidates: [
+      { candidateKey: "keep", candidateFingerprint: keepFingerprint },
+      { candidateKey: "excluded_keep", candidateFingerprint: "1".repeat(64) }
+    ]
   });
   assert.equal(repeated.changed, false);
   assert.deepEqual(repeated.invalidated, []);

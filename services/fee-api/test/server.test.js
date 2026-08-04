@@ -9928,14 +9928,23 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
   const firstDraftId = first.body.sidecarDraft.sidecarDraftId;
   const acknowledgementPath = `/v1/integrations/sidecar/drafts/${firstDraftId}`
     + `/candidate-acknowledgements/${ambiguousCandidate.candidateKey}`;
-  const acknowledgementBody = {
+  const candidateDecisionBody = {
     contractVersion: "v1",
-    acknowledged: true,
     expectedSourceRevision: first.body.sidecarDraft.sourceRevision,
     expectedCalculationRevision: first.body.sidecarDraft.calculationRevision,
     expectedAcknowledgementVersion: ambiguousCandidate.acknowledgement.version,
     candidateFingerprint: ambiguousCandidate.candidateFingerprint
   };
+  const acknowledgementBody = { ...candidateDecisionBody, acknowledged: true };
+  const conflictingDecision = await request(
+    stores,
+    "PUT",
+    acknowledgementPath,
+    { ...acknowledgementBody, status: "excluded" },
+    sidecarHeaders,
+    sidecarRequestOptions()
+  );
+  assert.equal(conflictingDecision.statusCode, 400);
   const missingScope = await request(
     stores,
     "PUT",
@@ -9988,21 +9997,49 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
   assert.equal(acknowledgementRetry.body.sidecarDraft.calculation.candidates
     .find((candidate) => candidate.candidateKey === ambiguousCandidate.candidateKey)
     .acknowledgement.version, 1);
+  const excluded = await request(
+    stores,
+    "PUT",
+    acknowledgementPath,
+    {
+      ...candidateDecisionBody,
+      status: "excluded",
+      expectedAcknowledgementVersion: 1
+    },
+    sidecarHeaders,
+    sidecarRequestOptions()
+  );
+  assert.equal(excluded.statusCode, 200);
+  assert.equal(excluded.body.changed, true);
+  const excludedCandidate = excluded.body.sidecarDraft.calculation.candidates
+    .find((candidate) => candidate.candidateKey === ambiguousCandidate.candidateKey);
+  assert.equal(excludedCandidate.acknowledgement.status, "excluded");
+  assert.equal(excludedCandidate.acknowledgement.version, 2);
+  assert.equal(excludedCandidate.candidateOnly, true);
+  assert.equal(excludedCandidate.zone, ambiguousCandidate.zone);
+  assert.equal(
+    excluded.body.sidecarDraft.calculation.estimatedTotalPoints,
+    first.body.sidecarDraft.calculation.estimatedTotalPoints
+  );
+  assert.equal(
+    excludedCandidate.estimatedTotalPoints,
+    ambiguousCandidate.estimatedTotalPoints
+  );
   const unacknowledged = await request(
     stores,
     "PUT",
     acknowledgementPath,
     {
-      ...acknowledgementBody,
-      acknowledged: false,
-      expectedAcknowledgementVersion: 1
+      ...candidateDecisionBody,
+      status: "unacknowledged",
+      expectedAcknowledgementVersion: 2
     },
     sidecarHeaders,
     sidecarRequestOptions()
   );
   assert.equal(unacknowledged.statusCode, 200);
   assert.equal(unacknowledged.body.changed, true);
-  assert.deepEqual(unacknowledged.body.sidecarDraft.calculation.candidates
+  assert.equal(unacknowledged.body.sidecarDraft.calculation.candidates
     .find((candidate) => candidate.candidateKey === ambiguousCandidate.candidateKey)
     .acknowledgement.status, "unacknowledged");
   const reacknowledged = await request(
@@ -10011,7 +10048,7 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
     acknowledgementPath,
     {
       ...acknowledgementBody,
-      expectedAcknowledgementVersion: 2
+      expectedAcknowledgementVersion: 3
     },
     sidecarHeaders,
     sidecarRequestOptions()
@@ -10020,7 +10057,7 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
   assert.equal(reacknowledged.body.changed, true);
   assert.equal(reacknowledged.body.sidecarDraft.calculation.candidates
     .find((candidate) => candidate.candidateKey === ambiguousCandidate.candidateKey)
-    .acknowledgement.version, 3);
+    .acknowledgement.version, 4);
   const unchangedCalculation = await request(
     stores,
     "POST",
@@ -10036,7 +10073,7 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
   assert.equal(unchangedCalculation.body.sidecarDraft.calculationRevision, 2);
   assert.equal(unchangedCandidate.candidateFingerprint, ambiguousCandidate.candidateFingerprint);
   assert.equal(unchangedCandidate.acknowledgement.status, "acknowledged");
-  assert.equal(unchangedCandidate.acknowledgement.version, 3);
+  assert.equal(unchangedCandidate.acknowledgement.version, 4);
   const storedFirst = stores.feeStore.getSidecarCalculationDraft("org_001", firstDraftId);
   assert.equal(storedFirst.recordType, "sidecar_calculation_draft");
   assert.equal(storedFirst.canonicalPatientId, storedFirst.patientId);
@@ -10082,17 +10119,44 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
   const staleAcknowledgementCandidate = second.body.sidecarDraft.calculation.candidates
     .find((candidate) => candidate.candidateKey === ambiguousCandidate.candidateKey);
   assert.equal(staleAcknowledgementCandidate.acknowledgement.status, "stale");
-  assert.equal(staleAcknowledgementCandidate.acknowledgement.version, 4);
+  assert.equal(staleAcknowledgementCandidate.acknowledgement.version, 5);
   assert.equal(stores.feeStore.getSidecarCalculationDraft("org_001", firstDraftId)
     .candidateAcknowledgements[ambiguousCandidate.candidateKey].status, "stale");
   const acknowledgementAudits = stores.platformStore.listAuditEvents("org_001")
     .filter((event) => event.eventType.startsWith("fee.sidecar_candidate_acknowledgement_"));
-  assert.equal(acknowledgementAudits.filter((event) => (
+  const changedAcknowledgementAudits = acknowledgementAudits.filter((event) => (
     event.eventType === "fee.sidecar_candidate_acknowledgement_changed"
-  )).length, 3);
+  ));
+  assert.equal(changedAcknowledgementAudits.length, 4);
+  assert.deepEqual(changedAcknowledgementAudits.map((event) => [
+    event.safePayload.previousDecisionStatus,
+    event.safePayload.decisionStatus
+  ]), [
+    ["unacknowledged", "acknowledged"],
+    ["acknowledged", "excluded"],
+    ["excluded", "unacknowledged"],
+    ["unacknowledged", "acknowledged"]
+  ]);
   assert.equal(acknowledgementAudits.filter((event) => (
     event.eventType === "fee.sidecar_candidate_acknowledgement_invalidated"
   )).length, 1);
+  assert.deepEqual(acknowledgementAudits.find((event) => (
+    event.eventType === "fee.sidecar_candidate_acknowledgement_invalidated"
+  )).safePayload, {
+    sidecarDraftId: firstDraftId,
+    candidateKey: ambiguousCandidate.candidateKey,
+    candidateFingerprint: ambiguousCandidate.candidateFingerprint,
+    sourceRevision: 2,
+    calculationRevision: 3,
+    acknowledgementVersion: 5,
+    decisionStatus: "stale",
+    previousDecisionStatus: "acknowledged",
+    acknowledged: false,
+    occurredAt: "2026-05-28T00:00:00.000Z",
+    previousAcknowledged: true,
+    staleReason: "source_revision_changed",
+    deviceId: TEST_SIDECAR_DEVICE_ID
+  });
   assert.equal(acknowledgementAudits.every((event) => (
     !Object.hasOwn(event.safePayload, "clinicalText")
     && !Object.hasOwn(event.safePayload, "patientName")
@@ -10313,7 +10377,7 @@ test("sidecar acknowledgement audits recover idempotently after a transient audi
     return createAuditEvent(orgId, auditInput);
   };
 
-  const failedAcknowledgement = await request(
+  const deferredAcknowledgement = await request(
     stores,
     "PUT",
     acknowledgementPath,
@@ -10325,7 +10389,14 @@ test("sidecar acknowledgement audits recover idempotently after a transient audi
     "org_001",
     first.body.sidecarDraft.sidecarDraftId
   );
-  assert.equal(failedAcknowledgement.statusCode, 500);
+  assert.equal(deferredAcknowledgement.statusCode, 200);
+  assert.equal(deferredAcknowledgement.body.changed, true);
+  assert.equal(
+    deferredAcknowledgement.body.sidecarDraft.calculation.candidates.find((item) => (
+      item.candidateKey === candidate.candidateKey
+    )).acknowledgement.status,
+    "acknowledged"
+  );
   assert.equal(
     storedAfterAcknowledgementFailure.candidateAcknowledgements[candidate.candidateKey].status,
     "acknowledged"
@@ -10335,7 +10406,7 @@ test("sidecar acknowledgement audits recover idempotently after a transient audi
     1
   );
 
-  const failedUnacknowledgement = await request(
+  const deferredUnacknowledgement = await request(
     stores,
     "PUT",
     acknowledgementPath,
@@ -10347,11 +10418,19 @@ test("sidecar acknowledgement audits recover idempotently after a transient audi
     sidecarHeaders,
     sidecarRequestOptions()
   );
-  assert.equal(failedUnacknowledgement.statusCode, 500);
-  assert.equal(Object.keys(stores.feeStore.getSidecarCalculationDraft(
+  assert.equal(deferredUnacknowledgement.statusCode, 200);
+  assert.equal(deferredUnacknowledgement.body.changed, true);
+  const storedAfterUnacknowledgementFailure = stores.feeStore.getSidecarCalculationDraft(
     "org_001",
     first.body.sidecarDraft.sidecarDraftId
-  ).candidateAcknowledgementAuditOutbox).length, 2);
+  );
+  assert.equal(
+    storedAfterUnacknowledgementFailure.candidateAcknowledgements[candidate.candidateKey].status,
+    "unacknowledged"
+  );
+  assert.equal(Object.keys(
+    storedAfterUnacknowledgementFailure.candidateAcknowledgementAuditOutbox
+  ).length, 2);
 
   const repairedAcknowledgement = await request(
     stores,
@@ -10960,9 +11039,60 @@ test("Sidecar stores patient transport handling through a draft-scoped revision-
     inherited.body.sidecarDraft.patientCharges[0].unavailableReason,
     "facility_default_not_configured"
   );
+  const cleared = await request(
+    stores,
+    "PUT",
+    settingPath,
+    { contractVersion: "v1", clear: true, expectedRevision: 3, ...draftLock },
+    headers,
+    sidecarRequestOptions()
+  );
+  assert.equal(cleared.statusCode, 200);
+  assert.equal(cleared.body.changed, true);
+  assert.deepEqual(cleared.body.sidecarDraft.patientCharges[0], {
+    chargeType: "home_medical_transport",
+    status: "pending",
+    handling: null,
+    billingHandling: "unknown",
+    amountMode: null,
+    amountYen: null,
+    effectiveFrom: null,
+    effectiveTo: null,
+    revision: 4,
+    includedInInsurancePoints: false,
+    includedInUke: false,
+    writable: true,
+    unavailableReason: "setting_not_configured"
+  });
+  const clearedContract = stores.feeStore.getPatientChargeContract(
+    "org_001",
+    "fac_001",
+    patient.patientId,
+    "home_medical_transport"
+  );
+  const clearEvent = clearedContract.settingEvents.at(-1);
+  assert.deepEqual({
+    revision: clearEvent.revision,
+    action: clearEvent.action,
+    handling: clearEvent.handling,
+    amountMode: clearEvent.amountMode,
+    amountYen: clearEvent.amountYen,
+    effectiveFrom: clearEvent.effectiveFrom,
+    effectiveTo: clearEvent.effectiveTo,
+    source: clearEvent.source
+  }, {
+    revision: 4,
+    action: "clear",
+    handling: null,
+    amountMode: null,
+    amountYen: null,
+    effectiveFrom: "2026-05-28",
+    effectiveTo: null,
+    source: "homis_sidecar"
+  });
   const audits = stores.platformStore.listAuditEvents("org_001")
     .filter((event) => event.eventType === "fee.patient_charge_contract_updated");
-  assert.equal(audits.length, 3);
+  assert.equal(audits.length, 4);
   assert.deepEqual(audits.map((event) => [
     event.safePayload.beforeHandling,
     event.safePayload.afterHandling,
@@ -10970,7 +11100,8 @@ test("Sidecar stores patient transport handling through a draft-scoped revision-
   ]), [
     [null, "charge", 1],
     ["charge", "waive", 2],
-    ["waive", "inherit", 3]
+    ["waive", "inherit", 3],
+    ["inherit", null, 4]
   ]);
   assert.equal(audits.every((event) => (
     !Object.hasOwn(event.safePayload, "clinicalText")
@@ -11308,7 +11439,7 @@ test("Sidecar patient charge audit outbox recovers idempotently after audit deli
     return originalAudit(orgId, event);
   };
 
-  const failed = await request(
+  const deferred = await request(
     stores,
     "PUT",
     settingPath,
@@ -11316,7 +11447,9 @@ test("Sidecar patient charge audit outbox recovers idempotently after audit deli
     headers,
     sidecarRequestOptions()
   );
-  assert.equal(failed.statusCode, 500);
+  assert.equal(deferred.statusCode, 200);
+  assert.equal(deferred.body.changed, true);
+  assert.equal(deferred.body.sidecarDraft.patientCharges[0].handling, "waive");
   const persisted = stores.feeStore.getPatientChargeContract(
     "org_001",
     "fac_001",
@@ -11324,6 +11457,7 @@ test("Sidecar patient charge audit outbox recovers idempotently after audit deli
     "home_medical_transport"
   );
   assert.equal(persisted.revision, 1);
+  assert.equal(persisted.settingEvents[0].handling, "waive");
   assert.equal(Object.keys(persisted.auditOutbox).length, 1);
 
   const recovered = await request(

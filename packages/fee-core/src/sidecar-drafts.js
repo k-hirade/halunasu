@@ -5,6 +5,13 @@ import {
   buildFeeSession
 } from "./index.js";
 
+const SIDECAR_CANDIDATE_DECISION_STATUSES = new Set([
+  "unacknowledged",
+  "acknowledged",
+  "excluded"
+]);
+const SIDECAR_CANDIDATE_INVALIDATABLE_STATUSES = new Set(["acknowledged", "excluded"]);
+
 export function buildSidecarCalculationDraft(input = {}, options = {}) {
   const now = timestamp(options.now);
   const sidecarDraftId = requiredString(input.sidecarDraftId, "sidecarDraftId");
@@ -149,10 +156,7 @@ export function applySidecarCandidateAcknowledgement(current = {}, input = {}, o
     input.expectedAcknowledgementVersion,
     "expectedAcknowledgementVersion"
   );
-  if (typeof input.acknowledged !== "boolean") {
-    throw new TypeError("acknowledged must be a boolean");
-  }
-  const desiredStatus = input.acknowledged ? "acknowledged" : "unacknowledged";
+  const desiredStatus = candidateDecisionStatus(input);
   const updatedByMemberId = requiredString(input.updatedByMemberId, "updatedByMemberId");
   const updatedByLoginId = requiredString(input.updatedByLoginId, "updatedByLoginId");
   const updatedFromDeviceId = requiredString(input.updatedFromDeviceId, "updatedFromDeviceId");
@@ -195,7 +199,9 @@ export function applySidecarCandidateAcknowledgement(current = {}, input = {}, o
     updatedFromDeviceId,
     updatedAt: now
   };
-  const auditEntry = sidecarAcknowledgementAuditEntry(current, acknowledgement, now);
+  const auditEntry = sidecarAcknowledgementAuditEntry(current, acknowledgement, now, {
+    previousStatus: previousAcknowledgement?.status || "unacknowledged"
+  });
   const nextAuditOutbox = {
     ...acknowledgementAuditOutbox(current.candidateAcknowledgementAuditOutbox),
     [auditEntry.eventId]: auditEntry
@@ -243,7 +249,7 @@ export function reconcileSidecarCandidateAcknowledgements(current = {}, input = 
   const now = timestamp(options.now);
 
   for (const [candidateKey, record] of Object.entries(acknowledgements)) {
-    if (!record || record.status !== "acknowledged") {
+    if (!record || !SIDECAR_CANDIDATE_INVALIDATABLE_STATUSES.has(record.status)) {
       continue;
     }
     let staleReason = null;
@@ -263,6 +269,7 @@ export function reconcileSidecarCandidateAcknowledgements(current = {}, input = 
       version: Number(record.version || 0) + 1,
       updatedAt: now,
       staleReason,
+      staleFromStatus: record.status,
       invalidationSourceRevision: Number(current.sourceRevision),
       invalidationCalculationRevision: Number(current.calculationRevision),
       invalidatedByMemberId: requiredString(
@@ -280,7 +287,9 @@ export function reconcileSidecarCandidateAcknowledgements(current = {}, input = 
       invalidatedAt: now
     };
     nextAcknowledgements[candidateKey] = staleRecord;
-    const auditEntry = sidecarAcknowledgementAuditEntry(current, staleRecord, now);
+    const auditEntry = sidecarAcknowledgementAuditEntry(current, staleRecord, now, {
+      previousStatus: record.status
+    });
     nextAuditOutbox[auditEntry.eventId] = auditEntry;
     invalidated.push(staleRecord);
   }
@@ -317,7 +326,7 @@ export function completeSidecarCandidateAcknowledgementAudit(current = {}, event
   };
 }
 
-function sidecarAcknowledgementAuditEntry(current, record, occurredAt) {
+function sidecarAcknowledgementAuditEntry(current, record, occurredAt, options = {}) {
   const invalidated = record.status === "stale";
   const eventType = invalidated
     ? "fee.sidecar_candidate_acknowledgement_invalidated"
@@ -340,6 +349,8 @@ function sidecarAcknowledgementAuditEntry(current, record, occurredAt) {
       ? record.invalidationCalculationRevision
       : record.calculationRevision,
     acknowledgementVersion: record.version,
+    status: record.status,
+    previousStatus: options.previousStatus || "unacknowledged",
     acknowledged: record.status === "acknowledged",
     actorMemberId: invalidated ? record.invalidatedByMemberId : record.updatedByMemberId,
     actorLoginId: invalidated ? record.invalidatedByLoginId : record.updatedByLoginId,
@@ -347,6 +358,24 @@ function sidecarAcknowledgementAuditEntry(current, record, occurredAt) {
     staleReason: invalidated ? record.staleReason : null,
     occurredAt
   };
+}
+
+function candidateDecisionStatus(input = {}) {
+  const explicitStatus = typeof input.status === "string" ? input.status.trim() : "";
+  const hasLegacyStatus = typeof input.acknowledged === "boolean";
+  const legacyStatus = hasLegacyStatus
+    ? (input.acknowledged ? "acknowledged" : "unacknowledged")
+    : "";
+  if (explicitStatus && !SIDECAR_CANDIDATE_DECISION_STATUSES.has(explicitStatus)) {
+    throw new TypeError("status must be unacknowledged, acknowledged, or excluded");
+  }
+  if (!explicitStatus && !legacyStatus) {
+    throw new TypeError("status is required");
+  }
+  if (explicitStatus && legacyStatus && explicitStatus !== legacyStatus) {
+    throw new TypeError("status and acknowledged must describe the same decision");
+  }
+  return explicitStatus || legacyStatus;
 }
 
 function sidecarAcknowledgementAuditEventId(eventType, sidecarDraftId, candidateKey, version) {

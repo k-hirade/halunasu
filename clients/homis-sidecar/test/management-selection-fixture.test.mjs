@@ -1,16 +1,11 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
-
-import { validateSidecarCalculationInput } from "../../../packages/fee-contracts/src/index.js";
-import { narrowSidecarCandidateSelection } from "../../../services/fee-api/src/sidecar-selection-narrowing.js";
-import { normalizeSidecarStructuredFacts } from "../../../services/fee-api/src/sidecar-structured-facts.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(here, "../../..");
@@ -19,31 +14,6 @@ const fixtureDir = path.resolve(here, "../mock/fixture");
 const preparedFixture = prepareFixture();
 const homisClientScript = readFileSync(path.join(preparedFixture.output, "static/homis.js"), "utf8");
 const homisStyles = readFileSync(path.join(preparedFixture.output, "static/style.css"), "utf8");
-const selectionArtifact = JSON.parse(readFileSync(path.join(
-  repositoryRoot,
-  "services/fee-api/src/fee-rule-data/sidecar-selection-axes-2026.generated.json"
-), "utf8"));
-const candidateCodesByFamily = new Map(["在医総管", "施医総管"].map((familyName) => [
-  familyName,
-  selectionArtifact.options
-    .filter((option) => option.familyName === familyName)
-    .map((option) => option.code)
-]));
-const expectedCodes = new Map([
-  ["1001", "114031010"],
-  ["1002", "114035610"],
-  ["1003", "114031310"],
-  ["1004", "114035610"],
-  ["1005", "114031310"],
-  ["1006", "114030710"],
-  ["1007", "114030710"],
-  ["1008", "114031010"],
-  ["1009", "114031010"],
-  ["1010", "114035610"],
-  ["1011", "114035610"],
-  ["1012", "114031010"],
-  ["1013", "114030710"]
-]);
 const fixturePages = renderFixturePages(preparedFixture.output);
 let browser;
 
@@ -56,20 +26,49 @@ after(async () => {
   rmSync(preparedFixture.temporaryRoot, { recursive: true, force: true });
 });
 
-test("visible fixture surfaces resolve all 13 management selections without action-list input", async () => {
-  assert.equal(fixturePages.length, 13);
-  const actualCodes = new Map();
-  const metrics = {
-    exactMatchCount: 0,
-    wrongExactCount: 0,
-    ambiguousCount: 0,
-    contextIncompleteCount: 0,
-    selectionExactMatchRate: 0,
-    methodology: {
-      actionListUsedAsCalculationInput: false
-    }
-  };
+test("v6 preparation shifts fixture data without changing legacy DOM assets", () => {
+  for (const relative of [
+    "app.py",
+    "data/schedule.py",
+    "render.py",
+    "requirements.txt",
+    "run.sh",
+    "static/homis.js",
+    "static/style.css"
+  ]) {
+    assert.deepEqual(
+      readFileSync(path.join(preparedFixture.output, relative)),
+      readFileSync(path.join(fixtureDir, relative)),
+      relative
+    );
+  }
 
+  const preparedPatients = readFileSync(
+    path.join(preparedFixture.output, "data/patients.py"),
+    "utf8"
+  );
+  assert.match(preparedPatients, /^TARGET_YEAR = 2026$/mu);
+  assert.match(preparedPatients, /^TARGET_MONTH = 7$/mu);
+  assert.match(preparedPatients, /^PREV_YEAR = 2026$/mu);
+  assert.match(preparedPatients, /^PREV_MONTH = 6$/mu);
+  assert.doesNotMatch(preparedPatients, /^TARGET_YEAR = 2025$/mu);
+  assert.doesNotMatch(preparedPatients, /["']2025-01["':]/u);
+
+  assert.equal(fixturePages.length, 13);
+  for (const fixture of fixturePages) {
+    assert.equal(fixture.targetMonth, "2026-07", fixture.patientId);
+    assert.ok(fixture.targetMonthVisitDates.length > 0, fixture.patientId);
+    assert.ok(
+      fixture.targetMonthVisitDates.every((value) => value.startsWith("2026-07-")),
+      fixture.patientId
+    );
+    assert.doesNotMatch(fixture.detailHtml, /condition-management-list-status/u, fixture.patientId);
+    assert.doesNotMatch(fixture.problemHtml, /problem-list-status/u, fixture.patientId);
+    assert.doesNotMatch(fixture.planHtml, /encounter-history/u, fixture.patientId);
+  }
+});
+
+test("runtime extraction ignores the action list on the legacy DOM", async () => {
   for (const fixture of fixturePages) {
     const detailPage = await browser.newPage();
     await detailPage.route("http://fixture.local/**", async (route) => {
@@ -112,12 +111,32 @@ test("visible fixture surfaces resolve all 13 management selections without acti
     await detailPage.addScriptTag({ path: path.join(extensionDir, "content.js") });
     const baselinePreview = await callContentScript(detailPage, { type: "halunasu:extract" });
     assert.equal(baselinePreview.ok, true, `${fixture.patientId}: baseline preview`);
+    assert.ok(
+      fixture.targetMonthVisitDates.includes(baselinePreview.serviceDate),
+      `${fixture.patientId}: service date`
+    );
     const baselinePrepared = await callContentScript(detailPage, {
       type: "halunasu:prepare-calculation",
       previewFingerprint: baselinePreview.previewFingerprint
     });
     assert.equal(baselinePrepared.ok, true, `${fixture.patientId}: baseline prepare`);
-    const baseline = prepareSelection(baselinePrepared);
+    assert.equal(
+      baselinePrepared.sourceSurfaces.currentChart.raw.deviceManagementListCompleteness,
+      "unknown",
+      fixture.patientId
+    );
+    assert.equal(
+      baselinePrepared.sourceSurfaces.problems.raw.listCompleteness,
+      "incomplete",
+      fixture.patientId
+    );
+    assert.equal(baselinePrepared.sourceSurfaces.visitPlan.raw.basis, "schedule_only", fixture.patientId);
+    assert.equal(
+      baselinePrepared.sourceSurfaces.visitPlan.raw.listCompleteness,
+      "incomplete",
+      fixture.patientId
+    );
+    const baselineSourceInput = runtimeCalculationSourceInput(baselinePrepared);
     for (const [mutationIndex, actionText] of [
       "MUTATED_GOLD_CODE 0点",
       "",
@@ -140,60 +159,13 @@ test("visible fixture surfaces resolve all 13 management selections without acti
         `${fixture.patientId}: mutation ${mutationIndex}`
       );
       assert.deepEqual(
-        baselinePrepared.sourceSurfaces.currentChart.raw,
-        mutatedPrepared.sourceSurfaces.currentChart.raw,
-        `${fixture.patientId}: mutation ${mutationIndex}`
-      );
-      const mutated = prepareSelection(mutatedPrepared);
-      assert.deepEqual(
-        mutated.revisionPayload,
-        baseline.revisionPayload,
-        `${fixture.patientId}: mutation ${mutationIndex}`
-      );
-      assert.equal(
-        mutated.sourceRevisionHash,
-        baseline.sourceRevisionHash,
-        `${fixture.patientId}: mutation ${mutationIndex}`
-      );
-      assert.deepEqual(
-        selectionWithoutObservationTimes(mutated.selection),
-        selectionWithoutObservationTimes(baseline.selection),
+        runtimeCalculationSourceInput(mutatedPrepared),
+        baselineSourceInput,
         `${fixture.patientId}: mutation ${mutationIndex}`
       );
     }
-    const visitPlan = baselinePrepared.sourceSurfaces.visitPlan;
-    assert.equal(visitPlan.raw.basis, "encounter_history", fixture.patientId);
-    assert.equal(visitPlan.raw.listCompleteness, "complete", fixture.patientId);
-    assert.equal(visitPlan.raw.rows.length, fixture.targetMonthEncounterCount, fixture.patientId);
-    assert.equal(new Set(visitPlan.raw.rows.map((row) => row.sourceRecordId)).size, visitPlan.raw.rows.length);
     await detailPage.close();
-
-    const { selection } = baseline;
-    if (selection.selectionResolution !== "exact") {
-      metrics.ambiguousCount += selection.selectionResolution === "ambiguous" ? 1 : 0;
-      metrics.contextIncompleteCount += 1;
-    } else if (selection.remainingOptions[0]?.code === expectedCodes.get(fixture.patientId)) {
-      metrics.exactMatchCount += 1;
-    } else {
-      metrics.wrongExactCount += 1;
-    }
-    assert.equal(selection.selectionResolution, "exact", fixture.patientId);
-    assert.equal(selection.remainingOptionCount, 1, fixture.patientId);
-    actualCodes.set(fixture.patientId, selection.remainingOptions[0].code);
   }
-
-  metrics.selectionExactMatchRate = metrics.exactMatchCount / fixturePages.length;
-  assert.deepEqual(actualCodes, expectedCodes);
-  assert.deepEqual(metrics, {
-    exactMatchCount: 13,
-    wrongExactCount: 0,
-    ambiguousCount: 0,
-    contextIncompleteCount: 0,
-    selectionExactMatchRate: 1,
-    methodology: {
-      actionListUsedAsCalculationInput: false
-    }
-  });
 });
 
 async function callContentScript(page, message) {
@@ -202,88 +174,50 @@ async function callContentScript(page, message) {
   }), message);
 }
 
-function prepareSelection(prepared) {
-  const normalized = validateSidecarCalculationInput({
+function runtimeCalculationSourceInput(prepared) {
+  return {
     contractVersion: "v1",
-    facilityId: "fixture-facility",
     sourceSystem: "homis",
     externalPatientId: prepared.externalPatientId,
     sourceRecordId: prepared.sourceRecordId,
-    sourceRecordDisplayId: prepared.sourceRecordDisplayId,
+    sourceRecordDisplayId: prepared.sourceRecordDisplayId || undefined,
     serviceDate: prepared.serviceDate,
-    receptionTime: prepared.receptionTime,
+    receptionTime: prepared.receptionTime || undefined,
     setting: prepared.encounterType,
     encounterTypeSource: prepared.encounterTypeSource,
     sameBuilding: prepared.sameBuilding,
     sameBuildingSource: prepared.sameBuildingSource,
     singleBuildingPatientCount: prepared.singleBuildingPatientCount,
-    residenceType: prepared.privateResidence ? "private" : "facility",
+    residenceType: prepared.facilityResidence === true
+      ? "facility"
+      : prepared.privateResidence === true ? "private" : null,
     visitKind: prepared.visitKind,
     visitKindSource: prepared.visitKindSource,
     clinicalText: prepared.clinicalText,
-    sourceSurfaces: prepared.sourceSurfaces,
-    extractionProof: prepared.extractionProof
-  });
-  const revisionPayload = calculationRevisionPayload(normalized);
-  const sourceRevisionHash = createHash("sha256")
-    .update(JSON.stringify(revisionPayload))
-    .digest("hex");
-  const structuredFacts = normalizeSidecarStructuredFacts({
-    sourceSurfaces: normalized.sourceSurfaces,
-    serviceDate: normalized.serviceDate,
-    privateResidence: normalized.residenceType === "private",
-    sameBuilding: normalized.sameBuilding,
-    singleBuildingPatientCount: normalized.singleBuildingPatientCount,
-    sourceRevisionHash,
-    selectorContractVersion: normalized.extractionProof.selectorContractVersion
-  });
-  const family = normalized.residenceType === "private" ? "在医総管" : "施医総管";
-  const selection = narrowSidecarCandidateSelection({
-    requiresSelection: true,
-    codeCandidates: candidateCodesByFamily.get(family)
-  }, {
-    facilityStandardKeys: ["3055", "3057"],
-    setting: normalized.setting,
-    selection: structuredFacts.selection
-  });
-  return { normalized, revisionPayload, sourceRevisionHash, structuredFacts, selection };
-}
-
-function calculationRevisionPayload(input) {
-  return {
-    contractVersion: input.contractVersion,
-    selectorContractVersion: input.extractionProof.selectorContractVersion,
-    serviceDate: input.serviceDate,
-    receptionTime: input.receptionTime || null,
-    setting: input.setting,
-    encounterTypeSource: input.encounterTypeSource,
-    sameBuilding: input.sameBuilding ?? null,
-    sameBuildingSource: input.sameBuildingSource || null,
-    singleBuildingPatientCount: input.singleBuildingPatientCount ?? null,
-    residenceType: input.residenceType || null,
-    visitKind: input.visitKind || null,
-    visitKindSource: input.visitKindSource || null,
-    telephoneEligibility: input.telephoneEligibility || null,
-    clinicalText: input.clinicalText,
-    orders: input.orders || [],
-    diagnoses: input.diagnoses || [],
-    sourceSurfaces: Object.fromEntries(
-      ["currentChart", "documents", "problems", "visitPlan"]
-        .filter((name) => input.sourceSurfaces?.[name])
-        .map((name) => [name, {
-          status: input.sourceSurfaces[name].status,
-          patientId: input.sourceSurfaces[name].patientId,
-          surfaceHash: input.sourceSurfaces[name].surfaceHash,
-          unavailableReason: input.sourceSurfaces[name].unavailableReason || null
-        }])
-    )
+    sourceSurfaces: stableSourceSurfaces(prepared.sourceSurfaces),
+    extractionProof: stableExtractionProof(prepared.extractionProof)
   };
 }
 
-function selectionWithoutObservationTimes(selection) {
+function stableSourceSurfaces(sourceSurfaces = {}) {
+  return Object.fromEntries(Object.entries(sourceSurfaces).map(([name, surface]) => {
+    const { observedAt: _observedAt, ...stableSurface } = surface;
+    return [name, stableSurface];
+  }));
+}
+
+function stableExtractionProof(extractionProof = {}) {
+  const {
+    extractedAt: _extractedAt,
+    surfaceProofs = {},
+    ...stableProof
+  } = extractionProof;
   return {
-    ...selection,
-    appliedFilters: selection.appliedFilters.map(({ observedAt: _observedAt, ...filter }) => filter)
+    ...stableProof,
+    surfaceProofs: Object.fromEntries(Object.entries(surfaceProofs).map(([name, proof]) => {
+      const { observedAt: _observedAt, ...stableSurfaceProof } = proof;
+      return [name, stableSurfaceProof];
+    }))
   };
 }
 
@@ -315,7 +249,8 @@ function renderFixturePages(preparedFixtureDir) {
     "for patient in PATIENTS:",
     "    payload.append({",
     "        'patientId': patient['id'],",
-    "        'targetMonthEncounterCount': len(patient['visits'].get(month, [])),",
+    "        'targetMonth': month,",
+    "        'targetMonthVisitDates': [f\"{month}-{visit['day']:02d}\" for visit in patient['visits'].get(month, [])],",
     "        'detailHtml': patient_detail_page(patient),",
     "        'problemHtml': problem_page(patient),",
     "        'documentsHtml': docs_page(patient),",

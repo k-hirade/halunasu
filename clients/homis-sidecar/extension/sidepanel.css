@@ -411,6 +411,12 @@ h3 {
   background: #eaf7f4;
 }
 
+.decision-kind.is-excluded {
+  color: #4b5563;
+  border-color: #aeb7c1;
+  background: #eef1f4;
+}
+
 .decision-kind:focus-visible {
   outline: 2px solid #1769aa;
   outline-offset: 2px;

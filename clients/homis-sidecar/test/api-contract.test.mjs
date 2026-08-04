@@ -28,6 +28,9 @@ test("calculate request snapshot keeps the v1 sidecar boundary", () => {
   assert.match(apiSource, /expectedCalculationRevision/);
   assert.match(apiSource, /expectedAcknowledgementVersion/);
   assert.match(apiSource, /candidateFingerprint/);
+  assert.match(apiSource, /contractVersion: "v1",\s+status,/);
+  assert.match(apiSource, /handling === "unknown" \? \{ clear: true \}/);
+  assert.doesNotMatch(apiSource, /acknowledged: input\.acknowledged/);
   assert.doesNotMatch(apiSource, /\/v1\/fee\/(?:sessions|patients|calculate)/);
 });
 

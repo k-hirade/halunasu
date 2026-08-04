@@ -136,7 +136,11 @@ export function resolvePatientChargeSetting(contract = null, serviceDate = "") {
       String(right.effectiveFrom || "").localeCompare(String(left.effectiveFrom || ""))
       || Number(right.revision || 0) - Number(left.revision || 0)
     ))[0] || null;
-  if (!active || (active.effectiveTo && date > active.effectiveTo)) {
+  if (
+    !active
+    || (active.effectiveTo && date > active.effectiveTo)
+    || isPatientChargeClearEvent(active)
+  ) {
     return null;
   }
   return { ...active };
@@ -151,7 +155,11 @@ export function isPatientChargeSettingRetry(contract = null, input = {}) {
   if (!latest) {
     return false;
   }
-  return latest.handling === input.handling
+  const clear = isPatientChargeClearInput(input);
+  if (clear !== isPatientChargeClearEvent(latest)) {
+    return false;
+  }
+  return (clear || latest.handling === input.handling)
     && (latest.amountMode || null) === (input.amountMode || null)
     && (latest.amountYen ?? null) === (input.amountYen ?? null)
     && latest.effectiveFrom === input.effectiveFrom
@@ -190,11 +198,13 @@ function settingEvent(input = {}, { revision, now }) {
   if (effectiveTo && effectiveTo < effectiveFrom) {
     throw validationError("effectiveTo must not be before effectiveFrom");
   }
+  const clear = isPatientChargeClearInput(input);
   return {
     revision,
-    handling: requiredString(input.handling, "handling"),
-    amountMode: input.amountMode || null,
-    amountYen: Number.isInteger(input.amountYen) ? input.amountYen : null,
+    ...(clear ? { action: "clear" } : {}),
+    handling: clear ? null : requiredString(input.handling, "handling"),
+    amountMode: clear ? null : input.amountMode || null,
+    amountYen: clear ? null : Number.isInteger(input.amountYen) ? input.amountYen : null,
     effectiveFrom,
     effectiveTo,
     source: input.source || "homis_sidecar",
@@ -208,6 +218,7 @@ function withPatientChargeAuditEntry(contract, input, previousSetting, occurredA
   if (!String(input.sidecarDraftId || "").trim()) {
     return contract;
   }
+  const clear = isPatientChargeClearInput(input);
   const eventId = patientChargeAuditEventId(contract);
   const entry = {
     eventId,
@@ -223,12 +234,14 @@ function withPatientChargeAuditEntry(contract, input, previousSetting, occurredA
       facilityId: contract.facilityId,
       chargeType: contract.chargeType,
       beforeHandling: previousSetting?.handling || null,
-      afterHandling: requiredString(input.handling, "handling"),
+      afterHandling: clear ? null : requiredString(input.handling, "handling"),
       effectiveFrom: requiredDate(input.effectiveFrom, "effectiveFrom"),
       effectiveTo: input.effectiveTo || null,
       revision: contract.revision,
-      amountMode: input.amountMode || null,
-      amountYen: Number.isInteger(input.amountYen) ? input.amountYen : null,
+      amountMode: clear ? null : input.amountMode || null,
+      amountYen: clear
+        ? null
+        : Number.isInteger(input.amountYen) ? input.amountYen : null,
       deviceId: input.updatedFromDeviceId || null
     },
     occurredAt
@@ -240,6 +253,14 @@ function withPatientChargeAuditEntry(contract, input, previousSetting, occurredA
       [eventId]: entry
     }
   };
+}
+
+function isPatientChargeClearInput(input = {}) {
+  return input.clear === true || input.action === "clear";
+}
+
+function isPatientChargeClearEvent(event = {}) {
+  return event.action === "clear" || event.clear === true;
 }
 
 function patientChargeAuditEventId(contract = {}) {

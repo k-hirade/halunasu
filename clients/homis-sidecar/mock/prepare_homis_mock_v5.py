@@ -113,10 +113,6 @@ def build_mock(source: Path, output: Path, target_month: str) -> None:
         prepare_dates(readme_path.read_text(encoding="utf-8"), target_month),
         encoding="utf-8",
     )
-    render_path.write_text(
-        prepare_dates(render_path.read_text(encoding="utf-8"), target_month),
-        encoding="utf-8",
-    )
     validate_generated_tree(output, target_month)
 
 

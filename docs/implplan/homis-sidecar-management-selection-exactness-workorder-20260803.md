@@ -1,9 +1,14 @@
 # HOMIS Sidecar 管理料区分 13/13 exact 化ワークオーダー
 
 - 作成日: 2026-08-03
-- status: local core verification complete / STG selector verification and full browser-to-Fee API E2E pending
+- status: mock DOM constraint corrected / 13-patient remeasurement pending
 - 対象: `clients/homis-sidecar`、`services/fee-api`、mock HOMIS 評価ハーネス
 - 目的: 現行の令和8年度 `sidecar-selection-axes` artifactを変えず、正当なHOMIS入力を補完して、mock 13患者の在医総管・施医総管を `13/13` で正しい1コードへ絞る。
+
+> **2026-08-04 訂正:** 新旧mockで変更してよいのは合成日付・患者データだけであり、
+> DOM、画面項目、CSS、クライアント挙動は旧mockに合わせる。2026-08-03に追加した
+> 完全性マーカーと当月受診履歴テーブル、およびそれらを使った `13/13 exact` の結果は
+> この制約に違反するため受入証跡から取り消した。13患者の再測定結果は本書では未確定とする。
 
 ## 1. 確定事項
 
@@ -16,7 +21,10 @@
 
 ## 2. 現状
 
-修正前のChrome拡張DOM経路では、対象13患者の詳細区分は `0/13 exact` だった。v6の可視受診履歴・病名面・出典付きselection contextを実装した後は、fixture-drivenテストで同じartifactから以下の `13/13 exact` に一意化できる。したがって主因はマスター不足ではなく、context生成の不足だった。
+2026-08-03にはmockへ可視受診履歴と完全性マーカーを追加したfixture-drivenテストで
+`13/13 exact` を得たが、mock DOMを変更していたため結果を無効化した。2026-08-04に
+新mockのDOM生成コードとCSSを旧mockへ戻した。以下はoffline評価用goldであり、現行の
+旧DOM互換mockに対する達成結果を表すものではない。
 
 | 患者ID | 期待コード | 点数 | 区分 |
 | --- | --- | ---: | --- |
@@ -47,13 +55,25 @@
 
 `calendarVisitDates` は取得済みだが日付しか持たず、定期訪問、電話再診、外来、往診を区別できない。日付数をそのまま管理料の訪問回数として使ってはならない。
 
+### 2.3 旧DOM調査で確認した不足（2026-08-04）
+
+旧mockのDOMには、今回追加していた完全性マーカーと当月受診履歴テーブルが存在しない。
+この構造が正本であり、新mockにも同じ制約を適用する。
+
+- カレンダーには診療日があるが、一覧上では定期訪問、電話再診、外来、往診を区別できない。日付数を定期訪問回数へ直接変換してはならない。
+- 病名一覧と在宅医療機器欄に「全件表示」を示す専用マーカーはない。マーカーをmockだけへ追加してnegative proofを作ってはならない。
+- 旧mockは2025年1月、新mockは同じ患者データを令和8年度へ日付shiftしたものなので、制度artifactの適用可否は診療日によって変わる。
+
+新データと旧DOMを組み合わせた13患者の判定結果は、評価担当者が別途測定する。本書では
+件数や達成率を先取りして記録しない。行為欄は引き続きruntime入力に使用しない。
+
 ## 3. 入力境界
 
 ### 3.1 許可する入力
 
 - 表示中カルテの患者ID、record ID、診療日、受診区分、居住区分、単一建物人数
 - HOMISの病名画面にある構造化病名、状態、有効期間
-- HOMISの診療予定・受診履歴にある日付、受診種別、状態
+- HOMISの既存画面から確認できる診療予定と各カルテの診療日・受診種別・状態
 - 施設の有効な届出・施設基準設定
 - 現在および過去のSidecar draft/sessionに保存済みの、出典付き構造化事実
 - 令和8年度一次資料から生成し、版・checksumを固定した疾病等判定artifact
@@ -127,7 +147,9 @@ raw値は上書きせず、導出値と根拠を別フィールドに残す。�
 
 単発カルテしか取得できず当月履歴の完全性を証明できない場合、月1回へ推測してexactにしてはならない。
 
-実装では `homis-mock-v6` の診療予定画面に表示される「当月受診履歴」を正本とする。画面の可視4列（診療日、受診種別、状態、カルテID）だけを読み、hidden `data-*` や行為欄は使わない。可視の「全件表示」マーカーが完全一致し、全行が完了済みでrecord IDを持ち、追加ページがなく、当月カレンダーの実カルテ日集合と履歴日集合が一致した場合だけ `complete` とする。予約日のchipは `schedule_only/incomplete` であり、exactの根拠にしない。電話再診、外来、往診を除いた `home_visit` のみを、表示カルテの診療日以前について集計する。同じ日に異なるrecord IDが複数ある場合は日付へ縮約せず、現行ルールでは回数を確定できないため `incomplete` としてfail closedにする。
+mockへ新しい履歴表やhidden metadataを追加してはならない。旧DOMにあるカレンダーと
+日めくり可能な各カルテから受診種別を取得するか、保存済みSidecar履歴など本番にも存在する
+正規の情報源を使う。全件性を証明できない場合は `incomplete` としてfail closedにする。
 
 ### MS4: 病名面とC002/C002-2疾病等artifact
 
@@ -139,7 +161,7 @@ raw値は上書きせず、導出値と根拠を別フィールドに残す。�
 - resolverは `eligible|not_eligible|unknown` と、該当根拠、artifact revisionを返す。
 - `eligible` は有効な陽性根拠がある場合だけ確定する。
 - `not_eligible` は病名面が完全で、対象病名・状態・治療/機器条件のいずれにも該当しないことを決定論で確認できる場合だけ確定する。SOAPに記載がないことやLLM出力だけでは確定しない。
-- 病名一覧と疾病等・状態管理一覧の双方に可視の「全件表示」マーカーが完全一致し、追加ページがない場合だけnegative proofへ使える `complete` とする。実HOMISに同等の表示根拠がなければ `unknown` のままにする。
+- mock専用の「全件表示」マーカーは追加しない。既存画面仕様または正規APIから全件性を証明できる場合だけnegative proofへ使い、証明できなければ `unknown` のままにする。
 - 1つの適用条件が病名面と状態管理面に分かれる複合条件は、両surfaceの陽性語をまとめて照合する。単一行・単一面だけで全条件が揃うことを要求しない。
 - 疾病等区分が点数表上適用される月2回以上の分岐でだけselection filterへ使用する。月1回の1003は疾病等に該当していても月1回コードを選び、artifactとのcontext conflictにしない。
 
@@ -171,23 +193,22 @@ raw値は上書きせず、導出値と根拠を別フィールドに残す。�
 6. STG 13/13のartifact revision、request/source hash、applied filtersを保存。
 7. wrong exactが0であることを確認してからprodへ進む。
 
-### 実装結果（2026-08-03）
+### 実装結果の訂正（2026-08-04）
 
 - selector contractを `homis-mock-v6` へ更新した。v6では `problems` と `visitPlan` source surfaceを必須とし、旧v5から同名surfaceを送ってもvalidator/normalizerは選択根拠として採用しない。
 - 個人宅1人の導出根拠revisionには、居住区分・同一建物区分を含むrequest全体の `sourceRevisionHash` を使う。selector contract versionもrevision hashへ含める。
 - C002/C002-2疾病等artifactは、令和8年別表第八の二の直接疾病・状態と指定難病348件を版・checksum付きで固定した。未来開始病名、疑い、時点を証明できない病名はfail closedにする。
-- `clients/homis-sidecar/test/management-selection-fixture.test.mjs` は13名のfixtureからカルテ・病名・書類・可視受診履歴HTMLをrenderし、実content script、contract、proof seal、fee-contract validator、structured facts、現行selection artifactのnarrowingまでを通す。テスト側に人数・訪問回数・病名・機器を転記せず、goldは最後のコード比較だけに使う。このテスト単体はSide PanelとFee API routeを通る単一E2Eではない。
-- mockの病名一覧、当月受診履歴、疾病等・状態管理一覧は、それぞれが全件表示であることを可視マーカーで明示する。抽出側は対応するマーカーの完全一致と追加ページなしを確認できた面だけ `complete` とする。実HOMISに同等の表示根拠がなければ `incomplete` / `unknown` とし、非該当や月1回を断定しない。
+- `clients/homis-sidecar/test/management-selection-fixture.test.mjs` は、期間shift後も旧DOMを維持し、行為欄の変更がruntime抽出入力へ入らないことだけをfixture側の回帰条件とする。13患者の区分結果はこのテストで合格扱いにしない。
+- 2026-08-03に追加した病名・状態管理の完全性マーカーと当月受診履歴テーブルは削除した。`render.py`、`app.py`、CSS、JavaScriptなど非データ実装は旧mockと同一にする。
 - Fee APIは各v6 surfaceの正規化rawをcanonical JSONへ変換してhashを再計算し、クライアント申告hashとの不一致を400で拒否する。確認済み状態の失効に使うsource revisionへ、未検証hashを採用しない。
 - C002/C002-2の複合条件は病名面と状態管理面を横断して照合する。同日異recordは1回へ縮約せず `incomplete` とする。両方に回帰テストを置いた。
-- 再現コマンドは `npm run test:homis-sidecar-management-exactness`。事前に `clients/homis-sidecar` の依存とPlaywright Chromiumが導入済みであることを前提とする。
-- ローカル結果は `exactMatchCount=13`、`wrongExactCount=0`、`ambiguousCount=0`、`contextIncompleteCount=0`、`selectionExactMatchRate=1`、`methodology.actionListUsedAsCalculationInput=false`。各患者の行為欄を別コード、空文字、無関係なランダム文字列へmutationしてもpreview fingerprint、request相当payload/hash、source revision、選択結果が変わらないことを確認した。
+- 旧DOMを変更して得た `exactMatchCount=13` は無効化した。再測定値は評価担当者が確定するまで未記載とする。
 - 別のFee API route integration testで手書きのv6 surface 1症例が保存後の `sidecarSelectionContext` まで到達し、候補がexactになってもcandidate-onlyとreview-requiredを維持することを確認した。Side PanelからFee APIまで13症例を連続実行するMS6の単一E2Eは未実施であり、prod受入条件として残す。
-- 残作業はMS6のSide Panel-to-Fee API 13症例E2Eと、STGの実HOMISで可視受診履歴4列、病名一覧、疾病等・状態管理一覧のselector・完全性・ページングを確認することである。実画面に同等の完全な面がなければ、その軸は `incomplete` / `unknown` のままにし、別の正規API/画面を追加するまでexactへ昇格しない。
+- 残作業は、旧DOMから取得可能な既存情報だけで月内受診種別と一覧完全性を構成する方法の確認、および評価担当者による13症例の再測定である。
 
 ### デプロイと移行順
 
-1. C002 artifactの `--check`、extension/Fee APIテスト、13名fixture検証を実行する。
+1. C002 artifactの `--check`、extension/Fee APIテスト、mock DOM parity検証を実行する。
 2. v6 selector contractを許可するFee APIをSTGへ先にデプロイする。
 3. `npm run audit:homis-sidecar-v6-migration` を実行し、STGでv5入力の残存状況とv6受入状態を確認する。
 4. v6 Sidecar extensionをSTGへ配布し、実HOMISの各一覧面と完全性判定を確認する。
@@ -196,7 +217,7 @@ raw値は上書きせず、導出値と根拠を別フィールドに残す。�
 
 ## 5. 受入条件
 
-以下はprodリリース条件である。ローカルでは13名のDOM-to-narrowing検証と分割したFee API統合テストまで完了しており、MS6の単一E2EとSTG実画面確認は未完了である。
+以下はprodリリース条件である。13名のDOM-to-narrowing再測定は未完了である。
 
 - 現行selection artifactのpayload checksumが変更されていない。
 - mock 13患者が上表のコードへ `13/13 exact` で一致する。
@@ -204,7 +225,7 @@ raw値は上書きせず、導出値と根拠を別フィールドに残す。�
 - 1003の電話再診が管理料の月内訪問回数へ混入しない。
 - 不完全な病名一覧や月内履歴から `not_eligible`、月1回を推測しない。
 - surface rawと申告hashが一致しないrequestを受理せず、同日異recordから回数を推測しない。
-- 患者ID別・期待コード別のruntime分岐が0件である。mockの全件表示マーカーは患者別goldではなく、一覧完全性を証明するfixture契約としてのみ使う。
+- 患者ID別・期待コード別のruntime分岐が0件であり、mock専用DOM・完全性マーカーを追加していない。
 - exact候補が自動採用されず、保険点数合計へ入らない。
 - 旧selector contractは壊さず、不足軸をunknownとして処理する。
 

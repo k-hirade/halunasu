@@ -99,7 +99,7 @@ def ikou_souki_comment(start_iso: str) -> str:
 #     houkan                … 訪問看護情報（カルテ左カラム／MCS・週回数）
 #     shougai               … 障害支援区分（カルテ右カラム）
 #     problems[]            … {name, since, main}
-#     devices[]             … 疾病等・状態管理一覧の全行（在宅医療機器を含む）
+#     devices[]             … 在宅医療機器 管理状況欄の行
 #     docs[]                … {kind, period, written} 書類タブ
 #     plan                  … 診療計画パターン文字列
 #     visits{ "YYYY-MM": [ {day,type,time,status,tatemono,soap,shohou[],action_list[]} ] }

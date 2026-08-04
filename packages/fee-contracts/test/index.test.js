@@ -64,8 +64,30 @@ test("validates Sidecar patient transport charge settings without accepting pati
     expectedSourceRevision: 4,
     expectedCalculationRevision: 5
   });
+  assert.deepEqual(validateSidecarPatientChargeSettingInput({
+    contractVersion: "v1",
+    clear: true,
+    expectedRevision: 3,
+    expectedSourceRevision: 4,
+    expectedCalculationRevision: 5
+  }), {
+    contractVersion: "v1",
+    chargeType: "home_medical_transport",
+    clear: true,
+    handling: null,
+    amountMode: null,
+    amountYen: null,
+    effectiveTo: null,
+    expectedRevision: 3,
+    expectedSourceRevision: 4,
+    expectedCalculationRevision: 5
+  });
   for (const invalid of [
     { handling: "unknown" },
+    { clear: true, handling: "waive" },
+    { clear: "true" },
+    { clear: false },
+    { clear: true, amountYen: 500 },
     { handling: "waive", amountYen: 500 },
     { handling: "charge", amountMode: "fixed" },
     { handling: "charge", amountMode: "actual", amountYen: 500 },
@@ -90,7 +112,7 @@ test("validates sidecar candidate acknowledgement optimistic-lock input", () => 
   const fingerprint = "a".repeat(64);
   assert.deepEqual(validateSidecarCandidateAcknowledgementInput({
     contractVersion: "v1",
-    acknowledged: true,
+    status: "excluded",
     expectedSourceRevision: 2,
     expectedCalculationRevision: 3,
     expectedAcknowledgementVersion: 0,
@@ -98,15 +120,33 @@ test("validates sidecar candidate acknowledgement optimistic-lock input", () => 
     candidateKey: "must_be_derived_by_the_server"
   }), {
     contractVersion: "v1",
-    acknowledged: true,
+    status: "excluded",
     expectedSourceRevision: 2,
     expectedCalculationRevision: 3,
     expectedAcknowledgementVersion: 0,
     candidateFingerprint: fingerprint
   });
+  assert.equal(validateSidecarCandidateAcknowledgementInput({
+    contractVersion: "v1",
+    acknowledged: true,
+    expectedSourceRevision: 1,
+    expectedCalculationRevision: 1,
+    expectedAcknowledgementVersion: 0,
+    candidateFingerprint: fingerprint
+  }).status, "acknowledged");
+  assert.equal(validateSidecarCandidateAcknowledgementInput({
+    contractVersion: "v1",
+    acknowledged: false,
+    expectedSourceRevision: 1,
+    expectedCalculationRevision: 1,
+    expectedAcknowledgementVersion: 0,
+    candidateFingerprint: fingerprint
+  }).status, "unacknowledged");
 
   for (const invalid of [
     { acknowledged: "true" },
+    { status: "stale" },
+    { status: "excluded", acknowledged: true },
     { expectedSourceRevision: 0 },
     { expectedSourceRevision: "1" },
     { expectedCalculationRevision: 1.5 },
@@ -118,7 +158,7 @@ test("validates sidecar candidate acknowledgement optimistic-lock input", () => 
   ]) {
     assert.throws(() => validateSidecarCandidateAcknowledgementInput({
       contractVersion: "v1",
-      acknowledged: true,
+      status: "acknowledged",
       expectedSourceRevision: 1,
       expectedCalculationRevision: 1,
       expectedAcknowledgementVersion: 0,
@@ -127,12 +167,19 @@ test("validates sidecar candidate acknowledgement optimistic-lock input", () => 
     }));
   }
   assert.throws(() => validateSidecarCandidateAcknowledgementInput({
-    acknowledged: true,
+    status: "acknowledged",
     expectedSourceRevision: 1,
     expectedCalculationRevision: 1,
     expectedAcknowledgementVersion: 0,
     candidateFingerprint: fingerprint
   }), /contractVersion/u);
+  assert.throws(() => validateSidecarCandidateAcknowledgementInput({
+    contractVersion: "v1",
+    expectedSourceRevision: 1,
+    expectedCalculationRevision: 1,
+    expectedAcknowledgementVersion: 0,
+    candidateFingerprint: fingerprint
+  }), /status/u);
 });
 
 test("validates structured extraction reject reasons", () => {

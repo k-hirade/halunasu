@@ -82,3 +82,48 @@ test("same-date changes preserve audit history and select the latest revision", 
     expectedRevision: 1
   })), /revision mismatch/u);
 });
+
+test("clear events retain the contract revision while removing the active setting", () => {
+  const auditIdentity = {
+    sidecarDraftId: "sidecar_charge_clear",
+    updatedByLoginId: "member@example.test"
+  };
+  const created = buildPatientChargeContract(input({
+    ...auditIdentity,
+    effectiveFrom: "2026-08-01"
+  }), { now: new Date("2026-08-01T00:00:00.000Z") });
+  assert.equal(Object.hasOwn(created.settingEvents[0], "action"), false);
+
+  const clearInput = input({
+    ...auditIdentity,
+    clear: true,
+    handling: null,
+    amountMode: null,
+    amountYen: null,
+    expectedRevision: 1,
+    effectiveFrom: "2026-09-01"
+  });
+  const cleared = applyPatientChargeContractSetting(created, clearInput, {
+    now: new Date("2026-09-01T00:00:00.000Z")
+  });
+
+  assert.equal(cleared.revision, 2);
+  assert.deepEqual(
+    cleared.settingEvents.map((event) => [event.revision, event.action || "set", event.handling]),
+    [[1, "set", "charge"], [2, "clear", null]]
+  );
+  assert.equal(resolvePatientChargeSetting(cleared, "2026-08-31").handling, "charge");
+  assert.equal(resolvePatientChargeSetting(cleared, "2026-09-01"), null);
+  assert.equal(resolvePatientChargeSetting(cleared, "2026-10-01"), null);
+  assert.equal(isPatientChargeSettingRetry(cleared, clearInput), true);
+  assert.equal(isPatientChargeSettingRetry(cleared, {
+    ...clearInput,
+    clear: false,
+    handling: "waive"
+  }), false);
+
+  const clearAudit = Object.values(cleared.auditOutbox)
+    .find((entry) => entry.safePayload.revision === 2);
+  assert.equal(clearAudit.safePayload.beforeHandling, "charge");
+  assert.equal(clearAudit.safePayload.afterHandling, null);
+});
