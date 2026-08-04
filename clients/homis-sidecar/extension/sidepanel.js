@@ -27,6 +27,7 @@
   const completedCalculationTasks = new Map();
   const patientChargeMutationsInFlight = new Map();
   const acknowledgementMutationsInFlight = new Set();
+  const selectionMutationsInFlight = new Set();
 
   const elements = Object.fromEntries([
     "connection-badge", "connection-copy", "connect-button", "connection-section",
@@ -136,6 +137,7 @@
       || !encounterType.value
       || patientChargeMutationsInFlight.size > 0
       || acknowledgementMutationsInFlight.size > 0
+      || selectionMutationsInFlight.size > 0
     ) {
       return;
     }
@@ -699,6 +701,10 @@
       : reviewDecisionSummary(candidate, notices);
 
     row.append(kind, name, separator, summary);
+    const selectionControl = createSelectionControl(candidate, candidateName);
+    if (selectionControl) {
+      row.append(selectionControl);
+    }
     return row;
   }
 
@@ -754,6 +760,104 @@
       status,
       version: Math.max(0, Number(acknowledgement.version || 0))
     };
+  }
+
+  // 区分が2つ以上残る候補は、選択肢数によらずドロップダウンで選べるようにする。
+  function createSelectionControl(candidate, candidateName) {
+    const selection = candidate?.selection;
+    const options = Array.isArray(selection?.options) ? selection.options : [];
+    if (options.length < 2) {
+      return null;
+    }
+    const candidateKey = String(candidate.candidateKey || "");
+    const busy = selectionMutationsInFlight.has(candidateKey);
+    const select = document.createElement("select");
+    select.className = "decision-selection";
+    select.dataset.candidateKey = candidateKey;
+    select.setAttribute("aria-label", `${candidateName}の算定区分`);
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = selection.question || "算定区分を選択してください";
+    select.append(placeholder);
+    for (const option of options) {
+      const node = document.createElement("option");
+      node.value = option.code;
+      node.textContent = `${option.qualifierLabel || "区分名未設定"} ${formatPoints(option.points)}点`;
+      select.append(node);
+    }
+    select.value = String(selection.selectedCode || "");
+    select.disabled = busy
+      || !currentSidecarDraft?.sidecarDraftId
+      || !candidate.candidateKey
+      || !candidate.candidateFingerprint;
+    select.addEventListener("change", () => {
+      void saveCandidateSelection(select, candidate, candidateName);
+    });
+    return select;
+  }
+
+  async function saveCandidateSelection(select, candidate, candidateName) {
+    const candidateKey = String(candidate.candidateKey || "");
+    if (selectionMutationsInFlight.has(candidateKey) || select.disabled) {
+      return;
+    }
+    const draft = currentSidecarDraft;
+    const generation = resultGeneration;
+    const selectedCode = String(select.value || "");
+    selectionMutationsInFlight.add(candidateKey);
+    select.disabled = true;
+    setStatus("");
+    try {
+      const response = await api.setCandidateSelection({
+        sidecarDraftId: draft.sidecarDraftId,
+        candidateKey,
+        selectedCode,
+        expectedSourceRevision: Number(draft.sourceRevision || 0),
+        expectedCalculationRevision: Number(draft.calculationRevision || 0),
+        expectedSelectionVersion: Number(candidate.selection?.version || 0),
+        candidateFingerprint: candidate.candidateFingerprint
+      });
+      if (!isCurrentResult(draft, generation)) {
+        return;
+      }
+      currentSidecarDraft = mergeAcknowledgementResponse(
+        currentSidecarDraft,
+        response.sidecarDraft,
+        candidateKey
+      );
+      if (isSameDraftRevision(currentResultTask?.sidecarDraft, currentSidecarDraft)) {
+        currentResultTask.sidecarDraft = currentSidecarDraft;
+      }
+      if (
+        activeCalculationTask !== currentResultTask
+        && isSameDraftRevision(activeCalculationTask?.sidecarDraft, currentSidecarDraft)
+      ) {
+        activeCalculationTask.sidecarDraft = currentSidecarDraft;
+      }
+      const selectedLabel = (candidate.selection?.options || [])
+        .find((option) => option.code === selectedCode)?.qualifierLabel;
+      setStatus(selectedCode
+        ? `${candidateName}の算定区分を「${selectedLabel || selectedCode}」にしました。`
+        : `${candidateName}の算定区分の選択を取り消しました。`);
+    } catch (error) {
+      if ([401, 403].includes(error.status)) {
+        await api.clearGrant().catch(() => {});
+        setConnected(false);
+        setStatus(errorMessage(error), true);
+        return;
+      }
+      if (!isCurrentResult(draft, generation)) {
+        return;
+      }
+      setStatus(errorMessage(error), true);
+    } finally {
+      if (generation === resultGeneration) {
+        selectionMutationsInFlight.delete(candidateKey);
+      }
+      if (isCurrentResult(draft, generation)) {
+        renderResult(currentSidecarDraft);
+      }
+    }
   }
 
   async function toggleCandidateAcknowledgement(button, candidate, candidateName) {
@@ -862,6 +966,7 @@
   function invalidateRenderedResult() {
     resultGeneration += 1;
     acknowledgementMutationsInFlight.clear();
+    selectionMutationsInFlight.clear();
     currentSidecarDraft = null;
     currentResultTask = null;
     elements["result-section"].hidden = true;
@@ -871,9 +976,7 @@
     const display = candidate.display && typeof candidate.display === "object"
       ? candidate.display
       : null;
-    const exactOption = candidate.selectionResolution === "exact"
-      ? candidate.selectionNarrowing?.remainingOptions?.[0]
-      : null;
+    const exactOption = resolvedSelectionOption(candidate);
     const stem = display?.stem || candidate.name || candidate.code || "名称未確定";
     const qualifier = exactOption?.qualifierLabel
       || (candidate.zone === "review_required" ? display?.qualifier : "");
@@ -883,9 +986,7 @@
   }
 
   function reviewDecisionSummary(candidate, notices) {
-    const exactOption = candidate.selectionResolution === "exact"
-      ? candidate.selectionNarrowing?.remainingOptions?.[0]
-      : null;
+    const exactOption = resolvedSelectionOption(candidate);
     const pointValue = finiteNumber(
       exactOption?.points ?? candidate.estimatedTotalPoints ?? candidate.points
     );
@@ -954,6 +1055,16 @@
       || normalizedDisplayText(related[0]?.shortText);
   }
 
+  // 人が選んだ区分があればそれを、無ければ自動で1件に絞れた区分を採用する。
+  function resolvedSelectionOption(candidate) {
+    if (candidate?.selection?.selectedOption) {
+      return candidate.selection.selectedOption;
+    }
+    return candidate?.selectionResolution === "exact"
+      ? candidate?.selectionNarrowing?.remainingOptions?.[0] || null
+      : null;
+  }
+
   function firstConditionInstruction(candidate) {
     const conditions = Array.isArray(candidate?.humanVerifiableConditions)
       ? candidate.humanVerifiableConditions
@@ -991,9 +1102,7 @@
       const display = candidate.display && typeof candidate.display === "object"
         ? candidate.display
         : null;
-      const exactOption = candidate.selectionResolution === "exact"
-        ? candidate.selectionNarrowing?.remainingOptions?.[0]
-        : null;
+      const exactOption = resolvedSelectionOption(candidate);
       const stem = display?.stem || candidate.name || candidate.code || "名称未確定";
       name.textContent = exactOption?.qualifierLabel
         ? appendQualifierLabel(stem, exactOption.qualifierLabel)
@@ -1422,6 +1531,7 @@
     elements["calculate-button"].disabled = calculationPending
       || patientChargeMutationsInFlight.size > 0
       || acknowledgementMutationsInFlight.size > 0
+      || selectionMutationsInFlight.size > 0
       || !preview
       || !selectedEncounterType().value;
   }

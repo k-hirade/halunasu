@@ -166,6 +166,34 @@
     );
   }
 
+  async function setCandidateSelection(input = {}) {
+    const sidecarDraftId = String(input.sidecarDraftId || "").trim();
+    const candidateKey = String(input.candidateKey || "").trim();
+    const selectedCode = String(input.selectedCode ?? "").trim();
+    if (!sidecarDraftId || !candidateKey) {
+      throw apiError(
+        "candidate_selection_target_missing",
+        "算定区分の保存先を特定できません。算定案を作成し直してください。",
+        400
+      );
+    }
+    return authorizedFeeRequest(
+      `/v1/integrations/sidecar/drafts/${encodeURIComponent(sidecarDraftId)}`
+        + `/candidate-selections/${encodeURIComponent(candidateKey)}`,
+      {
+        method: "PUT",
+        body: {
+          contractVersion: "v1",
+          selectedCode,
+          expectedSourceRevision: input.expectedSourceRevision,
+          expectedCalculationRevision: input.expectedCalculationRevision,
+          expectedSelectionVersion: input.expectedSelectionVersion,
+          candidateFingerprint: input.candidateFingerprint
+        }
+      }
+    );
+  }
+
   async function setPatientChargeSetting(input = {}) {
     const sidecarDraftId = String(input.sidecarDraftId || "").trim();
     const allowedHandlings = new Set(["unknown", "charge", "waive"]);
@@ -401,6 +429,7 @@
     environment: configuration.environment,
     pollDeviceAuthorization,
     setCandidateAcknowledgement,
+    setCandidateSelection,
     setPatientChargeSetting,
     startDeviceAuthorization
   });

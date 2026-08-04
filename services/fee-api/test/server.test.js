@@ -9990,6 +9990,10 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
           orderType: "procedure",
           potentialPoints: 0,
           codeCandidates: ["114009210", "114009310"],
+          codeCandidateOptions: [
+            { code: "114009210", qualifierLabel: "その他の場合", points: 2400 },
+            { code: "114009310", qualifierLabel: "チアノーゼ型先天性心疾患の場合", points: 520 }
+          ],
           source: "clinical_billing_knowledge:management_signal"
         },
         {
@@ -10202,6 +10206,91 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
     excludedCandidate.estimatedTotalPoints,
     ambiguousCandidate.estimatedTotalPoints
   );
+  // 区分が残る候補は、選択肢数によらずドロップダウン用の選択肢と質問を返す。
+  assert.equal(ambiguousCandidate.selection.status, "unselected");
+  assert.equal(ambiguousCandidate.selection.selectedCode, "");
+  assert.equal(ambiguousCandidate.selection.version, 0);
+  assert.deepEqual(
+    ambiguousCandidate.selection.options.map((option) => option.code).sort(),
+    ["114009210", "114009310"]
+  );
+  const selectionPath = `/v1/integrations/sidecar/drafts/${firstDraftId}`
+    + `/candidate-selections/${ambiguousCandidate.candidateKey}`;
+  const selectionBody = {
+    contractVersion: "v1",
+    expectedSourceRevision: first.body.sidecarDraft.sourceRevision,
+    expectedCalculationRevision: first.body.sidecarDraft.calculationRevision,
+    expectedSelectionVersion: 0,
+    candidateFingerprint: ambiguousCandidate.candidateFingerprint,
+    selectedCode: ambiguousCandidate.selection.options[0].code
+  };
+  const selectionMissingScope = await request(
+    stores,
+    "PUT",
+    selectionPath,
+    selectionBody,
+    await signedSidecarHeaders(stores, { scopes: ["sidecar:calculate"] }),
+    sidecarRequestOptions()
+  );
+  assert.equal(selectionMissingScope.statusCode, 403);
+  const selectionUnknownCode = await request(
+    stores,
+    "PUT",
+    selectionPath,
+    { ...selectionBody, selectedCode: "999999999" },
+    sidecarHeaders,
+    sidecarRequestOptions()
+  );
+  assert.equal(selectionUnknownCode.statusCode, 409);
+  const selected = await request(
+    stores,
+    "PUT",
+    selectionPath,
+    selectionBody,
+    sidecarHeaders,
+    sidecarRequestOptions()
+  );
+  assert.equal(selected.statusCode, 200);
+  assert.equal(selected.body.changed, true);
+  const selectedCandidate = selected.body.sidecarDraft.calculation.candidates
+    .find((candidate) => candidate.candidateKey === ambiguousCandidate.candidateKey);
+  assert.equal(selectedCandidate.selection.status, "selected");
+  assert.equal(selectedCandidate.selection.selectedCode, selectionBody.selectedCode);
+  assert.equal(selectedCandidate.selection.version, 1);
+  assert.equal(selectedCandidate.code, selectionBody.selectedCode);
+  assert.equal(selectedCandidate.estimatedTotalPoints, ambiguousCandidate.selection.options[0].points);
+  // 区分が決まっても算定案には自動で入れず、人の承認を待つ。
+  assert.equal(selectedCandidate.zone, "review_required");
+  assert.equal(selectedCandidate.candidateOnly, true);
+  assert.equal(
+    selected.body.sidecarDraft.calculation.estimatedTotalPoints,
+    first.body.sidecarDraft.calculation.estimatedTotalPoints
+  );
+  const selectionAudit = stores.platformStore.listAuditEvents("org_001")
+    .filter((event) => event.eventType === "fee.sidecar_candidate_selection_changed");
+  assert.equal(selectionAudit.length, 1);
+  assert.equal(selectionAudit[0].safePayload.selectedCode, selectionBody.selectedCode);
+  assert.equal(selectionAudit[0].safePayload.previousSelectedCode, "");
+  assert.equal(selectionAudit[0].targetType, "sidecar_candidate_selection");
+  const selectionCleared = await request(
+    stores,
+    "PUT",
+    selectionPath,
+    {
+      ...selectionBody,
+      expectedSelectionVersion: 1,
+      candidateFingerprint: selectedCandidate.candidateFingerprint,
+      selectedCode: ""
+    },
+    sidecarHeaders,
+    sidecarRequestOptions()
+  );
+  assert.equal(selectionCleared.statusCode, 200);
+  const clearedCandidate = selectionCleared.body.sidecarDraft.calculation.candidates
+    .find((candidate) => candidate.candidateKey === ambiguousCandidate.candidateKey);
+  assert.equal(clearedCandidate.selection.status, "unselected");
+  assert.equal(clearedCandidate.zone, "selection_required");
+  assert.equal(clearedCandidate.estimatedTotalPoints, ambiguousCandidate.estimatedTotalPoints);
   const unacknowledged = await request(
     stores,
     "PUT",

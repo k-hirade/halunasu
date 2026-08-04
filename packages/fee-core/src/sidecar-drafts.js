@@ -222,6 +222,92 @@ export function applySidecarCandidateAcknowledgement(current = {}, input = {}, o
   };
 }
 
+// 算定区分の人手選択。確認済み操作と同じ楽観排他・監査経路に載せる。
+// 選択は事実ではなく人の判断なので、出所と版を必ず残し、再計算時は読み出し側で失効させる。
+export function applySidecarCandidateSelection(current = {}, input = {}, options = {}) {
+  assertSidecarSelectionDraft(current);
+  const candidateKey = requiredString(input.candidateKey, "candidateKey");
+  const candidateFingerprint = requiredSha256Hex(
+    input.candidateFingerprint,
+    "candidateFingerprint"
+  );
+  const expectedSourceRevision = requiredPositiveInteger(
+    input.expectedSourceRevision,
+    "expectedSourceRevision"
+  );
+  const expectedCalculationRevision = requiredPositiveInteger(
+    input.expectedCalculationRevision,
+    "expectedCalculationRevision"
+  );
+  const expectedVersion = requiredNonNegativeInteger(
+    input.expectedSelectionVersion,
+    "expectedSelectionVersion"
+  );
+  const selectedCode = selectedCandidateCode(input.selectedCode);
+  const updatedByMemberId = requiredString(input.updatedByMemberId, "updatedByMemberId");
+  const updatedByLoginId = requiredString(input.updatedByLoginId, "updatedByLoginId");
+  const updatedFromDeviceId = requiredString(input.updatedFromDeviceId, "updatedFromDeviceId");
+  const selections = acknowledgementMap(current.candidateSelections);
+  const previousSelection = selections[candidateKey] || null;
+  const desiredAlreadyPersisted = previousSelection
+    && previousSelection.selectedCode === selectedCode
+    && previousSelection.candidateFingerprint === candidateFingerprint
+    && Number(previousSelection.sourceRevision) === Number(current.sourceRevision);
+  if (desiredAlreadyPersisted) {
+    return {
+      sidecarDraft: current,
+      selection: previousSelection,
+      previousSelection,
+      changed: false
+    };
+  }
+
+  assertSidecarSelectionRevisionValues(current, {
+    expectedSourceRevision,
+    expectedCalculationRevision
+  });
+  const currentVersion = Number(previousSelection?.version || 0);
+  if (expectedVersion !== currentVersion) {
+    throw conflictError(
+      "sidecar candidate selection version mismatch",
+      "SIDECAR_CANDIDATE_SELECTION_CONFLICT"
+    );
+  }
+  const now = timestamp(options.now);
+  const selection = {
+    candidateKey,
+    candidateFingerprint,
+    selectedCode,
+    sourceRevision: Number(current.sourceRevision),
+    calculationRevision: Number(current.calculationRevision),
+    version: currentVersion + 1,
+    updatedByMemberId,
+    updatedByLoginId,
+    updatedFromDeviceId,
+    updatedAt: now
+  };
+  const auditEntry = sidecarSelectionAuditEntry(current, selection, now, {
+    previousSelectedCode: previousSelection?.selectedCode || ""
+  });
+  return {
+    sidecarDraft: {
+      ...current,
+      candidateSelections: {
+        ...selections,
+        [candidateKey]: selection
+      },
+      candidateAcknowledgementAuditOutbox: {
+        ...acknowledgementAuditOutbox(current.candidateAcknowledgementAuditOutbox),
+        [auditEntry.eventId]: auditEntry
+      },
+      updatedAt: now
+    },
+    selection,
+    previousSelection,
+    changed: true
+  };
+}
+
 export function reconcileSidecarCandidateAcknowledgements(current = {}, input = {}, options = {}) {
   assertSidecarAcknowledgementDraft(current);
   assertSidecarAcknowledgementRevisions(current, input);
@@ -376,6 +462,61 @@ function candidateDecisionStatus(input = {}) {
     throw new TypeError("status and acknowledged must describe the same decision");
   }
   return explicitStatus || legacyStatus;
+}
+
+function sidecarSelectionAuditEntry(current, record, occurredAt, options = {}) {
+  return {
+    eventId: sidecarAcknowledgementAuditEventId(
+      "selection",
+      current.sidecarDraftId,
+      record.candidateKey,
+      record.version
+    ),
+    eventType: "fee.sidecar_candidate_selection_changed",
+    candidateKey: record.candidateKey,
+    candidateFingerprint: record.candidateFingerprint,
+    sourceRevision: record.sourceRevision,
+    calculationRevision: record.calculationRevision,
+    selectionVersion: record.version,
+    selectedCode: record.selectedCode,
+    previousSelectedCode: options.previousSelectedCode || "",
+    actorMemberId: record.updatedByMemberId,
+    actorLoginId: record.updatedByLoginId,
+    deviceId: record.updatedFromDeviceId,
+    occurredAt
+  };
+}
+
+function selectedCandidateCode(value) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) {
+    return "";
+  }
+  if (!/^[0-9A-Za-z]{1,20}$/u.test(normalized)) {
+    throw new TypeError("selectedCode must be an alphanumeric master code");
+  }
+  return normalized;
+}
+
+function assertSidecarSelectionDraft(current) {
+  if (current.lifecycleStatus !== "draft") {
+    throw conflictError(
+      "adopted sidecar draft candidate selection cannot be changed",
+      "SIDECAR_CANDIDATE_SELECTION_CONFLICT"
+    );
+  }
+}
+
+function assertSidecarSelectionRevisionValues(current, expected) {
+  if (
+    expected.expectedSourceRevision !== Number(current.sourceRevision)
+    || expected.expectedCalculationRevision !== Number(current.calculationRevision)
+  ) {
+    throw conflictError(
+      "sidecar draft revision mismatch",
+      "SIDECAR_CANDIDATE_SELECTION_CONFLICT"
+    );
+  }
 }
 
 function sidecarAcknowledgementAuditEventId(eventType, sidecarDraftId, candidateKey, version) {

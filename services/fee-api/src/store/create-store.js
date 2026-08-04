@@ -82,6 +82,10 @@ export class LazyFirestoreFeeStore {
     return this.call("setSidecarCandidateAcknowledgement", orgId, sidecarDraftId, input);
   }
 
+  async setSidecarCandidateSelection(orgId, sidecarDraftId, input) {
+    return this.call("setSidecarCandidateSelection", orgId, sidecarDraftId, input);
+  }
+
   async reconcileSidecarCandidateAcknowledgements(orgId, sidecarDraftId, input) {
     return this.call("reconcileSidecarCandidateAcknowledgements", orgId, sidecarDraftId, input);
   }

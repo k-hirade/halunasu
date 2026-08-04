@@ -14,6 +14,7 @@ import {
   validateCreateFeePatientInput,
   validateCreateFeeSessionInput,
   validateSidecarCandidateAcknowledgementInput,
+  validateSidecarCandidateSelectionInput,
   validateSidecarCalculationInput,
   validateSidecarPatientChargeSettingInput,
   validateMonthlyExclusionResolutionInput,
@@ -103,8 +104,14 @@ import {
 import {
   decorateSidecarCandidateAcknowledgements,
   findSidecarAcknowledgementCandidate,
-  sidecarAcknowledgementTargets
+  sidecarAcknowledgementTargets,
+  sidecarCandidateKey
 } from "./sidecar-candidate-acknowledgements.js";
+import {
+  buildSidecarCandidateSelection,
+  findSidecarSelectionCandidate,
+  sidecarSelectionAllowsCode
+} from "./sidecar-candidate-selections.js";
 import {
   dispatchPendingCareFeeEvidence,
   enqueueCareFeeEvidenceForSession
@@ -484,6 +491,81 @@ async function routeFeeApiRequest(input = {}) {
     } catch (error) {
       console.warn(JSON.stringify({
         event: "fee.sidecar_candidate_acknowledgement_audit_deferred",
+        orgId: context.session.orgId,
+        sidecarDraftId,
+        error: safeLogError(error)
+      }));
+    }
+    const response = await sidecarCalculationResponseWithPatientCharges({
+      feeStore,
+      orgId: context.session.orgId,
+      sidecarDraft: auditedDraft,
+      now: input.now || new Date()
+    });
+    return ok({
+      contractVersion: SIDECAR_CONTRACT_VERSION,
+      changed: result.changed === true,
+      sidecarDraft: response.sidecarDraft
+    });
+  }
+
+  if (method === "PUT" && isSidecarCandidateSelectionRoute(parts)) {
+    requireSidecarFeature(input);
+    const context = await requireSidecarContext(input, platformStore, {
+      requiredScope: SIDECAR_ACKNOWLEDGE_SCOPE
+    });
+    await consumeSidecarAcknowledgementRateLimit(input, platformStore, context);
+    const sidecarDraftId = decodeURIComponent(parts[4]);
+    const candidateKey = decodeURIComponent(parts[6]);
+    const normalized = validateSidecarCandidateSelectionInput(input.body || {});
+    const current = await feeStore.getSidecarCalculationDraft(context.session.orgId, sidecarDraftId);
+    if (!current) {
+      return notFound("sidecar calculation draft not found");
+    }
+    requireSidecarResourceScope(context, current);
+    assertMutableSidecarDraft(current, input.now || new Date());
+    const facility = await requireFacility(context, platformStore, current.facilityId);
+    const department = await resolveDepartment(context, platformStore, current.departmentId);
+    assertSidecarDepartmentFacility(facility, department);
+
+    const currentView = sidecarCalculationResponse(current).sidecarDraft;
+    const candidate = findSidecarSelectionCandidate(
+      currentView.calculation?.candidates,
+      candidateKey
+    );
+    if (!candidate || !safeStringEqual(candidate.candidateFingerprint, normalized.candidateFingerprint)) {
+      throw sidecarAcknowledgementConflict(
+        "算定案が更新されています。表示中のカルテから算定案を再作成してください。"
+      );
+    }
+    if (!sidecarSelectionAllowsCode(candidate, normalized.selectedCode)) {
+      throw sidecarAcknowledgementConflict(
+        "選択できない算定区分です。表示中のカルテから算定案を再作成してください。"
+      );
+    }
+
+    const result = await feeStore.setSidecarCandidateSelection(
+      context.session.orgId,
+      sidecarDraftId,
+      {
+        ...normalized,
+        candidateKey,
+        updatedByMemberId: context.session.memberId,
+        updatedByLoginId: context.session.loginId,
+        updatedFromDeviceId: context.session.deviceId || null
+      }
+    );
+    let auditedDraft = result.sidecarDraft;
+    try {
+      auditedDraft = await flushSidecarAcknowledgementAuditOutbox({
+        feeStore,
+        platformStore,
+        orgId: context.session.orgId,
+        sidecarDraft: result.sidecarDraft
+      });
+    } catch (error) {
+      console.warn(JSON.stringify({
+        event: "fee.sidecar_candidate_selection_audit_deferred",
         orgId: context.session.orgId,
         sidecarDraftId,
         error: safeLogError(error)
@@ -2703,6 +2785,36 @@ async function flushSidecarAcknowledgementAuditOutbox({
     || String(left?.eventId || "").localeCompare(String(right?.eventId || ""))
   ));
   for (const entry of entries) {
+    if (entry.eventType === "fee.sidecar_candidate_selection_changed") {
+      await platformStore.createAuditEvent(orgId, {
+        eventId: entry.eventId,
+        eventType: entry.eventType,
+        actorMemberId: entry.actorMemberId,
+        actorLoginId: entry.actorLoginId,
+        targetType: "sidecar_candidate_selection",
+        targetId: entry.candidateKey,
+        productId: PRODUCT_ID,
+        safePayload: {
+          sidecarDraftId: current.sidecarDraftId,
+          candidateKey: entry.candidateKey,
+          candidateFingerprint: entry.candidateFingerprint,
+          sourceRevision: Number(entry.sourceRevision || 0),
+          calculationRevision: Number(entry.calculationRevision || 0),
+          selectionVersion: Number(entry.selectionVersion || 0),
+          selectedCode: entry.selectedCode || "",
+          previousSelectedCode: entry.previousSelectedCode || "",
+          occurredAt: entry.occurredAt,
+          deviceId: entry.deviceId
+        }
+      });
+      const completedSelection = await feeStore.completeSidecarCandidateAcknowledgementAudit(
+        orgId,
+        current.sidecarDraftId,
+        entry.eventId
+      );
+      current = completedSelection.sidecarDraft;
+      continue;
+    }
     const invalidated = entry.eventType === "fee.sidecar_candidate_acknowledgement_invalidated";
     const decisionStatus = entry.status || (invalidated
       ? "stale"
@@ -2907,6 +3019,7 @@ function sidecarCalculationResponse(sidecarDraft = {}, options = {}) {
       code: proposal.code || null,
       codeCandidates,
       requiresSelection: !proposal.code && codeCandidates.length > 0,
+      codeCandidateOptions: normalizeCodeCandidateOptions(proposal.codeCandidateOptions, codeCandidates),
       selectionGroupId: proposal.selectionGroupId || null,
       selectionGroupLabel: proposal.selectionGroupLabel || null,
       selectionGroupSource: proposal.selectionGroupSource || null,
@@ -2946,6 +3059,15 @@ function sidecarCalculationResponse(sidecarDraft = {}, options = {}) {
       ? sidecarDraft.structuredSourceFacts.selection
       : {}
   };
+  const storedCandidateSelections = isPlainObject(sidecarDraft.candidateSelections)
+    ? sidecarDraft.candidateSelections
+    : {};
+  // 同じキーが複数候補に付く場合は確認済み側と同様に人の判断を紐付けない。
+  const candidateKeyCounts = presentation.candidates.reduce((counts, candidate) => {
+    const key = sidecarCandidateKey(candidate);
+    if (key) counts.set(key, (counts.get(key) || 0) + 1);
+    return counts;
+  }, new Map());
   const zonedCandidates = presentation.candidates.map((candidate) => {
     const facilityRuleConfirmed = candidate.sourceType === "proposal"
       && candidate.badges?.includes("facility_rule")
@@ -2961,6 +3083,17 @@ function sidecarCalculationResponse(sidecarDraft = {}, options = {}) {
     const selectionNarrowing = candidate.requiresSelection
       ? narrowSidecarCandidateSelection(candidate, selectionContext)
       : null;
+    const selection = buildSidecarCandidateSelection({
+      candidate,
+      selectionNarrowing,
+      stored: candidateKeyCounts.get(sidecarCandidateKey(candidate)) === 1
+        ? storedCandidateSelections[sidecarCandidateKey(candidate)] || null
+        : null,
+      sourceRevision: Number(sidecarDraft.sourceRevision || 1)
+    });
+    const selectedOption = selection?.selectedOption || null;
+    const selectionResolved = selectionNarrowing?.selectionResolution === "exact"
+      || Boolean(selectedOption);
     return {
       ...candidate,
       billingEligibility,
@@ -2971,11 +3104,20 @@ function sidecarCalculationResponse(sidecarDraft = {}, options = {}) {
         ? "included"
         : hiddenReason
           ? "blocked"
-          : candidate.requiresSelection && selectionNarrowing?.selectionResolution !== "exact"
+          : candidate.requiresSelection && !selectionResolved
             ? "selection_required"
             : "review_required",
+      // 人が区分を選んだ場合はコードと点数を確定させる。要判断からは動かさず、承認は人が行う。
+      ...(selectedOption
+        ? {
+          code: selectedOption.code,
+          points: selectedOption.points,
+          estimatedTotalPoints: selectedOption.points * Math.max(1, Number(candidate.quantity || 1))
+        }
+        : {}),
       selectionResolution: selectionNarrowing?.selectionResolution || null,
-      selectionNarrowing
+      selectionNarrowing,
+      ...(selection ? { selection } : {})
     };
   });
   const candidates = decorateSidecarCandidateAcknowledgements({
@@ -3106,6 +3248,12 @@ function isSidecarCandidateAcknowledgementRoute(parts = []) {
   return parts.length === 7
     && matches(parts.slice(0, 4), ["v1", "integrations", "sidecar", "drafts"])
     && parts[5] === "candidate-acknowledgements";
+}
+
+function isSidecarCandidateSelectionRoute(parts = []) {
+  return parts.length === 7
+    && matches(parts.slice(0, 4), ["v1", "integrations", "sidecar", "drafts"])
+    && parts[5] === "candidate-selections";
 }
 
 function requireSidecarFeature(input = {}) {
@@ -10829,6 +10977,26 @@ export function sidecarCandidateVisibility(candidate = {}, options = {}) {
     hiddenReason,
     requiresHumanVerification: !included && candidate?.adoptionBlocked === true && !hiddenReason
   };
+}
+
+// 選択肢は必ず「区分名＋点数」で提示する。コードだけの選択肢は出さない。
+function normalizeCodeCandidateOptions(values = [], allowedCodes = []) {
+  const allowed = new Set((Array.isArray(allowedCodes) ? allowedCodes : [])
+    .map((code) => String(code || "").trim())
+    .filter(Boolean));
+  const seen = new Set();
+  return (Array.isArray(values) ? values : [])
+    .map((option) => ({
+      code: String(option?.code || "").trim(),
+      qualifierLabel: String(option?.qualifierLabel || "").trim(),
+      points: Number(option?.points || 0)
+    }))
+    .filter((option) => {
+      if (!option.code || !option.qualifierLabel || seen.has(option.code)) return false;
+      if (allowed.size && !allowed.has(option.code)) return false;
+      seen.add(option.code);
+      return true;
+    });
 }
 
 function normalizeHumanVerifiableConditions(values = []) {

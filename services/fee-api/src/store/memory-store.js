@@ -9,6 +9,7 @@ import {
 } from "../../../../packages/fee-core/src/index.js";
 import {
   applySidecarCandidateAcknowledgement,
+  applySidecarCandidateSelection,
   applySidecarCalculationResult,
   applySidecarDraftInput,
   buildSidecarCalculationDraft,
@@ -212,6 +213,20 @@ export class MemoryFeeStore {
       throw notFoundError("sidecar calculation draft not found");
     }
     const result = applySidecarCandidateAcknowledgement(current, input, {
+      now: this.timestamp()
+    });
+    if (result.changed) {
+      this.sidecarDraftsForOrg(orgId).set(sidecarDraftId, result.sidecarDraft);
+    }
+    return result;
+  }
+
+  setSidecarCandidateSelection(orgId, sidecarDraftId, input) {
+    const current = this.getSidecarCalculationDraft(orgId, sidecarDraftId);
+    if (!current) {
+      throw notFoundError("sidecar calculation draft not found");
+    }
+    const result = applySidecarCandidateSelection(current, input, {
       now: this.timestamp()
     });
     if (result.changed) {

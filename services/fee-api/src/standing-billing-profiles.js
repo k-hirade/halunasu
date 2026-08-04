@@ -548,6 +548,19 @@ function selectStandingFamilyVariant(family = {}, matches = [], currentInputs = 
   return unresolvedStandingVariant(eligibleVariants.length ? eligibleVariants : variants, "variant_input_required");
 }
 
+function standingVariantSelectionOptions(family = {}, codeCandidates = null) {
+  const allowed = Array.isArray(codeCandidates) && codeCandidates.length
+    ? new Set(codeCandidates.map((code) => String(code || "").trim()))
+    : null;
+  return asArray(family.variants)
+    .map((variant) => ({
+      code: String(variant?.code || "").trim(),
+      qualifierLabel: String(variant?.name || variant?.baseName || "").trim(),
+      points: Number(variant?.points || 0)
+    }))
+    .filter((option) => option.code && (!allowed || allowed.has(option.code)));
+}
+
 function unresolvedStandingVariant(variants = [], reason = "variant_input_required") {
   return {
     variant: null,
@@ -711,6 +724,7 @@ function standingFamilyChoiceProposal(profile, family, selected) {
     potentialPoints: 0,
     code: "",
     codeCandidates: selected.codeCandidates || asArray(family.variants).map((variant) => variant.code),
+    codeCandidateOptions: standingVariantSelectionOptions(family, selected.codeCandidates),
     orderType: "procedure",
     source: "standing_fact_lane",
     standingFamilyId: String(family.familyId || ""),
@@ -736,6 +750,7 @@ function standingFirstMonthProposal(family, selected, mention = {}) {
     potentialPoints: variant ? Number(variant.points || 0) : 0,
     code: variant ? String(variant.code || "") : "",
     codeCandidates: variant ? undefined : asArray(family.variants).map((entry) => entry.code),
+    codeCandidateOptions: variant ? undefined : standingVariantSelectionOptions(family),
     orderType: "procedure",
     source: "standing_fact_lane",
     standingFamilyId: String(family.familyId || ""),
@@ -788,6 +803,7 @@ function standingStructuredTriggerProposal({
     codeCandidates: singleVariant
       ? undefined
       : variants.map((variant) => String(variant?.code || "")).filter(Boolean),
+    codeCandidateOptions: singleVariant ? undefined : standingVariantSelectionOptions(family),
     requiresSelection: variants.length > 1,
     orderType: "procedure",
     source: "standing_fact_lane",

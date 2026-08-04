@@ -9,6 +9,7 @@ import {
 } from "../../../../packages/fee-core/src/index.js";
 import {
   applySidecarCandidateAcknowledgement,
+  applySidecarCandidateSelection,
   applySidecarCalculationResult,
   applySidecarDraftInput,
   buildSidecarCalculationDraft,
@@ -277,6 +278,17 @@ export class FirestoreFeeStore {
     let result = null;
     const { updated } = await this.mutateSidecarDraft(orgId, sidecarDraftId, (current) => {
       result = applySidecarCandidateAcknowledgement(current, input, {
+        now: this.timestamp()
+      });
+      return result.sidecarDraft;
+    });
+    return { ...result, sidecarDraft: updated };
+  }
+
+  async setSidecarCandidateSelection(orgId, sidecarDraftId, input) {
+    let result = null;
+    const { updated } = await this.mutateSidecarDraft(orgId, sidecarDraftId, (current) => {
+      result = applySidecarCandidateSelection(current, input, {
         now: this.timestamp()
       });
       return result.sidecarDraft;

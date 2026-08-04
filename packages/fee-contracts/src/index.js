@@ -376,6 +376,57 @@ export function validateSidecarCandidateAcknowledgementInput(input = {}) {
   };
 }
 
+export function validateSidecarCandidateSelectionInput(input = {}) {
+  if (!isPlainObject(input)) {
+    throw validationError("request body must be an object", "body");
+  }
+  const contractVersion = boundedRequiredString(
+    input.contractVersion ?? input.contract_version,
+    "contractVersion",
+    16
+  );
+  if (!sidecarContractVersions.includes(contractVersion)) {
+    throw validationError(
+      `contractVersion must be one of: ${sidecarContractVersions.join(", ")}`,
+      "contractVersion"
+    );
+  }
+  const candidateFingerprint = input.candidateFingerprint ?? input.candidate_fingerprint;
+  if (typeof candidateFingerprint !== "string" || !/^[a-f0-9]{64}$/u.test(candidateFingerprint)) {
+    throw validationError(
+      "candidateFingerprint must be a 64-character lowercase hexadecimal value",
+      "candidateFingerprint"
+    );
+  }
+  const rawSelectedCode = input.selectedCode ?? input.selected_code ?? "";
+  if (typeof rawSelectedCode !== "string") {
+    throw validationError("selectedCode must be a string", "selectedCode");
+  }
+  const selectedCode = rawSelectedCode.trim();
+  // 空文字は「選択の取り消し」を意味する。
+  if (selectedCode && !/^[0-9A-Za-z]{1,20}$/u.test(selectedCode)) {
+    throw validationError("selectedCode must be an alphanumeric master code", "selectedCode");
+  }
+
+  return {
+    contractVersion,
+    selectedCode,
+    expectedSourceRevision: requiredPositiveInteger(
+      input.expectedSourceRevision ?? input.expected_source_revision,
+      "expectedSourceRevision"
+    ),
+    expectedCalculationRevision: requiredPositiveInteger(
+      input.expectedCalculationRevision ?? input.expected_calculation_revision,
+      "expectedCalculationRevision"
+    ),
+    expectedSelectionVersion: requiredNonNegativeInteger(
+      input.expectedSelectionVersion ?? input.expected_selection_version,
+      "expectedSelectionVersion"
+    ),
+    candidateFingerprint
+  };
+}
+
 export function validateSidecarPatientChargeSettingInput(input = {}) {
   if (!isPlainObject(input)) {
     throw validationError("request body must be an object", "body");

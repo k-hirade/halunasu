@@ -2460,6 +2460,26 @@ function normalizeCandidateProposal(item = {}, index = 0) {
     codeCandidates: Array.isArray(item.codeCandidates ?? item.code_candidates)
       ? (item.codeCandidates ?? item.code_candidates).map((code) => String(code || "")).filter(Boolean)
       : [],
+    // 区分名と点数つきの選択肢。コードだけの選択肢は人が選べないため保持しない。
+    codeCandidateOptions: Array.isArray(item.codeCandidateOptions ?? item.code_candidate_options)
+      ? (item.codeCandidateOptions ?? item.code_candidate_options)
+        .map((option) => ({
+          code: String(option?.code || "").trim(),
+          qualifierLabel: String(option?.qualifierLabel ?? option?.qualifier_label ?? "").trim(),
+          points: Number(option?.points || 0)
+        }))
+        .filter((option) => option.code && option.qualifierLabel)
+      : [],
+    humanVerifiableConditions: Array.isArray(
+      item.humanVerifiableConditions ?? item.human_verifiable_conditions
+    )
+      ? (item.humanVerifiableConditions ?? item.human_verifiable_conditions)
+        .map((condition) => ({
+          conditionId: String(condition?.conditionId ?? condition?.condition_id ?? "").trim(),
+          instruction: String(condition?.instruction || "").trim()
+        }))
+        .filter((condition) => condition.instruction)
+      : [],
     deduplication: normalizeProposalDeduplication(item.deduplication),
     policy: isPlainObject(item.policy) ? item.policy : null,
     knowledge: isPlainObject(item.knowledge) ? item.knowledge : null,

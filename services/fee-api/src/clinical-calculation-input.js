@@ -5088,6 +5088,11 @@ export async function dictionaryScanCandidateProposals({
       potentialPoints: 0,
       code: "",
       codeCandidates: codeEntries.map((entry) => entry.code),
+      codeCandidateOptions: codeEntries.map((entry) => ({
+        code: entry.code,
+        qualifierLabel: entry.name,
+        points: Number(entry.points || 0)
+      })),
       orderType: "procedure",
       source: "clinical_billing_opportunity",
       sortOrder: 70,

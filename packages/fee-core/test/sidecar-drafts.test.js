@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   applySidecarCandidateAcknowledgement,
+  applySidecarCandidateSelection,
   applySidecarCalculationResult,
   applySidecarDraftInput,
   buildSidecarCalculationDraft,
@@ -738,4 +739,98 @@ test("sidecar calculation keeps only structured selection evidence in metrics", 
       }
     }
   });
+});
+
+test("sidecar candidate selection is explicit, idempotent, revision locked, and audited", () => {
+  const calculated = applySidecarCalculationResult(
+    buildSidecarCalculationDraft(draftInput(), {
+      now: new Date("2026-07-18T00:00:00.000Z")
+    }),
+    {
+      provider: "test",
+      status: "completed",
+      totalPoints: 0,
+      lineItems: []
+    },
+    {
+      calculationId: "calc_1",
+      now: new Date("2026-07-18T00:01:00.000Z")
+    }
+  );
+  const common = {
+    expectedSourceRevision: 1,
+    expectedCalculationRevision: 1,
+    candidateKey: "sca_" + "a".repeat(26),
+    candidateFingerprint: "c".repeat(64),
+    updatedByMemberId: "mem_001",
+    updatedByLoginId: "admin@example.com",
+    updatedFromDeviceId: "device_001"
+  };
+  const selected = applySidecarCandidateSelection(calculated, {
+    ...common,
+    selectedCode: "114035610",
+    expectedSelectionVersion: 0
+  }, { now: new Date("2026-07-18T00:02:00.000Z") });
+
+  assert.equal(selected.changed, true);
+  assert.deepEqual(selected.selection, {
+    candidateKey: common.candidateKey,
+    candidateFingerprint: common.candidateFingerprint,
+    selectedCode: "114035610",
+    sourceRevision: 1,
+    calculationRevision: 1,
+    version: 1,
+    updatedByMemberId: "mem_001",
+    updatedByLoginId: "admin@example.com",
+    updatedFromDeviceId: "device_001",
+    updatedAt: "2026-07-18T00:02:00.000Z"
+  });
+
+  const auditEntries = Object.values(selected.sidecarDraft.candidateAcknowledgementAuditOutbox)
+    .filter((entry) => entry.eventType === "fee.sidecar_candidate_selection_changed");
+  assert.equal(auditEntries.length, 1);
+  assert.equal(auditEntries[0].selectedCode, "114035610");
+  assert.equal(auditEntries[0].previousSelectedCode, "");
+  assert.equal(auditEntries[0].actorLoginId, "admin@example.com");
+
+  const repeated = applySidecarCandidateSelection(selected.sidecarDraft, {
+    ...common,
+    selectedCode: "114035610",
+    expectedSelectionVersion: 0
+  }, { now: new Date("2026-07-18T00:03:00.000Z") });
+  assert.equal(repeated.changed, false);
+  assert.equal(repeated.selection.version, 1);
+
+  assert.throws(() => applySidecarCandidateSelection(selected.sidecarDraft, {
+    ...common,
+    selectedCode: "114035910",
+    expectedSelectionVersion: 0
+  }), /selection version mismatch/u);
+
+  assert.throws(() => applySidecarCandidateSelection(selected.sidecarDraft, {
+    ...common,
+    selectedCode: "114035910",
+    expectedSourceRevision: 2,
+    expectedSelectionVersion: 1
+  }), /revision mismatch/u);
+
+  assert.throws(() => applySidecarCandidateSelection(selected.sidecarDraft, {
+    ...common,
+    selectedCode: "114-035-610",
+    expectedSelectionVersion: 1
+  }), /alphanumeric master code/u);
+
+  const cleared = applySidecarCandidateSelection(selected.sidecarDraft, {
+    ...common,
+    selectedCode: "",
+    expectedSelectionVersion: 1
+  }, { now: new Date("2026-07-18T00:04:00.000Z") });
+  assert.equal(cleared.changed, true);
+  assert.equal(cleared.selection.selectedCode, "");
+  assert.equal(cleared.selection.version, 2);
+
+  assert.throws(() => applySidecarCandidateSelection(
+    { ...selected.sidecarDraft, lifecycleStatus: "adopted" },
+    { ...common, selectedCode: "114035910", expectedSelectionVersion: 1 }
+  ), /adopted sidecar draft candidate selection cannot be changed/u);
 });

@@ -437,6 +437,24 @@ h3 {
   color: #253449;
 }
 
+.decision-selection {
+  flex: 1 0 100%;
+  min-width: 0;
+  margin-top: 4px;
+  max-width: 100%;
+  padding: 4px 6px;
+  border: 1px solid #cbd5e0;
+  border-radius: 4px;
+  background: #fff;
+  color: #253449;
+  font-size: 12px;
+}
+
+.decision-selection:disabled {
+  background: #f2f4f7;
+  color: #8a94a3;
+}
+
 .decision-separator {
   flex: 0 0 auto;
   color: #a0aab6;

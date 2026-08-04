@@ -514,6 +514,7 @@ function houseCallBasicFeeCandidate(reason) {
     actionType: "confirm_required",
     potentialPoints: 0,
     codeCandidates: [INITIAL_FEE_CODE, REVISIT_FEE_CODE],
+    codeCandidateOptions: basicFeeSelectionOptions(),
     orderType: "basic",
     source: "encounter_variant",
     sortOrder: 14,
@@ -702,6 +703,17 @@ function asArray(value) {
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function basicFeeSelectionOptions() {
+  return ["basic_initial", "basic_revisit"].map((ruleId) => {
+    const rule = requiredRule(ruleId);
+    return {
+      code: rule.code,
+      qualifierLabel: rule.name,
+      points: Number(rule.points || 0)
+    };
+  });
 }
 
 function requiredRule(ruleId) {

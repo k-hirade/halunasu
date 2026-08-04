@@ -395,6 +395,108 @@ test("authorization failure clears the Sidecar connection and result", async () 
   await page.close();
 });
 
+test("selection candidates expose every remaining option as a dropdown", async () => {
+  const candidates = [
+    {
+      candidateId: "two-option",
+      candidateKey: "candidate_two_option",
+      candidateFingerprint: "f".repeat(64),
+      sourceType: "proposal",
+      presentation: "decision",
+      zone: "selection_required",
+      requiresSelection: true,
+      code: null,
+      display: { stem: "施設入居時等医学総合管理料", qualifier: "" },
+      estimatedTotalPoints: 0,
+      selection: {
+        status: "unselected",
+        question: "厚生労働大臣が定める疾病等に該当しますか",
+        options: [
+          { code: "114035610", qualifierLabel: "難病等", points: 3225 },
+          { code: "114035910", qualifierLabel: "一般", points: 1685 }
+        ],
+        selectedCode: "",
+        selectedOption: null,
+        version: 0,
+        updatedAt: null
+      }
+    },
+    {
+      candidateId: "six-option",
+      candidateKey: "candidate_six_option",
+      candidateFingerprint: "e".repeat(64),
+      sourceType: "proposal",
+      presentation: "decision",
+      zone: "selection_required",
+      requiresSelection: true,
+      code: null,
+      display: { stem: "特定疾患療養管理料", qualifier: "" },
+      estimatedTotalPoints: 0,
+      selection: {
+        status: "unselected",
+        question: "算定区分を選択してください",
+        options: [
+          { code: "113001810", qualifierLabel: "診療所", points: 225 },
+          { code: "113001910", qualifierLabel: "100床未満の病院", points: 147 },
+          { code: "113002010", qualifierLabel: "100床以上200床未満の病院", points: 87 },
+          { code: "113034010", qualifierLabel: "診療所（情報通信機器）", points: 196 },
+          { code: "113034110", qualifierLabel: "100床未満（情報通信機器）", points: 128 },
+          { code: "113034210", qualifierLabel: "100床以上（情報通信機器）", points: 76 }
+        ],
+        selectedCode: "",
+        selectedOption: null,
+        version: 0,
+        updatedAt: null
+      }
+    }
+  ];
+  const page = await openPanel(380, { candidates });
+  const rendered = await page.evaluate(() => ({
+    selectCount: document.querySelectorAll("#decision-candidates .decision-selection").length,
+    optionLabels: [...document.querySelectorAll("#decision-candidates .decision-selection")]
+      .map((node) => [...node.options].map((option) => option.textContent)),
+    rawCodeVisible: document.body.textContent.includes("113001810")
+      || document.body.textContent.includes("114035610"),
+    zones: [...document.querySelectorAll("#decision-candidates .decision-row")]
+      .map((node) => node.dataset.zone)
+  }));
+
+  assert.equal(rendered.selectCount, 2);
+  // 何択でもドロップダウンで、区分名と点数だけを見せる。コードは出さない。
+  assert.deepEqual(rendered.optionLabels[0], [
+    "厚生労働大臣が定める疾病等に該当しますか",
+    "難病等 3,225点",
+    "一般 1,685点"
+  ]);
+  assert.equal(rendered.optionLabels[1].length, 7);
+  assert.equal(rendered.optionLabels[1][1], "診療所 225点");
+  assert.equal(rendered.rawCodeVisible, false);
+  assert.deepEqual(rendered.zones, ["selection_required", "selection_required"]);
+
+  await page.selectOption("#decision-candidates .decision-selection", "114035610");
+  await page.waitForFunction(() => globalThis.__sidecarTest.selectionCalls.length === 1);
+  const afterSelect = await page.evaluate(() => ({
+    call: globalThis.__sidecarTest.selectionCalls[0],
+    zone: document.querySelector('#decision-candidates .decision-row[data-candidate-id="two-option"]')?.dataset.zone,
+    summary: document.querySelector('#decision-candidates .decision-row[data-candidate-id="two-option"] .decision-summary')?.textContent,
+    name: document.querySelector('#decision-candidates .decision-row[data-candidate-id="two-option"] .decision-name')?.textContent,
+    selectValue: document.querySelector('#decision-candidates .decision-row[data-candidate-id="two-option"] .decision-selection')?.value,
+    status: document.querySelector("#status-message").textContent
+  }));
+
+  assert.equal(afterSelect.call.candidateKey, "candidate_two_option");
+  assert.equal(afterSelect.call.selectedCode, "114035610");
+  assert.equal(afterSelect.call.expectedSelectionVersion, 0);
+  assert.equal(afterSelect.call.candidateFingerprint, "f".repeat(64));
+  // 区分が決まっても要判断のまま。点数と区分名だけが確定する。
+  assert.equal(afterSelect.zone, "review_required");
+  assert.match(afterSelect.name, /難病等/u);
+  assert.match(afterSelect.summary, /^3,225点｜/u);
+  assert.equal(afterSelect.selectValue, "114035610");
+  assert.match(afterSelect.status, /難病等/u);
+  await page.close();
+});
+
 test("every candidate the API returns is either rendered or carries a hidden reason", async () => {
   const candidates = [
     {
@@ -555,6 +657,7 @@ async function openPanel(width, options = {}) {
       acknowledgementResolvers: {},
       clearGrantCalls: 0,
       patientChargeCalls: [],
+      selectionCalls: [],
       releaseAcknowledgement(candidateKey) {
         const resolve = this.acknowledgementResolvers[candidateKey];
         delete this.acknowledgementResolvers[candidateKey];
@@ -759,6 +862,28 @@ async function openPanel(width, options = {}) {
           updatedAt: "2026-08-03T00:00:01.000Z"
         };
         globalThis.__sidecarTest.acknowledgementCompleted += 1;
+        return { contractVersion: "v1", changed: true, sidecarDraft: response.sidecarDraft };
+      },
+      async setCandidateSelection(input) {
+        globalThis.__sidecarTest.selectionCalls.push(structuredClone(input));
+        const response = await this.calculate();
+        const candidate = response.sidecarDraft.calculation.candidates.find((item) => (
+          item.candidateKey === input.candidateKey
+        ));
+        const option = (candidate.selection?.options || [])
+          .find((entry) => entry.code === input.selectedCode) || null;
+        candidate.selection = {
+          ...candidate.selection,
+          status: option ? "selected" : "unselected",
+          selectedCode: option ? option.code : "",
+          selectedOption: option,
+          version: Number(input.expectedSelectionVersion || 0) + 1
+        };
+        if (option) {
+          candidate.zone = "review_required";
+          candidate.code = option.code;
+          candidate.estimatedTotalPoints = option.points;
+        }
         return { contractVersion: "v1", changed: true, sidecarDraft: response.sidecarDraft };
       },
       async setPatientChargeSetting(input) {
