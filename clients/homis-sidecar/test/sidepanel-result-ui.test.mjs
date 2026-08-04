@@ -395,6 +395,110 @@ test("authorization failure clears the Sidecar connection and result", async () 
   await page.close();
 });
 
+test("every candidate the API returns is either rendered or carries a hidden reason", async () => {
+  const candidates = [
+    {
+      candidateId: "visit",
+      sourceType: "calculated_line",
+      presentation: "included",
+      zone: "included",
+      code: "114030310",
+      display: { stem: "在宅患者訪問診療料", qualifier: "(1)1(同一建物居住者)" },
+      estimatedTotalPoints: 215
+    },
+    {
+      candidateId: "early-transition",
+      sourceType: "proposal",
+      presentation: "decision",
+      zone: "review_required",
+      adoptionBlocked: true,
+      adoptionBlockReason: "human_verification_required",
+      requiresHumanVerification: true,
+      code: "114016070",
+      display: { stem: "在宅移行早期加算", qualifier: "(在医総管・施医総管)" },
+      estimatedTotalPoints: 100,
+      reason: "構造化情報と親管理料の候補が、この従属加算の確認条件に一致しました。",
+      humanVerifiableConditions: [
+        { conditionId: "initial_eligible_month", instruction: "在宅療養を開始した初回算定年月日を確認してください。" },
+        { conditionId: "monthly_count_limit", instruction: "過去の算定履歴と算定回数上限を確認してください。" }
+      ]
+    },
+    {
+      candidateId: "facility-standard",
+      sourceType: "proposal",
+      presentation: "decision",
+      zone: "review_required",
+      adoptionBlocked: true,
+      adoptionBlockReason: "facility_standard_unconfirmed",
+      requiresHumanVerification: true,
+      code: "114039470",
+      display: { stem: "在宅医療充実体制加算", qualifier: "(施医総管)(2〜9人)" },
+      estimatedTotalPoints: 300,
+      reason: "施設基準の届出を確認してください。"
+    },
+    {
+      candidateId: "unknown-zone",
+      sourceType: "proposal",
+      zone: "zone_introduced_later",
+      code: "114723810",
+      display: { stem: "在宅医療情報連携加算" },
+      estimatedTotalPoints: 100,
+      reason: "将来追加される区分でも候補は消えない。"
+    },
+    {
+      candidateId: "sensor",
+      sourceType: "proposal",
+      sourceSubtype: "sensor_candidate",
+      presentation: "hidden",
+      hiddenReason: "master_code_unresolved",
+      zone: "blocked",
+      adoptionBlocked: true,
+      adoptionBlockReason: "master_code_unresolved",
+      code: null,
+      display: { stem: "未確認の行為xxxxxxxx", qualifier: "マスター検索で確認" },
+      estimatedTotalPoints: 0
+    }
+  ];
+  const page = await openPanel(380, { candidates });
+  const result = await page.evaluate(() => ({
+    renderedIds: [
+      ...document.querySelectorAll("#line-candidates .candidate-row"),
+      ...document.querySelectorAll("#decision-candidates .decision-row")
+    ].map((node) => node.dataset.candidateId || ""),
+    decisionSummaries: Object.fromEntries(
+      [...document.querySelectorAll("#decision-candidates .decision-row")].map((node) => [
+        node.dataset.candidateId,
+        node.querySelector(".decision-summary")?.textContent
+      ])
+    ),
+    decisionKinds: Object.fromEntries(
+      [...document.querySelectorAll("#decision-candidates .decision-row")].map((node) => [
+        node.dataset.candidateId,
+        node.querySelector(".decision-kind")?.textContent
+      ])
+    )
+  }));
+
+  const expectedVisible = candidates
+    .filter((candidate) => candidate.presentation !== "hidden")
+    .map((candidate) => candidate.candidateId);
+  const notRendered = candidates.filter((candidate) => !result.renderedIds.includes(candidate.candidateId));
+
+  assert.deepEqual([...result.renderedIds].sort(), [...expectedVisible].sort());
+  assert.equal(notRendered.every((candidate) => Boolean(candidate.hiddenReason)), true);
+  assert.deepEqual(notRendered.map((candidate) => candidate.candidateId), ["sensor"]);
+  assert.equal(
+    result.decisionSummaries["early-transition"],
+    "100点｜在宅療養を開始した初回算定年月日を確認してください。"
+  );
+  assert.equal(result.decisionSummaries["facility-standard"], "300点｜施設基準の届出を確認してください。");
+  assert.deepEqual(
+    [result.decisionKinds["early-transition"], result.decisionKinds["facility-standard"], result.decisionKinds["unknown-zone"]],
+    ["要確認", "要確認", "要確認"]
+  );
+  await page.close();
+});
+
 for (const width of [320, 380]) {
   test(`side panel does not overflow at ${width}px`, async () => {
     const page = await openPanel(width);
@@ -497,7 +601,7 @@ async function openPanel(width, options = {}) {
               },
               estimatedTotalPoints: 940,
               decisionCandidateCount: 4,
-              candidates: [
+              candidates: panelOptions.candidates || [
                 {
                   candidateId: "visit",
                   sourceType: "calculated_line",
@@ -601,6 +705,9 @@ async function openPanel(width, options = {}) {
                   sourceType: "proposal",
                   sourceSubtype: "sensor_candidate",
                   zone: "blocked",
+                  presentation: "hidden",
+                  hiddenReason: "master_code_unresolved",
+                  adoptionBlockReason: "master_code_unresolved",
                   code: null,
                   display: {
                     stem: "未確認の行為xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",

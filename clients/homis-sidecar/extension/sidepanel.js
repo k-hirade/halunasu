@@ -428,11 +428,13 @@
     const calculation = sidecarDraft.calculation || {};
     const candidates = (Array.isArray(calculation.candidates) ? calculation.candidates : [])
       .map((candidate) => normalizeCandidateZone(candidate));
-    const decisionCandidates = candidates.filter((candidate) => (
-      ["review_required", "selection_required"].includes(candidate.zone)
-    ));
+    const decisionCandidates = candidates.filter((candidate) => candidatePresentation(candidate) === "decision");
     elements["total-points"].textContent = `${Number(calculation.estimatedTotalPoints || 0).toLocaleString("ja-JP")}点`;
-    renderCandidateGroup("included-group", "line-candidates", candidates.filter((item) => item.zone === "included"));
+    renderCandidateGroup(
+      "included-group",
+      "line-candidates",
+      candidates.filter((candidate) => candidatePresentation(candidate) === "included")
+    );
     renderDecisionGroup(
       decisionCandidates,
       Array.isArray(calculation.notices) ? calculation.notices : []
@@ -926,6 +928,11 @@
   }
 
   function humanDecisionReason(candidate, notices, exactQuestion = "") {
+    // 確認条件があるものは、族ごとに同じ汎用文よりも具体的な確認事項を優先する。
+    const conditionInstruction = firstConditionInstruction(candidate);
+    if (conditionInstruction) {
+      return conditionInstruction;
+    }
     const candidateReason = normalizedDisplayText(candidate?.reason);
     if (candidateReason && !/^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/iu.test(candidateReason)) {
       return candidateReason;
@@ -947,6 +954,19 @@
       || normalizedDisplayText(related[0]?.shortText);
   }
 
+  function firstConditionInstruction(candidate) {
+    const conditions = Array.isArray(candidate?.humanVerifiableConditions)
+      ? candidate.humanVerifiableConditions
+      : [];
+    for (const condition of conditions) {
+      const instruction = normalizedDisplayText(condition?.instruction);
+      if (instruction) {
+        return instruction;
+      }
+    }
+    return "";
+  }
+
   function normalizedDisplayText(value) {
     return String(value || "").replace(/\s+/gu, " ").trim();
   }
@@ -964,6 +984,7 @@
       const row = document.createElement("div");
       row.className = "candidate-row";
       row.classList.add(`zone-${candidate.zone || "review_required"}`);
+      row.dataset.candidateId = String(candidate.candidateId || "");
       const header = document.createElement("header");
       const name = document.createElement("strong");
       name.className = "candidate-name";
@@ -1019,6 +1040,19 @@
       return candidate;
     }
     return { ...candidate, zone: "unknown" };
+  }
+
+  // 表示先はサーバの presentation に従う。zone だけを見て暗黙に落とすと、
+  // 新しい区分が増えたときに候補が黙って消えるため、未知の値は要判断へ出す。
+  function candidatePresentation(candidate) {
+    const presentation = String(candidate?.presentation || "");
+    if (["included", "decision", "hidden"].includes(presentation)) {
+      return presentation;
+    }
+    if (candidate?.zone === "included") {
+      return "included";
+    }
+    return candidate?.zone === "blocked" ? "hidden" : "decision";
   }
 
   function candidatePointLabel(candidate, exactOption) {

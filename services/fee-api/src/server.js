@@ -118,6 +118,12 @@ const SIDECAR_ACKNOWLEDGE_SCOPE = "sidecar:acknowledge";
 const SIDECAR_PATIENT_CHARGE_WRITE_SCOPE = "sidecar:patient_charge_write";
 const SIDECAR_CONTRACT_VERSION = "v1";
 const SIDECAR_PRODUCT_ROLES = ["admin", "doctor", "nurse", "medical_clerk"];
+// 採用をブロックする理由のうち、利用者へ提示しない候補だけを列挙する。
+// ここに無い理由は「人が条件を確認すれば算定できる候補」として要判断へ出す。
+// 既定を「出す」にしているのは、未知の理由が増えたときに候補が黙って消えないようにするため。
+const SIDECAR_HIDDEN_CANDIDATE_BLOCK_REASONS = Object.freeze(new Set([
+  "master_code_unresolved"
+]));
 const FEE_PRODUCT_ROLES = ["admin", "doctor", "nurse", "medical_clerk", "viewer"];
 const FEE_WRITE_ROLES = ["admin", "doctor", "nurse", "medical_clerk"];
 const DEFAULT_OPENAI_FEE_CLINICAL_TIMEOUT_MS = 60000;
@@ -2916,6 +2922,8 @@ function sidecarCalculationResponse(sidecarDraft = {}, options = {}) {
       basis: proposal.basis || null,
       source: proposal.source || null,
       reason: proposal.reason || null,
+      conditionText: proposal.conditionText || null,
+      humanVerifiableConditions: normalizeHumanVerifiableConditions(proposal.humanVerifiableConditions),
       evidence: proposal.evidence || null,
       points: Number(proposal.points || proposal.potentialPoints || 0),
       quantity: Number(proposal.quantity || 1),
@@ -2942,20 +2950,26 @@ function sidecarCalculationResponse(sidecarDraft = {}, options = {}) {
     const facilityRuleConfirmed = candidate.sourceType === "proposal"
       && candidate.badges?.includes("facility_rule")
       && Boolean(candidate.code);
-    const billingEligibility = candidate.sourceType === "calculated_line" || facilityRuleConfirmed
+    const included = candidate.sourceType === "calculated_line" || facilityRuleConfirmed;
+    const billingEligibility = included
       ? "included"
       : candidate.adoptionBlocked === true
         ? "blocked"
         : "review_required";
+    const { presentation: candidatePresentation, hiddenReason, requiresHumanVerification } =
+      sidecarCandidateVisibility(candidate, { included });
     const selectionNarrowing = candidate.requiresSelection
       ? narrowSidecarCandidateSelection(candidate, selectionContext)
       : null;
     return {
       ...candidate,
       billingEligibility,
-      zone: candidate.sourceType === "calculated_line" || facilityRuleConfirmed
+      requiresHumanVerification,
+      presentation: candidatePresentation,
+      hiddenReason,
+      zone: included
         ? "included"
-        : candidate.adoptionBlocked === true
+        : hiddenReason
           ? "blocked"
           : candidate.requiresSelection && selectionNarrowing?.selectionResolution !== "exact"
             ? "selection_required"
@@ -2974,7 +2988,7 @@ function sidecarCalculationResponse(sidecarDraft = {}, options = {}) {
   const estimatedTotalPoints = candidates
     .filter((candidate) => candidate.zone === "included")
     .reduce((sum, candidate) => sum + Number(candidate.estimatedTotalPoints || 0), 0);
-  const decisionCandidateCount = candidates.filter((candidate) => candidate.zone !== "included").length;
+  const decisionCandidateCount = candidates.filter((candidate) => candidate.presentation === "decision").length;
   return {
     contractVersion: SIDECAR_CONTRACT_VERSION,
     sidecarDraft: {
@@ -10798,6 +10812,32 @@ function clinicalTextHash(value) {
 
 function uniqueStrings(values = []) {
   return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
+}
+
+// 採用ブロックされた候補を「人が確認すれば算定できる(要判断へ出す)」と
+// 「利用者へ提示しない」に振り分ける。提示しない候補は必ず hiddenReason を持つ。
+export function sidecarCandidateVisibility(candidate = {}, options = {}) {
+  const included = options.included === true;
+  const blockReason = String(candidate?.adoptionBlockReason || "").trim();
+  const hiddenReason = !included
+    && candidate?.adoptionBlocked === true
+    && SIDECAR_HIDDEN_CANDIDATE_BLOCK_REASONS.has(blockReason)
+    ? blockReason
+    : null;
+  return {
+    presentation: included ? "included" : hiddenReason ? "hidden" : "decision",
+    hiddenReason,
+    requiresHumanVerification: !included && candidate?.adoptionBlocked === true && !hiddenReason
+  };
+}
+
+function normalizeHumanVerifiableConditions(values = []) {
+  return (Array.isArray(values) ? values : [])
+    .map((condition) => ({
+      conditionId: String(condition?.conditionId || "").trim(),
+      instruction: String(condition?.instruction || "").trim()
+    }))
+    .filter((condition) => condition.instruction);
 }
 
 function compactObject(value = {}) {

@@ -11888,7 +11888,14 @@ test("sidecar calculation compares same-date sibling drafts and blocks the secon
     .filter((candidate) => blockedProposals.some((proposal) => proposal.proposalId === candidate.candidateId));
   assert.equal(responseCandidates.length, 5);
   assert.equal(responseCandidates.every((candidate) => candidate.adoptionBlocked === true), true);
-  assert.equal(responseCandidates.every((candidate) => candidate.zone === "blocked"), true);
+  // 受診順が未確認なだけで人が確認すれば算定できるため、非表示にせず要判断へ出す。
+  assert.equal(responseCandidates.every((candidate) => candidate.requiresHumanVerification === true), true);
+  assert.equal(responseCandidates.every((candidate) => candidate.presentation === "decision"), true);
+  assert.equal(responseCandidates.every((candidate) => candidate.hiddenReason === null), true);
+  assert.equal(
+    responseCandidates.every((candidate) => ["review_required", "selection_required"].includes(candidate.zone)),
+    true
+  );
   assert.equal(second.body.sidecarDraft.calculation.decisionCandidateCount >= 5, true);
 });
 
