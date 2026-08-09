@@ -13,6 +13,8 @@ import {
   validateCreateFeeCalculationInput,
   validateCreateFeePatientInput,
   validateCreateFeeSessionInput,
+  canonicalSidecarSurfaceJson,
+  sidecarSurfaceIntegrityPayload,
   validateSidecarCandidateAcknowledgementInput,
   validateSidecarCandidateSelectionInput,
   validateSidecarCalculationInput,
@@ -112,6 +114,11 @@ import {
   findSidecarSelectionCandidate,
   sidecarSelectionAllowsCode
 } from "./sidecar-candidate-selections.js";
+import {
+  ageConstraintForCode,
+  codeAllowsAge,
+  excludeCodesOutsideAgeRange
+} from "./sidecar-label-axis-narrowing.js";
 import {
   dispatchPendingCareFeeEvidence,
   enqueueCareFeeEvidenceForSession
@@ -2494,33 +2501,6 @@ function assertSidecarSourceSurfaceIntegrity(input = {}) {
   }
 }
 
-function sidecarSurfaceIntegrityPayload(surface = {}) {
-  return {
-    status: surface.status || "unavailable",
-    patientId: surface.patientId || "",
-    ...(surface.status === "ok" ? { raw: surface.raw || {} } : {}),
-    ...(surface.status === "unavailable"
-      ? { unavailableReason: surface.unavailableReason || "fetch_failed" }
-      : {})
-  };
-}
-
-function canonicalSidecarSurfaceJson(value) {
-  return JSON.stringify(canonicalSidecarSurfaceValue(value));
-}
-
-function canonicalSidecarSurfaceValue(value) {
-  if (Array.isArray(value)) {
-    return value.map(canonicalSidecarSurfaceValue);
-  }
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.keys(value).sort().map((key) => [key, canonicalSidecarSurfaceValue(value[key])])
-    );
-  }
-  return value;
-}
-
 function fnv1a64Fingerprint(value) {
   let hash = 0xcbf29ce484222325n;
   for (const byte of Buffer.from(String(value || ""), "utf8")) {
@@ -3059,6 +3039,20 @@ function sidecarCalculationResponse(sidecarDraft = {}, options = {}) {
       ? sidecarDraft.structuredSourceFacts.selection
       : {}
   };
+  // 親管理料は同じ算定案の中の候補から決まるため、全候補が揃うここで解決する。
+  const resolvedSelectionContext = {
+    ...selectionContext,
+    labelAxis: compactObject({
+      ...(isPlainObject(selectionContext.labelAxis) ? selectionContext.labelAxis : {}),
+      parentManagementFamily: detectParentManagementFamily(presentation.candidates),
+      singleBuildingPatientCount: trustedFactValue(
+        selectionContext.selection?.singleBuildingPatientCount
+      )
+    })
+  };
+  const patientAgeYears = Number.isInteger(sidecarDraft.patientAgeYears)
+    ? sidecarDraft.patientAgeYears
+    : null;
   const storedCandidateSelections = isPlainObject(sidecarDraft.candidateSelections)
     ? sidecarDraft.candidateSelections
     : {};
@@ -3080,11 +3074,13 @@ function sidecarCalculationResponse(sidecarDraft = {}, options = {}) {
         : "review_required";
     const { presentation: candidatePresentation, hiddenReason, requiresHumanVerification } =
       sidecarCandidateVisibility(candidate, { included });
-    const selectionNarrowing = candidate.requiresSelection
-      ? narrowSidecarCandidateSelection(candidate, selectionContext)
+    // 年齢が判明していて要件を満たさないコードは、区分からも候補からも外す。
+    const ageFiltered = applySidecarAgeEligibility(candidate, patientAgeYears);
+    const selectionNarrowing = ageFiltered.requiresSelection
+      ? narrowSidecarCandidateSelection(ageFiltered, resolvedSelectionContext)
       : null;
     const selection = buildSidecarCandidateSelection({
-      candidate,
+      candidate: ageFiltered,
       selectionNarrowing,
       stored: candidateKeyCounts.get(sidecarCandidateKey(candidate)) === 1
         ? storedCandidateSelections[sidecarCandidateKey(candidate)] || null
@@ -3095,7 +3091,7 @@ function sidecarCalculationResponse(sidecarDraft = {}, options = {}) {
     const selectionResolved = selectionNarrowing?.selectionResolution === "exact"
       || Boolean(selectedOption);
     return {
-      ...candidate,
+      ...ageFiltered,
       billingEligibility,
       requiresHumanVerification,
       presentation: candidatePresentation,
@@ -8733,7 +8729,9 @@ async function prepareSessionForCalculation(session = {}, calculationInput = {},
     {
       session: baseSession,
       facilityProfile: effectiveFacilityProfile,
-      priorSessions: priorSessionsResult.sessions
+      feeSettings,
+      priorSessions: priorSessionsResult.sessions,
+      historyCompleteness
     }
   );
   const primaryPrepared = await measureStage(stageTimings, "candidateProposalGovernance", () => (
@@ -8947,7 +8945,9 @@ function countCurrentMonthEncounters(session = {}, priorSessions = []) {
 function applySidecarSelectionContextToPreparation(prepared = {}, {
   session = {},
   facilityProfile = {},
-  priorSessions = []
+  feeSettings = {},
+  priorSessions = [],
+  historyCompleteness = "partial"
 } = {}) {
   if (session.sourceSystem !== "homis_sidecar") {
     return prepared;
@@ -8972,6 +8972,13 @@ function applySidecarSelectionContextToPreparation(prepared = {}, {
         facilityStandardKeys: uniqueStrings(facilityProfile.facilityStandardKeys),
         facilityStandardKeysSource: facilityProfile.facilityStandardKeysSource || facilityProfile.source || "",
         setting: session.encounterDetails?.visitKind || session.setting || "",
+        // 名称由来の汎用軸(情報通信機器・親管理料・機器種別など)を解くための事実。
+        labelAxis: buildSidecarLabelAxisFacts({
+          session,
+          feeSettings,
+          priorSessions,
+          historyCompleteness
+        }),
         selection: {
           ...storedSelection,
           ...(qualifyingMonthlyVisits ? { qualifyingMonthlyVisits } : {})
@@ -8979,6 +8986,79 @@ function applySidecarSelectionContextToPreparation(prepared = {}, {
       }
     }
   };
+}
+
+// 区分名称から導出できる軸を解くための事実。取れないものは null のままにし、
+// その軸では候補を絞らない(誤って落とさない)。
+function buildSidecarLabelAxisFacts({
+  session = {},
+  feeSettings = {},
+  priorSessions = [],
+  historyCompleteness = "partial"
+} = {}) {
+  const facts = session.structuredSourceFacts || {};
+  const setting = String(session.encounterDetails?.visitKind || session.setting || "");
+  const problemNames = asArrayValue(facts.problems?.rows)
+    .map((row) => String(row?.name || row?.text || "").trim())
+    .filter(Boolean);
+  const mainProblemNames = asArrayValue(facts.problems?.rows)
+    .filter((row) => row?.main === true || row?.isMain === true)
+    .map((row) => String(row?.name || row?.text || "").trim())
+    .filter(Boolean);
+  const deviceTypes = new Set(asArrayValue(facts.devices).map((device) => String(device?.type || "")));
+  const deviceText = asArrayValue(facts.devices)
+    .map((device) => Object.values(device?.attributes || {}).join(" "))
+    .join(" ");
+  const institutionBedClass = String(feeSettings?.institutionBedClass || "").trim();
+  return compactObject({
+    telemedicine: setting === "telephone_revisit"
+      ? true
+      : ["home_visit", "house_call", "outpatient"].includes(setting)
+        ? false
+        : null,
+    institutionBedClass: institutionBedClass || null,
+    cyanoticCongenitalHeartDisease: problemNames.length
+      ? problemNames.some((name) => name.includes("チアノーゼ型先天性心疾患"))
+      : null,
+    primaryDisease: mainProblemNames.some((name) => name.includes("糖尿病"))
+      ? "diabetes"
+      : mainProblemNames.some((name) => name.includes("高血圧"))
+        ? "hypertension"
+        : mainProblemNames.some((name) => name.includes("脂質異常症"))
+          ? "dyslipidemia"
+          : null,
+    ventilatorType: deviceTypes.has("ventilator")
+      ? (/陰圧/u.test(deviceText)
+        ? "negative_pressure"
+        : /陽圧/u.test(deviceText) ? "positive_pressure" : "general")
+      : null,
+    portableOxygenContainer: deviceTypes.has("oxygen_therapy")
+      ? /携帯/u.test(deviceText)
+      : null,
+    patientAgeYears: Number.isInteger(session.patientAgeYears) ? session.patientAgeYears : null,
+    // 初回/2回目以降は当月の算定履歴が揃っているときだけ判定する。
+    monthlyClaimHistoryCompleteness: historyCompleteness,
+    monthlyClaimedCodes: historyCompleteness === "complete"
+      ? monthlyClaimedCodesForSession(session, priorSessions)
+      : null
+  });
+}
+
+function monthlyClaimedCodesForSession(session = {}, priorSessions = []) {
+  const claimMonth = String(session.serviceDate || "").slice(0, 7);
+  if (!/^\d{4}-\d{2}$/u.test(claimMonth)) {
+    return null;
+  }
+  const codes = new Set();
+  for (const prior of asArrayValue(priorSessions)) {
+    if (String(prior?.serviceDate || prior?.claimMonth || "").slice(0, 7) !== claimMonth) continue;
+    if (String(prior?.feeSessionId || "") === String(session.feeSessionId || "")) continue;
+    for (const line of asArrayValue(prior?.calculationResult?.lineItems)) {
+      const code = String(line?.code || "").trim();
+      if (code) codes.add(code);
+    }
+  }
+  return [...codes].sort();
 }
 
 function completeSidecarMonthlyVisitFactFromHistory(session = {}, priorSessions = []) {
@@ -10980,6 +11060,76 @@ export function sidecarCandidateVisibility(candidate = {}, options = {}) {
 }
 
 // 選択肢は必ず「区分名＋点数」で提示する。コードだけの選択肢は出さない。
+// 算定案の中の親管理料候補から、従属加算の親ファミリを決める。
+function detectParentManagementFamily(candidates = []) {
+  const names = asArrayValue(candidates)
+    .map((candidate) => String(candidate?.name || candidate?.display?.stem || ""))
+    .join("\n");
+  if (/施医総管|施設入居時等医学総合管理料/u.test(names)) {
+    return "facility_management";
+  }
+  if (/在医総管|在宅時医学総合管理料/u.test(names)) {
+    return "home_management";
+  }
+  if (/在がん医総|在宅がん医療総合診療料/u.test(names)) {
+    return "home_cancer_management";
+  }
+  return null;
+}
+
+function trustedFactValue(fact) {
+  if (isPlainObject(fact)) {
+    return fact.status === "known" || fact.status === "complete" ? fact.value ?? null : null;
+  }
+  return fact ?? null;
+}
+
+// 年齢要件を満たさないコードを候補から外す。年齢不明時と、年齢制約を数値で
+// 確定できないコードは外さない(取りこぼし側へ倒す)。
+function applySidecarAgeEligibility(candidate = {}, patientAgeYears = null) {
+  if (!Number.isInteger(patientAgeYears)) {
+    return candidate;
+  }
+  const codeCandidates = asArrayValue(candidate.codeCandidates);
+  const singleCode = String(candidate.code || "").trim();
+  if (singleCode) {
+    const constraint = ageConstraintForCode(singleCode);
+    if (constraint && !codeAllowsAge(constraint, patientAgeYears)) {
+      return {
+        ...candidate,
+        ageEligibility: {
+          status: "not_eligible",
+          patientAgeYears,
+          excludedCodes: [singleCode]
+        }
+      };
+    }
+    return candidate;
+  }
+  if (!codeCandidates.length) {
+    return candidate;
+  }
+  const { codes, excluded } = excludeCodesOutsideAgeRange(codeCandidates, patientAgeYears);
+  if (!excluded.length) {
+    return candidate;
+  }
+  const keptCodes = new Set(codes);
+  const options = normalizeCodeCandidateOptions(candidate.codeCandidateOptions, codes)
+    .filter((option) => keptCodes.has(option.code));
+  return {
+    ...candidate,
+    codeCandidates: codes,
+    codeCandidateOptions: options,
+    requiresSelection: candidate.requiresSelection === true && codes.length > 0,
+    ...(codes.length === 1 ? { code: codes[0], requiresSelection: false } : {}),
+    ageEligibility: {
+      status: codes.length ? "narrowed" : "not_eligible",
+      patientAgeYears,
+      excludedCodes: excluded.map((entry) => entry.code)
+    }
+  };
+}
+
 function normalizeCodeCandidateOptions(values = [], allowedCodes = []) {
   const allowed = new Set((Array.isArray(allowedCodes) ? allowedCodes : [])
     .map((code) => String(code || "").trim())

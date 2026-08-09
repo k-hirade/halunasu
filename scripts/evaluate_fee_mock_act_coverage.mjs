@@ -5,6 +5,10 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
+  canonicalSidecarSurfaceJson,
+  sidecarSurfaceIntegrityPayload
+} from "../packages/fee-contracts/src/index.js";
+import {
   auditMockActCoverageCase,
   classifyMockAction,
   normalizeMockActionName,
@@ -33,7 +37,7 @@ const defaults = {
   mfaCode: process.env.FEE_E2E_MFA_CODE || "",
   facilityId: "fac_9fe275b29feebb03bfeb9410f7",
   departmentId: "dep_00d6c56dcd8b4d65acf0d8f2ab",
-  selectorContractVersion: "homis-mock-v5",
+  selectorContractVersion: "homis-mock-v7",
   claimMonth: "",
   claimMonths: "2026-06,2026-07",
   expectedClinicalExtractionStrategy: "openai_primary",
@@ -135,6 +139,10 @@ const result = {
     route: "/v1/integrations/sidecar/calculate",
     actionListUsedAsCalculationInput: false,
     persistedRawClinicalText: false,
+    selectorContractVersion: args.selectorContractVersion,
+    // 当月受診サーフェスは mock データからの合成であり、実機の画面走査ではない。
+    // 実機で起こりうる走査失敗は再現していないため、この面は実機より好条件である。
+    visitPlanSurfaceSynthesized: true,
     rateLimitRetry: {
       statusCode: 429,
       maxRetries: args.maxRateLimitRetries,
@@ -240,6 +248,7 @@ function sidecarBody(item, options) {
     departmentId: options.departmentId,
     sourceSystem: "homis",
     externalPatientId: item.patientId,
+    ...(Number.isInteger(item.patientAgeYears) ? { patientAgeYears: item.patientAgeYears } : {}),
     sourceRecordId: item.sourceRecordId,
     sourceRecordDisplayId: item.sourceRecordDisplayId,
     serviceDate: item.serviceDate,
@@ -286,18 +295,20 @@ function sidecarBody(item, options) {
 function sealSourceSurfaces(item, observedAt) {
   const patientId = String(item.patientId || "");
   const raw = item.sourceSurfaceRaw || {};
-  return {
-    currentChart: sealSourceSurface({
-      status: "ok",
-      patientId,
-      raw: raw.currentChart || {}
-    }, observedAt),
-    documents: sealSourceSurface({
-      status: "ok",
-      patientId,
-      raw: raw.documents || { rows: [] }
-    }, observedAt)
+  // v6/v7 は病名・当月受診サーフェスも読む。欠けている面は unavailable として封印し、
+  // 「送っていない」と「取得できなかった」を取り違えないようにする。
+  const surfaces = {
+    currentChart: raw.currentChart || {},
+    documents: raw.documents || { rows: [] },
+    problems: raw.problems || null,
+    visitPlan: raw.visitPlan || null
   };
+  return Object.fromEntries(Object.entries(surfaces).map(([name, value]) => [
+    name,
+    sealSourceSurface(value === null
+      ? { status: "unavailable", patientId, unavailableReason: "fetch_failed" }
+      : { status: "ok", patientId, raw: value }, observedAt)
+  ]));
 }
 
 function sealSourceSurface(surface, observedAt) {
@@ -312,9 +323,10 @@ function sealSourceSurface(surface, observedAt) {
   return {
     ...revisionPayload,
     observedAt,
+    // 封印はサーバの整合検査と同じ実装を共有する。別実装にすると v6/v7 で必ず不一致になる。
     surfaceHash: `sha256-${crypto
       .createHash("sha256")
-      .update(JSON.stringify(revisionPayload))
+      .update(canonicalSidecarSurfaceJson(sidecarSurfaceIntegrityPayload(revisionPayload)))
       .digest("base64url")}`
   };
 }

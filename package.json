@@ -101,7 +101,7 @@
     "eval:fee-whitebox-shadow-stg": "node scripts/evaluate_fee_whitebox_shadow_stg.mjs",
     "eval:fee-extraction-coverage-recheck-stg": "node scripts/evaluate_fee_extraction_coverage_recheck_stg.mjs",
     "eval:fee-mock-act-coverage": "node scripts/evaluate_fee_mock_act_coverage.mjs",
-    "test:fee-mock-act-coverage": "node --test scripts/lib/fee-mock-act-coverage.test.mjs scripts/lib/sidecar-evaluator-auth.test.mjs && PYTHONPATH=. python3 -m unittest python.tests.test_mock_homis_build_action_map",
+    "test:fee-mock-act-coverage": "node --test scripts/lib/fee-mock-act-coverage.test.mjs scripts/lib/sidecar-evaluator-auth.test.mjs scripts/lib/mock-homis-v7-surfaces.test.mjs && PYTHONPATH=. python3 -m unittest python.tests.test_mock_homis_build_action_map",
     "eval:care-emergency-csv": "node scripts/evaluate_care_emergency_csv.mjs",
     "test:care-fee-gold": "node --test packages/care-fee-contracts/test/index.test.js packages/care-fee-core/test/index.test.js packages/care-fee-core/test/csv.test.js",
     "test:care-fee-ops": "node --test scripts/lib/care-fee-environment-registration.test.mjs packages/security-boundaries/test/index.test.js",
@@ -174,6 +174,9 @@
     "start:care-fee-api": "npm run start --workspace @halunasu/care-fee-api",
     "dev:care-fee-api": "npm run dev --workspace @halunasu/care-fee-api",
     "start:care-fee-web": "npm run start --workspace @halunasu/care-fee-web",
-    "dev:care-fee-web": "npm run dev --workspace @halunasu/care-fee-web"
+    "dev:care-fee-web": "npm run dev --workspace @halunasu/care-fee-web",
+    "build:fee-sidecar-label-axes": "node scripts/build_fee_sidecar_label_axes.mjs",
+    "build:fee-age-constraints": "python3 scripts/build_fee_age_constraints.py",
+    "test:fee-sidecar-label-axes": "node scripts/build_fee_sidecar_label_axes.mjs --check && node --test services/fee-api/test/sidecar-label-axis-narrowing.test.js"
   }
 }

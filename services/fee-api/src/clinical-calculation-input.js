@@ -5446,6 +5446,11 @@ export function mergeDiseaseIndicationCandidateProposals({
         potentialPoints: 0,
         code: "",
         codeCandidates: [...familyCodes].sort(),
+        codeCandidateOptions: codeEntries.map((entry) => ({
+          code: entry.code,
+          qualifierLabel: entry.name,
+          points: Number(entry.points || 0)
+        })),
         candidateLine: null
       });
     }

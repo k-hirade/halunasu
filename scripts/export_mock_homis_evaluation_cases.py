@@ -151,6 +151,77 @@ def current_chart_surface_raw(patient: dict, visit: dict, month: str) -> dict:
         "patientStartDate": str(patient.get("start_date") or "") or None,
         "calendarMonth": month,
         "calendarVisitDates": visit_dates,
+        # v7はカレンダーと機器欄の網羅性マーカーを要求する。mockは全訪問日を持つので complete。
+        "calendarVisitListCompleteness": "complete",
+        "deviceManagementListCompleteness": "complete",
+    }
+
+
+def problems_surface_raw(patient: dict) -> dict:
+    """病名サーフェス。v6/v7でのみサーバが読む。"""
+    return {
+        "rows": [
+            {
+                "name": str(row.get("name") or ""),
+                "main": bool(row.get("main")),
+                "suspected": bool(row.get("suspected"))
+                or bool(re.search(r"疑い|疑診", str(row.get("name") or ""))),
+                "startDate": str(row.get("since") or "") or None,
+                # mockの病名画面は転帰列に「継続」を表示している(render.py の problem_page)。
+                # 転帰が無いと疾病等区分は fail-closed で unknown のままになる。
+                "outcome": str(row.get("outcome") or "継続"),
+            }
+            for row in patient.get("problems", [])
+            if str(row.get("name") or "").strip()
+        ],
+        "listCompleteness": "complete",
+    }
+
+
+def visit_plan_surface_raw(patient: dict, month: str, source_record_id: str) -> dict:
+    """当月受診サーフェス。
+
+    実機(v7)は前後カルテを実際にたどって組み立てる。サーバは chart_navigation の
+    整合フィールドが揃っていることを要求するため、ここでも同じ形で渡す。ただし
+    実際には mock データからの合成であり、実機の走査失敗
+    (chart_history_transition_limit 等)は再現しない。合成であることは
+    出力全体の visitPlanSurfaceSynthesized で明示する。
+    """
+    rows = []
+    for entry in patient.get("visits", {}).get(month, []):
+        if not entry.get("day"):
+            continue
+        day = int(entry["day"])
+        service_date = f"{month}-{day:02d}"
+        setting, visit_kind = visit_setting(str(entry.get("type") or ""))
+        displayed_chart_id = f"{patient['id']}{int(month[5:7]):02d}{day:02d}"
+        rows.append(
+            {
+                "serviceDate": service_date,
+                "encounterType": setting,
+                "visitKind": visit_kind,
+                "status": "completed",
+                "sourceRecordId": build_visible_record_key(
+                    patient["id"],
+                    service_date,
+                    displayed_chart_id,
+                    str(entry.get("time") or ""),
+                ),
+            }
+        )
+    rows.sort(key=lambda row: row["serviceDate"])
+    return {
+        "calendarMonth": month,
+        "category": "",
+        "patternText": str(patient.get("plan") or ""),
+        "basis": "encounter_history",
+        "rows": rows,
+        "listCompleteness": "complete",
+        "collectionMethod": "chart_navigation",
+        "traversalComplete": True,
+        "calendarReconciled": True,
+        "originalSourceRecordId": source_record_id,
+        "restoredSourceRecordId": source_record_id,
     }
 
 
@@ -197,16 +268,23 @@ def export_cases(mock_root: Path, claim_month: str | None) -> dict:
                         for action in visit.get("action_list", [])
                         if str(action).strip()
                     ],
+                    "patientAgeYears": (
+                        int(patient["age"]) if str(patient.get("age") or "").isdigit() else None
+                    ),
                     "sourceSurfaceRaw": {
                         "currentChart": current_chart_surface_raw(patient, visit, month),
                         "documents": {
                             "rows": document_rows(patient.get("docs")),
                         },
+                        "problems": problems_surface_raw(patient),
+                        "visitPlan": visit_plan_surface_raw(patient, month, source_record_id),
                     },
                 })
     return {
-        "schemaVersion": "mock-homis-act-coverage-cases-v1",
+        "schemaVersion": "mock-homis-act-coverage-cases-v2",
         "syntheticDataOnly": True,
+        # visitPlan は実機の画面走査ではなく mock データからの合成である。
+        "visitPlanSurfaceSynthesized": True,
         "source": str(mock_root / "data" / "patients.py"),
         "claimMonth": claim_month,
         "caseCount": len(cases),

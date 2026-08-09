@@ -711,6 +711,7 @@ test("sidecar calculation keeps only structured selection evidence in metrics", 
   assert.deepEqual(calculated.calculationResult.metrics.sidecarSelectionContext, {
     facilityStandardKeys: ["home_support_clinic"],
     facilityStandardKeysSource: "facility_profile",
+    labelAxis: {},
     currentMonthEncounterCount: null,
     singleBuildingPatientCount: null,
     setting: "home_visit",

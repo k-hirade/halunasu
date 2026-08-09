@@ -9985,6 +9985,18 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
       candidateProposals: [
         ...(Array.isArray(calculated.candidateProposals) ? calculated.candidateProposals : []),
         {
+          proposalId: "pediatric_age_gate",
+          title: "小児悪性腫瘍患者指導管理料の算定確認",
+          orderType: "procedure",
+          potentialPoints: 0,
+          codeCandidates: ["113006610", "113035110"],
+          codeCandidateOptions: [
+            { code: "113006610", qualifierLabel: "小児悪性腫瘍患者指導管理料", points: 550 },
+            { code: "113035110", qualifierLabel: "小児悪性腫瘍患者指導管理料（情報通信機器）", points: 479 }
+          ],
+          source: "clinical_billing_knowledge:management_signal"
+        },
+        {
           proposalId: "ambiguous_home_oxygen",
           title: "在宅酸素療法指導管理料の区分確認",
           orderType: "procedure",
@@ -10008,7 +10020,7 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
     };
   };
   const sidecarHeaders = await signedSidecarHeaders(stores);
-  const requestBody = sidecarCalculationBody();
+  const requestBody = { ...sidecarCalculationBody(), patientAgeYears: 73 };
   const otherFacility = stores.platformStore.createFacility("org_001", {
     displayName: "Other Clinic",
     medicalInstitutionCode: "9999999"
@@ -10206,6 +10218,16 @@ test("sidecar calculation remains candidate-only and isolated until explicit ado
     excludedCandidate.estimatedTotalPoints,
     ambiguousCandidate.estimatedTotalPoints
   );
+  // 年齢要件を満たさない候補は、区分を選ばせる前に候補から外す。
+  const pediatricCandidate = first.body.sidecarDraft.calculation.candidates
+    .find((candidate) => candidate.candidateId === "pediatric_age_gate");
+  assert.equal(pediatricCandidate.ageEligibility.status, "not_eligible");
+  assert.equal(pediatricCandidate.ageEligibility.patientAgeYears, 73);
+  assert.deepEqual(pediatricCandidate.ageEligibility.excludedCodes, ["113006610", "113035110"]);
+  assert.deepEqual(pediatricCandidate.codeCandidates, []);
+  assert.equal(pediatricCandidate.requiresSelection, false);
+  assert.equal(pediatricCandidate.selection, undefined);
+
   // 区分が残る候補は、選択肢数によらずドロップダウン用の選択肢と質問を返す。
   assert.equal(ambiguousCandidate.selection.status, "unselected");
   assert.equal(ambiguousCandidate.selection.selectedCode, "");

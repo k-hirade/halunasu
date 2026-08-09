@@ -1,0 +1,76 @@
+{
+  "schemaVersion": "fee-mock-act-coverage-run-v2",
+  "generatedAt": "2026-08-05T12:14:29.528Z",
+  "status": "failed",
+  "source": {
+    "syntheticDataOnly": true,
+    "mockPatientsSha256": "257d88a055ff63dad63e2ef3292ef9eb13e6a3ac02be6eac6f805218c6265a8e",
+    "actionMapSha256": "15f6a935dc9505ca59a83324377b7f2a19d41f3c1ea8c9e1bf0d09f8ed95ec14",
+    "actionMapOverridesSha256": "1fb2bd1ac1371a98973d7505279df6de5a630aad702a26a1cc005df0157392f0",
+    "claimMonths": [
+      "2026-06",
+      "2026-07"
+    ]
+  },
+  "environment": {
+    "feeBaseUrl": "https://fee-api-stg-wmfrwcpzkq-an.a.run.app",
+    "platformBaseUrl": "https://platform-api-stg-lp2t3inhza-an.a.run.app",
+    "organizationCode": "yamamoto-demo-stg",
+    "facilityId": "fac_9fe275b29feebb03bfeb9410f7",
+    "departmentId": "dep_0a9c99c2dedcf0b6247294ef6a",
+    "cloudRunRevision": "fee-api-stg-00236-j7k",
+    "runtimeFeatures": {
+      "clinicalExtractionStrategy": "openai_primary",
+      "extractionCoverageMode": "verify",
+      "standingFactsEnabled": true
+    },
+    "sidecarAuthorization": {
+      "mode": "temporary_device_grant",
+      "grantRecordId": "sgr_7icQ3VDxLNMn7ziTbh9iG2zj",
+      "accessTokenPersisted": false,
+      "verifierPersisted": false,
+      "grantRevoked": true
+    }
+  },
+  "methodology": {
+    "route": "/v1/integrations/sidecar/calculate",
+    "actionListUsedAsCalculationInput": false,
+    "persistedRawClinicalText": false,
+    "selectorContractVersion": "homis-mock-v7",
+    "visitPlanSurfaceSynthesized": true,
+    "rateLimitRetry": {
+      "statusCode": 429,
+      "maxRetries": 4,
+      "baseDelayMs": 5000,
+      "maxDelayMs": 60000,
+      "retryAfterPreferred": true
+    },
+    "actionClasses": [
+      "billable_line",
+      "claim_comment",
+      "claim_attribute",
+      "patient_charge",
+      "unknown"
+    ]
+  },
+  "classification": {
+    "billable_line": 236,
+    "claim_comment": 1,
+    "claim_attribute": 59,
+    "patient_charge": 26,
+    "unknown": 0
+  },
+  "repeatCount": 1,
+  "repetitions": [
+    {
+      "repeatIndex": 1,
+      "status": "running",
+      "runs": []
+    }
+  ],
+  "runs": [],
+  "failedAt": "2026-08-05T12:14:30.617Z",
+  "failure": {
+    "message": "1001-2026-07-11-10:30 failed (HTTP 400): {\"error\":\"validation\",\"message\":\"sourceSurfaces.currentChart.surfaceHash does not match its content\"}"
+  }
+}

@@ -1,0 +1,3114 @@
+{
+  "schemaVersion": "fee-age-constraint-artifact-v1",
+  "revision": "2026-06-01",
+  "effectiveFrom": "2026-06-01",
+  "sourceDocuments": [
+    {
+      "sourceId": "mhlw-2026-shinryo-master",
+      "title": "診療行為マスター（令和8年6月1日適用）",
+      "url": "https://shinryohoshu.mhlw.go.jp/shinryohoshu/downloadMenu/",
+      "reference": "基本マスター 診療行為 レコード 年齢最小・年齢最大"
+    }
+  ],
+  "constraintCount": 387,
+  "unsupportedCodeCount": 144,
+  "constraints": [
+    {
+      "code": "111000370",
+      "name": "乳幼児加算（初診）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "111000470",
+      "name": "乳幼児育児栄養指導料",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 3,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "111011570",
+      "name": "乳幼児夜間加算（小児科初診）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "111011670",
+      "name": "乳幼児休日加算（小児科初診）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "111011770",
+      "name": "乳幼児深夜加算（小児科初診）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "111011970",
+      "name": "乳幼児時間外加算（初診）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "111012070",
+      "name": "乳幼児休日加算（初診）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "111012170",
+      "name": "乳幼児深夜加算（初診）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "111012270",
+      "name": "乳幼児時間外特例医療機関加算（初診）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "112000970",
+      "name": "乳幼児加算（再診）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "112006270",
+      "name": "乳幼児加算（外来診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "112014170",
+      "name": "乳幼児夜間加算（小児科再診）（入院外）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "112014270",
+      "name": "乳幼児休日加算（小児科再診）（入院外）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "112014370",
+      "name": "乳幼児深夜加算（小児科再診）（入院外）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "112014470",
+      "name": "乳幼児夜間加算（小児科・外来診療料）（入院外）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "112014570",
+      "name": "乳幼児休日加算（小児科・外来診療料）（入院外）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "112014670",
+      "name": "乳幼児深夜加算（小児科・外来診療料）（入院外）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "112014770",
+      "name": "乳幼児時間外加算（再診）（入院外）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "112014870",
+      "name": "乳幼児休日加算（再診）（入院外）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "112014970",
+      "name": "乳幼児深夜加算（再診）（入院外）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "112015070",
+      "name": "乳幼児時間外特例医療機関加算（再診）（入院外）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "112015170",
+      "name": "乳幼児時間外加算（外来診療料）（入院外）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "112015270",
+      "name": "乳幼児休日加算（外来診療料）（入院外）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "112015370",
+      "name": "乳幼児深夜加算（外来診療料）（入院外）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "112015470",
+      "name": "乳幼児時間外特例医療機関加算（外来診療料）（入院外）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "112018090",
+      "name": "乳幼児時間外加算（再診）（入院）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "112018190",
+      "name": "乳幼児休日加算（再診）（入院）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "112018290",
+      "name": "乳幼児深夜加算（再診）（入院）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "112018490",
+      "name": "乳幼児時間外特例医療機関加算（再診）（入院）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "112018590",
+      "name": "乳幼児夜間加算（小児科再診）（入院）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "112018690",
+      "name": "乳幼児休日加算（小児科再診）（入院）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "112018790",
+      "name": "乳幼児深夜加算（小児科再診）（入院）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "112019190",
+      "name": "乳幼児時間外加算（外来診療料）（入院）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "112019290",
+      "name": "乳幼児休日加算（外来診療料）（入院）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "112019490",
+      "name": "乳幼児深夜加算（外来診療料）（入院）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "112019590",
+      "name": "乳幼児時間外特例医療機関加算（外来診療料）（入院）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "112019690",
+      "name": "乳幼児夜間加算（小児科・外来診療料）（入院）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "112019790",
+      "name": "乳幼児休日加算（小児科・外来診療料）（入院）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "112019890",
+      "name": "乳幼児深夜加算（小児科・外来診療料）（入院）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113002210",
+      "name": "小児科療養指導料",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113006610",
+      "name": "小児悪性腫瘍患者指導管理料",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113006710",
+      "name": "地域連携小児夜間・休日診療料１",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113008070",
+      "name": "重度喘息患者治療管理加算（１月目）",
+      "minAgeYearsInclusive": 20,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113008170",
+      "name": "重度喘息患者治療管理加算（２月目以降６月目まで）",
+      "minAgeYearsInclusive": 20,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113008210",
+      "name": "地域連携小児夜間・休日診療料２",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113010110",
+      "name": "耳鼻咽喉科特定疾患指導管理料",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113012970",
+      "name": "小児加算（がん性疼痛緩和指導管理料）（１５歳未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113013170",
+      "name": "小児加算（外来緩和ケア管理料）（１５歳未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113015910",
+      "name": "臍ヘルニア圧迫指導管理料",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 1,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113016570",
+      "name": "乳幼児時間外加算（再診）（地域包括診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113016670",
+      "name": "乳幼児休日加算（再診）（地域包括診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113016770",
+      "name": "乳幼児深夜加算（再診）（地域包括診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113016970",
+      "name": "乳幼児時間外特例医療機関加算（再診）（地域包括診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113017070",
+      "name": "乳幼児夜間加算（小児科再診）（地域包括診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113017170",
+      "name": "乳幼児休日加算（小児科再診）（地域包括診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113017270",
+      "name": "乳幼児深夜加算（小児科再診）（地域包括診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113018110",
+      "name": "喘息治療管理料２（６歳未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113018210",
+      "name": "喘息治療管理料２（６５歳以上）",
+      "minAgeYearsInclusive": 65,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113020170",
+      "name": "乳幼児時間外加算（初診）（小児かかりつけ診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113020470",
+      "name": "乳幼児時間外特例医療機関加算（初診）（小児かかりつけ診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113020570",
+      "name": "乳幼児夜間加算（小児科初診）（小児かかりつけ診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113020670",
+      "name": "乳幼児休日加算（小児科初診）（小児かかりつけ診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113020770",
+      "name": "乳幼児深夜加算（小児科初診）（小児かかりつけ診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113020870",
+      "name": "乳幼児時間外加算（再診）（小児かかりつけ診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113021170",
+      "name": "乳幼児時間外特例医療機関加算（再診）（小児かかりつけ診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113021270",
+      "name": "乳幼児夜間加算（小児科再診）（小児かかりつけ診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113021370",
+      "name": "乳幼児休日加算（小児科再診）（小児かかりつけ診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113021470",
+      "name": "乳幼児深夜加算（小児科再診）（小児かかりつけ診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113021570",
+      "name": "乳幼児時間外加算（外来診療料）（小児かかりつけ診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113021870",
+      "name": "乳幼児時間外特例医療機関加算（外来診療料・小児かかりつけ診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113021970",
+      "name": "乳幼児夜間加算（小児科・外来診療料）（小児かかりつけ診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113022070",
+      "name": "乳幼児休日加算（小児科・外来診療料）（小児かかりつけ診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113022170",
+      "name": "乳幼児深夜加算（小児科・外来診療料）（小児かかりつけ診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113024070",
+      "name": "人工呼吸器導入時相談支援加算（小児科療養指導料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113024310",
+      "name": "小児運動器疾患指導管理料",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 20,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113026670",
+      "name": "時間外加算（初診）（小児かかりつけ診療料）",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113026770",
+      "name": "休日加算（初診）（小児かかりつけ診療料）",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113026870",
+      "name": "深夜加算（初診）（小児かかりつけ診療料）",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113026970",
+      "name": "時間外特例医療機関加算（初診）（小児かかりつけ診療料）",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113027070",
+      "name": "時間外加算（再診）（小児かかりつけ診療料）",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113027170",
+      "name": "休日加算（再診）（小児かかりつけ診療料）",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113027270",
+      "name": "深夜加算（再診）（小児かかりつけ診療料）",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113027370",
+      "name": "時間外特例医療機関加算（再診）（小児かかりつけ診療料）",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113027470",
+      "name": "時間外加算（外来診療料）（小児かかりつけ診療料）",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113027570",
+      "name": "休日加算（外来診療料）（小児かかりつけ診療料）",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113027670",
+      "name": "深夜加算（外来診療料）（小児かかりつけ診療料）",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113027770",
+      "name": "時間外特例医療機関加算（外来診療料）（小児かかりつけ診療料）",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113029410",
+      "name": "小児特定疾患カウンセリング料（公認心理師）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 18,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113029510",
+      "name": "小児科療養指導料（情報通信機器）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113030670",
+      "name": "人工内耳機器調整加算（６歳未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113030770",
+      "name": "人工内耳機器調整加算（６歳以上）",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113035110",
+      "name": "小児悪性腫瘍患者指導管理料（情報通信機器）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113037110",
+      "name": "乳幼児育児栄養指導料（情報通信機器）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 3,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113038470",
+      "name": "乳幼児加算（初診）（外来腫瘍化学療法診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113038870",
+      "name": "乳幼児時間外加算（初診）（外来腫瘍化学療法診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113039070",
+      "name": "乳幼児時間外特例医療機関加算（初診）（外来腫瘍化学療法診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113039170",
+      "name": "乳幼児夜間加算（小児科初診）（外来腫瘍化学療法診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113039270",
+      "name": "乳幼児休日加算（小児科初診）（外来腫瘍化学療法診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113039370",
+      "name": "乳幼児深夜加算（小児科初診）（外来腫瘍化学療法診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113039470",
+      "name": "乳幼児加算（再診）（外来腫瘍化学療法診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113039870",
+      "name": "乳幼児時間外加算（再診）（外来腫瘍化学療法診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113040070",
+      "name": "乳幼児時間外特例医療機関加算（再診）（外来腫瘍化学療法診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113040170",
+      "name": "乳幼児夜間加算（小児科再診）（外来腫瘍化学療法診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113040270",
+      "name": "乳幼児休日加算（小児科再診）（外来腫瘍化学療法診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113040370",
+      "name": "乳幼児深夜加算（小児科再診）（外来腫瘍化学療法診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113040470",
+      "name": "乳幼児加算（外来診療料）（外来腫瘍化学療法診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113040870",
+      "name": "乳幼児時間外加算（外来診療料）（外来腫瘍化学療法診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113041070",
+      "name": "乳幼児時間外特例医療機関加算（外来診療料・外来腫瘍化学療法診療）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113041170",
+      "name": "乳幼児夜間加算（小児科・外来診療料）（外来腫瘍化学療法診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113041270",
+      "name": "乳幼児休日加算（小児科・外来診療料）（外来腫瘍化学療法診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113041370",
+      "name": "乳幼児深夜加算（小児科・外来診療料）（外来腫瘍化学療法診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113041470",
+      "name": "小児加算（外来腫瘍化学療法診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113043670",
+      "name": "乳幼児休日加算（初診）（外来腫瘍化学療法診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113043770",
+      "name": "乳幼児深夜加算（初診）（外来腫瘍化学療法診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113043870",
+      "name": "乳幼児休日加算（再診）（外来腫瘍化学療法診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113043970",
+      "name": "乳幼児深夜加算（再診）（外来腫瘍化学療法診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113044070",
+      "name": "乳幼児休日加算（外来診療料）（外来腫瘍化学療法診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113044170",
+      "name": "乳幼児深夜加算（外来診療料）（外来腫瘍化学療法診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113702610",
+      "name": "小児特定疾患カウンセリング料（医師）（初回）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 18,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113702710",
+      "name": "小児特定疾患カウンセリング料（医師）（１年以内・月の１回目）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 18,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113702810",
+      "name": "小児特定疾患カウンセリング料（医師）（１年以内・月の２回目）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 18,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113702910",
+      "name": "小児特定疾患カウンセリング料（医師）（２年以内・月の１回目）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 18,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113703010",
+      "name": "小児特定疾患カウンセリング料（医師）（２年以内・月の２回目）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 18,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113703110",
+      "name": "小児特定疾患カウンセリング料（医師）（４年以内）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 18,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113703210",
+      "name": "小児特定疾患カウンセリング料（医師・初回）（通信機）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 18,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113703310",
+      "name": "小児特定疾患カウンセリング料（医師・１年以内・１回目）（通信機）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 18,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113703410",
+      "name": "小児特定疾患カウンセリング料（医師・１年以内・２回目）（通信機）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 18,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113703510",
+      "name": "小児特定疾患カウンセリング料（医師・２年以内・１回目）（通信機）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 18,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113703610",
+      "name": "小児特定疾患カウンセリング料（医師・２年以内・２回目）（通信機）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 18,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "113703710",
+      "name": "小児特定疾患カウンセリング料（医師・４年以内）（通信機）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 18,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "114009870",
+      "name": "乳幼児加算（救急搬送診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "114015870",
+      "name": "乳幼児加算（在宅患者訪問診療料（１）・（２））",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "114016270",
+      "name": "乳幼児加算（訪問看護・訪問看護（同一））",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "114017070",
+      "name": "乳幼児加算（退院前在宅療養指導管理料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "114017110",
+      "name": "在宅小児低血糖症患者指導管理料",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 12,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "114045070",
+      "name": "乳幼児加算（在宅患者訪問薬剤管理指導料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "114050170",
+      "name": "乳幼児呼吸管理材料加算",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "114060570",
+      "name": "小児加算（在宅がん医療総合診療料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 20,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "114741270",
+      "name": "乳幼児加算（訪問看護・訪問看護（同一））（厚労大臣が定める者）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "120002170",
+      "name": "乳幼児加算（処方料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 3,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "120002470",
+      "name": "乳幼児加算（処方箋料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 3,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "130003670",
+      "name": "乳幼児加算（静脈内注射）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "130003710",
+      "name": "点滴注射（乳幼児）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "130003810",
+      "name": "点滴注射",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "130005170",
+      "name": "乳幼児加算（脳脊髄腔注射）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "130009470",
+      "name": "乳幼児加算（点滴注射）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "130009570",
+      "name": "乳幼児加算（中心静脈注射用カテーテル挿入）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "130009870",
+      "name": "乳幼児加算（中心静脈注射用植込型カテーテル設置）（６歳未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "130011170",
+      "name": "乳幼児加算（中心静脈注射）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "130011770",
+      "name": "乳幼児加算（末梢留置型中心静脈注射用カテーテル挿入）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "130011970",
+      "name": "乳幼児加算（カフ型緊急時ブラッドアクセス用留置カテーテル挿入）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "130013270",
+      "name": "乳幼児加算（植込型カテーテルによる中心静脈注射）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "130013890",
+      "name": "外来化学療法加算１（１５歳未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "130013990",
+      "name": "外来化学療法加算１（１５歳以上）",
+      "minAgeYearsInclusive": 15,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "130014090",
+      "name": "外来化学療法加算２（１５歳未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "130014190",
+      "name": "外来化学療法加算２（１５歳以上）",
+      "minAgeYearsInclusive": 15,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "140031870",
+      "name": "６歳未満乳幼児加算（処置）（１１０）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "140040270",
+      "name": "乳幼児加算（皮膚レーザー照射療法）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 3,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "140049170",
+      "name": "３歳未満乳幼児加算（処置）（１１０）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 3,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "140049370",
+      "name": "６歳未満乳幼児加算（処置）（８３）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "140049470",
+      "name": "３歳未満乳幼児加算（処置）（５５）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 3,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "140050170",
+      "name": "乳幼児加算（ギプス）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "140054850",
+      "name": "乳幼児加算（腹膜灌流導入期）（１４日間）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "140054950",
+      "name": "乳幼児加算（腹膜灌流導入期）（１５日目以降３０日目）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "140057170",
+      "name": "６歳未満乳幼児加算（処置）（５５）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "140057310",
+      "name": "ハイフローセラピー（１５歳未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "140057410",
+      "name": "ハイフローセラピー（１５歳以上）",
+      "minAgeYearsInclusive": 15,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "140060170",
+      "name": "周術期乳幼児加算",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 3,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "140061610",
+      "name": "エンドトキシン選択除去用吸着式血液浄化法（１８歳以上）",
+      "minAgeYearsInclusive": 18,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "140061710",
+      "name": "エンドトキシン選択除去用吸着式血液浄化法（１８歳未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 18,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "140061990",
+      "name": "耳鼻咽喉科乳幼児処置加算",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "140062090",
+      "name": "耳鼻咽喉科小児抗菌薬適正使用支援加算",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "140062570",
+      "name": "乳幼児局所陰圧閉鎖加算（入院）（１００分の１００）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 3,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "140062670",
+      "name": "幼児局所陰圧閉鎖加算（入院）（１００分の５０）",
+      "minAgeYearsInclusive": 3,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150000290",
+      "name": "乳幼児加算（手術）（３歳未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 3,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150146450",
+      "name": "小児自家血管採取料",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150225770",
+      "name": "乳幼児加算（輸血）（６歳未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150226170",
+      "name": "乳幼児加算（造血幹細胞移植）（６歳未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150231690",
+      "name": "乳児加算（麻酔）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 1,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150247010",
+      "name": "自己血輸血（６歳以上）（液状保存）",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150254810",
+      "name": "自己血輸血（６歳以上）（凍結保存）",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150265390",
+      "name": "幼児加算（麻酔）",
+      "minAgeYearsInclusive": 1,
+      "maxAgeYearsExclusive": 3,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150272410",
+      "name": "皮膚、皮下腫瘍摘出術（露出部）（長径４ｃｍ以上）（６歳以上）",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150272510",
+      "name": "皮膚、皮下腫瘍摘出術（露出部以外・長径６～１２ｃｍ）（６歳以上）",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150286410",
+      "name": "自己血輸血（６歳未満）（液状保存）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150286510",
+      "name": "自己血輸血（６歳未満）（凍結保存）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150306910",
+      "name": "小児創傷処理（筋肉、臓器に達する、長径２．５ｃｍ未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150307010",
+      "name": "小児創傷処理（筋肉、臓器に達する、長径２．５ｃｍ～５ｃｍ未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150307110",
+      "name": "小児創傷処理（筋肉、臓器に達する、長径５ｃｍ～１０ｃｍ未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150307210",
+      "name": "小児創傷処理（筋肉、臓器に達する、長径１０ｃｍ以上）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150307310",
+      "name": "小児創傷処理（筋肉、臓器に達しない、長径２．５ｃｍ未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150307410",
+      "name": "小児創傷処理（筋肉、臓器に達しない、長径２．５ｃｍ～５ｃｍ未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150307510",
+      "name": "小児創傷処理（筋肉、臓器に達しない、長径５ｃｍ～１０ｃｍ未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150307610",
+      "name": "小児創傷処理（筋肉、臓器に達しない、長径１０ｃｍ以上）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150327510",
+      "name": "自己血貯血（６歳以上）（液状保存）",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150327610",
+      "name": "自己血貯血（６歳以上）（凍結保存）",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150327710",
+      "name": "自己血貯血（６歳未満）（液状保存）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150327810",
+      "name": "自己血貯血（６歳未満）（凍結保存）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150341150",
+      "name": "小児腱縫合術（切創等の創傷）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150342890",
+      "name": "幼児加算（手術）（３歳以上６歳未満）",
+      "minAgeYearsInclusive": 3,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150356310",
+      "name": "水晶体再建術（計画的後嚢切開を伴う）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 16,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150376110",
+      "name": "胸腔鏡下動脈管開存閉鎖術",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 16,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150379910",
+      "name": "経皮的卵巣嚢腫内容排除術",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 1,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150382550",
+      "name": "気管支熱形成術",
+      "minAgeYearsInclusive": 18,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150383510",
+      "name": "皮膚、皮下腫瘍摘出術（露出部以外・長径１２ｃｍ以上）（６歳以上）",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150390610",
+      "name": "希釈式自己血輸血（６歳以上）",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150390710",
+      "name": "希釈式自己血輸血（６歳未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150393250",
+      "name": "小児皮膚採取（培養用、筋肉等に達する、２．５ｃｍ未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150393350",
+      "name": "小児皮膚採取（培養用、筋肉等に達する、２．５ｃｍ～５ｃｍ未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150393450",
+      "name": "小児皮膚採取（培養用、筋肉等に達する、５ｃｍ～１０ｃｍ未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150393550",
+      "name": "小児皮膚採取（培養用、筋肉等に達する、１０ｃｍ以上）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150393650",
+      "name": "小児皮膚採取（培養用、筋肉等に達しない、２．５ｃｍ未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150393750",
+      "name": "小児皮膚採取（培養用、筋肉等に達しない、２．５ｃｍ～５ｃｍ未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150393850",
+      "name": "小児皮膚採取（培養用、筋肉等に達しない、５ｃｍ～１０ｃｍ未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150393950",
+      "name": "小児皮膚採取（培養用、筋肉等に達しない、１０ｃｍ以上）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150394050",
+      "name": "小児骨格筋採取（筋肉等に達する、長径２．５ｃｍ未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150394150",
+      "name": "小児骨格筋採取（筋肉等に達する、長径２．５ｃｍ～５ｃｍ未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150394250",
+      "name": "小児骨格筋採取（筋肉等に達する、長径５ｃｍ～１０ｃｍ未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150394350",
+      "name": "小児骨格筋採取（筋肉等に達する、長径１０ｃｍ以上）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150394450",
+      "name": "小児骨格筋採取（筋肉等に達しない、長径２．５ｃｍ未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150394550",
+      "name": "小児骨格筋採取（筋肉等に達しない、長径２．５ｃｍ～５ｃｍ未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150394650",
+      "name": "小児骨格筋採取（筋肉等に達しない、長径５ｃｍ～１０ｃｍ未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150394750",
+      "name": "小児骨格筋採取（筋肉等に達しない、長径１０ｃｍ以上）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150422370",
+      "name": "乳幼児加算（ＣＡＲ発現生Ｔ細胞投与）（６歳未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150424050",
+      "name": "舌下神経電気刺激装置植込術",
+      "minAgeYearsInclusive": 18,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150425670",
+      "name": "緊急整復固定加算（骨折観血的手術）",
+      "minAgeYearsInclusive": 75,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150429570",
+      "name": "消化管ポリポーシス加算",
+      "minAgeYearsInclusive": 16,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150435770",
+      "name": "緊急挿入加算（人工骨頭挿入術）",
+      "minAgeYearsInclusive": 75,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150452610",
+      "name": "皮膚、皮下腫瘍摘出術（露出部以外・長径１２ｃｍ以上）（６歳未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150452710",
+      "name": "皮膚、皮下腫瘍摘出術（露出部）（長径４ｃｍ以上）（６歳未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150452810",
+      "name": "皮膚、皮下腫瘍摘出術（露出部以外・長径６～１２ｃｍ）（６歳未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150492870",
+      "name": "幼児加算（吸入麻酔又は静脈麻酔による深鎮静）",
+      "minAgeYearsInclusive": 3,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150493250",
+      "name": "閉鎖循環式全身麻酔１（麻酔困難）（１５歳未満・気管挿管等未使用）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150493350",
+      "name": "閉鎖循環式全身麻酔１（１５歳未満・気管挿管等未使用）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150493450",
+      "name": "閉鎖循環式全身麻酔２（麻酔困難）（１５歳未満・気管挿管等未使用）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150493550",
+      "name": "閉鎖循環式全身麻酔２（１５歳未満・気管挿管等未使用）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150493650",
+      "name": "閉鎖循環式全身麻酔３（麻酔困難）（１５歳未満・気管挿管等未使用）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150493750",
+      "name": "閉鎖循環式全身麻酔３（１５歳未満・気管挿管等未使用）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150493850",
+      "name": "閉鎖循環式全身麻酔４（麻酔困難）（１５歳未満・気管挿管等未使用）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150493950",
+      "name": "閉鎖循環式全身麻酔４（１５歳未満・気管挿管等未使用）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150494050",
+      "name": "閉鎖循環式全身麻酔５（麻酔困難）（１５歳未満・気管挿管等未使用）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "150494150",
+      "name": "閉鎖循環式全身麻酔５（１５歳未満・気管挿管等未使用）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "160082530",
+      "name": "屈折検査（薬剤使用前後）（６歳未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "160095970",
+      "name": "乳幼児加算（血液採取）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "160098570",
+      "name": "乳幼児加算（臓器穿刺、組織採取）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "160142270",
+      "name": "乳幼児加算（検査）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "160155390",
+      "name": "乳幼児加算（生体検査）（３歳未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 3,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "160155470",
+      "name": "乳幼児加算（心カテ）（右心）（３歳未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 3,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "160167550",
+      "name": "グロブリンクラス別ウイルス抗体価（ヒトパルボウイルスＢ１９）",
+      "minAgeYearsInclusive": 15,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "160180410",
+      "name": "小児食物アレルギー負荷検査",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 16,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "160180670",
+      "name": "乳幼児加算（肺臓カテーテル法等）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 3,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "160180770",
+      "name": "乳幼児加算（関節穿刺）（３歳未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 3,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "160185890",
+      "name": "幼児加算（生体検査）（３歳以上６歳未満）",
+      "minAgeYearsInclusive": 3,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "160186070",
+      "name": "乳幼児加算（心カテ）（左心）（３歳未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 3,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "160187970",
+      "name": "乳幼児加算（骨髄生検）（６歳未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "160202550",
+      "name": "ヒトメタニューモウイルス抗原定性",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "160207910",
+      "name": "屈折検査（６歳未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "160208010",
+      "name": "屈折検査（１以外）",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "160213430",
+      "name": "屈折検査（薬剤使用前後）（１以外）",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "160216150",
+      "name": "クロストリジオイデス・ディフィシルのトキシンＢ遺伝子検出",
+      "minAgeYearsInclusive": 2,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "160219070",
+      "name": "小児矯正視力検査加算",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "160219870",
+      "name": "乳幼児加算（胸水・腹水採取）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "160220070",
+      "name": "乳幼児加算（Ｂ－Ａ）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "160220170",
+      "name": "乳幼児加算（前房水採取）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "160220270",
+      "name": "乳幼児加算（副腎静脈サンプリング）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "160223270",
+      "name": "小児矯正視力検査加算（薬剤使用前後）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "160225850",
+      "name": "ＳＣＣＡ２",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 16,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "160235650",
+      "name": "内視鏡用テレスコープを用いた咽頭画像等解析",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "160236450",
+      "name": "Ａ群β溶血連鎖球菌核酸検出",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "160248110",
+      "name": "屈折検査（６歳未満）（近視進行抑制薬）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "160248210",
+      "name": "屈折検査（１以外）（近視進行抑制薬）",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "160248330",
+      "name": "屈折検査（薬剤使用前後）（６歳未満）（近視進行抑制薬）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "160248430",
+      "name": "屈折検査（薬剤使用前後）（１以外）（近視進行抑制薬）",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "160248570",
+      "name": "小児矯正視力検査加算（近視進行抑制薬）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "160248670",
+      "name": "小児矯正視力検査加算（薬剤使用前後）（近視進行抑制薬）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170017270",
+      "name": "乳幼児加算（画像診断・エックス線診断）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 3,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170019230",
+      "name": "特殊撮影（診断・撮影）（乳幼児）（アナログ撮影）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 3,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170019430",
+      "name": "特殊撮影（他方同時）（診断・撮影）（乳幼児）（アナログ撮影）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 3,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170026670",
+      "name": "乳幼児加算（心臓及び冠動脈造影（右心））",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 3,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170030830",
+      "name": "特殊撮影（診断・撮影）（乳幼児）（デジタル撮影）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 3,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170031030",
+      "name": "特殊撮影（他方同時）（診断・撮影）（乳幼児）（デジタル撮影）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 3,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170033170",
+      "name": "乳幼児加算（心臓及び冠動脈造影（左心））",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 3,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170034170",
+      "name": "幼児加算（画像診断・エックス線診断）",
+      "minAgeYearsInclusive": 3,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170034310",
+      "name": "造影剤注入手技（点滴注射）（乳幼児）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170034410",
+      "name": "造影剤注入手技（点滴注射）",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170035230",
+      "name": "特殊撮影（診断・撮影）（幼児）（アナログ撮影）",
+      "minAgeYearsInclusive": 3,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170035330",
+      "name": "特殊撮影（診断・撮影）（幼児）（デジタル撮影）",
+      "minAgeYearsInclusive": 3,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170035430",
+      "name": "特殊撮影（他方同時）（診断・撮影）（幼児）（アナログ撮影）",
+      "minAgeYearsInclusive": 3,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170035530",
+      "name": "特殊撮影（他方同時）（診断・撮影）（幼児）（デジタル撮影）",
+      "minAgeYearsInclusive": 3,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170036170",
+      "name": "小児鎮静下ＭＲＩ撮影加算",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170037170",
+      "name": "乳幼児加算（ポジトロン断層等）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 3,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170037270",
+      "name": "幼児加算（ポジトロン断層等）",
+      "minAgeYearsInclusive": 3,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170037470",
+      "name": "乳幼児加算（ポジトロン断層等）（施設基準不適合）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 3,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170037570",
+      "name": "幼児加算（ポジトロン断層等）（施設基準不適合）",
+      "minAgeYearsInclusive": 3,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170037770",
+      "name": "乳幼児頭部外傷撮影加算",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 3,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170037870",
+      "name": "幼児頭部外傷撮影加算",
+      "minAgeYearsInclusive": 3,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170038710",
+      "name": "ＣＴ撮影（６４列以上１２８列未満）共同利用施設・頭部",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170038810",
+      "name": "ＣＴ撮影（６４列以上１２８列未満）（その他）頭部",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170038910",
+      "name": "ＣＴ撮影（１６列以上６４列未満マルチスライス型機器）頭部",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170039010",
+      "name": "ＣＴ撮影（４列以上１６列未満マルチスライス型機器）頭部",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170039110",
+      "name": "ＣＴ撮影（イからニまで以外）頭部",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170039210",
+      "name": "脳槽ＣＴ撮影（造影含む）頭部",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170039970",
+      "name": "乳幼児加算（画像診断・エックス線診断以外）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 3,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170040070",
+      "name": "幼児加算（画像診断・エックス線診断以外）",
+      "minAgeYearsInclusive": 3,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170040310",
+      "name": "ＣＴ撮影（６４列以上１２８列未満）共同利用施設・頭部（画診共同）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170040510",
+      "name": "ＣＴ撮影（６４列以上１２８列未満）（その他）頭部（画診共同）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170040710",
+      "name": "ＣＴ撮影（１６列以上６４列未満）頭部（画診共同）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170040910",
+      "name": "ＣＴ撮影（４列以上１６列未満）頭部（画診共同）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170041110",
+      "name": "ＣＴ撮影（イからニまで以外）頭部（画診共同）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170041310",
+      "name": "脳槽ＣＴ撮影（造影含む）頭部（画診共同）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170901410",
+      "name": "ＣＴ撮影（１２８列以上）共同利用施設・頭部",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170901610",
+      "name": "ＣＴ撮影（１２８列以上）共同利用施設・頭部（画診共同）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170901810",
+      "name": "ＣＴ撮影（１２８列以上マルチスライス型機器）（その他）頭部",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "170902010",
+      "name": "ＣＴ撮影（１２８列以上）（その他）頭部（画診共同）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "180020570",
+      "name": "通院・在宅精神療法（２０歳未満）加算",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 20,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "180028210",
+      "name": "障害児（者）リハビリテーション料（６歳未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "180028310",
+      "name": "障害児（者）リハビリテーション料（６歳以上１８歳未満）",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": 18,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "180028410",
+      "name": "障害児（者）リハビリテーション料（１８歳以上）",
+      "minAgeYearsInclusive": 18,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "180028570",
+      "name": "心身医学療法（２０歳未満）加算",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 20,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "180034990",
+      "name": "小児放射線治療加算（乳幼児）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 3,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "180035090",
+      "name": "小児放射線治療加算（幼児）",
+      "minAgeYearsInclusive": 3,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "180035190",
+      "name": "小児放射線治療加算（小児）",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "180047270",
+      "name": "児童思春期精神科専門管理加算（１６歳未満）（２年以内）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 16,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "180047370",
+      "name": "児童思春期精神科専門管理加算（２０歳未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 20,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "180056570",
+      "name": "疾患別等専門プログラム加算（精神科ショート・ケア、小規模なもの）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 40,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "180067870",
+      "name": "児童思春期精神科専門管理加算（１６歳未満）（（１）以外）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 16,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "180761070",
+      "name": "児童思春期支援指導加算１（３月以内）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 20,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "180761170",
+      "name": "児童思春期支援指導加算１（（１）以外の場合）（２年以内）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 20,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "180761270",
+      "name": "児童思春期支援指導加算１（（１）以外の場合）（１以外）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 20,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "180764770",
+      "name": "小児放射線治療加算（粒子線治療）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "180775210",
+      "name": "児童思春期支援指導加算２（（１）以外の場合）（１以外）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 20,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "180775310",
+      "name": "児童思春期支援指導加算２（３月以内）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 20,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "180775410",
+      "name": "児童思春期支援指導加算２（（１）以外の場合）（１年以内）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 20,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "188003670",
+      "name": "医療観察通院精神療法（２０歳未満）加算",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 20,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "188010570",
+      "name": "医療観察児童思春期精神科専門管理加算",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 20,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "188011270",
+      "name": "疾患別等専門プログラム加算（医療観察精神科ショート・ケア）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 40,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190076570",
+      "name": "超重症児（者）入院診療加算（６歳以上）",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190076670",
+      "name": "準超重症児（者）入院診療加算（６歳以上）",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190100170",
+      "name": "乳幼児加算（救急医療管理加算）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190100470",
+      "name": "乳幼児加算（病院）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 3,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190100570",
+      "name": "乳幼児加算（病院）（特別入院基本料等）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 3,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190100670",
+      "name": "乳幼児加算（診療所）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 3,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190100770",
+      "name": "幼児加算（病院）",
+      "minAgeYearsInclusive": 3,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190100870",
+      "name": "幼児加算（病院）（特別入院基本料等）",
+      "minAgeYearsInclusive": 3,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190100970",
+      "name": "幼児加算（診療所）",
+      "minAgeYearsInclusive": 3,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190109970",
+      "name": "小児療養環境特別加算",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190127510",
+      "name": "超重症児（者）入院診療加算（６歳未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190127610",
+      "name": "準超重症児（者）入院診療加算（６歳未満）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190134970",
+      "name": "一般病棟看護必要度評価加算（専門病院入院基本料）",
+      "minAgeYearsInclusive": 15,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190139770",
+      "name": "小児加算（救命救急入院料）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190140270",
+      "name": "小児加算（特定集中治療室管理料）（７日以内）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190140370",
+      "name": "小児加算（特定集中治療室管理料）（８日以上１４日以内）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190145370",
+      "name": "小児加算（救急医療管理加算）",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190146870",
+      "name": "小児加算（緩和ケア診療加算）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190152570",
+      "name": "一般病棟看護必要度評価加算（特定一般病棟入院料）",
+      "minAgeYearsInclusive": 15,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190178210",
+      "name": "短手３（小児食物アレルギー負荷検査）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 16,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190178310",
+      "name": "短手３（小児食物アレルギー負荷検査）（生活療養）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 16,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190180610",
+      "name": "短手３（鼠径ヘルニア手術（１５歳以上））",
+      "minAgeYearsInclusive": 15,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190180710",
+      "name": "短手３（鼠径ヘルニア手術（１５歳以上）（生活療養）",
+      "minAgeYearsInclusive": 15,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190181010",
+      "name": "短手３（腹腔鏡下鼠径ヘルニア手術（１５歳以上））",
+      "minAgeYearsInclusive": 15,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190181110",
+      "name": "短手３（腹腔鏡下鼠径ヘルニア手術（１５歳以上））（生活療養）",
+      "minAgeYearsInclusive": 15,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190191610",
+      "name": "小児がん拠点病院加算",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 20,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190196510",
+      "name": "短手３（鼠径ヘルニア手術（３歳未満））",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 3,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190196610",
+      "name": "短手３（鼠径ヘルニア手術（３歳以上６歳未満））",
+      "minAgeYearsInclusive": 3,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190196710",
+      "name": "短手３（鼠径ヘルニア手術（６歳以上１５歳未満））",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190196810",
+      "name": "短手３（鼠径ヘルニア手術（３歳未満））（生活療養）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 3,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190196910",
+      "name": "短手３（鼠径ヘルニア手術（３歳以上６歳未満））（生活療養）",
+      "minAgeYearsInclusive": 3,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190197010",
+      "name": "短手３（鼠径ヘルニア手術（６歳以上１５歳未満））（生活療養）",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190197110",
+      "name": "短手３（腹腔鏡下鼠径ヘルニア手術（３歳未満））",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 3,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190197210",
+      "name": "短手３（腹腔鏡下鼠径ヘルニア手術（３歳以上６歳未満））",
+      "minAgeYearsInclusive": 3,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190197310",
+      "name": "短手３（腹腔鏡下鼠径ヘルニア手術（６歳以上１５歳未満））",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190197410",
+      "name": "短手３（腹腔鏡下鼠径ヘルニア手術（３歳未満））（生活療養）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 3,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190197510",
+      "name": "短手３（腹腔鏡下鼠径ヘルニア手術（３歳以上６歳未満））生活療養",
+      "minAgeYearsInclusive": 3,
+      "maxAgeYearsExclusive": 6,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190197610",
+      "name": "短手３（腹腔鏡下鼠径ヘルニア手術（６歳以上１５歳未満））生活療養",
+      "minAgeYearsInclusive": 6,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190207370",
+      "name": "小児加算（入退院支援加算１又は２）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190218070",
+      "name": "総合機能評価加算（入退院支援加算）",
+      "minAgeYearsInclusive": 40,
+      "maxAgeYearsExclusive": null,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190833310",
+      "name": "小児緩和ケア診療加算",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "190833470",
+      "name": "小児個別栄養食事管理加算（小児緩和ケア診療加算）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "193005870",
+      "name": "小児加算（救命救急入院料）（特定機能病院）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "193006570",
+      "name": "小児加算（特定集中治療室管理料）（７日以内）（特定機能病院）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "193006670",
+      "name": "小児加算（特定集中治療室管理料）（８日以上１４日以内）（特定）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "193307170",
+      "name": "小児加算（救命救急入院料）（専門病院）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "193307870",
+      "name": "小児加算（特定集中治療室管理料）（７日以内）（専門病院）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "193307970",
+      "name": "小児加算（特定集中治療室管理料）（８日以上１４日以内）（専門）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "193507470",
+      "name": "小児加算（救命救急入院料）（ＤＰＣ）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "193508170",
+      "name": "小児加算（特定集中治療室管理料）（７日以内）（ＤＰＣ）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    },
+    {
+      "code": "193508270",
+      "name": "小児加算（特定集中治療室管理料）（８日以上１４日以内）（ＤＰＣ）",
+      "minAgeYearsInclusive": null,
+      "maxAgeYearsExclusive": 15,
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "9999-12-31"
+    }
+  ],
+  "artifactPayloadSha256": "ba6e138f2dffbbfebcec63d1e0ff3f51820e7c4f2c80448313b984047c10a701"
+}

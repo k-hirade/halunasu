@@ -297,7 +297,70 @@ export function summarizeMockActCoverage(runs = []) {
     byClaimMonth: Object.fromEntries(
       Object.entries(byClaimMonth).map(([key, value]) => [key, finalizeBillableTotals(value)])
     ),
-    standingLane: summarizeStandingLaneDiagnostics(runs)
+    standingLane: summarizeStandingLaneDiagnostics(runs),
+    unresolvedSelections: summarizeUnresolvedSelections(runs)
+  };
+}
+
+// 区分が確定しなかった候補を「なぜ絞り切れなかったか」で束ねる。
+// unresolvedAxes が付いているものは、その軸の事実さえ取れれば機械的に確定できる。
+function summarizeUnresolvedSelections(runs = []) {
+  const byName = new Map();
+  const byAxis = new Map();
+  const byReason = new Map();
+  let unresolvedCount = 0;
+  let resolvedCount = 0;
+  for (const run of asArray(runs)) {
+    for (const candidate of asArray(run?.actual?.candidateInventory)) {
+      if (candidate?.requiresSelection !== true) continue;
+      if (candidate.selectionResolution === "exact" || candidate.selectionStatus === "selected") {
+        resolvedCount += 1;
+        continue;
+      }
+      unresolvedCount += 1;
+      const name = candidate.normalizedName || "(名称不明)";
+      const entry = byName.get(name) || {
+        name,
+        occurrences: 0,
+        remainingOptionCounts: new Set(),
+        unresolvedAxes: new Set(),
+        appliedAxes: new Set(),
+        reasons: new Set(),
+        patients: new Set()
+      };
+      entry.occurrences += 1;
+      entry.remainingOptionCounts.add(nonNegativeNumber(candidate.selectionRemainingOptionCount));
+      for (const axis of asArray(candidate.selectionUnresolvedAxes)) entry.unresolvedAxes.add(axis);
+      for (const axis of asArray(candidate.selectionAppliedAxes)) entry.appliedAxes.add(axis);
+      const reason = candidate.selectionReason
+        || (candidate.selectionConflictAxis ? `conflict:${candidate.selectionConflictAxis}` : "")
+        || candidate.selectionResolution
+        || "unknown";
+      entry.reasons.add(reason);
+      if (run?.externalPatientId) entry.patients.add(String(run.externalPatientId));
+      byName.set(name, entry);
+      for (const axis of asArray(candidate.selectionUnresolvedAxes)) {
+        byAxis.set(axis, (byAxis.get(axis) || 0) + 1);
+      }
+      byReason.set(reason, (byReason.get(reason) || 0) + 1);
+    }
+  }
+  return {
+    unresolvedCount,
+    resolvedCount,
+    byUnresolvedAxis: Object.fromEntries([...byAxis.entries()].sort((a, b) => b[1] - a[1])),
+    byReason: Object.fromEntries([...byReason.entries()].sort((a, b) => b[1] - a[1])),
+    candidates: [...byName.values()]
+      .sort((left, right) => right.occurrences - left.occurrences)
+      .map((entry) => ({
+        name: entry.name,
+        occurrences: entry.occurrences,
+        remainingOptionCounts: [...entry.remainingOptionCounts].sort((a, b) => a - b),
+        unresolvedAxes: [...entry.unresolvedAxes].sort(),
+        appliedAxes: [...entry.appliedAxes].sort(),
+        reasons: [...entry.reasons].sort(),
+        patients: [...entry.patients].sort()
+      }))
   };
 }
 
@@ -446,7 +509,20 @@ function normalizeCalculationCandidates(calculation = {}) {
       candidate?.quantity
       ?? candidate?.candidateLine?.quantity
       ?? candidate?.count
-    ) || 1
+    ) || 1,
+    // 区分未確定の理由を軸レベルで残す(どの事実が足りずに絞り切れなかったか)。
+    selectionResolution: String(candidate?.selectionResolution || "") || null,
+    selectionUnresolvedAxes: uniqueStrings(candidate?.selectionNarrowing?.unresolvedAxes),
+    selectionAppliedAxes: uniqueStrings(
+      asArray(candidate?.selectionNarrowing?.appliedFilters).map((filter) => filter?.axis)
+    ),
+    selectionRemainingOptionCount: nonNegativeNumber(
+      candidate?.selectionNarrowing?.remainingOptionCount
+    ),
+    selectionReason: String(candidate?.selectionNarrowing?.reason || "") || null,
+    selectionConflictAxis: String(candidate?.selectionNarrowing?.conflict?.axis || "") || null,
+    selectionOptionCount: nonNegativeNumber(candidate?.selection?.options?.length),
+    selectionStatus: String(candidate?.selection?.status || "") || null
   }));
 }
 
@@ -914,6 +990,14 @@ function safeCandidate(candidate = {}) {
     requiresSelection: candidate.requiresSelection === true,
     points: nonNegativeNumber(candidate.points),
     totalPoints: nonNegativeNumber(candidate.totalPoints),
+    selectionResolution: candidate.selectionResolution || null,
+    selectionUnresolvedAxes: uniqueStrings(candidate.selectionUnresolvedAxes),
+    selectionAppliedAxes: uniqueStrings(candidate.selectionAppliedAxes),
+    selectionRemainingOptionCount: nonNegativeNumber(candidate.selectionRemainingOptionCount),
+    selectionReason: candidate.selectionReason || null,
+    selectionConflictAxis: candidate.selectionConflictAxis || null,
+    selectionOptionCount: nonNegativeNumber(candidate.selectionOptionCount),
+    selectionStatus: candidate.selectionStatus || null,
     billingScope: candidate.billingScope === "per_month" ? "per_month" : "per_visit",
     unitIndex: positiveInteger(candidate.unitIndex) || 1,
     originalQuantity: positiveInteger(candidate.originalQuantity) || 1

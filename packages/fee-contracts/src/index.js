@@ -298,6 +298,8 @@ export function validateSidecarCalculationInput(input = {}) {
     departmentId: optionalString(input.departmentId ?? input.department_id),
     sourceSystem: optionalEnum(input.sourceSystem ?? input.source_system, ["homis"], "sourceSystem") || "homis",
     externalPatientId,
+    // 年齢要件のある算定項目を落とすための任意項目。取得できない画面では null のままにする。
+    patientAgeYears: optionalPatientAgeYears(input.patientAgeYears ?? input.patient_age_years),
     sourceRecordId,
     sourceRecordDisplayId: optionalString(input.sourceRecordDisplayId ?? input.source_record_display_id),
     serviceDate: requiredDate(input.serviceDate ?? input.service_date, "serviceDate"),
@@ -374,6 +376,53 @@ export function validateSidecarCandidateAcknowledgementInput(input = {}) {
     ),
     candidateFingerprint
   };
+}
+
+function optionalPatientAgeYears(value) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+  const years = Number(value);
+  if (!Number.isInteger(years) || years < 0 || years > 130) {
+    throw validationError("patientAgeYears must be an integer between 0 and 130", "patientAgeYears");
+  }
+  return years;
+}
+
+const institutionBedClasses = Object.freeze([
+  "clinic",
+  "hospital_under_100",
+  "hospital_100_to_199",
+  "hospital_200_or_more"
+]);
+
+// サイドカーのサーフェス封印。サーバの照合とハーネスの封印で同じ実装を使わないと、
+// v6/v7 の整合検査(surfaceHash)が必ず不一致になる。
+export function sidecarSurfaceIntegrityPayload(surface = {}) {
+  return {
+    status: surface.status || "unavailable",
+    patientId: surface.patientId || "",
+    ...(surface.status === "ok" ? { raw: surface.raw || {} } : {}),
+    ...(surface.status === "unavailable"
+      ? { unavailableReason: surface.unavailableReason || "fetch_failed" }
+      : {})
+  };
+}
+
+export function canonicalSidecarSurfaceJson(value) {
+  return JSON.stringify(canonicalSidecarSurfaceValue(value));
+}
+
+function canonicalSidecarSurfaceValue(value) {
+  if (Array.isArray(value)) {
+    return value.map(canonicalSidecarSurfaceValue);
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.keys(value).sort().map((key) => [key, canonicalSidecarSurfaceValue(value[key])])
+    );
+  }
+  return value;
 }
 
 export function validateSidecarCandidateSelectionInput(input = {}) {
@@ -1153,6 +1202,8 @@ export function defaultFeeSettings(input = {}) {
       signalPolicy: "conservative"
     },
     sidecarPatientAutoProvision: false,
+    // 医療機関区分。算定区分が病床規模で分かれる管理料の確定に使う。未設定なら絞り込まない。
+    institutionBedClass: "",
     facilityStandardsConfirmed: false,
     facilityStandards: [],
     facilityServiceSchedules: [],
@@ -1259,6 +1310,14 @@ export function validateUpdateFeeSettingsInput(input = {}) {
       );
   return {
     facilityId: optionalString(input.facilityId ?? input.facility_id ?? current.facilityId ?? current.facility_id) || base.facilityId,
+    institutionBedClass: optionalEnum(
+      input.institutionBedClass
+        ?? input.institution_bed_class
+        ?? current.institutionBedClass
+        ?? current.institution_bed_class,
+      institutionBedClasses,
+      "institutionBedClass"
+    ) || base.institutionBedClass,
     effectiveFrom: optionalDate(input.effectiveFrom ?? input.effective_from ?? current.effectiveFrom ?? current.effective_from, "effectiveFrom") || base.effectiveFrom,
     historyPolicy: normalizeHistoryPolicy(baseHistoryPolicy),
     initialRevisitPolicy: normalizeInitialRevisitPolicy(baseInitialRevisitPolicy),

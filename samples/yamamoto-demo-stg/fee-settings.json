@@ -167,12 +167,42 @@
       "effectiveTo": "",
       "timezone": "Asia/Tokyo",
       "weeklyHours": {
-        "monday": [{"start": "09:00", "end": "18:00"}],
-        "tuesday": [{"start": "09:00", "end": "18:00"}],
-        "wednesday": [{"start": "09:00", "end": "18:00"}],
-        "thursday": [{"start": "09:00", "end": "18:00"}],
-        "friday": [{"start": "09:00", "end": "18:00"}],
-        "saturday": [{"start": "09:00", "end": "12:00"}],
+        "monday": [
+          {
+            "start": "09:00",
+            "end": "18:00"
+          }
+        ],
+        "tuesday": [
+          {
+            "start": "09:00",
+            "end": "18:00"
+          }
+        ],
+        "wednesday": [
+          {
+            "start": "09:00",
+            "end": "18:00"
+          }
+        ],
+        "thursday": [
+          {
+            "start": "09:00",
+            "end": "18:00"
+          }
+        ],
+        "friday": [
+          {
+            "start": "09:00",
+            "end": "18:00"
+          }
+        ],
+        "saturday": [
+          {
+            "start": "09:00",
+            "end": "12:00"
+          }
+        ],
         "sunday": []
       },
       "holidayDates": [],
@@ -190,7 +220,9 @@
       "status": "active",
       "action": "confirm",
       "billingRole": "home_visit_basic",
-      "settings": ["home_visit"],
+      "settings": [
+        "home_visit"
+      ],
       "requiredFacilityStandardKey": "",
       "potentialPoints": 0,
       "note": "訪問診療(同一建物居住者以外)の受診には訪問診療料を算定する"
@@ -204,7 +236,9 @@
       "status": "active",
       "action": "confirm",
       "billingRole": "home_visit_baseup",
-      "settings": ["home_visit"],
+      "settings": [
+        "home_visit"
+      ],
       "requiredFacilityStandardKey": "base_up_hyoka_1",
       "potentialPoints": 0,
       "note": "ベースアップ評価料(１)届出中のため訪問診療時に算定する"
@@ -215,10 +249,13 @@
       "code": "114057970",
       "status": "active",
       "action": "candidate",
-      "settings": ["home_visit"],
+      "settings": [
+        "home_visit"
+      ],
       "requiredFacilityStandardKey": "zaitaku_data_teishutsu_kasan",
       "potentialPoints": 50,
       "note": "在医総管の算定月に月1回。要件確認のうえ採用してください"
     }
-  ]
+  ],
+  "institutionBedClass": "clinic"
 }

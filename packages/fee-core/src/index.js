@@ -372,10 +372,36 @@ function normalizeCalculationMetrics(metrics) {
       specialDiseaseStatus: ["eligible", "not_eligible", "unknown"].includes(
         String(metrics.sidecarSelectionContext.specialDiseaseStatus || "")
       ) ? String(metrics.sidecarSelectionContext.specialDiseaseStatus) : "unknown",
-      selection: normalizeSidecarSelectionFacts(metrics.sidecarSelectionContext.selection)
+      selection: normalizeSidecarSelectionFacts(metrics.sidecarSelectionContext.selection),
+      labelAxis: normalizeSidecarLabelAxisFacts(metrics.sidecarSelectionContext.labelAxis)
     };
   }
   return Object.keys(normalized).length ? normalized : undefined;
+}
+
+// 区分名称由来の軸を解くための事実。真偽・数値・短い列挙と、算定済みコード一覧だけを通す。
+function normalizeSidecarLabelAxisFacts(value) {
+  if (!isPlainObject(value)) {
+    return {};
+  }
+  const normalized = {};
+  for (const [key, fact] of Object.entries(value)) {
+    if (key === "monthlyClaimedCodes") {
+      if (Array.isArray(fact)) {
+        normalized[key] = uniqueStrings(fact);
+      }
+      continue;
+    }
+    if (
+      fact === null
+      || typeof fact === "boolean"
+      || typeof fact === "number"
+      || (typeof fact === "string" && fact.length <= 64)
+    ) {
+      normalized[key] = fact;
+    }
+  }
+  return normalized;
 }
 
 function normalizeSidecarSelectionFacts(value) {

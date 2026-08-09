@@ -41,6 +41,7 @@ test("homis-mock-v7 derives the record key only from visible chart fields", asyn
   }, locationHref);
   assert.deepEqual(result, {
     externalPatientId: "1006",
+    patientAgeYears: null,
     sourceRecordId: recordKey("1006", "2026-06-24", "10060624", "14:00"),
     sourceRecordDisplayId: "10060624",
     serviceDate: "2026-06-24",
@@ -486,6 +487,35 @@ test("homis-mock-v6 stops instead of calculating from an empty SOAP", async () =
     }
   }, locationHref);
   assert.deepEqual(result, { code: "selector_contract_mismatch", matched: 6 });
+  await page.close();
+});
+
+test("patient age is read from the visible header and stays optional", async () => {
+  const page = await contractPage();
+  const result = await page.evaluate((href) => {
+    const contract = globalThis.HalunasuSidecarContract;
+    const header = document.querySelector(".patient-header");
+    const line = document.createElement("div");
+    line.className = "patient-id-line";
+    header.prepend(line);
+
+    line.textContent = "桜庭 静子　サクラバ シズコ　（73歳　女）　1006 / 後期高齢者医療";
+    const adult = contract.extractContractSnapshot(document, { locationHref: href }).patientAgeYears;
+
+    line.textContent = "架空 太郎　カクウ タロウ　（8歳　男）　1099 / 国保";
+    const child = contract.extractContractSnapshot(document, { locationHref: href }).patientAgeYears;
+
+    line.textContent = "架空 太郎　カクウ タロウ　1099 / 国保";
+    const missing = contract.extractContractSnapshot(document, { locationHref: href }).patientAgeYears;
+
+    line.remove();
+    return { adult, child, missing };
+  }, locationHref);
+
+  assert.equal(result.adult, 73);
+  assert.equal(result.child, 8);
+  // 年齢が読めない画面では null のままにし、年齢要件による除外を行わない。
+  assert.equal(result.missing, null);
   await page.close();
 });
 

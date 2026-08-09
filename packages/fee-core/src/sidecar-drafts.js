@@ -34,6 +34,7 @@ export function buildSidecarCalculationDraft(input = {}, options = {}) {
     lifecycleStatus: "draft",
     externalSourceSystem: requiredString(input.externalSourceSystem, "externalSourceSystem"),
     externalPatientId: requiredString(input.externalPatientId, "externalPatientId"),
+    patientAgeYears: Number.isInteger(input.patientAgeYears) ? input.patientAgeYears : null,
     sourceRecordId: requiredString(input.sourceRecordId, "sourceRecordId"),
     sourceRecordDisplayId: input.sourceRecordDisplayId || null,
     idempotencyKeyHash: requiredString(input.idempotencyKeyHash, "idempotencyKeyHash"),
@@ -90,6 +91,9 @@ export function applySidecarDraftInput(current = {}, input = {}, options = {}) {
   return {
     ...patched,
     sourceRecordDisplayId: input.sourceRecordDisplayId || current.sourceRecordDisplayId || null,
+    patientAgeYears: Number.isInteger(input.patientAgeYears)
+      ? input.patientAgeYears
+      : (Number.isInteger(current.patientAgeYears) ? current.patientAgeYears : null),
     contractVersion: input.contractVersion || current.contractVersion || "v1",
     sourceRevisionHash: input.sourceRevisionHash,
     canonicalPatientId: input.canonicalPatientId || current.canonicalPatientId || current.patientId,

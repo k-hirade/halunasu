@@ -1,0 +1,330 @@
+{
+  "schemaVersion": "fee-sidecar-label-axis-artifact-v1",
+  "revision": "2026-06-01",
+  "effectiveFrom": "2026-06-01",
+  "verifiedAt": "2026-08-05",
+  "sourceDefinitionSha256": "b7e20c62521b8498c5f1117775aa32d76e7d62678063e0d6375a757bceb6c017",
+  "sourceDocuments": [
+    {
+      "sourceId": "mhlw-2026-kisai-yoryo",
+      "title": "令和8年度 診療報酬請求書等の記載要領等について（令和8年6月1日適用）",
+      "url": "https://www.mhlw.go.jp/content/12400000/001697746.pdf",
+      "reference": "別添1 区分名称の表記"
+    },
+    {
+      "sourceId": "mhlw-2026-shinryo-master",
+      "title": "診療行為マスター（令和8年6月1日適用）",
+      "url": "https://shinryohoshu.mhlw.go.jp/shinryohoshu/downloadMenu/",
+      "reference": "基本マスター 診療行為 短縮名称"
+    }
+  ],
+  "axes": [
+    {
+      "axisId": "claimSequence",
+      "label": "算定回数",
+      "question": "当月の初回算定ですか",
+      "factKey": "claimSequence",
+      "defaultValue": null,
+      "values": [
+        {
+          "value": "first",
+          "patterns": [
+            "（初回）"
+          ],
+          "optionLabel": "初回"
+        },
+        {
+          "value": "subsequent",
+          "patterns": [
+            "２回目以降",
+            "2回目以降"
+          ],
+          "optionLabel": "2回目以降"
+        }
+      ]
+    },
+    {
+      "axisId": "cyanoticCongenitalHeartDisease",
+      "label": "対象病態",
+      "question": "チアノーゼ型先天性心疾患に該当しますか",
+      "factKey": "cyanoticCongenitalHeartDisease",
+      "defaultValue": false,
+      "values": [
+        {
+          "value": true,
+          "patterns": [
+            "チアノーゼ型先天性心疾患"
+          ],
+          "optionLabel": "チアノーゼ型先天性心疾患"
+        }
+      ]
+    },
+    {
+      "axisId": "dementiaFacilityClass",
+      "label": "認知症疾患医療センター区分",
+      "question": "認知症疾患医療センターの届出区分はどれですか",
+      "factKey": "dementiaFacilityClass",
+      "defaultValue": null,
+      "values": [
+        {
+          "value": "core_or_regional",
+          "patterns": [
+            "基幹型又は地域型"
+          ],
+          "optionLabel": "基幹型又は地域型"
+        },
+        {
+          "value": "cooperative",
+          "patterns": [
+            "連携型"
+          ],
+          "optionLabel": "連携型"
+        }
+      ]
+    },
+    {
+      "axisId": "institutionBedClass",
+      "label": "医療機関区分",
+      "question": "医療機関の区分はどれですか",
+      "factKey": "institutionBedClass",
+      "defaultValue": null,
+      "values": [
+        {
+          "value": "clinic",
+          "patterns": [
+            "（診療所）",
+            "診療所・"
+          ],
+          "optionLabel": "診療所"
+        },
+        {
+          "value": "hospital_under_100",
+          "patterns": [
+            "１００床未満",
+            "100床未満"
+          ],
+          "optionLabel": "100床未満の病院"
+        },
+        {
+          "value": "hospital_100_to_199",
+          "patterns": [
+            "１００床以上２００床未満",
+            "100床以上200床未満"
+          ],
+          "optionLabel": "100床以上200床未満の病院"
+        }
+      ]
+    },
+    {
+      "axisId": "parentManagementFamily",
+      "label": "親となる算定項目",
+      "question": "どの管理料に対する加算ですか",
+      "factKey": "parentManagementFamily",
+      "defaultValue": null,
+      "values": [
+        {
+          "value": "home_management",
+          "patterns": [
+            "（在医総管）"
+          ],
+          "optionLabel": "在医総管"
+        },
+        {
+          "value": "facility_management",
+          "patterns": [
+            "（施医総管）"
+          ],
+          "optionLabel": "施医総管"
+        },
+        {
+          "value": "home_cancer_management",
+          "patterns": [
+            "（在がん医総）"
+          ],
+          "optionLabel": "在がん医総"
+        },
+        {
+          "value": "house_call",
+          "patterns": [
+            "（往診料）"
+          ],
+          "optionLabel": "往診料"
+        },
+        {
+          "value": "house_call_terminal",
+          "patterns": [
+            "（往診・在宅ターミナルケア）"
+          ],
+          "optionLabel": "往診・在宅ターミナルケア"
+        },
+        {
+          "value": "home_visit_fee",
+          "patterns": [
+            "（在宅患者訪問診療料"
+          ],
+          "optionLabel": "在宅患者訪問診療料"
+        }
+      ]
+    },
+    {
+      "axisId": "portableOxygenContainer",
+      "label": "酸素容器",
+      "question": "携帯用酸素ボンベですか",
+      "factKey": "portableOxygenContainer",
+      "defaultValue": false,
+      "values": [
+        {
+          "value": true,
+          "patterns": [
+            "携帯用酸素ボンベ"
+          ],
+          "optionLabel": "携帯用"
+        }
+      ]
+    },
+    {
+      "axisId": "primaryDisease",
+      "label": "主病",
+      "question": "主病はどれですか",
+      "factKey": "primaryDisease",
+      "defaultValue": null,
+      "values": [
+        {
+          "value": "dyslipidemia",
+          "patterns": [
+            "脂質異常症を主病"
+          ],
+          "optionLabel": "脂質異常症"
+        },
+        {
+          "value": "hypertension",
+          "patterns": [
+            "高血圧症を主病"
+          ],
+          "optionLabel": "高血圧症"
+        },
+        {
+          "value": "diabetes",
+          "patterns": [
+            "糖尿病を主病"
+          ],
+          "optionLabel": "糖尿病"
+        }
+      ]
+    },
+    {
+      "axisId": "singleBuildingPatientRange",
+      "label": "単一建物人数",
+      "question": "単一建物診療患者数はどの範囲ですか",
+      "factKey": "singleBuildingPatientCount",
+      "defaultValue": null,
+      "values": [
+        {
+          "value": {
+            "min": 1,
+            "max": 1
+          },
+          "patterns": [
+            "（１人）"
+          ],
+          "optionLabel": "1人"
+        },
+        {
+          "value": {
+            "min": 2,
+            "max": 9
+          },
+          "patterns": [
+            "（２～９人）",
+            "（２人～９人）"
+          ],
+          "optionLabel": "2〜9人"
+        },
+        {
+          "value": {
+            "min": 10,
+            "max": 19
+          },
+          "patterns": [
+            "（１０人～１９人）"
+          ],
+          "optionLabel": "10〜19人"
+        },
+        {
+          "value": {
+            "min": 20,
+            "max": 49
+          },
+          "patterns": [
+            "（２０人～４９人）"
+          ],
+          "optionLabel": "20〜49人"
+        },
+        {
+          "value": {
+            "min": 50,
+            "max": null
+          },
+          "patterns": [
+            "（５０人～）"
+          ],
+          "optionLabel": "50人以上"
+        }
+      ]
+    },
+    {
+      "axisId": "telemedicine",
+      "label": "診療方法",
+      "question": "情報通信機器を用いた診療ですか",
+      "factKey": "telemedicine",
+      "defaultValue": false,
+      "values": [
+        {
+          "value": true,
+          "patterns": [
+            "情報通信機器"
+          ],
+          "optionLabel": "情報通信機器"
+        },
+        {
+          "value": false,
+          "patterns": [
+            "対面で行った場合"
+          ],
+          "optionLabel": "対面診療"
+        }
+      ]
+    },
+    {
+      "axisId": "ventilatorType",
+      "label": "人工呼吸器の種類",
+      "question": "人工呼吸器の種類はどれですか",
+      "factKey": "ventilatorType",
+      "defaultValue": null,
+      "values": [
+        {
+          "value": "negative_pressure",
+          "patterns": [
+            "陰圧式"
+          ],
+          "optionLabel": "陰圧式"
+        },
+        {
+          "value": "positive_pressure",
+          "patterns": [
+            "陽圧式"
+          ],
+          "optionLabel": "陽圧式"
+        },
+        {
+          "value": "general",
+          "patterns": [
+            "（人工呼吸器）"
+          ],
+          "optionLabel": "人工呼吸器"
+        }
+      ]
+    }
+  ],
+  "artifactPayloadSha256": "c13c072996dff616327c4e7e6791e2730f3241be9d63dccf95a8ffb716637667"
+}

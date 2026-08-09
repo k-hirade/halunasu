@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { narrowSidecarCandidateByLabelAxes } from "./sidecar-label-axis-narrowing.js";
 
 const ARTIFACT_URL = new URL(
   "./fee-rule-data/sidecar-selection-axes-2026.generated.json",
@@ -29,7 +30,11 @@ export function narrowSidecarCandidateSelection(candidate = {}, context = {}) {
   if (!candidateCodes.length) return null;
   const options = candidateCodes.map((code) => OPTION_BY_CODE.get(code)).filter(Boolean);
   if (!options.length || options.length !== candidateCodes.length) {
-    return unresolvedSelection(candidateCodes.length, "selection_artifact_incomplete");
+    // 軸 artifact に収録の無いファミリは、区分名称から導出できる軸だけで絞る。
+    return narrowSidecarCandidateByLabelAxes(
+      candidate.codeCandidateOptions,
+      context.labelAxis || {}
+    ) || unresolvedSelection(candidateCodes.length, "selection_artifact_incomplete");
   }
 
   let remaining = options;

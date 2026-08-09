@@ -305,6 +305,7 @@ async function candidateProposalsFromManagementSignalRules({
     // 単一確定できない場合(難病外来指導管理料1/2等の同点タイ)は候補コード集合を保持する。
     // 恣意的に1コードを選ばず、月次畳み・既存レセ突合は codeCandidates 側で許容する。
     let codeCandidates = [];
+    let codeCandidateOptions = [];
     if (!masterItem?.code && typeof searchProcedureCandidateChoices === "function") {
       try {
         const choices = await searchProcedureCandidateChoices(
@@ -312,8 +313,17 @@ async function candidateProposalsFromManagementSignalRules({
           asArray(rule.preferredPatterns).map((pattern) => new RegExp(pattern, "u"))
         );
         codeCandidates = asArray(choices).map((item) => String(item?.code || "")).filter(Boolean);
+        // 区分名と点数を残す。人が選べる形にし、絞り込みの軸判定にも使う。
+        codeCandidateOptions = asArray(choices)
+          .map((item) => ({
+            code: String(item?.code || "").trim(),
+            qualifierLabel: String(item?.name || item?.shortName || "").trim(),
+            points: Number(item?.points || item?.totalPoints || 0)
+          }))
+          .filter((option) => option.code && option.qualifierLabel);
       } catch {
         codeCandidates = [];
+        codeCandidateOptions = [];
       }
     }
     const potentialPoints = masterItem?.code
@@ -340,6 +350,7 @@ async function candidateProposalsFromManagementSignalRules({
       // 患者×月の重複畳みができるよう、ルール側の算定単位上限を伝える。
       monthlyLimit: rule.monthlyLimit || null,
       codeCandidates,
+      codeCandidateOptions,
       knowledge: {
         version: CLINICAL_BILLING_KNOWLEDGE_VERSION,
         signalRulesVersion: MANAGEMENT_SIGNAL_RULES_VERSION,
@@ -552,6 +563,7 @@ function reviewOnlyIncreaseProposal({
   resolutionOptions = [],
   monthlyLimit = null,
   codeCandidates = [],
+  codeCandidateOptions = [],
   candidateLine = null,
   knowledge = null
 } = {}) {
@@ -569,6 +581,7 @@ function reviewOnlyIncreaseProposal({
     source,
     monthlyLimit,
     codeCandidates: Array.isArray(codeCandidates) ? codeCandidates.filter(Boolean) : [],
+    codeCandidateOptions: Array.isArray(codeCandidateOptions) ? codeCandidateOptions : [],
     candidateLine,
     knowledge,
     policy: {

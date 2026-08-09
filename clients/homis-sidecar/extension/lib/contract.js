@@ -45,8 +45,18 @@
       }),
       sourceRecordDisplayId,
       serviceDate,
-      receptionTime
+      receptionTime,
+      // 年齢要件のある算定項目を落とすために、患者ヘッダの可視表記から読む。
+      patientAgeYears: readPatientAgeYears(documentRef)
     };
+  }
+
+  function readPatientAgeYears(documentRef) {
+    const headerText = text(documentRef.querySelector(".patient-header"));
+    const matched = String(headerText || "").match(/（\s*(\d{1,3})\s*歳/u)
+      || String(headerText || "").match(/(\d{1,3})\s*歳/u);
+    const years = Number.parseInt(matched?.[1] || "", 10);
+    return Number.isInteger(years) && years >= 0 && years <= 130 ? years : null;
   }
 
   function extractContractSnapshot(documentRef, options = {}) {
@@ -90,6 +100,7 @@
     const encounter = readEncounterType(container);
     const snapshot = {
       externalPatientId: identity.patientId,
+      patientAgeYears: identity.patientAgeYears,
       sourceRecordId: identity.sourceRecordId,
       sourceRecordDisplayId: identity.sourceRecordDisplayId,
       serviceDate: identity.serviceDate,
