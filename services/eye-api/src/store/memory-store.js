@@ -11,6 +11,21 @@ export class MemoryEyeStore {
     this.auditLogs = new Map();
     this.appointments = new Map();
     this.dailyCounters = new Map();
+    this.patientProfiles = new Map();
+  }
+
+  getPatientProfile(orgId, patientId) {
+    return cloneOrNull(this.forOrg(this.patientProfiles, orgId).get(patientId));
+  }
+
+  savePatientProfile(orgId, profile, expectedRevision) {
+    const records = this.forOrg(this.patientProfiles, orgId);
+    const currentRevision = records.get(profile.patientId)?.revision || 0;
+    if (currentRevision !== expectedRevision) {
+      throw storeError("ConflictError", 409, "patient profile was updated by someone else; reload and try again");
+    }
+    records.set(profile.patientId, clone(profile));
+    return clone(profile);
   }
 
   createEncounter(orgId, encounter) {

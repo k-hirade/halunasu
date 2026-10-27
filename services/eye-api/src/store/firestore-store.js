@@ -6,6 +6,7 @@ import {
   eyeDrugPresetPath,
   eyeEncounterPath,
   eyeEncounterVersionPath,
+  eyePatientProfilePath,
   organizationPath
 } from "../../../../packages/firestore-schema/src/index.js";
 import { sortByDate } from "../../../../packages/eye-core/src/index.js";
@@ -105,6 +106,22 @@ export class FirestoreEyeStore {
   async listDrugPresets(orgId) {
     return docs(await this.orgCollection(orgId, collections.eyeDrugPresets).get())
       .sort((left, right) => String(left.name).localeCompare(String(right.name), "ja"));
+  }
+
+  async getPatientProfile(orgId, patientId) {
+    return dataOrNull(await this.doc(eyePatientProfilePath(orgId, patientId)).get());
+  }
+
+  async savePatientProfile(orgId, profile, expectedRevision) {
+    return this.db.runTransaction(async (transaction) => {
+      const ref = this.doc(eyePatientProfilePath(orgId, profile.patientId));
+      const current = dataOrNull(await transaction.get(ref));
+      if ((current?.revision || 0) !== expectedRevision) {
+        throw storeError("ConflictError", 409, "patient profile was updated by someone else; reload and try again");
+      }
+      transaction.set(ref, profile);
+      return profile;
+    });
   }
 
   async createAppointment(orgId, appointment, { assignQueueNumber = false } = {}) {

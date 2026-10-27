@@ -68,8 +68,16 @@ async function runDoctorFlow(browser) {
   await page.getByLabel("左眼 矯正視力").fill("0.9");
   await page.getByLabel("右眼 眼圧", { exact: true }).fill("18");
   await page.getByLabel("左眼 眼圧", { exact: true }).fill("16");
-  await page.getByRole("button", { name: "病名を追加" }).click();
-  await page.getByRole("combobox", { name: "病名", exact: true }).fill("原発開放隅角緑内障");
+  await page.getByRole("button", { name: "アレルギー・病名" }).click();
+  await page.getByRole("button", { name: "アレルギーを追加" }).click();
+  await page.getByLabel("原因").fill("ペニシリン系");
+  await page.getByLabel("症状").fill("発疹");
+  await page.getByRole("button", { name: "傷病名を追加" }).click();
+  await page.getByRole("combobox", { name: "傷病名" }).fill("原発開放隅角緑内障");
+  await page.getByLabel("開始日").fill("2026-07-28");
+  await page.getByRole("dialog").getByRole("button", { name: "保存" }).click();
+  await page.getByText("アレルギー: ペニシリン系（発疹）").first().waitFor();
+  await page.locator(".dx-list").getByText("原発開放隅角緑内障").waitFor();
   await page.getByRole("textbox", { name: "方針", exact: true }).fill("点眼継続");
   await page.getByLabel("次回まで（週）").fill("12");
   await page.getByRole("button", { name: "処方を追加" }).click();
@@ -83,9 +91,10 @@ async function runDoctorFlow(browser) {
   await page.getByRole("dialog").getByRole("button", { name: "確定する" }).click();
   await page.getByText("確定 v1").first().waitFor();
 
-  await page.getByRole("link", { name: /のカルテ一覧/ }).click();
+  await page.getByRole("link", { name: /カルテ一覧/ }).click();
   await page.getByRole("button", { name: /本日のカルテを作成/ }).click();
   await page.getByRole("heading", { name: "前回との比較" }).waitFor();
+  await page.locator(".history-card").first().waitFor();
   assert.equal(await page.getByLabel("右眼 眼圧", { exact: true }).inputValue(), "", "measurements must not be copied");
   assert.equal(await page.getByRole("combobox", { name: "薬剤名", exact: true }).inputValue(), "ラタノプロスト点眼液0.005%");
   await page.getByLabel("右眼 矯正視力").fill("0.8");
@@ -100,8 +109,9 @@ async function runDoctorFlow(browser) {
   await page.getByText("確定 v1").first().waitFor();
   const encounterUrl = page.url();
 
-  await page.getByRole("link", { name: /のカルテ一覧/ }).click();
+  await page.getByRole("link", { name: /カルテ一覧/ }).click();
   await page.getByRole("img", { name: "眼圧の推移" }).waitFor();
+  await page.getByText("アレルギー: ペニシリン系（発疹）").first().waitFor();
   assert.equal(await page.locator(".history-row").count(), 2);
 
   const printPage = await context.newPage();
@@ -185,15 +195,19 @@ async function login(page, loginId) {
 }
 
 async function drawStroke(page) {
-  const canvas = page.locator(".sketch-canvas").first();
-  await canvas.scrollIntoViewIfNeeded();
+  const canvas = page.locator(".encounter-form .sketch-canvas").first();
+  // hover で画面内に入れてから座標を取り直す（固定ヘッダーの下に隠れないよう中央付近を使う）。
+  await canvas.hover({ position: { x: 150, y: 150 } });
   const box = await canvas.boundingBox();
-  await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.3);
+  const startX = box.x + box.width * 0.4;
+  const startY = box.y + box.height * 0.5;
+  await page.mouse.move(startX, startY);
   await page.mouse.down();
   for (let step = 1; step <= 10; step += 1) {
-    await page.mouse.move(box.x + box.width * (0.3 + step * 0.03), box.y + box.height * (0.3 + step * 0.02));
+    await page.mouse.move(startX + step * 8, startY + step * 5);
   }
   await page.mouse.up();
+  await page.locator(".encounter-form .sketch-canvas polyline").first().waitFor();
 }
 
 async function launchBrowser() {

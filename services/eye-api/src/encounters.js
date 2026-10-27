@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
-import { assertEncounterReadyToFinalize, validateEncounterContent } from "../../../packages/eye-contracts/src/index.js";
+import { validateEncounterContent } from "../../../packages/eye-contracts/src/index.js";
 import {
   calculateEyeDropBottles,
   copyContentForRevisit,
   daysUntilNextVisit,
   emptyEncounterContent,
+  evaluateFinalizeReadiness,
   sortByDate
 } from "../../../packages/eye-core/src/index.js";
 
@@ -56,7 +57,15 @@ export function finalizeEncounter(current, { actor, now }) {
   requireDraft(current);
   const version = current.versionCount + 1;
   const content = validateEncounterContent(current.content);
-  assertEncounterReadyToFinalize(content);
+  const { blockers } = evaluateFinalizeReadiness(content);
+  if (blockers.length > 0) {
+    const error = new Error(blockers.map((item) => item.message).join(" "));
+    error.name = "FinalizeBlockedError";
+    error.statusCode = 400;
+    error.field = blockers[0].field;
+    error.details = { blockers };
+    throw error;
+  }
   const finalized = {
     ...current,
     content,

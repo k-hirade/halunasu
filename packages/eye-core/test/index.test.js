@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   buildTrend,
+  evaluateFinalizeReadiness,
   calculateEyeDropBottles,
   copyContentForRevisit,
   daysUntilNextVisit,
@@ -67,7 +68,7 @@ test("revisit copy keeps the plan but never copies measurements", () => {
   assert.equal(copied.exam.od.vaCorrected, "");
   assert.equal(copied.exam.od.iop, null);
   assert.equal(copied.findings.od.fundus, "C/D 0.7");
-  assert.deepEqual(copied.diagnoses.map((diagnosis) => diagnosis.name), ["緑内障"]);
+  assert.deepEqual(copied.diagnoses, [], "diagnoses live on the patient profile, not the copied draft");
   assert.equal(copied.prescriptions.length, 1);
   assert.equal(copied.plan, "点眼継続");
   assert.deepEqual(copied.nextVisit, { intervalWeeks: 12, date: "", note: "" });
@@ -120,4 +121,19 @@ test("builds trend series and medication changes from finalized visits only", ()
 test("formats prescription labels", () => {
   assert.equal(prescriptionLabel({ name: "ラタノプロスト", eye: "ou", timesPerDay: 1, quantity: 2, unit: "本" }), "ラタノプロスト（両眼 1日1回 2本）");
   assert.equal(prescriptionLabel({ name: "内服薬" }), "内服薬");
+});
+
+test("evaluates blockers and warnings before finalization", () => {
+  const empty = evaluateFinalizeReadiness({});
+  assert.deepEqual(empty.blockers, []);
+  assert.deepEqual(empty.warnings.map((item) => item.code), ["chief_complaint_empty", "plan_empty"]);
+
+  const result = evaluateFinalizeReadiness({
+    chiefComplaint: "かすむ",
+    plan: "経過観察",
+    prescriptions: [{ kind: "eye_drop", name: "" }, { kind: "eye_drop", name: "ラタノプロスト", eye: "" }],
+    nextVisit: {}
+  });
+  assert.deepEqual(result.blockers.map((item) => item.code), ["prescription_name_missing", "prescription_eye_missing"]);
+  assert.deepEqual(result.warnings.map((item) => item.code), ["next_visit_missing"]);
 });

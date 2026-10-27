@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  assertEncounterReadyToFinalize,
   validateCreateEncounterInput,
   validateDrugPresetInput,
   validateEncounterContent,
@@ -85,9 +84,7 @@ test("validates drug presets", () => {
   assert.throws(() => validateDrugPresetInput({ name: "x", dropsPerBottle: 0 }), /dropsPerBottle/u);
 });
 
-test("allows half-filled rows in drafts but blocks them at finalization", () => {
-  const content = validateEncounterContent({ prescriptions: [{ kind: "eye_drop", name: "" }], diagnoses: [{ name: "緑内障" }] });
+test("allows half-filled rows in drafts", () => {
+  const content = validateEncounterContent({ prescriptions: [{ kind: "eye_drop", name: "" }] });
   assert.equal(content.prescriptions[0].name, "");
-  assert.throws(() => assertEncounterReadyToFinalize(content), (error) => error.field === "content.prescriptions.0.name");
-  assert.doesNotThrow(() => assertEncounterReadyToFinalize(validateEncounterContent({ diagnoses: [{ name: "緑内障" }] })));
 });

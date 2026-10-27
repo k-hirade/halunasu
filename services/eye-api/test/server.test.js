@@ -329,6 +329,7 @@ test("refuses to finalize while a prescription row has no name", async () => {
   const finalize = await request(stores, "POST", `/v1/eye/encounters/${draft.body.encounter.encounterId}/finalize`, { expectedRevision: 1 }, doctor);
   assert.equal(finalize.statusCode, 400);
   assert.equal(finalize.body.field, "content.prescriptions.0.name");
+  assert.equal(finalize.body.details.blockers[0].code, "prescription_name_missing");
 });
 
 test("books, checks in with sequential queue numbers, and walks the visit through the board", async () => {
@@ -426,3 +427,62 @@ function assertFirestoreCompatible(value, path = "$") {
     for (const [key, item] of Object.entries(value)) assertFirestoreCompatible(item, `${path}.${key}`);
   }
 }
+
+test("derives the patient profile from history until it is saved, then enforces roles and revisions", async () => {
+  const stores = createStores();
+  const doctor = await signedHeaders(stores.platformStore, "doctor");
+  const clerk = await signedHeaders(stores.platformStore, "clerk");
+  const patient = await createPatient(stores, doctor);
+  await finalizedEncounter(stores, doctor, patient.patientId, "2026-07-28", glaucomaContent({ iopOd: 15 }));
+
+  const derived = await request(stores, "GET", `/v1/eye/patients/${patient.patientId}/profile`, undefined, clerk);
+  assert.equal(derived.body.profile.revision, 0);
+  assert.equal(derived.body.profile.derived, true);
+  assert.deepEqual(derived.body.profile.diagnoses.map((item) => [item.name, item.startDate]), [["原発開放隅角緑内障", "2026-07-28"]]);
+
+  const allergies = [{ category: "drug", substance: "ペニシリン系", reaction: "発疹", severity: "moderate" }];
+  const byClerk = await request(stores, "PUT", `/v1/eye/patients/${patient.patientId}/profile`, {
+    expectedRevision: 0,
+    allergies,
+    diagnoses: derived.body.profile.diagnoses
+  }, clerk);
+  assert.equal(byClerk.statusCode, 200);
+  assert.equal(byClerk.body.profile.revision, 1);
+  assert.match(byClerk.body.profile.allergies[0].allergyId, /^ealg_/u);
+
+  const clerkDiagnosis = await request(stores, "PUT", `/v1/eye/patients/${patient.patientId}/profile`, {
+    expectedRevision: 1,
+    allergies,
+    diagnoses: [...byClerk.body.profile.diagnoses, { name: "白内障", eye: "od" }]
+  }, clerk);
+  assert.equal(clerkDiagnosis.statusCode, 403);
+
+  const stale = await request(stores, "PUT", `/v1/eye/patients/${patient.patientId}/profile`, { expectedRevision: 0, allergies }, doctor);
+  assert.equal(stale.statusCode, 409);
+
+  const contradictory = await request(stores, "PUT", `/v1/eye/patients/${patient.patientId}/profile`, { expectedRevision: 1, allergies, noKnownAllergies: true }, doctor);
+  assert.equal(contradictory.statusCode, 400);
+});
+
+test("finalization snapshots the diagnoses that are current on the visit date", async () => {
+  const stores = createStores();
+  const doctor = await signedHeaders(stores.platformStore, "doctor");
+  const patient = await createPatient(stores, doctor);
+  await request(stores, "PUT", `/v1/eye/patients/${patient.patientId}/profile`, {
+    expectedRevision: 0,
+    noKnownAllergies: true,
+    diagnoses: [
+      { name: "原発開放隅角緑内障", eye: "ou", status: "active", startDate: "2025-01-10", primary: true },
+      { name: "アレルギー性結膜炎", eye: "ou", status: "resolved", startDate: "2026-03-01", endDate: "2026-05-01" },
+      { name: "白内障", eye: "od", status: "suspected", startDate: "2026-12-01" }
+    ]
+  }, doctor);
+  const draft = await request(stores, "POST", "/v1/eye/encounters", { patientId: patient.patientId, encounterDate: "2026-10-27", visitType: "initial" }, doctor);
+  const finalized = await request(stores, "POST", `/v1/eye/encounters/${draft.body.encounter.encounterId}/finalize`, { expectedRevision: 1 }, doctor);
+
+  assert.deepEqual(finalized.body.encounter.content.diagnoses.map((item) => item.name), ["原発開放隅角緑内障"]);
+  const chart = await request(stores, "GET", `/v1/eye/patients/${patient.patientId}/chart`, undefined, doctor);
+  assert.equal(chart.body.profile.noKnownAllergies, true);
+  const detail = await request(stores, "GET", `/v1/eye/encounters/${draft.body.encounter.encounterId}`, undefined, doctor);
+  assert.equal(detail.body.profile.revision, 1);
+});

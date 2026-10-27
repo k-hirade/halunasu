@@ -21,3 +21,7 @@ export function POST(request, { params }) {
 export function PATCH(request, { params }) {
   return proxy(request, params);
 }
+
+export function PUT(request, { params }) {
+  return proxy(request, params);
+}

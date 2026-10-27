@@ -3,12 +3,14 @@
 import {
   validateCreateAppointmentInput,
   validateDrugPresetInput,
-  validateEncounterContent
+  validateEncounterContent,
+  validatePatientProfileInput
 } from "../../packages/eye-contracts/src/index.js";
 import { patientSnapshot } from "../../packages/platform-contracts/src/index.js";
 import { buildAppointment } from "../../services/eye-api/src/appointments.js";
 import { buildDraftEncounter, finalizeEncounter } from "../../services/eye-api/src/encounters.js";
 import { createId } from "../../services/eye-api/src/ids.js";
+import { applyProfileUpdate } from "../../services/eye-api/src/profiles.js";
 import { buildEyeDemoDataset } from "./eye-demo-dataset.mjs";
 
 const DEMO_ACTOR = Object.freeze({ memberId: "demo-seed", loginId: "demo-seed", displayName: "デモデータ" });
@@ -57,6 +59,11 @@ export async function loadEyeDemoData({ platformStore, eyeStore, orgId, today, a
       }
     }
 
+    if (patient && apply && !(await eyeStore.getPatientProfile(orgId, patient.patientId))) {
+      log(`profile: ${number} ${entry.patient.displayName}`);
+      await savePatientProfile({ eyeStore, orgId, patient, entry });
+    }
+
     const alreadyBooked = patient && appointmentsToday.some((item) => item.patientId === patient.patientId);
     if (!alreadyBooked) {
       log(`appointment: ${today} ${entry.appointment.time} ${entry.patient.displayName}`);
@@ -75,6 +82,31 @@ export async function loadEyeDemoData({ platformStore, eyeStore, orgId, today, a
   }
 
   return summary;
+}
+
+// 受診履歴から傷病名（初出日を開始日に）を組み立て、デモ用のアレルギー・既往と合わせて保存する。
+async function savePatientProfile({ eyeStore, orgId, patient, entry }) {
+  const firstSeen = new Map();
+  for (const visit of entry.visits) {
+    for (const diagnosis of visit.content.diagnoses || []) {
+      const key = `${diagnosis.name}|${diagnosis.eye || "ou"}`;
+      if (!firstSeen.has(key)) firstSeen.set(key, visit.date);
+    }
+  }
+  const latest = entry.visits.at(-1)?.content.diagnoses || [];
+  const validated = validatePatientProfileInput({
+    expectedRevision: 0,
+    ...entry.profile,
+    diagnoses: latest.map((diagnosis, index) => ({
+      name: diagnosis.name,
+      eye: diagnosis.eye || "ou",
+      status: diagnosis.status || "active",
+      startDate: firstSeen.get(`${diagnosis.name}|${diagnosis.eye || "ou"}`) || "",
+      primary: index === 0
+    }))
+  });
+  const profile = applyProfileUpdate({ current: null, validated, orgId, patientId: patient.patientId, actor: DEMO_ACTOR, now: new Date().toISOString() });
+  await eyeStore.savePatientProfile(orgId, profile, 0);
 }
 
 async function createFinalizedEncounter({ eyeStore, orgId, patient, visit }) {

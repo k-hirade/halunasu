@@ -10,6 +10,11 @@ export const PRESCRIPTION_KINDS = Object.freeze(["eye_drop", "eye_ointment", "or
 export const IOP_METHODS = Object.freeze(["nct", "goldmann", "icare", "other"]);
 export const SKETCH_TEMPLATES = Object.freeze(["anterior", "fundus", "blank"]);
 export const DIAGNOSIS_STATUSES = Object.freeze(["active", "resolved", "suspected"]);
+export const DIAGNOSIS_OUTCOMES = Object.freeze(["", "cured", "discontinued", "transferred", "deceased", "other"]);
+export const ALLERGY_CATEGORIES = Object.freeze(["drug", "food", "contrast", "latex", "other"]);
+export const ALLERGY_SEVERITIES = Object.freeze(["unknown", "mild", "moderate", "severe"]);
+// 傷病名の変更は医師（と管理者）だけ。アレルギー・既往は問診を取る職種も更新できる。
+export const EYE_PROFILE_ROLES = Object.freeze(["admin", "doctor", "orthoptist", "nurse", "medical_clerk"]);
 
 export const EYE_READ_ROLES = Object.freeze(["admin", "doctor", "orthoptist", "nurse", "medical_clerk", "viewer"]);
 export const EYE_WRITE_ROLES = Object.freeze(["admin", "doctor", "orthoptist", "nurse"]);
@@ -239,6 +244,58 @@ function validateNextVisit(input) {
   };
 }
 
+export function validatePatientProfileInput(input = {}) {
+  const expectedRevision = Number(input.expectedRevision);
+  if (!Number.isInteger(expectedRevision) || expectedRevision < 0) {
+    throw validationError("expectedRevision must be zero or a positive integer", "expectedRevision");
+  }
+  const allergies = optionalList(input.allergies, "allergies", MAX_LIST).map((item, index) => {
+    const field = `allergies.${index}`;
+    if (!isPlainObject(item)) throw validationError(`${field} must be an object`, field);
+    return {
+      allergyId: optionalString(item.allergyId, `${field}.allergyId`, MAX_SHORT_TEXT),
+      category: optionalEnum(item.category, ALLERGY_CATEGORIES, `${field}.category`) || "drug",
+      substance: requiredString(item.substance, `${field}.substance`, MAX_SHORT_TEXT),
+      reaction: optionalString(item.reaction, `${field}.reaction`, MAX_SHORT_TEXT),
+      severity: optionalEnum(item.severity, ALLERGY_SEVERITIES, `${field}.severity`) || "unknown"
+    };
+  });
+  const noKnownAllergies = Boolean(input.noKnownAllergies);
+  if (noKnownAllergies && allergies.length > 0) {
+    throw validationError("noKnownAllergies cannot be set together with allergies", "noKnownAllergies");
+  }
+  const diagnoses = optionalList(input.diagnoses, "diagnoses", MAX_LIST).map((item, index) => {
+    const field = `diagnoses.${index}`;
+    if (!isPlainObject(item)) throw validationError(`${field} must be an object`, field);
+    const status = optionalEnum(item.status, DIAGNOSIS_STATUSES, `${field}.status`) || "active";
+    const startDate = optionalDate(item.startDate, `${field}.startDate`);
+    const endDate = optionalDate(item.endDate, `${field}.endDate`);
+    if (startDate && endDate && endDate < startDate) {
+      throw validationError(`${field}.endDate must be on or after startDate`, `${field}.endDate`);
+    }
+    return {
+      diagnosisId: optionalString(item.diagnosisId, `${field}.diagnosisId`, MAX_SHORT_TEXT),
+      name: requiredString(item.name, `${field}.name`, MAX_SHORT_TEXT),
+      eye: optionalEnum(item.eye, EYE_TARGETS, `${field}.eye`) || "ou",
+      status,
+      startDate,
+      endDate,
+      outcome: optionalEnum(item.outcome, DIAGNOSIS_OUTCOMES, `${field}.outcome`) || (status === "resolved" ? "cured" : ""),
+      primary: Boolean(item.primary),
+      note: optionalString(item.note, `${field}.note`, MAX_SHORT_TEXT)
+    };
+  });
+  return {
+    expectedRevision,
+    allergies,
+    noKnownAllergies,
+    diagnoses,
+    medicalHistory: optionalText(input.medicalHistory, "medicalHistory"),
+    ophthalmicHistory: optionalText(input.ophthalmicHistory, "ophthalmicHistory"),
+    contactLensUser: Boolean(input.contactLensUser)
+  };
+}
+
 export function validateCreateAppointmentInput(input = {}) {
   const patientId = optionalString(input.patientId, "patientId", MAX_SHORT_TEXT);
   const patientName = optionalString(input.patientName, "patientName", MAX_SHORT_TEXT);
@@ -291,16 +348,6 @@ export function assertAppointmentTransition(from, to) {
     error.statusCode = 409;
     throw error;
   }
-}
-
-// 下書きでは入力途中の空行を許し、確定時にだけ欠けている項目を止める。
-export function assertEncounterReadyToFinalize(content) {
-  content.diagnoses.forEach((diagnosis, index) => {
-    if (!diagnosis.name) throw validationError("病名が空の行があります。入力するか削除してください。", `content.diagnoses.${index}.name`);
-  });
-  content.prescriptions.forEach((item, index) => {
-    if (!item.name) throw validationError("薬剤名が空の処方があります。入力するか削除してください。", `content.prescriptions.${index}.name`);
-  });
 }
 
 export function validationError(message, field) {

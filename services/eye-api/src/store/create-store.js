@@ -42,6 +42,8 @@ for (const methodName of [
   "getVersion",
   "upsertDrugPreset",
   "listDrugPresets",
+  "getPatientProfile",
+  "savePatientProfile",
   "createAppointment",
   "getAppointment",
   "listAppointmentsByDate",

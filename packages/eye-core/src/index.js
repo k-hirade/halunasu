@@ -97,7 +97,6 @@ export function copyContentForRevisit(previousContent = {}) {
     ...emptyEncounterContent(),
     findings: source.findings,
     sketches: source.sketches,
-    diagnoses: source.diagnoses.filter((diagnosis) => diagnosis.status !== "resolved"),
     assessment: source.assessment,
     plan: source.plan,
     prescriptions: source.prescriptions,
@@ -130,7 +129,7 @@ export function diffEncounterContent(previousContent = {}, currentContent = {}) 
   const changes = [];
   // 主訴や測定値は毎回入力し直す項目なので、今回まだ空欄なら「変更」には数えない。
   const push = (path, label, oldValue, newValue, { perVisit = false } = {}) => {
-    if (perVisit && (newValue === "" || newValue === null || newValue === undefined)) return;
+    if (perVisit && (newValue === "" || newValue === null || newValue === undefined || (Array.isArray(newValue) && newValue.length === 0))) return;
     if (stableJson(oldValue) !== stableJson(newValue)) {
       changes.push({ path, label, before: displayValue(oldValue), after: displayValue(newValue) });
     }
@@ -150,7 +149,7 @@ export function diffEncounterContent(previousContent = {}, currentContent = {}) 
       push(`findings.${side}.${key}`, `${SIDE_LABELS[side]} ${FIELD_LABELS[key]}`, before.findings[side][key], after.findings[side][key]);
     }
   }
-  push("diagnoses", "病名", before.diagnoses.map(diagnosisLabel), after.diagnoses.map(diagnosisLabel));
+  push("diagnoses", "病名", before.diagnoses.map(diagnosisLabel), after.diagnoses.map(diagnosisLabel), { perVisit: after.diagnoses.length === 0 });
   push("prescriptions", "処方", before.prescriptions.map(prescriptionLabel), after.prescriptions.map(prescriptionLabel));
   push("nextVisit.intervalWeeks", FIELD_LABELS.intervalWeeks, before.nextVisit.intervalWeeks, after.nextVisit.intervalWeeks);
   push("sketches", "シェーマ", before.sketches.map((sketch) => sketch.strokes.length), after.sketches.map((sketch) => sketch.strokes.length));
@@ -234,4 +233,24 @@ function displayValue(value) {
 
 function stableJson(value) {
   return JSON.stringify(value ?? null);
+}
+
+// 確定前のチェック。blockers があると確定できない。warnings は確認を促すだけ。
+// 画面の事前表示とサーバーの判定で同じ関数を使う。
+export function evaluateFinalizeReadiness(content = {}) {
+  const blockers = [];
+  const warnings = [];
+  (content.diagnoses || []).forEach((item, index) => {
+    if (!String(item.name || "").trim()) blockers.push({ code: "diagnosis_name_missing", field: `content.diagnoses.${index}.name`, message: "病名が空の行があります。" });
+  });
+  (content.prescriptions || []).forEach((item, index) => {
+    if (!String(item.name || "").trim()) blockers.push({ code: "prescription_name_missing", field: `content.prescriptions.${index}.name`, message: "薬剤名が空の処方があります。" });
+    else if ((item.kind === "eye_drop" || item.kind === "eye_ointment") && !item.eye) blockers.push({ code: "prescription_eye_missing", field: `content.prescriptions.${index}.eye`, message: `「${item.name}」の眼（右・左・両）が未指定です。` });
+  });
+  if (!String(content.chiefComplaint || "").trim()) warnings.push({ code: "chief_complaint_empty", message: "主訴が空です。" });
+  if (!String(content.plan || "").trim()) warnings.push({ code: "plan_empty", message: "方針が空です。" });
+  if ((content.prescriptions || []).length > 0 && !content.nextVisit?.intervalWeeks && !content.nextVisit?.date) {
+    warnings.push({ code: "next_visit_missing", message: "処方がありますが、次回受診が未設定です。" });
+  }
+  return { blockers, warnings };
 }

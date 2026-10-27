@@ -32,42 +32,49 @@ export function buildEyeDemoDataset({ today }) {
   const patients = [
     {
       key: "glaucoma",
+      profile: { allergies: [{ category: "drug", substance: "ペニシリン系抗菌薬", reaction: "発疹", severity: "moderate" }], medicalHistory: "高血圧（内服中）" },
       patient: { displayName: "見本 花子", displayNameKana: "ミホン ハナコ", birthDate: "1953-04-12", sex: "female", primaryPatientNumber: "D001" },
       visits: glaucomaVisits(day),
       appointment: { time: "09:00", purpose: "revisit", note: "視野検査あり" }
     },
     {
       key: "dme",
+      profile: { noKnownAllergies: true, medicalHistory: "2型糖尿病（内科通院中）・高血圧" },
       patient: { displayName: "試験 一郎", displayNameKana: "シケン イチロウ", birthDate: "1957-09-03", sex: "male", primaryPatientNumber: "D002" },
       visits: dmeVisits(day),
       appointment: { time: "09:30", purpose: "injection", note: "右眼 抗VEGF注射予定・OCT" }
     },
     {
       key: "postop",
+      profile: { allergies: [{ category: "drug", substance: "ヨード", reaction: "じんましん", severity: "severe" }], ophthalmicHistory: "右眼 白内障手術（PEA+IOL）" },
       patient: { displayName: "模擬 和子", displayNameKana: "モギ カズコ", birthDate: "1950-01-21", sex: "female", primaryPatientNumber: "D003" },
       visits: cataractVisits(day),
       appointment: { time: "10:00", purpose: "postop", note: "右眼 白内障術後5週" }
     },
     {
       key: "amd",
+      profile: { noKnownAllergies: true, medicalHistory: "喫煙歴あり（20本/日×30年、5年前に禁煙）" },
       patient: { displayName: "仮名 健太", displayNameKana: "カメイ ケンタ", birthDate: "1961-06-30", sex: "male", primaryPatientNumber: "D004" },
       visits: amdVisits(day),
       appointment: { time: "10:30", purpose: "injection", note: "左眼 注射（8週間隔）" }
     },
     {
       key: "allergy",
+      profile: { allergies: [{ category: "other", substance: "スギ花粉", reaction: "結膜炎・鼻炎", severity: "mild" }], contactLensUser: true },
       patient: { displayName: "架空 美咲", displayNameKana: "カクウ ミサキ", birthDate: "1991-11-08", sex: "female", primaryPatientNumber: "D005" },
       visits: allergyVisits(day),
       appointment: { time: "11:00", purpose: "revisit", note: "かゆみ再燃" }
     },
     {
       key: "myopia",
+      profile: { noKnownAllergies: true },
       patient: { displayName: "想定 翔太", displayNameKana: "ソウテイ ショウタ", birthDate: "2014-05-17", sex: "male", primaryPatientNumber: "D006" },
       visits: myopiaVisits(day),
       appointment: { time: "14:00", purpose: "exam", note: "学校健診で視力低下の指摘" }
     },
     {
       key: "dryeye",
+      profile: { medicalHistory: "シェーグレン症候群の疑い（内科で精査中）" },
       patient: { displayName: "例示 節子", displayNameKana: "レイジ セツコ", birthDate: "1946-02-02", sex: "female", primaryPatientNumber: "D007" },
       visits: dryEyeVisits(day),
       appointment: { time: "14:30", purpose: "revisit", note: "" }

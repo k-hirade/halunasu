@@ -9,6 +9,7 @@ import {
 import {
   EYE_FINALIZE_ROLES,
   EYE_PRODUCT_ID,
+  EYE_PROFILE_ROLES,
   EYE_READ_ROLES,
   EYE_RECEPTION_ROLES,
   EYE_SETTINGS_ROLES,
@@ -19,12 +20,14 @@ import {
   validateCreateEncounterInput,
   validateDrugPresetInput,
   validateFinalizeEncounterInput,
+  validatePatientProfileInput,
   validateUpdateAppointmentInput,
   validateUpdateEncounterInput
 } from "../../../packages/eye-contracts/src/index.js";
 import {
   buildTrend,
   diffEncounterContent,
+  evaluateFinalizeReadiness,
   suggestNextVisit
 } from "../../../packages/eye-core/src/index.js";
 import { patientSnapshot } from "../../../packages/platform-contracts/src/index.js";
@@ -45,6 +48,12 @@ import {
   isActiveAppointment
 } from "./appointments.js";
 import { createId } from "./ids.js";
+import {
+  applyProfileUpdate,
+  deriveProfileFromHistory,
+  diagnosesChanged,
+  diagnosesForEncounter
+} from "./profiles.js";
 import { createEyeStoreFromEnv } from "./store/create-store.js";
 
 const PATIENT_WRITE_ROLES = [...EYE_WRITE_ROLES, "medical_clerk"];
@@ -182,6 +191,34 @@ async function routeEyeApiRequest(input = {}) {
     }
   }
 
+  if (parts.length === 5 && matches(parts.slice(0, 3), ["v1", "eye", "patients"]) && parts[4] === "profile") {
+    const patient = await requirePatient(platformStore, orgId, parts[3]);
+    if (method === "GET") {
+      const encounters = await eyeStore.listPatientEncounters(orgId, patient.patientId);
+      return ok({ profile: await loadProfile(eyeStore, orgId, patient.patientId, encounters) });
+    }
+    if (method === "PUT") {
+      requireAccess(context, EYE_PROFILE_ROLES, "Patient profile access is required");
+      requirePlatformCsrf(input.headers || {}, context.session);
+      const validated = validatePatientProfileInput(input.body || {});
+      const encounters = await eyeStore.listPatientEncounters(orgId, patient.patientId);
+      const current = await loadProfile(eyeStore, orgId, patient.patientId, encounters);
+      if (diagnosesChanged(current.diagnoses, validated.diagnoses)) {
+        requireAccess(context, EYE_FINALIZE_ROLES, "Only a doctor can change diagnoses");
+      }
+      const profile = applyProfileUpdate({ current: current.derived ? null : current, validated, orgId, patientId: patient.patientId, actor, now });
+      await eyeStore.savePatientProfile(orgId, profile, validated.expectedRevision);
+      await audit({
+        eventType: "eye.profile_updated",
+        targetType: "patient",
+        targetId: patient.patientId,
+        patientId: patient.patientId,
+        safePayload: { revision: profile.revision, allergyCount: profile.allergies.length, diagnosisCount: profile.diagnoses.length }
+      });
+      return ok({ profile });
+    }
+  }
+
   if (method === "GET" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "eye", "patients"]) && parts[4] === "chart") {
     const patient = await requirePatient(platformStore, orgId, parts[3]);
     const [encounters, appointments] = await Promise.all([
@@ -190,9 +227,11 @@ async function routeEyeApiRequest(input = {}) {
     ]);
     const finalized = encounters.filter((encounter) => encounter.status === "finalized");
     const latest = finalized.at(-1) || null;
+    const profile = await loadProfile(eyeStore, orgId, patient.patientId, encounters);
     await audit({ eventType: "eye.chart_viewed", targetType: "patient", targetId: patient.patientId, patientId: patient.patientId });
     return ok({
       patient,
+      profile,
       encounters: encounters.map(encounterSummary).reverse(),
       latestFinalized: latest,
       trend: buildTrend(encounters),
@@ -246,9 +285,16 @@ async function routeEyeApiRequest(input = {}) {
         eyeStore.listDrugPresets(orgId)
       ]);
       const previous = previousFinalizedEncounter(history, encounter);
+      const profile = await loadProfile(eyeStore, orgId, encounter.patientId, history);
       await audit({ eventType: "eye.encounter_viewed", targetType: "encounter", targetId: encounterId, patientId: encounter.patientId });
       return ok({
         encounter,
+        profile,
+        history: history
+          .filter((item) => item.status === "finalized" && item.encounterId !== encounter.encounterId && item.encounterDate <= encounter.encounterDate)
+          .reverse()
+          .slice(0, 20),
+        readiness: evaluateFinalizeReadiness(encounter.content),
         previous,
         changes: previous ? diffEncounterContent(previous.content, encounter.content) : [],
         bottleSuggestions: eyeDropBottleSuggestions(encounter, drugPresets),
@@ -273,7 +319,15 @@ async function routeEyeApiRequest(input = {}) {
       requirePlatformCsrf(input.headers || {}, context.session);
       const { expectedRevision } = validateFinalizeEncounterInput(input.body || {});
       const current = await requireEncounter(eyeStore, orgId, encounterId);
-      const { encounter, version } = finalizeEncounter(current, { actor, now });
+      const history = await eyeStore.listPatientEncounters(orgId, current.patientId);
+      const profile = await loadProfile(eyeStore, orgId, current.patientId, history);
+      const diagnoses = profile.derived && current.content.diagnoses?.length
+        ? current.content.diagnoses
+        : diagnosesForEncounter(profile, current.encounterDate);
+      const { encounter, version } = finalizeEncounter(
+        { ...current, content: { ...current.content, diagnoses } },
+        { actor, now }
+      );
       await eyeStore.replaceEncounter(orgId, encounter, expectedRevision, version);
       await audit({
         eventType: "eye.encounter_finalized",
@@ -427,6 +481,11 @@ async function requireEncounter(eyeStore, orgId, encounterId) {
   return encounter;
 }
 
+async function loadProfile(eyeStore, orgId, patientId, encounters) {
+  return await eyeStore.getPatientProfile(orgId, patientId)
+    || deriveProfileFromHistory({ orgId, patientId, encounters });
+}
+
 async function requireAppointment(eyeStore, orgId, appointmentId) {
   const appointment = await eyeStore.getAppointment(orgId, appointmentId);
   if (!appointment) throw notFoundError("appointment not found");
@@ -490,7 +549,9 @@ function contextView(context) {
     canRegisterPatients: hasProductAccess(context.session, EYE_PRODUCT_ID, PATIENT_WRITE_ROLES),
     canFinalize: hasProductAccess(context.session, EYE_PRODUCT_ID, EYE_FINALIZE_ROLES),
     canManageSettings: hasProductAccess(context.session, EYE_PRODUCT_ID, EYE_SETTINGS_ROLES),
-    canReceive: hasProductAccess(context.session, EYE_PRODUCT_ID, EYE_RECEPTION_ROLES)
+    canReceive: hasProductAccess(context.session, EYE_PRODUCT_ID, EYE_RECEPTION_ROLES),
+    canEditProfile: hasProductAccess(context.session, EYE_PRODUCT_ID, EYE_PROFILE_ROLES),
+    canEditDiagnoses: hasProductAccess(context.session, EYE_PRODUCT_ID, EYE_FINALIZE_ROLES)
   };
 }
 
@@ -577,7 +638,8 @@ function errorResponse(error) {
     body: {
       error: statusCode === 500 ? "internal_error" : (publicAuthErrorCode(error) || toErrorCode(error.name)),
       message: statusCode === 500 ? "Internal server error" : error.message,
-      field: error.field
+      field: error.field,
+      details: statusCode === 500 ? undefined : error.details
     }
   };
 }
@@ -592,7 +654,7 @@ function corsHeaders(input) {
   return {
     "access-control-allow-origin": origin,
     "access-control-allow-credentials": "true",
-    "access-control-allow-methods": "GET, POST, PATCH, OPTIONS",
+    "access-control-allow-methods": "GET, POST, PUT, PATCH, OPTIONS",
     "access-control-allow-headers": "authorization, content-type, x-csrf-token",
     "vary": "Origin"
   };

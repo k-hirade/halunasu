@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useEyeApi } from "./eye-api";
 import { StatusTag } from "./home-workspace";
+import { PatientBanner } from "./patient-banner";
 import { TrendPanel } from "./trend-chart";
 import {
   APPOINTMENT_PURPOSE_LABELS,
@@ -11,7 +12,6 @@ import {
   diagnosisText,
   formatDate,
   formatRefraction,
-  patientLine,
   prescriptionText,
   todayIso,
   VISIT_TYPE_LABELS
@@ -58,22 +58,22 @@ export function PatientChart({ patientId }) {
 
   return (
     <main className="eye-page">
-      <header className="patient-head">
-        <div>
-          <a className="back-link" href="/">← 受診一覧</a>
-          <h1>{patient.displayName} <span className="kana">{patient.displayNameKana}</span></h1>
-          <p className="page-sub">{patientLine(patient)}{patient.birthDate ? ` ・ ${formatDate(patient.birthDate)}生` : ""}</p>
-        </div>
-        <div className="head-actions">
-          {todayDraft ? (
+      <a className="back-link" href="/">← カルテ一覧</a>
+      <div className="encounter-bar is-static">
+        <PatientBanner
+          actions={todayDraft ? (
             <a className="btn btn-primary" href={`/encounters/${todayDraft.encounterId}`}>本日のカルテを開く</a>
           ) : context?.canWrite ? (
             <button className="btn btn-primary" disabled={busy} onClick={startEncounter} type="button">
               {hasFinalized ? "本日のカルテを作成（前回から引き継ぐ）" : "初診カルテを作成"}
             </button>
           ) : null}
-        </div>
-      </header>
+          context={context}
+          onProfileSaved={(saved) => setChart((current) => ({ ...current, profile: saved }))}
+          patient={patient}
+          profile={chart.profile}
+        />
+      </div>
 
       <div className="chart-grid">
         <div className="chart-main">
