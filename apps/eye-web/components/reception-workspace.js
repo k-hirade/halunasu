@@ -67,10 +67,11 @@ export function ReceptionWorkspace() {
     }
   }
 
-  async function openChart(appointment) {
+  async function openChart(appointment, view = "") {
+    const suffix = view ? `/${view}` : "";
     const existing = data.encountersByPatient[appointment.patientId];
     if (existing) {
-      router.push(`/encounters/${existing.encounterId}`);
+      router.push(`/encounters/${existing.encounterId}${suffix}`);
       return;
     }
     try {
@@ -83,7 +84,7 @@ export function ReceptionWorkspace() {
           visitType: chart.latestFinalized ? "revisit" : "initial"
         }
       });
-      router.push(`/encounters/${payload.encounter.encounterId}`);
+      router.push(`/encounters/${payload.encounter.encounterId}${suffix}`);
     } catch (nextError) {
       setError(nextError.message);
     }
@@ -229,8 +230,15 @@ function BoardCard({ appointment, canReceive, encounter, now, onMove, onOpenChar
       </div>
       {appointment.note ? <p className="small board-note">{appointment.note}</p> : null}
       <p className="small muted">この状態で {waited ?? 0}分{sinceCheckIn !== null ? ` ・ 受付から ${sinceCheckIn}分` : ""}</p>
+      {encounter?.dilationStartedAt ? (
+        <p className={`small dilation-timer${minutesSince(encounter.dilationStartedAt, now) >= 20 ? " is-ready" : ""}`}>散瞳 {minutesSince(encounter.dilationStartedAt, now)}分</p>
+      ) : null}
+      {encounter?.plannedOrders?.length ? <p className="small muted">未実施: {encounter.plannedOrders.join("、")}</p> : null}
       <div className="board-actions">
         {canReceive && next ? <button className="btn btn-primary btn-sm" onClick={() => onMove(appointment, next.status)} type="button">{next.label}</button> : null}
+        {appointment.patientId && ["checked_in", "in_exam"].includes(appointment.status) ? (
+          <button className="btn btn-chip" onClick={() => onOpenChart(appointment, "exam")} type="button">検査入力</button>
+        ) : null}
         {appointment.patientId ? (
           <button className="btn btn-chip" onClick={() => onOpenChart(appointment)} type="button">{encounter ? "カルテを開く" : "カルテ作成"}</button>
         ) : canReceive ? (

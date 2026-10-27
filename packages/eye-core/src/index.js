@@ -237,9 +237,20 @@ function stableJson(value) {
 
 // 確定前のチェック。blockers があると確定できない。warnings は確認を促すだけ。
 // 画面の事前表示とサーバーの判定で同じ関数を使う。
-export function evaluateFinalizeReadiness(content = {}) {
+export function evaluateFinalizeReadiness(content = {}, { examConfirmations = null } = {}) {
   const blockers = [];
   const warnings = [];
+  for (const side of EYE_SIDES) {
+    const values = content.exam?.[side] || {};
+    const hasValue = Boolean(values.vaUncorrected || values.vaCorrected || Number.isFinite(values.iop)
+      || [values.correction, values.refraction].some((item) => item && Object.values(item).some((value) => value !== null && value !== undefined)));
+    if (hasValue && examConfirmations && !examConfirmations[side]) {
+      blockers.push({ code: "exam_unconfirmed", field: `content.exam.${side}`, message: `${side === "od" ? "右眼" : "左眼"}の検査値が未確認です。` });
+    }
+  }
+  (content.orders || []).forEach((order, index) => {
+    if (order.status === "planned") blockers.push({ code: "order_planned", field: `content.orders.${index}`, message: `「${order.name || "検査"}」が予定のままです（実施か取消にしてください）。` });
+  });
   (content.diagnoses || []).forEach((item, index) => {
     if (!String(item.name || "").trim()) blockers.push({ code: "diagnosis_name_missing", field: `content.diagnoses.${index}.name`, message: "病名が空の行があります。" });
   });

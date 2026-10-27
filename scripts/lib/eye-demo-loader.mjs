@@ -120,6 +120,9 @@ async function createFinalizedEncounter({ eyeStore, orgId, patient, visit }) {
     actor: DEMO_ACTOR,
     now
   });
+  // デモの過去カルテは、検査員が確認済みの状態で確定したものとして作る。
+  const confirmation = { by: DEMO_ACTOR, at: `${visit.date}T01:30:00.000Z` };
+  draft.examConfirmations = { od: confirmation, os: confirmation };
   await eyeStore.createEncounter(orgId, draft);
   const { encounter, version } = finalizeEncounter(draft, { actor: DEMO_ACTOR, now: `${visit.date}T02:00:00.000Z` });
   await eyeStore.replaceEncounter(orgId, encounter, draft.revision, version);

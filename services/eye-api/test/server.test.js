@@ -56,25 +56,35 @@ test("runs the draft, finalize, amend, and refinalize lifecycle with immutable v
 
   const stale = await request(stores, "PATCH", `/v1/eye/encounters/${encounterId}`, {
     expectedRevision: 1,
-    content: glaucomaContent({ iopOd: 30 })
+    sections: { exam: glaucomaContent({ iopOd: 30 }).exam }
   }, doctor);
   assert.equal(stale.statusCode, 409);
+  assert.deepEqual(stale.body.details.sections, ["exam"]);
 
-  const finalized = await request(stores, "POST", `/v1/eye/encounters/${encounterId}/finalize`, { expectedRevision: 2 }, doctor);
+  const blocked = await request(stores, "POST", `/v1/eye/encounters/${encounterId}/finalize`, { expectedRevision: 2 }, doctor);
+  assert.equal(blocked.statusCode, 400);
+  assert.deepEqual(blocked.body.details.blockers.map((item) => item.code), ["exam_unconfirmed", "exam_unconfirmed"]);
+
+  const confirmed = await request(stores, "POST", `/v1/eye/encounters/${encounterId}/exam-confirm`, { expectedRevision: 2, eye: "both" }, doctor);
+  assert.equal(confirmed.body.encounter.examConfirmations.od.by.loginId, "eye-doctor");
+  const finalized = await request(stores, "POST", `/v1/eye/encounters/${encounterId}/finalize`, { expectedRevision: 3 }, doctor);
   assert.equal(finalized.statusCode, 200);
   assert.equal(finalized.body.encounter.status, "finalized");
   assert.equal(finalized.body.version.version, 1);
 
   const editFinalized = await request(stores, "PATCH", `/v1/eye/encounters/${encounterId}`, {
-    expectedRevision: 3,
-    content: glaucomaContent({ iopOd: 19 })
+    expectedRevision: 4,
+    sections: { plan: "変更" }
   }, doctor);
   assert.equal(editFinalized.statusCode, 409);
 
-  const amended = await request(stores, "POST", `/v1/eye/encounters/${encounterId}/amend`, { expectedRevision: 3, reason: "眼圧の転記誤り" }, doctor);
+  const amended = await request(stores, "POST", `/v1/eye/encounters/${encounterId}/amend`, { expectedRevision: 4, reason: "眼圧の転記誤り" }, doctor);
   assert.equal(amended.body.encounter.status, "draft");
-  await request(stores, "PATCH", `/v1/eye/encounters/${encounterId}`, { expectedRevision: 4, content: glaucomaContent({ iopOd: 17 }) }, doctor);
-  const refinalized = await request(stores, "POST", `/v1/eye/encounters/${encounterId}/finalize`, { expectedRevision: 5 }, doctor);
+  const corrected = await request(stores, "PATCH", `/v1/eye/encounters/${encounterId}`, { expectedRevision: 5, sections: { exam: glaucomaContent({ iopOd: 17 }).exam } }, doctor);
+  assert.equal(corrected.body.encounter.examConfirmations.od, null, "changing a measurement clears its confirmation");
+  assert.notEqual(corrected.body.encounter.examConfirmations.os, null, "the other eye keeps its confirmation");
+  await request(stores, "POST", `/v1/eye/encounters/${encounterId}/exam-confirm`, { expectedRevision: 6, eye: "od" }, doctor);
+  const refinalized = await request(stores, "POST", `/v1/eye/encounters/${encounterId}/finalize`, { expectedRevision: 7 }, doctor);
   assert.equal(refinalized.body.version.version, 2);
   assert.equal(refinalized.body.version.amendmentReason, "眼圧の転記誤り");
 
@@ -83,8 +93,43 @@ test("runs the draft, finalize, amend, and refinalize lifecycle with immutable v
   assert.equal(v1.body.version.content.exam.od.iop, 18);
   assert.equal(v2.body.version.content.exam.od.iop, 17);
 
-  const discard = await request(stores, "POST", `/v1/eye/encounters/${encounterId}/discard`, { expectedRevision: 6 }, doctor);
+  const discard = await request(stores, "POST", `/v1/eye/encounters/${encounterId}/discard`, { expectedRevision: 8 }, doctor);
   assert.equal(discard.statusCode, 409);
+});
+
+test("merges concurrent edits to different sections and records who changed order status", async () => {
+  const stores = createStores();
+  const doctor = await signedHeaders(stores.platformStore, "doctor");
+  const orthoptist = await signedHeaders(stores.platformStore, "orthoptist");
+  const patient = await createPatient(stores, doctor);
+  const draft = await request(stores, "POST", "/v1/eye/encounters", {
+    patientId: patient.patientId,
+    encounterDate: "2026-10-27",
+    visitType: "initial",
+    content: { orders: [{ orderId: "ord1", code: "oct_retina", name: "OCT（網膜）", eye: "ou" }] }
+  }, doctor);
+  const id = draft.body.encounter.encounterId;
+
+  // 同じ revision 1 を見ている2人が、別の項目を保存する
+  const byOrthoptist = await request(stores, "PATCH", `/v1/eye/encounters/${id}`, {
+    expectedRevision: 1,
+    sections: { exam: { od: { vaCorrected: "1.0", vaCorrectionType: "glasses", measuredAt: "09:05" }, os: {} } }
+  }, orthoptist);
+  const byDoctor = await request(stores, "PATCH", `/v1/eye/encounters/${id}`, { expectedRevision: 1, sections: { plan: "経過観察" } }, doctor);
+  assert.equal(byOrthoptist.statusCode, 200);
+  assert.equal(byDoctor.statusCode, 200);
+  assert.equal(byDoctor.body.encounter.content.exam.od.vaCorrected, "1.0");
+  assert.equal(byDoctor.body.encounter.content.plan, "経過観察");
+
+  const performed = await request(stores, "PATCH", `/v1/eye/encounters/${id}`, {
+    expectedRevision: byDoctor.body.encounter.revision,
+    sections: { orders: [{ orderId: "ord1", code: "oct_retina", name: "OCT（網膜）", eye: "ou", status: "performed", statusChangedBy: { displayName: "forged" } }] }
+  }, orthoptist);
+  assert.equal(performed.body.encounter.content.orders[0].statusChangedBy.displayName, "eye-ort");
+
+  const noop = await request(stores, "PATCH", `/v1/eye/encounters/${id}`, { expectedRevision: 1, sections: { plan: "経過観察" } }, doctor);
+  assert.equal(noop.statusCode, 200, "unchanged sections are not conflicts");
+  assert.equal(noop.body.encounter.revision, performed.body.encounter.revision);
 });
 
 test("enforces role boundaries for writing, finalizing, and patient registration", async () => {
@@ -236,7 +281,8 @@ async function createPatient(stores, headers) {
 
 async function finalizedEncounter(stores, headers, patientId, encounterDate, content) {
   const draft = await request(stores, "POST", "/v1/eye/encounters", { patientId, encounterDate, visitType: "initial", content }, headers);
-  const response = await request(stores, "POST", `/v1/eye/encounters/${draft.body.encounter.encounterId}/finalize`, { expectedRevision: 1 }, headers);
+  await request(stores, "POST", `/v1/eye/encounters/${draft.body.encounter.encounterId}/exam-confirm`, { expectedRevision: 1, eye: "both" }, headers);
+  const response = await request(stores, "POST", `/v1/eye/encounters/${draft.body.encounter.encounterId}/finalize`, { expectedRevision: 2 }, headers);
   assert.equal(response.statusCode, 200);
   return response.body.encounter;
 }
@@ -409,7 +455,8 @@ test("stored encounters never contain nested arrays (Firestore cannot store them
     visitType: "initial",
     content: { ...glaucomaContent({ iopOd: 15 }), sketches: [{ sketchId: "s1", template: "fundus", eye: "od", strokes: [{ points: [[10, 20], [30, 40]] }] }] }
   }, doctor);
-  const finalized = await request(stores, "POST", `/v1/eye/encounters/${draft.body.encounter.encounterId}/finalize`, { expectedRevision: 1 }, doctor);
+  await request(stores, "POST", `/v1/eye/encounters/${draft.body.encounter.encounterId}/exam-confirm`, { expectedRevision: 1, eye: "both" }, doctor);
+  const finalized = await request(stores, "POST", `/v1/eye/encounters/${draft.body.encounter.encounterId}/finalize`, { expectedRevision: 2 }, doctor);
   const version = await request(stores, "GET", `/v1/eye/encounters/${draft.body.encounter.encounterId}/versions/1`, undefined, doctor);
 
   assert.deepEqual(finalized.body.encounter.content.sketches[0].strokes[0].points, [10, 20, 30, 40]);

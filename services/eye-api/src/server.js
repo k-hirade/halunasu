@@ -7,6 +7,7 @@ import {
   requireProductContext
 } from "../../../packages/auth-client/src/index.js";
 import {
+  DEFAULT_ORDER_CATALOG,
   EYE_FINALIZE_ROLES,
   EYE_PRODUCT_ID,
   EYE_PROFILE_ROLES,
@@ -18,6 +19,7 @@ import {
   validateAppointmentStatusInput,
   validateCreateAppointmentInput,
   validateCreateEncounterInput,
+  validateExamConfirmInput,
   validateDrugPresetInput,
   validateFinalizeEncounterInput,
   validatePatientProfileInput,
@@ -35,6 +37,7 @@ import { createPlatformStoreFromEnv } from "../../platform-api/src/store/create-
 import {
   amendEncounter,
   applyEncounterUpdate,
+  confirmExam,
   buildDraftEncounter,
   encounterSummary,
   eyeDropBottleSuggestions,
@@ -143,7 +146,7 @@ async function routeEyeApiRequest(input = {}) {
       platformStore.listFacilities(orgId),
       eyeStore.listDrugPresets(orgId)
     ]);
-    return ok({ context: contextView(context), facilities, drugPresets });
+    return ok({ context: contextView(context), facilities, drugPresets, orderCatalog: DEFAULT_ORDER_CATALOG });
   }
 
   if (method === "GET" && matches(parts, ["v1", "eye", "patients"])) {
@@ -294,7 +297,7 @@ async function routeEyeApiRequest(input = {}) {
           .filter((item) => item.status === "finalized" && item.encounterId !== encounter.encounterId && item.encounterDate <= encounter.encounterDate)
           .reverse()
           .slice(0, 20),
-        readiness: evaluateFinalizeReadiness(encounter.content),
+        readiness: evaluateFinalizeReadiness(encounter.content, { examConfirmations: encounter.examConfirmations }),
         previous,
         changes: previous ? diffEncounterContent(previous.content, encounter.content) : [],
         bottleSuggestions: eyeDropBottleSuggestions(encounter, drugPresets),
@@ -308,10 +311,22 @@ async function routeEyeApiRequest(input = {}) {
       requirePlatformCsrf(input.headers || {}, context.session);
       const validated = validateUpdateEncounterInput(input.body || {});
       const current = await requireEncounter(eyeStore, orgId, encounterId);
-      const updated = applyEncounterUpdate(current, validated, { actor, now });
-      await eyeStore.replaceEncounter(orgId, updated, validated.expectedRevision);
+      const { encounter: updated, changed } = applyEncounterUpdate(current, validated, { actor, now });
+      if (!changed) return ok({ encounter: current });
+      await eyeStore.replaceEncounter(orgId, updated, current.revision);
       await audit({ eventType: "eye.encounter_updated", targetType: "encounter", targetId: encounterId, patientId: updated.patientId, safePayload: { revision: updated.revision } });
       return ok({ encounter: updated });
+    }
+
+    if (method === "POST" && action === "exam-confirm" && parts.length === 5) {
+      requireAccess(context, EYE_WRITE_ROLES, "Eye chart write access is required");
+      requirePlatformCsrf(input.headers || {}, context.session);
+      const validated = validateExamConfirmInput(input.body || {});
+      const current = await requireEncounter(eyeStore, orgId, encounterId);
+      const encounter = confirmExam(current, { ...validated, actor, now });
+      await eyeStore.replaceEncounter(orgId, encounter, current.revision);
+      await audit({ eventType: validated.confirmed ? "eye.exam_confirmed" : "eye.exam_unconfirmed", targetType: "encounter", targetId: encounterId, patientId: encounter.patientId, safePayload: { eye: validated.eye } });
+      return ok({ encounter });
     }
 
     if (method === "POST" && action === "finalize" && parts.length === 5) {
@@ -378,7 +393,9 @@ async function routeEyeApiRequest(input = {}) {
     ]);
     const encountersByPatient = Object.fromEntries(encounters.map((encounter) => [encounter.patientId, {
       encounterId: encounter.encounterId,
-      status: encounter.status
+      status: encounter.status,
+      dilationStartedAt: encounter.content?.flags?.dilationStartedAt || "",
+      plannedOrders: (encounter.content?.orders || []).filter((order) => order.status === "planned").map((order) => order.name)
     }]));
     return ok({ date, appointments, encountersByPatient });
   }

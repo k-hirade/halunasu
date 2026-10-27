@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   daysUntilNextVisit,
@@ -10,14 +10,13 @@ import {
 import { AppointmentDialog } from "./appointment-dialog";
 import { AmendDialog, ConfirmDialog, SaveIndicator } from "./encounter-dialogs";
 import { CandidatesPanel, ComparePanel, HistoryPane, ReadinessPanel, VersionsPanel } from "./encounter-panels";
-import { ExamTable, NextVisit, Prescriptions, Section, setIn, Sketches } from "./encounter-sections";
-import { useEyeApi } from "./eye-api";
+import { DilationFlags, ExamTable, NextVisit, Orders, Prescriptions, Section, setIn, Sketches } from "./encounter-sections";
 import { StatusTag } from "./home-workspace";
 import { CommonDiagnosesList, PatientBanner } from "./patient-banner";
+import { useEncounterDraft } from "./use-encounter-draft";
 import { addDays, EYE_LABELS, formatDate, formatDateTime } from "../lib/format";
 
 const SIDES = ["od", "os"];
-const AUTOSAVE_MS = 1500;
 const SIDE_TABS = [
   ["compare", "前回比較"],
   ["candidates", "候補"],
@@ -26,125 +25,24 @@ const SIDE_TABS = [
 ];
 
 export function EncounterEditor({ encounterId }) {
-  const api = useEyeApi();
   const router = useRouter();
-  const [detail, setDetail] = useState(null);
-  const [context, setContext] = useState(null);
-  const [drugPresets, setDrugPresets] = useState([]);
-  const [content, setContent] = useState(null);
-  const [meta, setMeta] = useState({ encounterDate: "", visitType: "revisit" });
-  const [saveState, setSaveState] = useState("saved");
-  const [error, setError] = useState("");
+  const draft = useEncounterDraft(encounterId);
+  const {
+    detail, setDetail, context, bootstrap, content, meta, encounter, editable, saveState, error, setError, conflict,
+    load, save, update, replaceContent, updateMeta, runAction: runDraftAction, confirmExam
+  } = draft;
   const [notice, setNotice] = useState("");
   const [dialog, setDialog] = useState(null);
   const [booking, setBooking] = useState({ open: false, saved: null });
   const [sideTab, setSideTab] = useState("compare");
   const [historyOpen, setHistoryOpen] = useState(true);
-  const revisionRef = useRef(0);
-  const dirtyRef = useRef(false);
-  const savingRef = useRef(null);
-  // ログイン状態の復元で api の参照が変わっても、カルテを読み直して入力中の内容を上書きしないようにする。
-  const apiRef = useRef(api);
-  apiRef.current = api;
-
-  const load = useCallback(async () => {
-    const [detailPayload, bootstrap] = await Promise.all([
-      apiRef.current(`/v1/eye/encounters/${encounterId}`),
-      apiRef.current("/v1/eye/bootstrap")
-    ]);
-    if (dirtyRef.current) return;
-    setDetail(detailPayload);
-    setContext(bootstrap.context);
-    setDrugPresets(bootstrap.drugPresets.filter((preset) => preset.active !== false));
-    setContent(detailPayload.encounter.content);
-    setMeta({ encounterDate: detailPayload.encounter.encounterDate, visitType: detailPayload.encounter.visitType });
-    revisionRef.current = detailPayload.encounter.revision;
-    setSaveState("saved");
-  }, [encounterId]);
+  const [now, setNow] = useState(Date.now());
+  const drugPresets = bootstrap.drugPresets;
 
   useEffect(() => {
-    load().catch((nextError) => setError(nextError.message));
-  }, [load]);
-
-  const encounter = detail?.encounter;
-  const editable = Boolean(encounter && encounter.status === "draft" && context?.canWrite);
-
-  const save = useCallback(async () => {
-    if (!dirtyRef.current || !editable) return true;
-    if (savingRef.current) return savingRef.current;
-    const snapshot = { content, meta };
-    dirtyRef.current = false;
-    setSaveState("saving");
-    const promise = api(`/v1/eye/encounters/${encounterId}`, {
-      method: "PATCH",
-      body: { expectedRevision: revisionRef.current, content: snapshot.content, ...snapshot.meta }
-    }).then((payload) => {
-      revisionRef.current = payload.encounter.revision;
-      setDetail((current) => ({ ...current, encounter: payload.encounter }));
-      setSaveState(dirtyRef.current ? "dirty" : "saved");
-      setError("");
-      // 保存中に入力が続いた場合は、次の入力を待たずに続けて保存する。
-      if (dirtyRef.current) setTimeout(() => saveRef.current(), 0);
-      return true;
-    }).catch((nextError) => {
-      dirtyRef.current = true;
-      setSaveState("error");
-      setError(nextError.message);
-      return false;
-    }).finally(() => {
-      savingRef.current = null;
-    });
-    savingRef.current = promise;
-    return promise;
-  }, [api, content, editable, encounterId, meta]);
-
-  const saveRef = useRef(save);
-  saveRef.current = save;
-
-  useEffect(() => {
-    if (saveState !== "dirty") return undefined;
-    const handle = setTimeout(() => { save(); }, AUTOSAVE_MS);
-    return () => clearTimeout(handle);
-  }, [save, saveState, content, meta]);
-
-  useEffect(() => {
-    function onKeyDown(event) {
-      if ((event.metaKey || event.ctrlKey) && event.key === "s") {
-        event.preventDefault();
-        save();
-      }
-    }
-    function onBeforeUnload(event) {
-      if (dirtyRef.current) {
-        event.preventDefault();
-        event.returnValue = "";
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("beforeunload", onBeforeUnload);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("beforeunload", onBeforeUnload);
-    };
-  }, [save]);
-
-  const update = useCallback((path, value) => {
-    setContent((current) => setIn(current, path, value));
-    dirtyRef.current = true;
-    setSaveState("dirty");
+    const handle = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(handle);
   }, []);
-
-  const replaceContent = useCallback((next) => {
-    setContent(next);
-    dirtyRef.current = true;
-    setSaveState("dirty");
-  }, []);
-
-  const updateMeta = (patch) => {
-    setMeta((current) => ({ ...current, ...patch }));
-    dirtyRef.current = true;
-    setSaveState("dirty");
-  };
 
   const previous = detail?.previous || null;
   const changes = useMemo(() => {
@@ -158,27 +56,21 @@ export function EncounterEditor({ encounterId }) {
   const readiness = useMemo(() => {
     if (!content) return { blockers: [], warnings: [] };
     try {
-      return evaluateFinalizeReadiness(content);
+      return evaluateFinalizeReadiness(content, { examConfirmations: encounter?.examConfirmations || null });
     } catch {
       return { blockers: [], warnings: [] };
     }
-  }, [content]);
+  }, [content, encounter?.examConfirmations]);
 
   if (error && !detail) return <main className="eye-page"><p className="alert alert-danger" role="alert">{error}</p></main>;
   if (!detail || !content) return <main className="eye-page"><p className="loading">読み込み中…</p></main>;
 
   async function runAction(path, body, after) {
-    const saved = await save();
-    if (!saved) return;
-    try {
-      const payload = await api(path, { method: "POST", body: { expectedRevision: revisionRef.current, ...body } });
-      setDialog(null);
-      if (after) after(payload);
-      else await load();
-    } catch (nextError) {
-      setDialog(null);
-      setError(nextError.message);
-    }
+    const payload = await runDraftAction(path, body);
+    setDialog(null);
+    if (!payload) return;
+    if (after) after(payload);
+    else await load({ force: true });
   }
 
   function copyFrom(kind, source) {
@@ -252,7 +144,12 @@ export function EncounterEditor({ encounterId }) {
         </div>
       </div>
 
-      {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
+      {error ? (
+        <p className="alert alert-danger" role="alert">
+          {error}
+          {conflict ? <> （{conflict.sections.join("・")}） <button className="btn btn-chip" onClick={() => load({ force: true })} type="button">最新の内容を読み込む（この端末の未保存の変更は破棄）</button></> : null}
+        </p>
+      ) : null}
       {notice ? <p className="alert alert-ok" role="status">{notice} <button className="btn btn-chip" onClick={() => setNotice("")} type="button">閉じる</button></p> : null}
       {encounter.amendment ? (
         <p className="alert alert-warn">確定済み v{encounter.versionCount} を修正中です。理由: {encounter.amendment.reason}（{encounter.amendment.requestedBy?.displayName}・{formatDateTime(encounter.amendment.requestedAt)}）</p>
@@ -283,7 +180,19 @@ export function EncounterEditor({ encounterId }) {
           </Section>
 
           <Section id="exam" title="検査">
-            <ExamTable content={content} previous={previous?.content} update={update} />
+            <ExamTable
+              canConfirm={editable}
+              confirmations={encounter.examConfirmations || { od: null, os: null }}
+              content={content}
+              onConfirm={(side, confirmed) => confirmExam(side, confirmed)}
+              previous={previous?.content}
+              update={update}
+            />
+            <DilationFlags content={content} editable={editable} now={now} update={update} />
+          </Section>
+
+          <Section id="orders" title="検査・処置オーダー">
+            <Orders catalog={bootstrap.orderCatalog} content={content} editable={editable} update={update} />
           </Section>
 
           <Section id="findings" title="所見">

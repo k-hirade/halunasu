@@ -23,7 +23,7 @@ export function Section({ title, id, children }) {
   );
 }
 
-export function ExamTable({ content, previous, update }) {
+export function ExamTable({ content, previous, update, confirmations = null, onConfirm = null, canConfirm = false }) {
   const numberInput = (side, path, props = {}) => {
     const value = getIn(content.exam[side], path);
     return (
@@ -97,6 +97,20 @@ export function ExamTable({ content, previous, update }) {
             ))}
           </tr>
           <tr>
+            <th scope="row">矯正の種類・測定時刻</th>
+            {SIDES.map((side) => (
+              <td key={side}>
+                <span className="pair">
+                  <select aria-label={`${EYE_LABELS[side]} 矯正の種類`} className="input" onChange={(event) => update(["exam", side, "vaCorrectionType"], event.target.value)} value={content.exam[side].vaCorrectionType || ""}>
+                    {Object.entries(CORRECTION_TYPE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </select>
+                  <input aria-label={`${EYE_LABELS[side]} 測定時刻`} className="input input-time" onChange={(event) => update(["exam", side, "measuredAt"], event.target.value)} type="time" value={content.exam[side].measuredAt || ""} />
+                  <button className="btn btn-chip" onClick={() => update(["exam", side, "measuredAt"], nowTime())} type="button">今</button>
+                </span>
+              </td>
+            ))}
+          </tr>
+          <tr>
             <th scope="row">眼圧 (mmHg)</th>
             {SIDES.map((side) => (
               <td key={side}>
@@ -112,8 +126,133 @@ export function ExamTable({ content, previous, update }) {
               </td>
             ))}
           </tr>
+          {confirmations ? (
+            <tr className="confirm-row">
+              <th scope="row">確認</th>
+              {SIDES.map((side) => {
+                const confirmation = confirmations[side];
+                return (
+                  <td key={side}>
+                    {confirmation ? (
+                      <span className="confirm-ok">
+                        確認済み（{confirmation.by?.displayName} {formatTime(confirmation.at)}）
+                        {canConfirm ? <button className="btn btn-chip" onClick={() => onConfirm(side, false)} type="button">取消</button> : null}
+                      </span>
+                    ) : hasExamValues(content.exam[side]) ? (
+                      canConfirm ? <button className="btn btn-primary btn-sm" onClick={() => onConfirm(side, true)} type="button">{EYE_LABELS[side]}を確認</button> : <span className="confirm-pending">未確認</span>
+                    ) : <span className="muted small">未入力</span>}
+                  </td>
+                );
+              })}
+            </tr>
+          ) : null}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+const CORRECTION_TYPE_LABELS = { "": "矯正の種類", glasses: "眼鏡", contact: "CL", pinhole: "ピンホール", trial: "検眼レンズ" };
+
+export function hasExamValues(values = {}) {
+  return Boolean(values.vaUncorrected || values.vaCorrected || Number.isFinite(values.iop)
+    || [values.correction, values.refraction].some((item) => item && Object.values(item).some((value) => value !== null && value !== undefined)));
+}
+
+function nowTime() {
+  return new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Tokyo" });
+}
+
+function formatTime(iso) {
+  if (!iso) return "";
+  return new Date(iso).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Tokyo" });
+}
+
+const ORDER_STATUS_LABELS = { planned: "予定", performed: "実施済", cancelled: "取消" };
+
+// 検査・処置のオーダー。予定 → 実施（または取消）。実施者と時刻はサーバーが記録する。
+export function Orders({ content, catalog, update, editable }) {
+  const [code, setCode] = useState(catalog[0]?.code || "");
+  const [eye, setEye] = useState("ou");
+  const rows = content.orders || [];
+  const setStatus = (index, status) => update(["orders", index, "status"], status);
+  const add = () => {
+    const item = catalog.find((entry) => entry.code === code);
+    if (!item) return;
+    update(["orders"], [...rows, {
+      orderId: `ord_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+      code: item.code,
+      name: item.name,
+      kind: item.kind,
+      eye: item.requiresEye ? eye : "",
+      status: "planned",
+      note: ""
+    }]);
+  };
+  return (
+    <div>
+      {rows.length === 0 ? <p className="empty">オーダーはありません。</p> : (
+        <ul className="order-list">
+          {rows.map((order, index) => (
+            <li className={`order-row is-${order.status}`} key={order.orderId}>
+              <span className="order-name">{order.name}{order.eye ? `（${EYE_LABELS[order.eye]}）` : ""}</span>
+              <span className={`tag order-status-${order.status}`}>{ORDER_STATUS_LABELS[order.status]}</span>
+              {order.statusChangedBy ? <span className="muted small">{order.statusChangedBy.displayName} {formatTime(order.statusChangedAt)}</span> : null}
+              {editable ? (
+                <span className="order-actions">
+                  {order.status !== "performed" ? <button className="btn btn-primary btn-sm" onClick={() => setStatus(index, "performed")} type="button">実施</button> : null}
+                  {order.status === "planned" ? <button className="btn btn-chip" onClick={() => setStatus(index, "cancelled")} type="button">取消</button> : null}
+                  {order.status !== "planned" ? <button className="btn btn-chip" onClick={() => setStatus(index, "planned")} type="button">予定に戻す</button> : null}
+                  {order.status === "planned" && !order.statusChangedBy ? (
+                    <button aria-label={`${order.name}を削除`} className="btn btn-chip danger-text" onClick={() => update(["orders"], rows.filter((_, rowIndex) => rowIndex !== index))} type="button">削除</button>
+                  ) : null}
+                </span>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      )}
+      {editable && catalog.length ? (
+        <div className="add-row">
+          <select aria-label="検査・処置" className="input grow" onChange={(event) => setCode(event.target.value)} value={code}>
+            {catalog.map((item) => <option key={item.code} value={item.code}>{item.name}</option>)}
+          </select>
+          <select aria-label="オーダーの眼" className="input" onChange={(event) => setEye(event.target.value)} value={eye}>
+            {Object.entries(EYE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+          <button className="btn btn-ghost" onClick={add} type="button">オーダーを追加</button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// 散瞳タイマーとフラグ。散瞳から20分を過ぎたら診察可能の目安として色を変える。
+export function DilationFlags({ content, update, editable, now = Date.now() }) {
+  const flags = content.flags || {};
+  const minutes = flags.dilationStartedAt ? Math.max(0, Math.floor((now - Date.parse(flags.dilationStartedAt)) / 60000)) : null;
+  return (
+    <div className="flags-row">
+      {flags.dilationStartedAt ? (
+        <span className={`dilation-timer${minutes >= 20 ? " is-ready" : ""}`}>
+          散瞳{flags.dilationEye ? `（${EYE_LABELS[flags.dilationEye]}）` : ""} {minutes}分経過{minutes >= 20 ? " ・ 診察可能の目安" : ""}
+        </span>
+      ) : <span className="muted small">散瞳していません</span>}
+      {editable ? (
+        flags.dilationStartedAt ? (
+          <button className="btn btn-chip" onClick={() => update(["flags"], { ...flags, dilated: false, dilationStartedAt: "", dilationEye: "" })} type="button">散瞳を取り消す</button>
+        ) : (
+          <>
+            <button className="btn btn-ghost" onClick={() => update(["flags"], { ...flags, dilated: true, dilationStartedAt: new Date().toISOString(), dilationEye: "ou" })} type="button">両眼散瞳を開始</button>
+            <button className="btn btn-chip" onClick={() => update(["flags"], { ...flags, dilated: true, dilationStartedAt: new Date().toISOString(), dilationEye: "od" })} type="button">右眼のみ</button>
+            <button className="btn btn-chip" onClick={() => update(["flags"], { ...flags, dilated: true, dilationStartedAt: new Date().toISOString(), dilationEye: "os" })} type="button">左眼のみ</button>
+          </>
+        )
+      ) : null}
+      <label className="check-line">
+        <input checked={Boolean(flags.myopiaTreatment)} disabled={!editable} onChange={(event) => update(["flags"], { ...flags, myopiaTreatment: event.target.checked })} type="checkbox" />
+        近視治療中
+      </label>
     </div>
   );
 }

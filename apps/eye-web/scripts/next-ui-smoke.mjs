@@ -61,7 +61,7 @@ async function runDoctorFlow(browser) {
 
   await page.getByRole("link", { name: /見本 花子/ }).click();
   await page.getByRole("button", { name: "初診カルテを作成" }).click();
-  await page.getByRole("heading", { name: "検査" }).waitFor();
+  await page.getByRole("heading", { name: "検査", exact: true }).waitFor();
   await page.getByLabel("診療日").fill("2026-07-28");
   await page.getByRole("textbox", { name: "主訴", exact: true }).fill("緑内障の定期検査");
   await page.getByLabel("右眼 矯正視力").fill("1.0");
@@ -87,6 +87,9 @@ async function runDoctorFlow(browser) {
   await page.getByRole("button", { name: "シェーマを追加" }).click();
   await drawStroke(page);
   await page.getByText("保存済み").waitFor({ timeout: 15_000 });
+  await page.getByRole("button", { name: "右眼を確認" }).click();
+  await page.getByRole("button", { name: "左眼を確認" }).click();
+  await page.getByText(/確認済み（/u).nth(1).waitFor();
   await page.getByRole("button", { name: "確定する" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "確定する" }).click();
   await page.getByText("確定 v1").first().waitFor();
@@ -101,6 +104,10 @@ async function runDoctorFlow(browser) {
   await page.getByLabel("右眼 眼圧", { exact: true }).fill("23");
   await page.getByText("21 mmHg を超えています").waitFor();
   await page.getByText("保存済み").waitFor({ timeout: 15_000 });
+  await page.getByText("右眼の検査値が未確認です。").first().waitFor();
+  await page.getByRole("button", { name: "右眼を確認" }).click();
+  assert.equal(await page.getByRole("button", { name: "左眼を確認" }).count(), 0, "an eye without values needs no confirmation");
+  await page.locator(".encounter-side .readiness .is-blocker").first().waitFor({ state: "detached" });
   const changes = await page.locator(".changes").innerText();
   assert.match(changes, /右眼 矯正視力[\s\S]*1\.0[\s\S]*0\.8/u);
   assert.match(changes, /右眼 眼圧[\s\S]*18[\s\S]*23/u);
@@ -178,9 +185,24 @@ async function runOrthoptistFlow(browser) {
   await login(page, "orthoptist");
   await page.getByRole("link", { name: /試験 一郎/ }).click();
   await page.getByRole("button", { name: "初診カルテを作成" }).click();
-  await page.getByRole("heading", { name: "検査" }).waitFor();
+  await page.getByRole("heading", { name: "検査", exact: true }).waitFor();
   assert.equal(await page.getByRole("button", { name: "確定する" }).count(), 0, "orthoptists cannot finalize");
   await page.getByText("確定は医師が行います").waitFor();
+
+  // 検査員用の画面で値を入れて確認、散瞳を開始、オーダーを実施する
+  await page.goto(`${page.url()}/exam`);
+  await page.getByRole("heading", { name: "検査値" }).waitFor();
+  await page.getByLabel("右眼 矯正視力").fill("0.7");
+  await page.getByLabel("右眼 眼圧", { exact: true }).fill("14");
+  await page.getByText("保存済み").waitFor({ timeout: 15_000 });
+  await page.getByRole("button", { name: "両眼の検査値を確認済みにする" }).click();
+  await page.getByText(/確認済み（視能訓練士/u).first().waitFor();
+  await page.getByRole("button", { name: "両眼散瞳を開始" }).click();
+  await page.getByText(/散瞳（両眼） 0分経過/u).waitFor();
+  await page.getByRole("button", { name: "オーダーを追加" }).click();
+  await page.locator(".order-row").getByRole("button", { name: "実施" }).click();
+  await page.locator(".order-row .order-status-performed").waitFor();
+  await page.getByText("保存済み").waitFor({ timeout: 15_000 });
   await context.close();
 }
 

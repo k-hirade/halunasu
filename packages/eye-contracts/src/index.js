@@ -10,6 +10,35 @@ export const PRESCRIPTION_KINDS = Object.freeze(["eye_drop", "eye_ointment", "or
 export const IOP_METHODS = Object.freeze(["nct", "goldmann", "icare", "other"]);
 export const SKETCH_TEMPLATES = Object.freeze(["anterior", "fundus", "blank"]);
 export const DIAGNOSIS_STATUSES = Object.freeze(["active", "resolved", "suspected"]);
+export const VA_CORRECTION_TYPES = Object.freeze(["", "glasses", "contact", "pinhole", "trial"]);
+export const ORDER_KINDS = Object.freeze(["exam", "procedure"]);
+export const ORDER_STATUSES = Object.freeze(["planned", "performed", "cancelled"]);
+// 受診カルテの項目。保存と衝突判定はこの単位で行う。
+export const ENCOUNTER_SECTIONS = Object.freeze([
+  "chiefComplaint", "history", "exam", "findings", "sketches", "diagnoses", "assessment", "plan",
+  "prescriptions", "nextVisit", "staffNote", "orders", "flags"
+]);
+// 検査・処置の標準カタログ。医院ごとの追加はセットで行う。
+export const DEFAULT_ORDER_CATALOG = Object.freeze([
+  { code: "va", name: "視力検査", kind: "exam", requiresEye: true },
+  { code: "refraction", name: "屈折検査（他覚）", kind: "exam", requiresEye: true },
+  { code: "iop", name: "眼圧検査", kind: "exam", requiresEye: true },
+  { code: "iop_gat", name: "精密眼圧測定（GAT）", kind: "exam", requiresEye: true },
+  { code: "slit_lamp", name: "細隙灯顕微鏡検査", kind: "exam", requiresEye: true },
+  { code: "fundus_dilated", name: "精密眼底検査（散瞳）", kind: "exam", requiresEye: true },
+  { code: "vf_static", name: "静的視野検査", kind: "exam", requiresEye: true },
+  { code: "vf_kinetic", name: "動的視野検査", kind: "exam", requiresEye: true },
+  { code: "oct_retina", name: "OCT（網膜）", kind: "exam", requiresEye: true },
+  { code: "oct_disc", name: "OCT（視神経乳頭）", kind: "exam", requiresEye: true },
+  { code: "fundus_photo", name: "眼底写真", kind: "exam", requiresEye: true },
+  { code: "keratometry", name: "角膜曲率測定", kind: "exam", requiresEye: true },
+  { code: "axial_length", name: "眼軸長測定", kind: "exam", requiresEye: true },
+  { code: "endothelium", name: "角膜内皮細胞検査", kind: "exam", requiresEye: true },
+  { code: "tear", name: "涙液検査（BUT・シルマー）", kind: "exam", requiresEye: true },
+  { code: "dilation", name: "散瞳", kind: "procedure", requiresEye: true },
+  { code: "ivi", name: "硝子体内注射", kind: "procedure", requiresEye: true },
+  { code: "foreign_body", name: "角膜異物除去", kind: "procedure", requiresEye: true }
+]);
 export const DIAGNOSIS_OUTCOMES = Object.freeze(["", "cured", "discontinued", "transferred", "deceased", "other"]);
 export const ALLERGY_CATEGORIES = Object.freeze(["drug", "food", "contrast", "latex", "other"]);
 export const ALLERGY_SEVERITIES = Object.freeze(["unknown", "mild", "moderate", "severe"]);
@@ -67,8 +96,18 @@ export function validateUpdateEncounterInput(input = {}) {
     expectedRevision,
     encounterDate: input.encounterDate === undefined ? undefined : requiredDate(input.encounterDate, "encounterDate"),
     visitType: input.visitType === undefined ? undefined : requiredEnum(input.visitType, VISIT_TYPES, "visitType"),
-    content: validateEncounterContent(input.content || {})
+    sections: validateEncounterSections(input)
   };
+}
+
+// 保存は変更した項目だけを送る（sections）。content を丸ごと送る古い形も受け付ける。
+function validateEncounterSections(input) {
+  const source = isPlainObject(input.sections) ? input.sections : isPlainObject(input.content) ? input.content : {};
+  const keys = Object.keys(source).filter((key) => ENCOUNTER_SECTIONS.includes(key));
+  const unknown = Object.keys(source).filter((key) => !ENCOUNTER_SECTIONS.includes(key));
+  if (unknown.length) throw validationError(`unknown section: ${unknown.join(", ")}`, "sections");
+  const validated = validateEncounterContent(Object.fromEntries(keys.map((key) => [key, source[key]])));
+  return Object.fromEntries(keys.map((key) => [key, validated[key]]));
 }
 
 export function validateFinalizeEncounterInput(input = {}) {
@@ -113,8 +152,55 @@ export function validateEncounterContent(input = {}) {
     plan: optionalText(input.plan, "content.plan"),
     prescriptions: validatePrescriptions(input.prescriptions),
     nextVisit: validateNextVisit(input.nextVisit || {}),
-    staffNote: optionalText(input.staffNote, "content.staffNote")
+    staffNote: optionalText(input.staffNote, "content.staffNote"),
+    orders: validateOrders(input.orders),
+    flags: validateFlags(input.flags || {})
   };
+}
+
+function validateOrders(value) {
+  return optionalList(value, "content.orders", MAX_LIST).map((item, index) => {
+    const field = `content.orders.${index}`;
+    if (!isPlainObject(item)) throw validationError(`${field} must be an object`, field);
+    return {
+      orderId: requiredString(item.orderId, `${field}.orderId`, MAX_SHORT_TEXT),
+      code: optionalString(item.code, `${field}.code`, 60),
+      name: optionalString(item.name, `${field}.name`, MAX_SHORT_TEXT),
+      kind: optionalEnum(item.kind, ORDER_KINDS, `${field}.kind`) || "exam",
+      eye: optionalEnum(item.eye, EYE_TARGETS, `${field}.eye`),
+      status: optionalEnum(item.status, ORDER_STATUSES, `${field}.status`) || "planned",
+      note: optionalString(item.note, `${field}.note`, MAX_SHORT_TEXT),
+      statusChangedAt: optionalString(item.statusChangedAt, `${field}.statusChangedAt`, 40),
+      statusChangedBy: isPlainObject(item.statusChangedBy) ? {
+        memberId: optionalString(item.statusChangedBy.memberId, `${field}.statusChangedBy.memberId`, MAX_SHORT_TEXT),
+        displayName: optionalString(item.statusChangedBy.displayName, `${field}.statusChangedBy.displayName`, MAX_SHORT_TEXT)
+      } : null
+    };
+  });
+}
+
+function validateFlags(input) {
+  if (!isPlainObject(input)) throw validationError("flags must be an object", "content.flags");
+  const startedAt = optionalString(input.dilationStartedAt, "content.flags.dilationStartedAt", 40);
+  if (startedAt && Number.isNaN(Date.parse(startedAt))) {
+    throw validationError("content.flags.dilationStartedAt must be an ISO timestamp", "content.flags.dilationStartedAt");
+  }
+  return {
+    dilated: Boolean(input.dilated) || Boolean(startedAt),
+    dilationStartedAt: startedAt,
+    dilationEye: optionalEnum(input.dilationEye, EYE_TARGETS, "content.flags.dilationEye"),
+    myopiaTreatment: Boolean(input.myopiaTreatment)
+  };
+}
+
+export function validateExamConfirmInput(input = {}) {
+  const expectedRevision = Number(input.expectedRevision);
+  if (!Number.isInteger(expectedRevision) || expectedRevision < 1) {
+    throw validationError("expectedRevision must be a positive integer", "expectedRevision");
+  }
+  const eye = String(input.eye || "");
+  if (!["od", "os", "both"].includes(eye)) throw validationError("eye must be od, os, or both", "eye");
+  return { expectedRevision, eye, confirmed: input.confirmed !== false };
 }
 
 function validateExam(input) {
@@ -130,7 +216,9 @@ function validateEyeExam(input, field) {
     correction: validateRefraction(input.correction || {}, `${field}.correction`),
     refraction: validateRefraction(input.refraction || {}, `${field}.refraction`),
     iop: optionalNumber(input.iop, `${field}.iop`, { min: 0, max: 90 }),
-    iopMethod: optionalEnum(input.iopMethod, IOP_METHODS, `${field}.iopMethod`)
+    iopMethod: optionalEnum(input.iopMethod, IOP_METHODS, `${field}.iopMethod`),
+    vaCorrectionType: optionalEnum(input.vaCorrectionType, VA_CORRECTION_TYPES, `${field}.vaCorrectionType`),
+    measuredAt: optionalTime(input.measuredAt, `${field}.measuredAt`)
   };
 }
 

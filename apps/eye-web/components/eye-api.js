@@ -28,6 +28,7 @@ export function useEyeApi() {
       const error = new Error(userMessage(response.status, payload));
       error.status = response.status;
       error.field = payload.field;
+      error.details = payload.details;
       throw error;
     }
     return payload;
@@ -35,9 +36,10 @@ export function useEyeApi() {
 }
 
 function userMessage(status, payload) {
-  if (status === 409) return "ほかの端末で更新されました。画面を読み込み直してください。";
+  if (status === 409) return payload.message && /[ぁ-んァ-ン一-龠]/u.test(payload.message) ? payload.message : "ほかの端末で更新されました。画面を読み込み直してください。";
   if (status === 403) return "この操作を行う権限がありません。";
   if (status === 404) return "対象が見つかりません。";
+  if (status === 400 && payload.details?.blockers) return `確定できません: ${payload.details.blockers.map((item) => item.message).join(" ")}`;
   if (status === 400 && payload.field) return `入力を確認してください（${payload.field}）: ${payload.message}`;
   return payload.message || `エラーが発生しました（HTTP ${status}）`;
 }

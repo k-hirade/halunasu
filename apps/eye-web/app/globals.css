@@ -1665,3 +1665,103 @@ fieldset:disabled .input::placeholder {
     flex-direction: column;
   }
 }
+
+/* 検査: 確認・オーダー・散瞳 */
+.input.input-time {
+  flex: 0 0 auto;
+  width: 110px;
+}
+
+.confirm-row td {
+  vertical-align: middle;
+}
+
+.confirm-ok {
+  color: var(--green);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.confirm-pending {
+  color: var(--amber);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.order-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.order-row {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.order-row.is-cancelled .order-name {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.order-name {
+  font-weight: 700;
+}
+
+.order-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.tag.order-status-planned {
+  background: var(--amber-soft);
+  border-color: #fedf89;
+  color: var(--amber);
+}
+
+.tag.order-status-performed {
+  background: var(--green-soft);
+  border-color: #abefc6;
+  color: var(--green);
+}
+
+.flags-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-top: 12px;
+}
+
+.dilation-timer {
+  background: var(--amber-soft);
+  border-radius: 6px;
+  color: var(--amber);
+  font-weight: 800;
+  padding: 2px 8px;
+}
+
+.dilation-timer.is-ready {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.exam-workbench .workbench-form {
+  margin: 0 auto;
+  max-width: 1100px;
+}
+
+.exam-workbench .input.input-va {
+  font-size: 20px;
+  min-height: 48px;
+  width: 140px;
+}
+
+.exam-workbench .input.input-num {
+  min-height: 48px;
+}
