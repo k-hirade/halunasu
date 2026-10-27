@@ -97,6 +97,18 @@
       "name": "www",
       "content": "halunasu-lp-prod.netlify.app",
       "proxied": false
+    },
+    {
+      "type": "CNAME",
+      "name": "eye.stg",
+      "content": "halunasu-eye-stg.netlify.app",
+      "proxied": false
+    },
+    {
+      "type": "CNAME",
+      "name": "eye",
+      "content": "halunasu-eye-prod.netlify.app",
+      "proxied": false
     }
   ],
   "api": []

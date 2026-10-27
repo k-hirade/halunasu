@@ -17,8 +17,8 @@ REPOSITORY="${REPOSITORY:-halunasu-services}"
 TARGET_PRODUCT="${TARGET_PRODUCT:-all}"
 TARGET_ENV="${TARGET_ENV:-all}"
 
-if [[ "${TARGET_PRODUCT}" != "all" && "${TARGET_PRODUCT}" != "care" ]]; then
-  echo "TARGET_PRODUCT must be all or care." >&2
+if [[ "${TARGET_PRODUCT}" != "all" && "${TARGET_PRODUCT}" != "care" && "${TARGET_PRODUCT}" != "eye" ]]; then
+  echo "TARGET_PRODUCT must be all, care, or eye." >&2
   exit 64
 fi
 if [[ "${TARGET_ENV}" != "all" && "${TARGET_ENV}" != "stg" && "${TARGET_ENV}" != "prod" ]]; then
@@ -29,6 +29,12 @@ if [[ "${TARGET_PRODUCT}" == "care" \
   && ( "${TARGET_ENV}" == "all" || "${TARGET_ENV}" == "prod" ) \
   && "${P10_ALLOW_PROD:-}" != "yes" ]]; then
   echo "Refusing Care production provisioning without P10_ALLOW_PROD=yes" >&2
+  exit 65
+fi
+if [[ "${TARGET_PRODUCT}" == "eye" \
+  && ( "${TARGET_ENV}" == "all" || "${TARGET_ENV}" == "prod" ) \
+  && "${P10_ALLOW_PROD:-}" != "yes" ]]; then
+  echo "Refusing Eye production provisioning without P10_ALLOW_PROD=yes" >&2
   exit 65
 fi
 
@@ -432,6 +438,62 @@ provision_care_environment() {
   add_project_role "${care_project}" "${member}" roles/secretmanager.secretAccessor
   add_project_role "${core_project}" "${member}" roles/datastore.viewer
 }
+
+# 眼科カルテ: 独立プロジェクト。患者の登録・更新と監査記録のため Core Firestore への書き込みが要る。
+provision_eye_environment() {
+  local env="$1"
+  local core_project
+  local eye_project
+  if [[ "${env}" == "stg" ]]; then
+    core_project="${CORE_STG}"
+    eye_project="halunasu-eye-stg"
+  else
+    core_project="${CORE_PROD}"
+    eye_project="halunasu-eye-prod"
+  fi
+
+  echo "== Eye project: ${eye_project} =="
+  if ! ensure_billing "${eye_project}"; then
+    echo "Unable to provision Eye while billing is unavailable: ${eye_project}" >&2
+    return 1
+  fi
+
+  enable_services "${eye_project}" \
+    artifactregistry.googleapis.com \
+    cloudbuild.googleapis.com \
+    firestore.googleapis.com \
+    iam.googleapis.com \
+    run.googleapis.com \
+    secretmanager.googleapis.com \
+    storage.googleapis.com
+  ensure_artifact_repo "${eye_project}"
+  ensure_regional_cloudbuild_bucket "${eye_project}"
+  ensure_firestore "${eye_project}"
+  ensure_cloud_build_account_roles "${eye_project}"
+  ensure_service_account "${eye_project}" "halunasu-eye-api" "Halunasu Eye API"
+
+  local session_secret
+  session_secret="$(secret_value_or_generate "${core_project}" "APP_SESSION_SIGNING_SECRET")"
+  ensure_secret "${eye_project}" "APP_SESSION_SIGNING_SECRET"
+  add_secret_version "${eye_project}" "APP_SESSION_SIGNING_SECRET" "${session_secret}"
+
+  local member="serviceAccount:halunasu-eye-api@${eye_project}.iam.gserviceaccount.com"
+  add_project_role "${eye_project}" "${member}" roles/datastore.user
+  add_project_role "${eye_project}" "${member}" roles/logging.logWriter
+  add_project_role "${eye_project}" "${member}" roles/secretmanager.secretAccessor
+  add_project_role "${core_project}" "${member}" roles/datastore.user
+}
+
+if [[ "${TARGET_PRODUCT}" == "eye" ]]; then
+  if [[ "${TARGET_ENV}" == "all" || "${TARGET_ENV}" == "stg" ]]; then
+    provision_eye_environment stg
+  fi
+  if [[ "${TARGET_ENV}" == "all" || "${TARGET_ENV}" == "prod" ]]; then
+    provision_eye_environment prod
+  fi
+  echo "Eye provisioning complete."
+  exit 0
+fi
 
 if [[ "${TARGET_PRODUCT}" == "care" ]]; then
   if [[ "${TARGET_ENV}" == "all" || "${TARGET_ENV}" == "stg" ]]; then

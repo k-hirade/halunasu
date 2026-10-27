@@ -70,6 +70,23 @@ const appConfigs = {
         NEXT_PUBLIC_CORE_ADMIN_BASE_URL: env === "stg" ? "https://admin.stg.halunasu.com" : "https://admin.halunasu.com"
       };
     }
+  },
+  "eye-web": {
+    baseDir: "apps/eye-web",
+    packageName: "@halunasu/eye-web",
+    requiredTargets: ["platform", "eye"],
+    envForTarget(env, targets) {
+      return {
+        HALUNASU_ENV: env,
+        NEXT_PUBLIC_HALUNASU_ENV: env,
+        PLATFORM_PROXY_TARGET: targets.platform,
+        EYE_PROXY_TARGET: targets.eye,
+        PLATFORM_BASE_URL: targets.platform,
+        NEXT_PUBLIC_PLATFORM_BASE_URL: "/api/platform",
+        EYE_BASE_URL: targets.eye,
+        NEXT_PUBLIC_EYE_BASE_URL: "/api/eye"
+      };
+    }
   }
 };
 
@@ -102,7 +119,7 @@ for (const app of apps) {
   }
 }
 
-console.log("P18 Netlify Core Admin / Fee / Care Fee Next.js deploy");
+console.log("P18 Netlify Core Admin / Fee / Care Fee / Eye Next.js deploy");
 console.log(`Apply: ${apply}`);
 console.log(`Environment: ${targetEnv}`);
 console.log(`App: ${targetApp}`);
@@ -354,5 +371,5 @@ function formatCommand(parts) {
 }
 
 function printUsage() {
-  console.log("Usage: npm run deploy:netlify-admin-fee-next -- [--env stg|prod|all] [--app core-admin|fee-web|care-fee-web|all] [--apply]");
+  console.log("Usage: npm run deploy:netlify-admin-fee-next -- [--env stg|prod|all] [--app core-admin|fee-web|care-fee-web|eye-web|all] [--apply]");
 }

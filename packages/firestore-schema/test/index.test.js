@@ -5,6 +5,10 @@ import {
   auditEventPath,
   chartingEncounterPath,
   careFeeAuditLogPath,
+  eyeAuditLogPath,
+  eyeDrugPresetPath,
+  eyeEncounterPath,
+  eyeEncounterVersionPath,
   careFeeEpisodePath,
   careFeeEvidenceReceiptPath,
   careFeeFacilitySettingsPath,
@@ -83,6 +87,10 @@ test("builds platform document paths", () => {
     `organizations/org_123/sidecar_adoption_guards/${"a".repeat(64)}`
   );
   assert.equal(careFeeEpisodePath("org_123", "cep_456"), "organizations/org_123/care_fee_episodes/cep_456");
+  assert.equal(eyeEncounterPath("org_123", "eenc_456"), "organizations/org_123/eye_encounters/eenc_456");
+  assert.equal(eyeEncounterVersionPath("org_123", "eenc_456_v1"), "organizations/org_123/eye_encounter_versions/eenc_456_v1");
+  assert.equal(eyeDrugPresetPath("org_123", "edp_1"), "organizations/org_123/eye_drug_presets/edp_1");
+  assert.equal(eyeAuditLogPath("org_123", "eal_1"), "organizations/org_123/eye_audit_logs/eal_1");
   assert.equal(careFeeMonthlyClaimPath("org_123", "ccm_456"), "organizations/org_123/care_fee_monthly_claims/ccm_456");
   assert.equal(careFeeMonthlyRunPath("org_123", "cmr_456"), "organizations/org_123/care_fee_monthly_runs/cmr_456");
   assert.equal(careFeeFacilitySettingsPath("org_123", "fac_456"), "organizations/org_123/care_fee_facility_settings/fac_456");

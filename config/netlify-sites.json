@@ -56,6 +56,16 @@
       "netlifyUrl": "https://halunasu-referral-stg.netlify.app",
       "targetDomain": "https://referral.stg.halunasu.com",
       "publishDir": "dist/runtime-apps/stg/referral-web"
+    },
+    "eye-web": {
+      "siteName": "halunasu-eye-stg",
+      "siteId": "1b75dd8f-56e1-4ba4-8d09-fd8b41ecb838",
+      "netlifyUrl": "https://halunasu-eye-stg.netlify.app",
+      "targetDomain": "https://eye.stg.halunasu.com",
+      "deploymentMode": "next",
+      "provisioningStatus": "registered",
+      "baseDir": "apps/eye-web",
+      "publishDir": "dist/runtime-apps/stg/eye-web"
     }
   },
   "prod": {
@@ -115,6 +125,16 @@
       "netlifyUrl": "https://halunasu-referral-prod.netlify.app",
       "targetDomain": "https://referral.halunasu.com",
       "publishDir": "dist/runtime-apps/prod/referral-web"
+    },
+    "eye-web": {
+      "siteName": "halunasu-eye-prod",
+      "siteId": "24aede8a-36bd-420b-ad76-b1df0fc128cf",
+      "netlifyUrl": "https://halunasu-eye-prod.netlify.app",
+      "targetDomain": "https://eye.halunasu.com",
+      "deploymentMode": "next",
+      "provisioningStatus": "registered",
+      "baseDir": "apps/eye-web",
+      "publishDir": "dist/runtime-apps/prod/eye-web"
     }
   }
 }

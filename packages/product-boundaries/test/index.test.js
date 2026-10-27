@@ -28,6 +28,12 @@ const products = Object.freeze({
     app: "referral-web",
     routePrefix: "/v1/referral/",
     packages: ["referral-contracts", "referral-core"]
+  },
+  eye: {
+    service: "eye-api",
+    app: "eye-web",
+    routePrefix: "/v1/eye/",
+    packages: ["eye-contracts", "eye-core"]
   }
 });
 

@@ -86,6 +86,7 @@ project_prefixes_for_env() {
       printf '%s|%s\n' "halunasu-fee-stg" "fee-api-stg"
       printf '%s|%s\n' "halunasu-care-stg" "care-fee-api-stg"
       printf '%s|%s\n' "halunasu-referral-stg" "referral-api-stg"
+      printf '%s|%s\n' "halunasu-eye-stg" "eye-api-stg"
       ;;
     prod)
       printf '%s|%s\n' "medical-core-497610" "platform-api-prod"
@@ -93,6 +94,7 @@ project_prefixes_for_env() {
       printf '%s|%s\n' "halunasu-fee-prod" "fee-api-prod"
       printf '%s|%s\n' "halunasu-care-prod" "care-fee-api-prod"
       printf '%s|%s\n' "halunasu-referral-prod" "referral-api-prod"
+      printf '%s|%s\n' "halunasu-eye-prod" "eye-api-prod"
       ;;
     *)
       echo "Unknown env: ${env}" >&2

@@ -8,7 +8,7 @@ APPLY="false"
 if [[ "${3:-}" == "--apply" ]]; then
   APPLY="true"
 elif [[ "${3:-}" != "" ]]; then
-  echo "Usage: $0 [charting|fee|care|referral] [stg|prod] [--apply]" >&2
+  echo "Usage: $0 [charting|fee|care|referral|eye] [stg|prod] [--apply]" >&2
   exit 64
 fi
 
@@ -21,6 +21,8 @@ case "${PRODUCT}:${ENVIRONMENT}" in
   care:prod) PROJECT_ID="halunasu-care-prod" ;;
   referral:stg) PROJECT_ID="halunasu-referral-stg" ;;
   referral:prod) PROJECT_ID="halunasu-referral-prod" ;;
+  eye:stg) PROJECT_ID="halunasu-eye-stg" ;;
+  eye:prod) PROJECT_ID="halunasu-eye-prod" ;;
   *)
     echo "Unsupported product/environment: ${PRODUCT}/${ENVIRONMENT}" >&2
     exit 64

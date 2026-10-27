@@ -37,6 +37,12 @@ export const collections = Object.freeze({
   careFeeImportJobs: "care_fee_import_jobs",
   careFeeEvidenceReceipts: "care_fee_evidence_receipts",
   careFeeAuditLogs: "care_fee_audit_logs",
+  eyeEncounters: "eye_encounters",
+  eyeEncounterVersions: "eye_encounter_versions",
+  eyeDrugPresets: "eye_drug_presets",
+  eyeAuditLogs: "eye_audit_logs",
+  eyeAppointments: "eye_appointments",
+  eyeDailyCounters: "eye_daily_counters",
   referrals: "referrals"
 });
 
@@ -227,6 +233,30 @@ export function careFeeEvidenceReceiptPath(orgId, receiptId) {
 
 export function careFeeAuditLogPath(orgId, auditLogId) {
   return orgDocPath(orgId, collections.careFeeAuditLogs, auditLogId, "auditLogId");
+}
+
+export function eyeEncounterPath(orgId, encounterId) {
+  return orgDocPath(orgId, collections.eyeEncounters, encounterId, "encounterId");
+}
+
+export function eyeEncounterVersionPath(orgId, versionId) {
+  return orgDocPath(orgId, collections.eyeEncounterVersions, versionId, "versionId");
+}
+
+export function eyeDrugPresetPath(orgId, presetId) {
+  return orgDocPath(orgId, collections.eyeDrugPresets, presetId, "presetId");
+}
+
+export function eyeAppointmentPath(orgId, appointmentId) {
+  return orgDocPath(orgId, collections.eyeAppointments, appointmentId, "appointmentId");
+}
+
+export function eyeDailyCounterPath(orgId, date) {
+  return orgDocPath(orgId, collections.eyeDailyCounters, date, "date");
+}
+
+export function eyeAuditLogPath(orgId, auditLogId) {
+  return orgDocPath(orgId, collections.eyeAuditLogs, auditLogId, "auditLogId");
 }
 
 export function feeSettingsPath(orgId, facilityId = "default") {

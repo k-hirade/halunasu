@@ -193,6 +193,12 @@ deploy_service() {
     service_timeout="${FEE_TIMEOUT:-180}"
     service_max_instances="${FEE_MAX_INSTANCES:-3}"
   fi
+  if [[ "${service}" == eye-api-* ]]; then
+    build_ignore_file=".gcloudignore.eye-api"
+    service_memory="512Mi"
+    service_timeout="60"
+    service_max_instances="${MAX_INSTANCES}"
+  fi
   if [[ "${service}" == care-fee-api-* ]]; then
     build_ignore_file=".gcloudignore.care-fee-api"
     service_memory="512Mi"
@@ -352,6 +358,7 @@ deploy_env() {
   local fee_project="$4"
   local referral_project="$5"
   local care_project="$6"
+  local eye_project="$7"
   local session_cookie_name="halunasu_session"
   local csrf_cookie_name="halunasu_csrf"
   local sidecar_enabled="${HOMIS_SIDECAR_ENABLED:-}"
@@ -702,6 +709,19 @@ deploy_env() {
     "CHARTING_STORE_BACKEND=firestore"
   fi
 
+  if should_deploy "${env}" "eye-api"; then
+    deploy_service "${eye_project}" "eye-api-${env}" "services/eye-api" "halunasu-eye-api" "public" \
+    "HALUNASU_ENV=${env}" \
+    "GOOGLE_CLOUD_PROJECT=${eye_project}" \
+    "EYE_GOOGLE_CLOUD_PROJECT=${eye_project}" \
+    "PLATFORM_GOOGLE_CLOUD_PROJECT=${core_project}" \
+    "GOOGLE_CLOUD_REGION=${REGION}" \
+    "EYE_STORE_BACKEND=firestore" \
+    "PLATFORM_STORE_BACKEND=firestore" \
+    "APP_SESSION_COOKIE_NAME=${session_cookie_name}" \
+    "APP_CSRF_COOKIE_NAME=${csrf_cookie_name}"
+  fi
+
   if should_deploy "${env}" "care-fee-api"; then
     deploy_service "${care_project}" "care-fee-api-${env}" "services/care-fee-api" "halunasu-care-fee-api" "public" \
     "HALUNASU_ENV=${env}" \
@@ -845,7 +865,7 @@ deploy_env() {
     "APP_CSRF_COOKIE_NAME=${csrf_cookie_name}"
   fi
 
-  if [[ "${TARGET_SERVICE}" == "all" || "${TARGET_SERVICE}" == "platform-api" || "${TARGET_SERVICE}" == charting-* || "${TARGET_SERVICE}" == "fee-api" || "${TARGET_SERVICE}" == "care-fee-api" || "${TARGET_SERVICE}" == "referral-api" ]]; then
+  if [[ "${TARGET_SERVICE}" == "all" || "${TARGET_SERVICE}" == "platform-api" || "${TARGET_SERVICE}" == charting-* || "${TARGET_SERVICE}" == "fee-api" || "${TARGET_SERVICE}" == "care-fee-api" || "${TARGET_SERVICE}" == "referral-api" || "${TARGET_SERVICE}" == "eye-api" ]]; then
     run_or_print env TARGET_ENV="${env}" TARGET_SERVICE="${TARGET_SERVICE}" REGION="${REGION}" REPOSITORY="${REPOSITORY}" \
       bash scripts/p19_cleanup_runtime_artifacts.sh --apply
   fi
@@ -859,10 +879,10 @@ should_deploy() {
 }
 
 if [[ "${TARGET_ENV}" == "all" || "${TARGET_ENV}" == "stg" ]]; then
-  deploy_env "stg" "medical-core-stg" "halunasu-charting-stg" "halunasu-fee-stg" "halunasu-referral-stg" "halunasu-care-stg"
+  deploy_env "stg" "medical-core-stg" "halunasu-charting-stg" "halunasu-fee-stg" "halunasu-referral-stg" "halunasu-care-stg" "halunasu-eye-stg"
 fi
 if [[ "${TARGET_ENV}" == "all" || "${TARGET_ENV}" == "prod" ]]; then
-  deploy_env "prod" "medical-core-497610" "halunasu-charting-prod" "halunasu-fee-prod" "halunasu-referral-prod" "halunasu-care-prod"
+  deploy_env "prod" "medical-core-497610" "halunasu-charting-prod" "halunasu-fee-prod" "halunasu-referral-prod" "halunasu-care-prod" "halunasu-eye-prod"
 fi
 
 echo "Deploy script complete."

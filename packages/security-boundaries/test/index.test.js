@@ -4,7 +4,7 @@ import { join, relative } from "node:path";
 import { test } from "node:test";
 
 const root = new URL("../../..", import.meta.url).pathname;
-const productApis = ["charting-api", "fee-api", "care-fee-api", "referral-api"];
+const productApis = ["charting-api", "fee-api", "care-fee-api", "referral-api", "eye-api"];
 const allApis = ["platform-api", ...productApis, "charting-finalize"];
 const migrationLegacyPathPatterns = [
   /^packages\/medical-core\//,

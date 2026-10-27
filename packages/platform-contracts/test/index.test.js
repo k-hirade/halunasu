@@ -74,6 +74,8 @@ test("resolves one MFA policy for every privileged Platform role", () => {
   assert.equal(memberRequiresMfa({ globalRoles: [], productRoles: { homis_sidecar: ["medical_clerk"] } }), true);
   assert.equal(productIds.homisSidecar, "homis_sidecar");
   assert.equal(productIds.careFee, "care_fee");
+  assert.equal(productIds.eye, "eye");
+  assert.equal(memberRequiresMfa({ globalRoles: [], productRoles: { eye: ["orthoptist"] } }), true);
   assert.deepEqual(
     resolveMfaState({ mfaRequired: false, mfaEnrolled: false }, { globalRoles: ["org_owner"] }),
     { required: true, enrolled: false }

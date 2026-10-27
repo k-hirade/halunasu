@@ -3,7 +3,8 @@ export const productIds = Object.freeze({
   fee: "fee",
   careFee: "care_fee",
   referral: "referral",
-  homisSidecar: "homis_sidecar"
+  homisSidecar: "homis_sidecar",
+  eye: "eye"
 });
 
 export const organizationStatuses = Object.freeze(["active", "trialing", "suspended", "closed"]);
@@ -51,8 +52,10 @@ export function memberRequiresMfa(member = {}) {
     return true;
   }
 
-  return Array.isArray(member.productRoles?.[productIds.homisSidecar])
-    && member.productRoles[productIds.homisSidecar].length > 0;
+  return [productIds.homisSidecar, productIds.eye].some((productId) => (
+    Array.isArray(member.productRoles?.[productId])
+    && member.productRoles[productId].length > 0
+  ));
 }
 
 export function resolveMfaState(identity = {}, member = {}) {
