@@ -2,6 +2,7 @@ import {
   collections,
   eyeAppointmentPath,
   eyeAuditLogPath,
+  eyeBillingHandoffPath,
   eyeDailyCounterPath,
   eyeDocumentPath,
   eyeFilePath,
@@ -110,6 +111,15 @@ export class FirestoreEyeStore {
   async listDrugPresets(orgId) {
     return docs(await this.orgCollection(orgId, collections.eyeDrugPresets).get())
       .sort((left, right) => String(left.name).localeCompare(String(right.name), "ja"));
+  }
+
+  async createBillingHandoff(orgId, handoff) {
+    await this.doc(eyeBillingHandoffPath(orgId, handoff.handoffId)).create(handoff);
+    return handoff;
+  }
+
+  async listBillingHandoffsByDate(orgId, date) {
+    return docs(await this.orgCollection(orgId, collections.eyeBillingHandoffs).where("date", "==", date).get());
   }
 
   async createFile(orgId, file) {

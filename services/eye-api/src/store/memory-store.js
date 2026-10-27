@@ -16,6 +16,16 @@ export class MemoryEyeStore {
     this.phrases = new Map();
     this.documents = new Map();
     this.files = new Map();
+    this.billingHandoffs = new Map();
+  }
+
+  createBillingHandoff(orgId, handoff) {
+    this.forOrg(this.billingHandoffs, orgId).set(handoff.handoffId, clone(handoff));
+    return clone(handoff);
+  }
+
+  listBillingHandoffsByDate(orgId, date) {
+    return [...this.forOrg(this.billingHandoffs, orgId).values()].filter((item) => item.date === date).map(clone);
   }
 
   createFile(orgId, file) {

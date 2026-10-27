@@ -709,3 +709,54 @@ test("a doctor reviews the summary of a scanned paper chart", async () => {
   const edited = await request(stores, "PATCH", `/v1/eye/files/${fileId}`, { expectedRevision: 4, summary: "変更後の要約" }, clerk);
   assert.equal(edited.body.file.paper.reviewedBy, null, "changing the summary requires a new review");
 });
+
+test("builds the billing handoff from finalized charts and flags charts amended afterwards", async () => {
+  const stores = createStores();
+  const doctor = await signedHeaders(stores.platformStore, "doctor");
+  const clerk = await signedHeaders(stores.platformStore, "clerk");
+  const patient = await createPatient(stores, doctor);
+  const draft = await request(stores, "POST", "/v1/eye/encounters", {
+    patientId: patient.patientId,
+    encounterDate: "2026-10-27",
+    visitType: "revisit",
+    content: {
+      ...glaucomaContent({ iopOd: 15 }),
+      orders: [
+        { orderId: "o1", code: "vf_static", name: "静的視野検査", kind: "exam", eye: "ou", status: "performed" },
+        { orderId: "o2", code: "oct_disc", name: "OCT（視神経乳頭）", kind: "exam", eye: "ou", status: "cancelled" }
+      ],
+      prescriptions: [
+        { kind: "eye_drop", name: "ラタノプロスト点眼液", eye: "ou", timesPerDay: 1, quantity: 3, unit: "本", usage: "就寝前" },
+        { kind: "eye_drop", name: "チモロール", eye: "ou", timesPerDay: 2, issued: false }
+      ],
+      optical: { type: "glasses", issue: true, od: { sphere: -2 }, os: { sphere: -1.5 }, pd: 62 }
+    }
+  }, doctor);
+  const id = draft.body.encounter.encounterId;
+  await request(stores, "POST", `/v1/eye/encounters/${id}/exam-confirm`, { expectedRevision: 1, eye: "both" }, doctor);
+  await request(stores, "POST", `/v1/eye/encounters/${id}/finalize`, { expectedRevision: 2 }, doctor);
+  await request(stores, "POST", "/v1/eye/encounters", { patientId: patient.patientId, encounterDate: "2026-10-27" }, doctor);
+
+  const day = await request(stores, "GET", "/v1/eye/billing/day?date=2026-10-27", undefined, clerk);
+  assert.equal(day.statusCode, 200);
+  assert.equal(day.body.drafts.length, 1, "unfinished charts are listed as warnings");
+  const [billing] = day.body.encounters;
+  assert.deepEqual(billing.items.map((item) => `${item.category}:${item.name}`), ["検査:静的視野検査", "処方:ラタノプロスト点眼液", "文書:眼鏡処方箋"]);
+  assert.equal(billing.handoff.state, "pending");
+
+  const handed = await request(stores, "POST", "/v1/eye/billing/handoffs", { date: "2026-10-27", encounterIds: [id] }, clerk);
+  assert.equal(handed.statusCode, 201);
+  assert.match(handed.body.csv, /^﻿診療日,患者番号/u);
+  assert.match(handed.body.csv, /2026-10-27,000123,眼科 太郎,ガンカ タロウ,1950-04-01,男,再診,処方,,ラタノプロスト点眼液,両,3,本,,院外,1日1回 就寝前/u);
+  assert.equal((await request(stores, "GET", "/v1/eye/billing/day?date=2026-10-27", undefined, clerk)).body.encounters[0].handoff.state, "handed_off");
+
+  await request(stores, "POST", `/v1/eye/encounters/${id}/amend`, { expectedRevision: 3, reason: "検査の追記" }, doctor);
+  await request(stores, "POST", `/v1/eye/encounters/${id}/finalize`, { expectedRevision: 4 }, doctor);
+  const after = await request(stores, "GET", "/v1/eye/billing/day?date=2026-10-27", undefined, clerk);
+  assert.equal(after.body.encounters[0].handoff.state, "changed", "a re-finalized chart needs another handoff");
+
+  const csv = await request(stores, "GET", "/v1/eye/billing/day.csv?date=2026-10-27", undefined, clerk);
+  assert.equal(csv.headers["content-type"], "text/csv; charset=utf-8");
+  assert.equal((await request(stores, "GET", "/v1/eye/billing/day?date=2026-10-27", undefined, await signedHeaders(stores.platformStore, "viewer"))).statusCode, 403);
+  assert.equal((await request(stores, "POST", "/v1/eye/billing/handoffs", { date: "2026-10-27", encounterIds: ["eenc_missing"] }, clerk)).statusCode, 400);
+});

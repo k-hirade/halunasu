@@ -227,7 +227,7 @@ async function runDoctorFlow(browser) {
 }
 
 async function runReceptionFlow(browser) {
-  const context = await browser.newContext({ viewport: { width: 1366, height: 1000 } });
+  const context = await browser.newContext({ viewport: { width: 1366, height: 1000 }, acceptDownloads: true });
   const page = await context.newPage();
   const pageErrors = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
@@ -262,6 +262,18 @@ async function runReceptionFlow(browser) {
   await page.locator(".board-in_exam .board-card").filter({ hasText: "試験 一郎" }).waitFor();
   await card.getByRole("button", { name: "検査終了" }).click();
   await page.locator(".board-waiting_doctor .board-card").filter({ hasText: "試験 一郎" }).waitFor();
+
+  // 会計連携: 医師が確定した本日のカルテを CSV にして連携済みにする
+  await page.getByRole("link", { name: "会計連携" }).click();
+  await page.locator(".billing-card").filter({ hasText: "見本 花子" }).first().waitFor();
+  await page.getByText(/未確定のカルテが/u).waitFor();
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: /CSV 出力して連携済みにする/u }).click()
+  ]);
+  assert.match(download.suggestedFilename(), /^eye-billing-\d{4}-\d{2}-\d{2}-/u);
+  await page.getByText(/件を連携済みにし、CSV を保存しました。/u).waitFor();
+  await page.locator(".billing-card .billing-state-handed_off").first().waitFor();
 
   assert.deepEqual(pageErrors, []);
   await context.close();

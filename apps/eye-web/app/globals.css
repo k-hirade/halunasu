@@ -1988,3 +1988,75 @@ fieldset:disabled .input::placeholder {
     grid-template-columns: 1fr;
   }
 }
+
+/* 会計連携 */
+.billing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.billing-list {
+  display: grid;
+  gap: 10px;
+}
+
+.billing-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+
+.billing-card.is-changed {
+  border-color: var(--amber);
+  box-shadow: inset 3px 0 0 var(--amber);
+}
+
+.billing-card-head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-bottom: 6px;
+}
+
+.billing-card-head .check-line {
+  margin: 0;
+}
+
+.tag.billing-state-handed_off {
+  background: var(--green-soft);
+  border-color: #abefc6;
+  color: var(--green);
+}
+
+.tag.billing-state-changed {
+  background: var(--amber-soft);
+  border-color: #fedf89;
+  color: var(--amber);
+}
+
+.sr-only {
+  clip: rect(0 0 0 0);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  width: 1px;
+}
+
+.print-only {
+  display: none;
+}
+
+@media print {
+  .print-only {
+    display: block;
+  }
+
+  .billing-card {
+    break-inside: avoid;
+    margin-bottom: 8px;
+  }
+}

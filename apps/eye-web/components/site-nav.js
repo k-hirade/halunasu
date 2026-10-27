@@ -7,6 +7,7 @@ import { usePlatformAuth } from "./platform-auth";
 const LINKS = [
   { href: "/reception", label: "受付" },
   { href: "/", label: "カルテ" },
+  { href: "/billing", label: "会計連携" },
   { href: "/settings", label: "設定" }
 ];
 

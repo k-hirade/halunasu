@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import http from "node:http";
 import {
   forbiddenError,
@@ -57,6 +58,7 @@ import {
   buildAppointment,
   isActiveAppointment
 } from "./appointments.js";
+import { billingCsv, buildBillingEncounter, handoffStatus } from "./billing.js";
 import {
   applyDocumentUpdate,
   buildDocumentDraft,
@@ -687,6 +689,43 @@ async function routeEyeApiRequest(input = {}) {
     }
   }
 
+  if (method === "GET" && (matches(parts, ["v1", "eye", "billing", "day"]) || matches(parts, ["v1", "eye", "billing", "day.csv"]))) {
+    requireAccess(context, EYE_RECEPTION_ROLES, "Billing access is required");
+    const date = String(url.searchParams.get("date") || today(input));
+    if (!DATE_PATTERN.test(date)) throw badRequest("date must be YYYY-MM-DD", "date");
+    const day = await billingDay(eyeStore, platformStore, orgId, date);
+    if (parts[3] === "day.csv") {
+      await audit({ eventType: "eye.billing_exported", targetType: "billing_day", targetId: date, safePayload: { encounterCount: day.encounters.length } });
+      return { statusCode: 200, raw: Buffer.from(billingCsv(day.encounters), "utf8"), headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="eye-billing-${date}.csv"` } };
+    }
+    return ok(day);
+  }
+
+  if (method === "POST" && matches(parts, ["v1", "eye", "billing", "handoffs"])) {
+    requireAccess(context, EYE_RECEPTION_ROLES, "Billing access is required");
+    requirePlatformCsrf(input.headers || {}, context.session);
+    const date = String(input.body?.date || "");
+    if (!DATE_PATTERN.test(date)) throw badRequest("date must be YYYY-MM-DD", "date");
+    const requested = new Set(Array.isArray(input.body?.encounterIds) ? input.body.encounterIds.map(String) : []);
+    if (requested.size === 0) throw badRequest("連携するカルテを選んでください。", "encounterIds");
+    const day = await billingDay(eyeStore, platformStore, orgId, date);
+    const selected = day.encounters.filter((item) => requested.has(item.encounterId));
+    if (selected.length !== requested.size) throw badRequest("確定済みでないカルテ、または別の日のカルテが含まれています。", "encounterIds");
+    const csv = billingCsv(selected);
+    const handoff = {
+      handoffId: createId("ebh"),
+      orgId,
+      date,
+      encounters: selected.map((item) => ({ encounterId: item.encounterId, version: item.version, fingerprint: item.fingerprint })),
+      csvSha256: createHashHex(csv),
+      createdBy: actor,
+      createdAt: now
+    };
+    await eyeStore.createBillingHandoff(orgId, handoff);
+    await audit({ eventType: "eye.billing_handed_off", targetType: "billing_handoff", targetId: handoff.handoffId, safePayload: { date, encounterCount: selected.length } });
+    return created({ handoff, csv });
+  }
+
   if (method === "GET" && matches(parts, ["v1", "eye", "drug-presets"])) {
     return ok({ drugPresets: await eyeStore.listDrugPresets(orgId) });
   }
@@ -754,6 +793,45 @@ async function requireEncounter(eyeStore, orgId, encounterId) {
   const encounter = await eyeStore.getEncounter(orgId, encounterId);
   if (!encounter) throw notFoundError("encounter not found");
   return encounter;
+}
+
+// 日ごとの会計連携の対象。確定済みカルテと、その日に確定した文書を集める。
+async function billingDay(eyeStore, platformStore, orgId, date) {
+  const [encounters, handoffs] = await Promise.all([
+    eyeStore.listEncountersByDate(orgId, date),
+    eyeStore.listBillingHandoffsByDate(orgId, date)
+  ]);
+  const finalized = encounters.filter((item) => item.status === "finalized");
+  const documentsByPatient = new Map();
+  for (const patientId of new Set(finalized.map((item) => item.patientId))) {
+    const documents = (await eyeStore.listPatientDocuments(orgId, patientId))
+      .filter((item) => item.status === "finalized" && String(item.finalizedAt).slice(0, 10) <= date && item.issueDate === date);
+    documentsByPatient.set(patientId, documents);
+  }
+  // レセコンとの突き合わせに使う患者番号は、カルテの写しではなく最新の患者情報から取る。
+  const patients = new Map();
+  for (const patientId of documentsByPatient.keys()) patients.set(patientId, await platformStore.getPatient(orgId, patientId));
+  const usedDocuments = new Set();
+  const billing = finalized.map((encounter) => {
+    const documents = (documentsByPatient.get(encounter.patientId) || []).filter((item) => !usedDocuments.has(item.documentId));
+    for (const document of documents) usedDocuments.add(document.documentId);
+    const current = patients.get(encounter.patientId);
+    const built = buildBillingEncounter({
+      ...encounter,
+      patientSnapshot: { ...encounter.patientSnapshot, primaryPatientNumber: current?.primaryPatientNumber || "" }
+    }, documents);
+    return { ...built, handoff: handoffStatus(built, handoffs) };
+  });
+  return {
+    date,
+    encounters: billing,
+    drafts: encounters.filter((item) => item.status === "draft").map(encounterSummary),
+    handoffs: handoffs.sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)))
+  };
+}
+
+function createHashHex(text) {
+  return createHash("sha256").update(text).digest("hex");
 }
 
 async function loadProfile(eyeStore, orgId, patientId, encounters) {
