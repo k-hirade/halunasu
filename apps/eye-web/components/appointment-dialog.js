@@ -21,7 +21,7 @@ export function AppointmentDialog({ title, initial, fixedPatient = null, onCance
     }
     let cancelled = false;
     const handle = setTimeout(() => {
-      api(`/v1/eye/patients?q=${encodeURIComponent(query.trim())}`)
+      api("/v1/eye/patients/search", { method: "POST", body: { q: query.trim() } })
         .then((payload) => { if (!cancelled) setCandidates(payload.patients.slice(0, 8)); })
         .catch(() => {});
     }, 200);

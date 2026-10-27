@@ -250,8 +250,10 @@ test("searches patients by name", async () => {
   const stores = createStores();
   const doctor = await signedHeaders(stores.platformStore, "doctor");
   await createPatient(stores, doctor);
-  const response = await request(stores, "GET", `/v1/eye/patients?q=${encodeURIComponent("眼科")}`, undefined, doctor);
+  const response = await request(stores, "POST", "/v1/eye/patients/search", { q: "眼科" }, doctor);
   assert.equal(response.body.patients.length, 1);
+  const leaked = await request(stores, "GET", `/v1/eye/patients?q=${encodeURIComponent("眼科")}`, undefined, doctor);
+  assert.equal(leaked.statusCode, 400, "search terms must not travel in the URL");
 });
 
 function glaucomaContent({ iopOd }) {
@@ -759,4 +761,24 @@ test("builds the billing handoff from finalized charts and flags charts amended 
   assert.equal(csv.headers["content-type"], "text/csv; charset=utf-8");
   assert.equal((await request(stores, "GET", "/v1/eye/billing/day?date=2026-10-27", undefined, await signedHeaders(stores.platformStore, "viewer"))).statusCode, 403);
   assert.equal((await request(stores, "POST", "/v1/eye/billing/handoffs", { date: "2026-10-27", encounterIds: ["eenc_missing"] }, clerk)).statusCode, 400);
+});
+
+test("exports a patient bundle and the clinic for migration", async () => {
+  const stores = createStores();
+  const director = await signedHeaders(stores.platformStore, "director");
+  const doctor = await signedHeaders(stores.platformStore, "doctor");
+  const clerk = await signedHeaders(stores.platformStore, "clerk");
+  const patient = await createPatient(stores, doctor);
+  await finalizedEncounter(stores, doctor, patient.patientId, "2026-07-28", glaucomaContent({ iopOd: 15 }));
+
+  const bundle = await request(stores, "GET", `/v1/eye/patients/${patient.patientId}/export`, undefined, doctor);
+  assert.equal(bundle.body.format, "halunasu-eye-patient-v1");
+  assert.equal(bundle.body.encounters.length, 1);
+  assert.equal(bundle.body.encounterVersions.length, 1);
+  assert.equal((await request(stores, "GET", `/v1/eye/patients/${patient.patientId}/export`, undefined, clerk)).statusCode, 403);
+
+  const clinic = await request(stores, "GET", "/v1/eye/export", undefined, director);
+  assert.equal(clinic.body.format, "halunasu-eye-export-v1");
+  assert.equal(clinic.body.patients.length, 1);
+  assert.equal((await request(stores, "GET", "/v1/eye/export", undefined, doctor)).statusCode, 403);
 });

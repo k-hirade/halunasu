@@ -190,10 +190,35 @@ async function routeEyeApiRequest(input = {}) {
     return ok({ context: contextView(context), facilities, drugPresets, orderSets, phrases, orderCatalog: DEFAULT_ORDER_CATALOG });
   }
 
-  if (method === "GET" && matches(parts, ["v1", "eye", "patients"])) {
-    const search = String(url.searchParams.get("q") || "").trim();
+  // 患者検索の語は氏名などの個人情報なので、アクセスログに残る URL ではなく本文で受け取る。
+  if (method === "POST" && matches(parts, ["v1", "eye", "patients", "search"])) {
+    const search = String(input.body?.q || "").trim().slice(0, 100);
     const patients = await platformStore.listPatients(orgId, { search, limit: 50 });
     return ok({ patients: patients.filter((patient) => patient.status !== "merged") });
+  }
+
+  if (method === "GET" && matches(parts, ["v1", "eye", "patients"])) {
+    if (url.searchParams.has("q")) throw badRequest("patient search must use POST /v1/eye/patients/search", "q");
+    const patients = await platformStore.listPatients(orgId, { search: "", limit: 50 });
+    return ok({ patients: patients.filter((patient) => patient.status !== "merged") });
+  }
+
+  if (method === "GET" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "eye", "patients"]) && parts[4] === "export") {
+    requireAccess(context, EYE_FINALIZE_ROLES, "Patient export requires a doctor or administrator");
+    const patient = await requirePatient(platformStore, orgId, parts[3]);
+    const bundle = await exportPatient(eyeStore, orgId, patient);
+    await audit({ eventType: "eye.patient_exported", targetType: "patient", targetId: patient.patientId, patientId: patient.patientId });
+    return ok(bundle);
+  }
+
+  if (method === "GET" && matches(parts, ["v1", "eye", "export"])) {
+    requireAccess(context, EYE_SETTINGS_ROLES, "Clinic export requires an administrator");
+    const patients = await platformStore.listPatients(orgId);
+    const bundles = [];
+    for (const patient of patients) bundles.push(await exportPatient(eyeStore, orgId, patient));
+    const [drugPresets, orderSets, phrases] = await Promise.all([eyeStore.listDrugPresets(orgId), eyeStore.listOrderSets(orgId), eyeStore.listPhrases(orgId)]);
+    await audit({ eventType: "eye.clinic_exported", targetType: "organization", targetId: orgId, safePayload: { patientCount: bundles.length } });
+    return ok({ format: "halunasu-eye-export-v1", exportedAt: now, orgId, settings: { drugPresets, orderSets, phrases }, patients: bundles });
   }
 
   if (method === "POST" && matches(parts, ["v1", "eye", "patients"])) {
@@ -793,6 +818,29 @@ async function requireEncounter(eyeStore, orgId, encounterId) {
   const encounter = await eyeStore.getEncounter(orgId, encounterId);
   if (!encounter) throw notFoundError("encounter not found");
   return encounter;
+}
+
+// 患者1人分のデータ出力（他社電子カルテへの移行・開示請求用）。ファイル本体は含めず、一覧と保管場所を載せる。
+async function exportPatient(eyeStore, orgId, patient) {
+  const [encounters, documents, files, appointments, profile] = await Promise.all([
+    eyeStore.listPatientEncounters(orgId, patient.patientId),
+    eyeStore.listPatientDocuments(orgId, patient.patientId),
+    eyeStore.listPatientFiles(orgId, patient.patientId),
+    eyeStore.listPatientAppointments(orgId, patient.patientId),
+    eyeStore.getPatientProfile(orgId, patient.patientId)
+  ]);
+  const versions = [];
+  for (const encounter of encounters) versions.push(...await eyeStore.listVersions(orgId, encounter.encounterId));
+  return {
+    format: "halunasu-eye-patient-v1",
+    patient,
+    profile,
+    encounters,
+    encounterVersions: versions,
+    documents,
+    files: files.filter((item) => item.status === "stored").map(({ storagePath, ...file }) => ({ ...file, storagePath })),
+    appointments
+  };
 }
 
 // 日ごとの会計連携の対象。確定済みカルテと、その日に確定した文書を集める。

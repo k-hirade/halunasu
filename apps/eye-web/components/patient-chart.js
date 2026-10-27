@@ -9,6 +9,7 @@ import { FilesPanel } from "./files-panel";
 import { PatientBanner } from "./patient-banner";
 import { TrendPanel } from "./trend-chart";
 import {
+  downloadJson,
   APPOINTMENT_PURPOSE_LABELS,
   APPOINTMENT_STATUS_LABELS,
   diagnosisText,
@@ -128,6 +129,19 @@ export function PatientChart({ patientId }) {
           </section>
           <FilesPanel context={context} onChanged={reload} patientId={patientId} />
           <DocumentsPanel canWrite={Boolean(context?.canWriteDocuments)} patientId={patientId} />
+          {context?.canFinalize ? (
+            <section className="panel">
+              <h2>データの出力</h2>
+              <p className="muted small">開示請求や他院・他システムへの移行用に、この患者の記録（カルテの全版・文書・ファイル一覧・予約）を JSON で保存します。</p>
+              <button className="btn btn-ghost" onClick={async () => {
+                try {
+                  downloadJson(await api(`/v1/eye/patients/${patientId}/export`), `eye-patient-${patient.primaryPatientNumber || patientId}.json`);
+                } catch (nextError) {
+                  setError(nextError.message);
+                }
+              }} type="button">この患者のデータを出力</button>
+            </section>
+          ) : null}
           <section className="panel">
           <h2>カルテ履歴</h2>
           {encounters.length === 0 ? <p className="empty">まだカルテがありません。</p> : (

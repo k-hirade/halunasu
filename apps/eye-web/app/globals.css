@@ -2060,3 +2060,57 @@ fieldset:disabled .input::placeholder {
     margin-bottom: 8px;
   }
 }
+
+/* 暗室表示 */
+:root[data-theme="dark"] {
+  --page: #0b1220;
+  --surface: #111a2b;
+  --surface-muted: #162238;
+  --line: #24324a;
+  --line-strong: #33445f;
+  --text: #e5ecf5;
+  --muted: #94a3b8;
+  --teal: #14b8a6;
+  --teal-dark: #5eead4;
+  --teal-soft: rgba(20, 184, 166, 0.14);
+  --amber: #fbbf24;
+  --amber-soft: rgba(251, 191, 36, 0.12);
+  --red: #f87171;
+  --red-soft: rgba(248, 113, 113, 0.12);
+  --green: #4ade80;
+  --green-soft: rgba(74, 222, 128, 0.12);
+  --blue-soft: rgba(96, 165, 250, 0.12);
+  --blue-ink: #93c5fd;
+  --od: #f87171;
+  --od-soft: rgba(248, 113, 113, 0.08);
+  --os: #60a5fa;
+  --os-soft: rgba(96, 165, 250, 0.08);
+  color-scheme: dark;
+}
+
+:root[data-theme="dark"] .site-nav-link,
+:root[data-theme="dark"] .nav-command,
+:root[data-theme="dark"] .btn.btn-ghost,
+:root[data-theme="dark"] .btn.btn-chip,
+:root[data-theme="dark"] .site-nav-product,
+:root[data-theme="dark"] .exam-table tbody th,
+:root[data-theme="dark"] .field > span {
+  color: var(--text);
+}
+
+:root[data-theme="dark"] .sketch-canvas rect {
+  fill: #f8fafc;
+}
+
+:root[data-theme="dark"] .change-values ins {
+  background: rgba(251, 191, 36, 0.25);
+}
+
+@media print {
+  :root[data-theme="dark"] {
+    --page: #fff;
+    --surface: #fff;
+    --text: #142131;
+    color-scheme: light;
+  }
+}

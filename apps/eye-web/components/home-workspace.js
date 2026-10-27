@@ -35,7 +35,7 @@ export function HomeWorkspace() {
   useEffect(() => {
     let cancelled = false;
     const handle = setTimeout(() => {
-      api(`/v1/eye/patients?q=${encodeURIComponent(query.trim())}`)
+      api("/v1/eye/patients/search", { method: "POST", body: { q: query.trim() } })
         .then((payload) => { if (!cancelled) setPatients(payload.patients); })
         .catch((nextError) => { if (!cancelled) setError(nextError.message); });
     }, 250);

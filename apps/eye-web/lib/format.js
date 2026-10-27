@@ -119,3 +119,12 @@ export const PHRASE_TARGET_LABELS = {
   "findings.lens": "所見：中間透光体",
   "findings.fundus": "所見：眼底"
 };
+
+export function downloadJson(data, name) {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
