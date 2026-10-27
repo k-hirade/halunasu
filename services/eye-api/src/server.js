@@ -140,7 +140,18 @@ async function routeEyeApiRequest(input = {}) {
     return ok({ status: "ok", service: "eye-api" });
   }
   if (method === "GET" && url.pathname === "/readyz") {
+    // deep=1 のときだけ、患者データを使わずに署名付き URL の発行を試す（本番の権限設定の確認用）。
+    let fileSigning;
+    if (url.searchParams.get("deep") === "1" && blobStore.configured) {
+      try {
+        await blobStore.createUploadUrl({ storagePath: "healthcheck/readyz", contentType: "application/pdf", fileId: "healthcheck" });
+        fileSigning = "ok";
+      } catch (error) {
+        fileSigning = `error: ${error.name}`;
+      }
+    }
     return ok({
+      fileSigning,
       status: "ok",
       service: "eye-api",
       env: input.env || "local",
