@@ -67,10 +67,12 @@ export function diagnosisText(diagnosis = {}) {
 
 export function prescriptionText(item = {}) {
   const details = [
+    item.route === "inside" ? "院内" : "",
     item.eye ? EYE_LABELS[item.eye] : "",
     item.timesPerDay ? `1日${item.timesPerDay}回` : "",
-    item.quantity ? `${item.quantity}${item.unit || ""}` : "",
-    item.days ? `${item.days}日分` : ""
+    item.usage || "",
+    item.issued === false ? "今回処方なし" : item.quantity ? `${item.quantity}${item.unit || ""}` : "",
+    item.issued !== false && item.days ? `${item.days}日分` : ""
   ].filter(Boolean);
   return details.length ? `${item.name}（${details.join(" ")}）` : item.name;
 }
@@ -105,3 +107,15 @@ export function minutesSince(iso, now = Date.now()) {
   if (!iso) return null;
   return Math.max(0, Math.floor((now - Date.parse(iso)) / 60000));
 }
+
+export const COMMON_USAGES = ["就寝前", "朝", "朝・夕", "1日3回 朝昼夕", "1日4回 毎食後・就寝前", "疼痛時", "かゆい時", "起床時"];
+export const PHRASE_TARGET_LABELS = {
+  chiefComplaint: "主訴",
+  history: "現病歴・経過",
+  assessment: "評価",
+  plan: "方針",
+  staffNote: "スタッフメモ",
+  "findings.anterior": "所見：前眼部",
+  "findings.lens": "所見：中間透光体",
+  "findings.fundus": "所見：眼底"
+};

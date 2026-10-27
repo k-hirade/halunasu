@@ -1765,3 +1765,64 @@ fieldset:disabled .input::placeholder {
 .exam-workbench .input.input-num {
   min-height: 48px;
 }
+
+/* 処方・セット・定型文 */
+.rx-row.is-not-issued .input {
+  background: var(--surface-muted);
+}
+
+.rx-hint.is-muted {
+  background: var(--surface-muted);
+  color: var(--muted);
+}
+
+.phrase-group h3 {
+  margin: 10px 0 4px;
+}
+
+.phrase-row {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 6px;
+  justify-content: space-between;
+  padding: 4px 0;
+}
+
+.phrase-text {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.phrase-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+}
+
+.set-row {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.set-editor {
+  background: var(--surface-muted);
+  border-radius: 8px;
+  margin-top: 12px;
+  padding: 12px;
+}
+
+.flags-row .check-line {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.exam-table select.input {
+  min-width: 120px;
+}

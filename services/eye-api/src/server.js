@@ -22,6 +22,8 @@ import {
   validateExamConfirmInput,
   validateDrugPresetInput,
   validateFinalizeEncounterInput,
+  validateOrderSetInput,
+  validatePhraseInput,
   validatePatientProfileInput,
   validateUpdateAppointmentInput,
   validateUpdateEncounterInput
@@ -142,11 +144,13 @@ async function routeEyeApiRequest(input = {}) {
   }
 
   if (method === "GET" && matches(parts, ["v1", "eye", "bootstrap"])) {
-    const [facilities, drugPresets] = await Promise.all([
+    const [facilities, drugPresets, orderSets, phrases] = await Promise.all([
       platformStore.listFacilities(orgId),
-      eyeStore.listDrugPresets(orgId)
+      eyeStore.listDrugPresets(orgId),
+      eyeStore.listOrderSets(orgId),
+      eyeStore.listPhrases(orgId)
     ]);
-    return ok({ context: contextView(context), facilities, drugPresets, orderCatalog: DEFAULT_ORDER_CATALOG });
+    return ok({ context: contextView(context), facilities, drugPresets, orderSets, phrases, orderCatalog: DEFAULT_ORDER_CATALOG });
   }
 
   if (method === "GET" && matches(parts, ["v1", "eye", "patients"])) {
@@ -461,6 +465,24 @@ async function routeEyeApiRequest(input = {}) {
     });
     await audit({ eventType: "eye.drug_preset_saved", targetType: "drug_preset", targetId: drugPreset.presetId });
     return ok({ drugPreset });
+  }
+
+  if (method === "POST" && matches(parts, ["v1", "eye", "order-sets"])) {
+    requireAccess(context, EYE_SETTINGS_ROLES, "Eye settings access is required");
+    requirePlatformCsrf(input.headers || {}, context.session);
+    const validated = validateOrderSetInput(input.body || {});
+    const orderSet = await eyeStore.upsertOrderSet(orgId, { ...validated, setId: validated.setId || createId("eset") });
+    await audit({ eventType: "eye.order_set_saved", targetType: "order_set", targetId: orderSet.setId });
+    return ok({ orderSet });
+  }
+
+  if (method === "POST" && matches(parts, ["v1", "eye", "phrases"])) {
+    requireAccess(context, EYE_SETTINGS_ROLES, "Eye settings access is required");
+    requirePlatformCsrf(input.headers || {}, context.session);
+    const validated = validatePhraseInput(input.body || {});
+    const phrase = await eyeStore.upsertPhrase(orgId, { ...validated, phraseId: validated.phraseId || createId("ephr") });
+    await audit({ eventType: "eye.phrase_saved", targetType: "phrase", targetId: phrase.phraseId });
+    return ok({ phrase });
   }
 
   if (method === "GET" && matches(parts, ["v1", "eye", "audit-logs"])) {

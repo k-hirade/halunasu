@@ -6,7 +6,9 @@ import {
   eyeDrugPresetPath,
   eyeEncounterPath,
   eyeEncounterVersionPath,
+  eyeOrderSetPath,
   eyePatientProfilePath,
+  eyePhrasePath,
   organizationPath
 } from "../../../../packages/firestore-schema/src/index.js";
 import { sortByDate } from "../../../../packages/eye-core/src/index.js";
@@ -106,6 +108,35 @@ export class FirestoreEyeStore {
   async listDrugPresets(orgId) {
     return docs(await this.orgCollection(orgId, collections.eyeDrugPresets).get())
       .sort((left, right) => String(left.name).localeCompare(String(right.name), "ja"));
+  }
+
+  async upsertOrderSet(orgId, item) {
+    return this.upsertNamed(eyeOrderSetPath(orgId, item.setId), orgId, item);
+  }
+
+  async listOrderSets(orgId) {
+    return this.listNamed(orgId, collections.eyeOrderSets);
+  }
+
+  async upsertPhrase(orgId, item) {
+    return this.upsertNamed(eyePhrasePath(orgId, item.phraseId), orgId, item);
+  }
+
+  async listPhrases(orgId) {
+    return this.listNamed(orgId, collections.eyePhrases);
+  }
+
+  async upsertNamed(path, orgId, item) {
+    const ref = this.doc(path);
+    const current = dataOrNull(await ref.get());
+    const saved = { ...current, ...item, orgId, createdAt: current?.createdAt || this.timestamp(), updatedAt: this.timestamp() };
+    await ref.set(saved);
+    return saved;
+  }
+
+  async listNamed(orgId, collectionName) {
+    return docs(await this.orgCollection(orgId, collectionName).get())
+      .sort((left, right) => String(left.name || left.label || left.text).localeCompare(String(right.name || right.label || right.text), "ja"));
   }
 
   async getPatientProfile(orgId, patientId) {

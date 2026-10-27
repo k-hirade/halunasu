@@ -4,7 +4,9 @@ import {
   validateCreateAppointmentInput,
   validateDrugPresetInput,
   validateEncounterContent,
-  validatePatientProfileInput
+  validateOrderSetInput,
+  validatePatientProfileInput,
+  validatePhraseInput
 } from "../../packages/eye-contracts/src/index.js";
 import { patientSnapshot } from "../../packages/platform-contracts/src/index.js";
 import { buildAppointment } from "../../services/eye-api/src/appointments.js";
@@ -17,7 +19,7 @@ const DEMO_ACTOR = Object.freeze({ memberId: "demo-seed", loginId: "demo-seed", 
 
 export async function loadEyeDemoData({ platformStore, eyeStore, orgId, today, apply = true, log = () => {} }) {
   const dataset = buildEyeDemoDataset({ today });
-  const summary = { patientsCreated: 0, patientsSkipped: 0, encountersCreated: 0, appointmentsCreated: 0, drugPresetsCreated: 0 };
+  const summary = { patientsCreated: 0, patientsSkipped: 0, encountersCreated: 0, appointmentsCreated: 0, drugPresetsCreated: 0, orderSetsCreated: 0, phrasesCreated: 0 };
 
   const existingPresets = new Set((await eyeStore.listDrugPresets(orgId)).map((preset) => preset.name));
   for (const preset of dataset.drugPresets) {
@@ -25,6 +27,21 @@ export async function loadEyeDemoData({ platformStore, eyeStore, orgId, today, a
     log(`drug preset: ${preset.name}`);
     summary.drugPresetsCreated += 1;
     if (apply) await eyeStore.upsertDrugPreset(orgId, { ...validateDrugPresetInput(preset), presetId: createId("edp") });
+  }
+
+  const existingSets = new Set((await eyeStore.listOrderSets(orgId)).map((item) => item.name));
+  for (const orderSet of dataset.orderSets) {
+    if (existingSets.has(orderSet.name)) continue;
+    log(`order set: ${orderSet.name}`);
+    summary.orderSetsCreated += 1;
+    if (apply) await eyeStore.upsertOrderSet(orgId, { ...validateOrderSetInput(orderSet), setId: createId("eset") });
+  }
+  const existingPhrases = new Set((await eyeStore.listPhrases(orgId)).map((item) => `${item.target}|${item.text}`));
+  for (const phrase of dataset.phrases) {
+    if (existingPhrases.has(`${phrase.target}|${phrase.text}`)) continue;
+    log(`phrase: ${phrase.label}`);
+    summary.phrasesCreated += 1;
+    if (apply) await eyeStore.upsertPhrase(orgId, { ...validatePhraseInput(phrase), phraseId: createId("ephr") });
   }
 
   const appointmentsToday = await eyeStore.listAppointmentsByDate(orgId, today);

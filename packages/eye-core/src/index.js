@@ -203,7 +203,8 @@ export function prescriptionLabel(item = {}) {
   const details = [
     item.eye ? `${{ od: "右", os: "左", ou: "両" }[item.eye]}眼` : "",
     item.timesPerDay ? `1日${item.timesPerDay}回` : "",
-    item.quantity ? `${item.quantity}${item.unit || ""}` : ""
+    item.usage || "",
+    item.issued === false ? "今回処方なし" : item.quantity ? `${item.quantity}${item.unit || ""}` : ""
   ].filter(Boolean);
   return details.length > 0 ? `${item.name}（${details.join(" ")}）` : String(item.name || "");
 }

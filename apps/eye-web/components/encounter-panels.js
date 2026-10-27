@@ -1,6 +1,6 @@
 "use client";
 
-import { diagnosisText, formatDate, formatDateTime, prescriptionText } from "../lib/format";
+import { diagnosisText, formatDate, formatDateTime, PHRASE_TARGET_LABELS, prescriptionText } from "../lib/format";
 
 export function ComparePanel({ changes, previous }) {
   if (!previous) {
@@ -153,5 +153,55 @@ export function CandidatesPanel({ drugPresets, editable, onAddPrescription }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+// 右列の「候補」: セット（処方・オーダー・方針の組み合わせ）と定型文。
+export function SetsAndPhrasesPanel({ orderSets, phrases, editable, onApplySet, onInsertPhrase }) {
+  const activeSets = orderSets.filter((item) => item.active !== false);
+  const activePhrases = phrases.filter((item) => item.active !== false);
+  const groups = Object.entries(PHRASE_TARGET_LABELS)
+    .map(([target, label]) => [target, label, activePhrases.filter((item) => item.target === target)])
+    .filter(([, , items]) => items.length);
+  return (
+    <>
+      <section className="panel">
+        <h2>セット</h2>
+        {activeSets.length === 0 ? <p className="empty">設定画面でセットを登録すると、ここから一括で追加できます。</p> : (
+          <ul className="candidate-buttons">
+            {activeSets.map((item) => (
+              <li key={item.setId}>
+                <button className="candidate-button" disabled={!editable} onClick={() => onApplySet(item)} type="button">
+                  <span>{item.name}</span>
+                  <span className="muted small">処方{item.prescriptions.length}・検査{item.orders.length}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <section className="panel">
+        <h2>定型文</h2>
+        {groups.length === 0 ? <p className="empty">設定画面で定型文を登録できます。</p> : groups.map(([target, label, items]) => (
+          <div className="phrase-group" key={target}>
+            <h3>{label}</h3>
+            {items.map((item) => (
+              <div className="phrase-row" key={item.phraseId}>
+                <span className="phrase-text" title={item.text}>{item.label || item.text}</span>
+                {target.startsWith("findings.") ? (
+                  <span className="phrase-actions">
+                    <button className="btn btn-chip" disabled={!editable} onClick={() => onInsertPhrase(item, "od")} type="button">右</button>
+                    <button className="btn btn-chip" disabled={!editable} onClick={() => onInsertPhrase(item, "os")} type="button">左</button>
+                    <button className="btn btn-chip" disabled={!editable} onClick={() => onInsertPhrase(item, "both")} type="button">両</button>
+                  </span>
+                ) : (
+                  <button className="btn btn-chip" disabled={!editable} onClick={() => onInsertPhrase(item)} type="button">挿入</button>
+                )}
+              </div>
+            ))}
+          </div>
+        ))}
+      </section>
+    </>
   );
 }

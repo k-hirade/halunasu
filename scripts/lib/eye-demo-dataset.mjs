@@ -26,6 +26,42 @@ export const EYE_DEMO_DRUG_PRESETS = Object.freeze([
   { name: "アフリベルセプト硝子体内注射", kind: "injection", defaultTimesPerDay: null, bottleVolumeMl: null, dropsPerBottle: null }
 ]);
 
+export const EYE_DEMO_ORDER_SETS = Object.freeze([
+  {
+    name: "緑内障 定期（視野あり）",
+    prescriptions: [{ ...LATANOPROST, usage: "就寝前" }],
+    orders: [{ code: "vf_static", name: "静的視野検査", kind: "exam", eye: "ou" }, { code: "oct_disc", name: "OCT（視神経乳頭）", kind: "exam", eye: "ou" }],
+    plan: "点眼継続。次回12週後。"
+  },
+  {
+    name: "白内障術後1週",
+    prescriptions: [{ ...LEVOFLOXACIN, usage: "毎食後・就寝前" }, { ...BETAMETHASONE, usage: "毎食後・就寝前" }, { ...BROMFENAC, usage: "朝・夕" }],
+    orders: [],
+    plan: "術後経過良好。点眼3剤継続。次回2週後。"
+  },
+  {
+    name: "抗VEGF注射（右眼）",
+    prescriptions: [{ kind: "injection", name: "アフリベルセプト硝子体内注射", eye: "od" }],
+    orders: [{ code: "oct_retina", name: "OCT（網膜）", kind: "exam", eye: "od" }, { code: "ivi", name: "硝子体内注射", kind: "procedure", eye: "od" }],
+    plan: "注射施行。"
+  },
+  {
+    name: "アレルギー性結膜炎",
+    prescriptions: [{ ...OLOPATADINE, usage: "かゆい時" }],
+    orders: [],
+    plan: "抗アレルギー点眼。症状時に再診。"
+  }
+]);
+
+export const EYE_DEMO_PHRASES = Object.freeze([
+  { target: "chiefComplaint", label: "定期検査", text: "定期検査。自覚症状の変化なし。" },
+  { target: "findings.anterior", label: "前眼部 正常", text: "前房深い 清明" },
+  { target: "findings.lens", label: "IOL 良好", text: "IOL 嚢内固定 良好" },
+  { target: "findings.fundus", label: "眼底 異常なし", text: "異常なし" },
+  { target: "plan", label: "点眼継続", text: "点眼継続。次回同様。" },
+  { target: "plan", label: "アドヒアランス指導", text: "点眼の時間を決めるよう指導（歯みがきの後など）。" }
+]);
+
 export function buildEyeDemoDataset({ today }) {
   const day = (offset) => addDays(today, offset);
 
@@ -86,7 +122,7 @@ export function buildEyeDemoDataset({ today }) {
     { patientName: "初診 太郎", time: "15:00", purpose: "initial", note: "電話予約・右眼の飛蚊症" }
   ];
 
-  return { patients, unregisteredAppointments, drugPresets: EYE_DEMO_DRUG_PRESETS };
+  return { patients, unregisteredAppointments, drugPresets: EYE_DEMO_DRUG_PRESETS, orderSets: EYE_DEMO_ORDER_SETS, phrases: EYE_DEMO_PHRASES };
 }
 
 function glaucomaVisits(day) {

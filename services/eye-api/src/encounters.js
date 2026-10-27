@@ -200,7 +200,7 @@ export function eyeDropBottleSuggestions(encounter, drugPresets = []) {
   const presets = new Map(drugPresets.map((preset) => [preset.presetId, preset]));
   const fallbackDays = daysUntilNextVisit(encounter.encounterDate, encounter.content?.nextVisit || {});
   return (encounter.content?.prescriptions || []).map((item, index) => {
-    if (item.kind !== "eye_drop") return { index, applicable: false };
+    if (item.kind !== "eye_drop" || item.issued === false) return { index, applicable: false };
     const preset = item.presetId ? presets.get(item.presetId) : null;
     const days = item.days || fallbackDays;
     const result = calculateEyeDropBottles({

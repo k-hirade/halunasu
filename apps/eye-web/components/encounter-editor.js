@@ -9,7 +9,7 @@ import {
 } from "@halunasu/eye-core";
 import { AppointmentDialog } from "./appointment-dialog";
 import { AmendDialog, ConfirmDialog, SaveIndicator } from "./encounter-dialogs";
-import { CandidatesPanel, ComparePanel, HistoryPane, ReadinessPanel, VersionsPanel } from "./encounter-panels";
+import { CandidatesPanel, ComparePanel, HistoryPane, ReadinessPanel, SetsAndPhrasesPanel, VersionsPanel } from "./encounter-panels";
 import { DilationFlags, ExamTable, NextVisit, Orders, Prescriptions, Section, setIn, Sketches } from "./encounter-sections";
 import { StatusTag } from "./home-workspace";
 import { CommonDiagnosesList, PatientBanner } from "./patient-banner";
@@ -90,9 +90,43 @@ export function EncounterEditor({ encounterId }) {
       quantity: null,
       unit: preset.kind === "eye_drop" ? "本" : "",
       days: null,
-      note: ""
+      note: "",
+      route: preset.route || "outside",
+      usage: preset.defaultUsage || "",
+      issued: true
     }]);
     setNotice(`処方に「${preset.name}」を追加しました。`);
+  }
+
+  // セットを適用する。同じ処方は重ねず、オーダーは新しい予定として追加し、方針は末尾に足す。
+  function applySet(orderSet) {
+    const keyOf = (row) => `${row.name}|${row.eye || ""}`;
+    const existing = new Set(content.prescriptions.map(keyOf));
+    const prescriptions = [...content.prescriptions, ...orderSet.prescriptions.filter((row) => !existing.has(keyOf(row))).map((row) => ({ ...row }))];
+    const orders = [...(content.orders || []), ...orderSet.orders.map((order) => ({
+      ...order,
+      orderId: `ord_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+      status: "planned",
+      statusChangedAt: "",
+      statusChangedBy: null
+    }))];
+    const plan = orderSet.plan && !content.plan.includes(orderSet.plan) ? [content.plan, orderSet.plan].filter(Boolean).join("\n") : content.plan;
+    replaceContent({ ...content, prescriptions, orders, plan });
+    setNotice(`セット「${orderSet.name}」を追加しました。`);
+  }
+
+  function insertPhrase(phrase, side) {
+    const append = (current) => (current ? `${current}${current.endsWith("\n") ? "" : "\n"}${phrase.text}` : phrase.text);
+    if (phrase.target.startsWith("findings.")) {
+      const key = phrase.target.split(".")[1];
+      const sides = side === "both" ? SIDES : [side];
+      let next = content;
+      for (const target of sides) next = setIn(next, ["findings", target, key], append(next.findings[target][key]));
+      replaceContent(next);
+    } else {
+      update([phrase.target], append(content[phrase.target]));
+    }
+    setNotice(`定型文「${phrase.label || phrase.text.slice(0, 12)}」を挿入しました。`);
   }
 
   const patient = encounter.patientSnapshot;
@@ -269,10 +303,19 @@ export function EncounterEditor({ encounterId }) {
           <div className="side-tab-body" role="tabpanel">
             {sideTab === "compare" ? <ComparePanel changes={changes} previous={previous} /> : null}
             {sideTab === "candidates" ? (
-              <section className="panel">
-                <h2>よく使う薬剤</h2>
-                <CandidatesPanel drugPresets={drugPresets} editable={editable} onAddPrescription={addPrescriptionFromPreset} />
-              </section>
+              <>
+                <SetsAndPhrasesPanel
+                  editable={editable}
+                  onApplySet={applySet}
+                  onInsertPhrase={insertPhrase}
+                  orderSets={bootstrap.orderSets}
+                  phrases={bootstrap.phrases}
+                />
+                <section className="panel">
+                  <h2>よく使う薬剤</h2>
+                  <CandidatesPanel drugPresets={drugPresets} editable={editable} onAddPrescription={addPrescriptionFromPreset} />
+                </section>
+              </>
             ) : null}
             {sideTab === "booking" ? (
               <section className="panel next-booking">

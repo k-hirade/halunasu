@@ -17,7 +17,7 @@ export function useEncounterDraft(encounterId) {
   const api = useEyeApi();
   const [detail, setDetail] = useState(null);
   const [context, setContext] = useState(null);
-  const [bootstrap, setBootstrap] = useState({ drugPresets: [], orderCatalog: [] });
+  const [bootstrap, setBootstrap] = useState({ drugPresets: [], orderCatalog: [], orderSets: [], phrases: [] });
   const [content, setContent] = useState(null);
   const [meta, setMeta] = useState({ encounterDate: "", visitType: "revisit" });
   const [saveState, setSaveState] = useState("saved");
@@ -59,7 +59,9 @@ export function useEncounterDraft(encounterId) {
     setContext(bootstrapPayload.context);
     setBootstrap({
       drugPresets: bootstrapPayload.drugPresets.filter((preset) => preset.active !== false),
-      orderCatalog: bootstrapPayload.orderCatalog || []
+      orderCatalog: bootstrapPayload.orderCatalog || [],
+      orderSets: bootstrapPayload.orderSets || [],
+      phrases: bootstrapPayload.phrases || []
     });
     applyServerEncounter(detailPayload.encounter, { force: force || !contentRef.current });
     setSaveState(dirtyRef.current.size ? "dirty" : "saved");

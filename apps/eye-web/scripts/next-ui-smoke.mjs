@@ -128,11 +128,37 @@ async function runDoctorFlow(browser) {
   await printPage.close();
 
   await page.goto(`${baseUrl}/settings`);
-  await page.getByLabel("薬剤名").fill("ヒアレイン点眼液0.1%");
+  await page.locator("form.add-row").getByLabel("薬剤名").fill("ヒアレイン点眼液0.1%");
   await page.getByLabel("1本あたりの滴数").fill("120");
-  await page.getByRole("button", { name: "追加" }).click();
+  await page.locator("form.add-row").filter({ has: page.getByLabel("1本あたりの滴数") }).getByRole("button", { name: "追加" }).click();
   await page.getByText("を保存しました").waitFor();
   await page.getByText("カルテを確定").first().waitFor();
+
+  // 定型文とセットを登録して、新しいカルテで使う
+  await page.getByLabel("差し込む欄").selectOption("plan");
+  await page.getByLabel("定型文").fill("点眼継続。次回同様。");
+  await page.locator("form.add-row").filter({ has: page.getByLabel("定型文") }).getByRole("button", { name: "追加" }).click();
+  await page.getByRole("cell", { name: "点眼継続。次回同様。" }).waitFor();
+  await page.getByRole("button", { name: "セットを追加" }).click();
+  await page.getByLabel("セット名").fill("緑内障 定期");
+  await page.locator(".set-editor").getByRole("button", { name: "検査を追加" }).click();
+  await page.locator(".set-editor").getByRole("button", { name: "セットを保存" }).click();
+  await page.getByText("緑内障 定期").first().waitFor();
+
+  await page.goto(`${baseUrl}/`);
+  await page.getByLabel("患者検索").fill("見本");
+  await page.locator(".patient-row").filter({ hasText: "見本 花子" }).click();
+  await page.getByRole("heading", { name: "経過" }).waitFor();
+  await page.getByRole("button", { name: /本日のカルテを作成/ }).click();
+  await page.getByRole("tab", { name: "候補" }).click();
+  await page.getByRole("button", { name: /緑内障 定期/ }).click();
+  await page.getByText("セット「緑内障 定期」を追加しました。").waitFor();
+  await page.locator(".order-row").first().waitFor();
+  await page.locator(".phrase-row").getByRole("button", { name: "挿入" }).click();
+  assert.match(await page.getByRole("textbox", { name: "方針", exact: true }).inputValue(), /点眼継続。次回同様。/u);
+  await page.getByRole("button", { name: "左右に分ける" }).first().click();
+  assert.deepEqual(await page.getByRole("combobox", { name: "処方の眼" }).evaluateAll((items) => items.map((item) => item.value)).then((values) => values.slice(0, 2)), ["od", "os"]);
+  await page.getByText("保存済み").waitFor({ timeout: 15_000 });
 
   assert.deepEqual(pageErrors, []);
   await context.close();

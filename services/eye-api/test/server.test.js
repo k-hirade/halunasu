@@ -533,3 +533,50 @@ test("finalization snapshots the diagnoses that are current on the visit date", 
   const detail = await request(stores, "GET", `/v1/eye/encounters/${draft.body.encounter.encounterId}`, undefined, doctor);
   assert.equal(detail.body.profile.revision, 1);
 });
+
+test("manages order sets and phrases for the clinic", async () => {
+  const stores = createStores();
+  const director = await signedHeaders(stores.platformStore, "director");
+  const doctor = await signedHeaders(stores.platformStore, "doctor");
+  const set = await request(stores, "POST", "/v1/eye/order-sets", {
+    name: "緑内障 定期",
+    prescriptions: [{ kind: "eye_drop", name: "ラタノプロスト点眼液", eye: "ou", timesPerDay: 1, usage: "就寝前", route: "outside" }],
+    orders: [{ code: "vf_static", name: "静的視野検査", kind: "exam", eye: "ou" }],
+    plan: "点眼継続。"
+  }, director);
+  assert.equal(set.statusCode, 200);
+  assert.equal(set.body.orderSet.orders[0].status, "planned");
+  assert.equal(set.body.orderSet.prescriptions[0].usage, "就寝前");
+  assert.equal((await request(stores, "POST", "/v1/eye/order-sets", { name: "x" }, doctor)).statusCode, 403);
+
+  const phrase = await request(stores, "POST", "/v1/eye/phrases", { target: "findings.fundus", label: "眼底正常", text: "異常なし" }, director);
+  assert.equal(phrase.body.phrase.target, "findings.fundus");
+  assert.equal((await request(stores, "POST", "/v1/eye/phrases", { target: "nowhere", text: "x" }, director)).statusCode, 400);
+
+  const bootstrap = await request(stores, "GET", "/v1/eye/bootstrap", undefined, doctor);
+  assert.equal(bootstrap.body.orderSets.length, 1);
+  assert.equal(bootstrap.body.phrases.length, 1);
+  assert.ok(bootstrap.body.orderCatalog.some((item) => item.code === "oct_retina"));
+});
+
+test("does not count bottles for prescriptions that are not issued this time", async () => {
+  const stores = createStores();
+  const doctor = await signedHeaders(stores.platformStore, "doctor");
+  const patient = await createPatient(stores, doctor);
+  const draft = await request(stores, "POST", "/v1/eye/encounters", {
+    patientId: patient.patientId,
+    encounterDate: "2026-10-27",
+    visitType: "initial",
+    content: {
+      prescriptions: [
+        { kind: "eye_drop", name: "ラタノプロスト", eye: "ou", timesPerDay: 1, issued: false },
+        { kind: "eye_drop", name: "チモロール", eye: "ou", timesPerDay: 2 }
+      ],
+      nextVisit: { intervalWeeks: 4 }
+    }
+  }, doctor);
+  const detail = await request(stores, "GET", `/v1/eye/encounters/${draft.body.encounter.encounterId}`, undefined, doctor);
+  assert.equal(detail.body.bottleSuggestions[0].applicable, false);
+  assert.equal(detail.body.bottleSuggestions[1].applicable, true);
+  assert.equal(detail.body.encounter.content.prescriptions[1].route, "outside");
+});

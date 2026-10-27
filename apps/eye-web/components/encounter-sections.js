@@ -5,6 +5,7 @@ import { calculateEyeDropBottles } from "@halunasu/eye-core";
 import { SKETCH_TEMPLATE_LABELS, SketchPad } from "./sketch-pad";
 import {
   addDays,
+  COMMON_USAGES,
   EYE_LABELS,
   formatDate,
   formatRefraction,
@@ -303,8 +304,23 @@ export function Prescriptions({ content, drugPresets, nextDays, update, editable
   function changeName(index, name) {
     const preset = presetByName.get(name);
     setRow(index, preset
-      ? { name, presetId: preset.presetId, kind: preset.kind, timesPerDay: rows[index].timesPerDay ?? preset.defaultTimesPerDay ?? null }
+      ? {
+        name,
+        presetId: preset.presetId,
+        kind: preset.kind,
+        timesPerDay: rows[index].timesPerDay ?? preset.defaultTimesPerDay ?? null,
+        usage: rows[index].usage || preset.defaultUsage || "",
+        route: preset.route || rows[index].route || "outside"
+      }
       : { name, presetId: "" });
+  }
+
+  // 両眼の処方を、右眼・左眼の2行に分ける（片眼だけ変更・中止するとき）。
+  function splitEyes(index) {
+    const row = rows[index];
+    const next = [...rows];
+    next.splice(index, 1, { ...row, eye: "od", quantity: null }, { ...row, eye: "os", quantity: null });
+    update(["prescriptions"], next);
   }
 
   return (
@@ -312,15 +328,18 @@ export function Prescriptions({ content, drugPresets, nextDays, update, editable
       <datalist id="drug-presets">
         {drugPresets.map((preset) => <option key={preset.presetId} value={preset.name} />)}
       </datalist>
+      <datalist id="common-usages">
+        {COMMON_USAGES.map((usage) => <option key={usage} value={usage} />)}
+      </datalist>
       {rows.length === 0 ? <p className="empty">処方はありません。</p> : null}
       {rows.map((row, index) => {
         const preset = row.presetId ? drugPresets.find((item) => item.presetId === row.presetId) : null;
         const days = row.days || nextDays;
-        const bottles = row.kind === "eye_drop"
+        const bottles = row.kind === "eye_drop" && row.issued !== false
           ? calculateEyeDropBottles({ timesPerDay: row.timesPerDay, eye: row.eye, days, dropsPerBottle: preset?.dropsPerBottle })
           : null;
         return (
-          <div className="rx-row" key={index}>
+          <div className={`rx-row${row.issued === false ? " is-not-issued" : ""}`} key={index}>
             <div className="row-line">
               <select aria-label="処方の種類" className="input" onChange={(event) => setRow(index, { kind: event.target.value })} value={row.kind}>
                 {Object.entries(PRESCRIPTION_KIND_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -330,21 +349,36 @@ export function Prescriptions({ content, drugPresets, nextDays, update, editable
                 <option value="">眼</option>
                 {Object.entries(EYE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
+              <select aria-label="院内・院外" className="input" onChange={(event) => setRow(index, { route: event.target.value })} value={row.route || "outside"}>
+                <option value="outside">院外</option>
+                <option value="inside">院内</option>
+              </select>
+            </div>
+            <div className="row-line">
               <label className="inline-field">
                 <span>1日</span>
                 <input aria-label="1日の回数" className="input input-num" min="0" onChange={(event) => setRow(index, { timesPerDay: parseNumber(event.target.value) })} type="number" value={row.timesPerDay ?? ""} />
                 <span>回</span>
               </label>
+              <input aria-label="用法" className="input grow" list="common-usages" onChange={(event) => setRow(index, { usage: event.target.value })} placeholder="用法（例: 就寝前）" value={row.usage || ""} />
               <label className="inline-field">
-                <input aria-label="数量" className="input input-num" min="0" onChange={(event) => setRow(index, { quantity: parseNumber(event.target.value) })} step="any" type="number" value={row.quantity ?? ""} />
-                <input aria-label="単位" className="input input-unit" onChange={(event) => setRow(index, { unit: event.target.value })} placeholder="本" value={row.unit} />
+                <input aria-label="数量" className="input input-num" disabled={row.issued === false} min="0" onChange={(event) => setRow(index, { quantity: parseNumber(event.target.value) })} step="any" type="number" value={row.quantity ?? ""} />
+                <input aria-label="単位" className="input input-unit" disabled={row.issued === false} onChange={(event) => setRow(index, { unit: event.target.value })} placeholder="本" value={row.unit} />
               </label>
               <label className="inline-field">
-                <input aria-label="日数" className="input input-num" min="0" onChange={(event) => setRow(index, { days: parseNumber(event.target.value) })} type="number" value={row.days ?? ""} />
+                <input aria-label="日数" className="input input-num" disabled={row.issued === false} min="0" onChange={(event) => setRow(index, { days: parseNumber(event.target.value) })} type="number" value={row.days ?? ""} />
                 <span>日分</span>
               </label>
+              <label className="inline-field" title="継続中だが今回は薬を出さない">
+                <input checked={row.issued !== false} onChange={(event) => setRow(index, { issued: event.target.checked })} type="checkbox" />
+                <span>今回処方</span>
+              </label>
+              {row.eye === "ou" && (row.kind === "eye_drop" || row.kind === "eye_ointment") ? (
+                <button className="btn btn-chip" onClick={() => splitEyes(index)} type="button">左右に分ける</button>
+              ) : null}
               <button aria-label="この処方を削除" className="btn btn-chip danger-text" onClick={() => update(["prescriptions"], rows.filter((_, rowIndex) => rowIndex !== index))} type="button">削除</button>
             </div>
+            {row.issued === false ? <div className="rx-hint is-muted"><span className="small">継続中・今回は処方しません（本数の計算対象外）。</span></div> : null}
             {bottles ? (
               <div className="rx-hint">
                 {bottles.bottles ? (
@@ -365,7 +399,7 @@ export function Prescriptions({ content, drugPresets, nextDays, update, editable
           </div>
         );
       })}
-      <button className="btn btn-ghost" onClick={() => update(["prescriptions"], [...rows, { kind: "eye_drop", name: "", presetId: "", eye: "ou", timesPerDay: null, quantity: null, unit: "", days: null, note: "" }])} type="button">処方を追加</button>
+      <button className="btn btn-ghost" onClick={() => update(["prescriptions"], [...rows, { kind: "eye_drop", name: "", presetId: "", eye: "ou", timesPerDay: null, quantity: null, unit: "", days: null, note: "", route: "outside", usage: "", issued: true }])} type="button">処方を追加</button>
     </div>
   );
 }

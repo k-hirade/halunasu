@@ -8,6 +8,10 @@ export const VISIT_TYPES = Object.freeze(["initial", "revisit"]);
 export const ENCOUNTER_STATUSES = Object.freeze(["draft", "finalized"]);
 export const PRESCRIPTION_KINDS = Object.freeze(["eye_drop", "eye_ointment", "oral", "injection", "other"]);
 export const IOP_METHODS = Object.freeze(["nct", "goldmann", "icare", "other"]);
+export const PRESCRIPTION_ROUTES = Object.freeze(["outside", "inside"]);
+export const PHRASE_TARGETS = Object.freeze([
+  "chiefComplaint", "history", "assessment", "plan", "staffNote", "findings.anterior", "findings.lens", "findings.fundus"
+]);
 export const SKETCH_TEMPLATES = Object.freeze(["anterior", "fundus", "blank"]);
 export const DIAGNOSIS_STATUSES = Object.freeze(["active", "resolved", "suspected"]);
 export const VA_CORRECTION_TYPES = Object.freeze(["", "glasses", "contact", "pinhole", "trial"]);
@@ -133,6 +137,39 @@ export function validateDrugPresetInput(input = {}) {
     defaultTimesPerDay: optionalNumber(input.defaultTimesPerDay, "defaultTimesPerDay", { min: 0, max: 24, integer: true }),
     bottleVolumeMl: optionalNumber(input.bottleVolumeMl, "bottleVolumeMl", { min: 0.1, max: 100 }),
     dropsPerBottle: dropsPerBottle ?? null,
+    defaultUsage: optionalString(input.defaultUsage, "defaultUsage", MAX_SHORT_TEXT),
+    route: optionalEnum(input.route, PRESCRIPTION_ROUTES, "route") || "outside",
+    active: input.active === undefined ? true : Boolean(input.active)
+  };
+}
+
+// セット: よく使う処方・オーダー・方針文の組み合わせ。カルテに一括で追加する。
+export function validateOrderSetInput(input = {}) {
+  const content = validateEncounterContent({
+    prescriptions: input.prescriptions,
+    orders: (input.orders || []).map((order, index) => ({ ...order, orderId: order.orderId || `set-${index}` }))
+  });
+  return {
+    setId: optionalString(input.setId, "setId", MAX_SHORT_TEXT),
+    name: requiredString(input.name, "name", MAX_SHORT_TEXT),
+    description: optionalString(input.description, "description", MAX_SHORT_TEXT),
+    prescriptions: content.prescriptions.map((item, index) => {
+      if (!item.name) throw validationError("set prescriptions need a name", `prescriptions.${index}.name`);
+      return item;
+    }),
+    orders: content.orders.map(({ orderId, statusChangedAt, statusChangedBy, ...order }) => ({ ...order, status: "planned" })),
+    plan: optionalText(input.plan, "plan"),
+    active: input.active === undefined ? true : Boolean(input.active)
+  };
+}
+
+// 定型文: 指定した欄に差し込む文。
+export function validatePhraseInput(input = {}) {
+  return {
+    phraseId: optionalString(input.phraseId, "phraseId", MAX_SHORT_TEXT),
+    target: requiredEnum(input.target, PHRASE_TARGETS, "target"),
+    label: optionalString(input.label, "label", 60),
+    text: requiredString(input.text, "text", MAX_TEXT),
     active: input.active === undefined ? true : Boolean(input.active)
   };
 }
@@ -318,7 +355,10 @@ function validatePrescriptions(value) {
       quantity: optionalNumber(item.quantity, `${field}.quantity`, { min: 0, max: 999 }),
       unit: optionalString(item.unit, `${field}.unit`, 20),
       days: optionalNumber(item.days, `${field}.days`, { min: 0, max: 365, integer: true }),
-      note: optionalString(item.note, `${field}.note`, MAX_SHORT_TEXT)
+      note: optionalString(item.note, `${field}.note`, MAX_SHORT_TEXT),
+      route: optionalEnum(item.route, PRESCRIPTION_ROUTES, `${field}.route`) || "outside",
+      usage: optionalString(item.usage, `${field}.usage`, MAX_SHORT_TEXT),
+      issued: item.issued === undefined ? true : Boolean(item.issued)
     };
   });
 }

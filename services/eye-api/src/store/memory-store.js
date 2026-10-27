@@ -12,6 +12,38 @@ export class MemoryEyeStore {
     this.appointments = new Map();
     this.dailyCounters = new Map();
     this.patientProfiles = new Map();
+    this.orderSets = new Map();
+    this.phrases = new Map();
+  }
+
+  upsertOrderSet(orgId, item) {
+    return this.upsertNamed(this.orderSets, orgId, item, "setId");
+  }
+
+  listOrderSets(orgId) {
+    return this.listNamed(this.orderSets, orgId);
+  }
+
+  upsertPhrase(orgId, item) {
+    return this.upsertNamed(this.phrases, orgId, item, "phraseId");
+  }
+
+  listPhrases(orgId) {
+    return this.listNamed(this.phrases, orgId);
+  }
+
+  upsertNamed(map, orgId, item, idKey) {
+    const records = this.forOrg(map, orgId);
+    const current = records.get(item[idKey]);
+    const saved = { ...current, ...item, orgId, createdAt: current?.createdAt || this.timestamp(), updatedAt: this.timestamp() };
+    records.set(item[idKey], clone(saved));
+    return clone(saved);
+  }
+
+  listNamed(map, orgId) {
+    return [...this.forOrg(map, orgId).values()]
+      .sort((left, right) => String(left.name || left.label || left.text).localeCompare(String(right.name || right.label || right.text), "ja"))
+      .map(clone);
   }
 
   getPatientProfile(orgId, patientId) {
