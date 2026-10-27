@@ -7,6 +7,7 @@ import {
 import { createSignedSession } from "../../platform-api/src/auth/session.js";
 import { MemoryPlatformStore } from "../../platform-api/src/store/memory-store.js";
 import { handleEyeApiRequest } from "../src/server.js";
+import { MemoryBlobStore } from "../src/store/blob-store.js";
 import { MemoryEyeStore } from "../src/store/memory-store.js";
 
 const NOW = new Date("2026-10-27T01:00:00.000Z");
@@ -318,7 +319,7 @@ function createStores(options = {}) {
   if (options.entitlement !== false) {
     platformStore.upsertProductEntitlement(organization.orgId, { productId: "eye", status: "trialing" });
   }
-  return { platformStore, eyeStore };
+  return { platformStore, eyeStore, blobStore: new MemoryBlobStore() };
 }
 
 async function signedHeaders(platformStore, profileName) {
@@ -349,14 +350,16 @@ async function signedHeaders(platformStore, profileName) {
   };
 }
 
-function request(stores, method, path, body, headers = {}) {
+function request(stores, method, path, body, headers = {}, rawBody = undefined) {
   return handleEyeApiRequest({
     method,
     path,
     body,
+    rawBody,
     headers,
     platformStore: stores.platformStore,
     eyeStore: stores.eyeStore,
+    blobStore: stores.blobStore,
     now: () => NOW,
     sessionSecret: "test-session-secret"
   });
@@ -635,4 +638,74 @@ test("blocks finalizing an issued glasses prescription with inconsistent values"
   const blocked = await request(stores, "POST", `/v1/eye/encounters/${draft.body.encounter.encounterId}/finalize`, { expectedRevision: 1 }, doctor);
   assert.equal(blocked.statusCode, 400);
   assert.deepEqual(blocked.body.details.blockers.map((item) => item.code), ["optical_axis_mismatch"]);
+});
+
+test("uploads files through a short-lived URL, verifies their type, and serves them back", async () => {
+  const stores = createStores();
+  const clerk = await signedHeaders(stores.platformStore, "clerk");
+  const doctor = await signedHeaders(stores.platformStore, "doctor");
+  const patient = await createPatient(stores, doctor);
+  const pdf = Buffer.from("%PDF-1.4\n1 0 obj<<>>endobj\n%%EOF");
+
+  const started = await request(stores, "POST", "/v1/eye/files/uploads", {
+    patientId: patient.patientId, kind: "vf", eye: "ou", takenOn: "2026-10-27", title: "Humphrey 24-2", contentType: "application/pdf", size: pdf.length
+  }, clerk);
+  assert.equal(started.statusCode, 201);
+  assert.equal(started.body.file.status, "pending");
+  const uploadPath = `/${started.body.upload.url}`;
+  const put = await request(stores, "PUT", uploadPath, undefined, { ...clerk, "content-type": "application/pdf" }, pdf);
+  assert.equal(put.statusCode, 200);
+  const replay = await request(stores, "PUT", uploadPath, undefined, { ...clerk, "content-type": "application/pdf" }, pdf);
+  assert.equal(replay.statusCode, 403, "upload tokens are single use");
+
+  const fileId = started.body.file.fileId;
+  const completed = await request(stores, "POST", `/v1/eye/files/${fileId}/complete`, {}, clerk);
+  assert.equal(completed.body.file.status, "stored");
+  assert.equal(completed.body.file.size, pdf.length);
+
+  const list = await request(stores, "GET", `/v1/eye/patients/${patient.patientId}/files`, undefined, doctor);
+  assert.deepEqual(list.body.files.map((item) => item.title), ["Humphrey 24-2"]);
+  const link = await request(stores, "GET", `/v1/eye/files/${fileId}/url`, undefined, doctor);
+  const blob = await request(stores, "GET", `/${link.body.download.url}`, undefined, doctor);
+  assert.equal(blob.headers["content-type"], "application/pdf");
+  assert.equal(Buffer.compare(blob.raw, pdf), 0);
+
+  const archived = await request(stores, "POST", `/v1/eye/files/${fileId}/archive`, { expectedRevision: 2, reason: "別患者の検査" }, doctor);
+  assert.equal(archived.body.file.archived, true);
+  assert.equal((await request(stores, "GET", `/v1/eye/patients/${patient.patientId}/files`, undefined, doctor)).body.files.length, 0);
+});
+
+test("rejects files whose content does not match the declared type", async () => {
+  const stores = createStores();
+  const doctor = await signedHeaders(stores.platformStore, "doctor");
+  const patient = await createPatient(stores, doctor);
+  const fake = Buffer.from("<html>not an image</html>");
+  const started = await request(stores, "POST", "/v1/eye/files/uploads", {
+    patientId: patient.patientId, kind: "fundus_photo", eye: "od", takenOn: "2026-10-27", contentType: "image/png", size: fake.length
+  }, doctor);
+  await request(stores, "PUT", `/${started.body.upload.url}`, undefined, { ...doctor, "content-type": "image/png" }, fake);
+  const completed = await request(stores, "POST", `/v1/eye/files/${started.body.file.fileId}/complete`, {}, doctor);
+  assert.equal(completed.statusCode, 400);
+  assert.equal((await request(stores, "POST", "/v1/eye/files/uploads", { patientId: patient.patientId, takenOn: "2026-10-27", contentType: "text/html", size: 10 }, doctor)).statusCode, 400);
+});
+
+test("a doctor reviews the summary of a scanned paper chart", async () => {
+  const stores = createStores();
+  const clerk = await signedHeaders(stores.platformStore, "clerk");
+  const doctor = await signedHeaders(stores.platformStore, "doctor");
+  const patient = await createPatient(stores, doctor);
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46, 0x49, 0x46]);
+  const started = await request(stores, "POST", "/v1/eye/files/uploads", {
+    patientId: patient.patientId, kind: "paper_chart", takenOn: "2019-04-01", title: "紙カルテ 2019", contentType: "image/jpeg", size: jpeg.length
+  }, clerk);
+  await request(stores, "PUT", `/${started.body.upload.url}`, undefined, { ...clerk, "content-type": "image/jpeg" }, jpeg);
+  const fileId = started.body.file.fileId;
+  await request(stores, "POST", `/v1/eye/files/${fileId}/complete`, {}, clerk);
+  const summarized = await request(stores, "PATCH", `/v1/eye/files/${fileId}`, { expectedRevision: 2, summary: "2019年 両眼緑内障と診断。ラタノプロスト開始。" }, clerk);
+  assert.equal(summarized.body.file.paper.reviewedBy, null);
+  assert.equal((await request(stores, "POST", `/v1/eye/files/${fileId}/review`, { expectedRevision: 3 }, clerk)).statusCode, 403);
+  const reviewed = await request(stores, "POST", `/v1/eye/files/${fileId}/review`, { expectedRevision: 3 }, doctor);
+  assert.equal(reviewed.body.file.paper.reviewedBy.loginId, "eye-doctor");
+  const edited = await request(stores, "PATCH", `/v1/eye/files/${fileId}`, { expectedRevision: 4, summary: "変更後の要約" }, clerk);
+  assert.equal(edited.body.file.paper.reviewedBy, null, "changing the summary requires a new review");
 });

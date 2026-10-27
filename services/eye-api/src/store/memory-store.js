@@ -15,6 +15,34 @@ export class MemoryEyeStore {
     this.orderSets = new Map();
     this.phrases = new Map();
     this.documents = new Map();
+    this.files = new Map();
+  }
+
+  createFile(orgId, file) {
+    const records = this.forOrg(this.files, orgId);
+    if (records.has(file.fileId)) throw storeError("ConflictError", 409, "file already exists");
+    records.set(file.fileId, clone(file));
+    return clone(file);
+  }
+
+  getFile(orgId, fileId) {
+    return cloneOrNull(this.forOrg(this.files, orgId).get(fileId));
+  }
+
+  listPatientFiles(orgId, patientId) {
+    return [...this.forOrg(this.files, orgId).values()]
+      .filter((item) => item.patientId === patientId)
+      .sort((left, right) => String(right.takenOn).localeCompare(String(left.takenOn)) || String(right.createdAt).localeCompare(String(left.createdAt)))
+      .map(clone);
+  }
+
+  replaceFile(orgId, file, expectedRevision) {
+    const records = this.forOrg(this.files, orgId);
+    const current = records.get(file.fileId);
+    if (!current) throw storeError("NotFoundError", 404, "file not found");
+    if (current.revision !== expectedRevision) throw storeError("ConflictError", 409, "file was updated by someone else; reload and try again");
+    records.set(file.fileId, clone(file));
+    return clone(file);
   }
 
   createDocument(orgId, document) {

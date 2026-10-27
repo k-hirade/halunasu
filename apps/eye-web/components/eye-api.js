@@ -43,3 +43,22 @@ function userMessage(status, payload) {
   if (status === 400 && payload.field) return `入力を確認してください（${payload.field}）: ${payload.message}`;
   return payload.message || `エラーが発生しました（HTTP ${status}）`;
 }
+
+// ファイル本体の送受信。相対パス（開発用のメモリ保管）はログイン情報を付けて eye-api に送り、
+// 署名付き URL（本番の GCS）はそのまま使う。
+export function useEyeFileTransfer() {
+  const auth = usePlatformAuth();
+  return useCallback(async (target, options = {}) => {
+    const absolute = /^https?:\/\//u.test(target);
+    const url = absolute ? target : `${runtimeConfig().eyeBaseUrl}/${target.replace(/^\//u, "")}`;
+    const headers = { ...(options.headers || {}) };
+    if (!absolute) {
+      const token = auth.accessToken || getStoredPlatformAccessToken();
+      headers.authorization = `Bearer ${token}`;
+      if ((options.method || "GET") !== "GET" && auth.csrfToken) headers["x-csrf-token"] = auth.csrfToken;
+    }
+    const response = await fetch(url, { method: options.method || "GET", headers, body: options.body, credentials: absolute ? "omit" : "include" });
+    if (!response.ok) throw new Error(`ファイルの${options.method === "PUT" ? "アップロード" : "取得"}に失敗しました（HTTP ${response.status}）`);
+    return response;
+  }, [auth.accessToken, auth.csrfToken]);
+}

@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useEyeApi } from "./eye-api";
 import { StatusTag } from "./home-workspace";
 import { DocumentsPanel } from "./documents-panel";
+import { FilesPanel } from "./files-panel";
 import { PatientBanner } from "./patient-banner";
 import { TrendPanel } from "./trend-chart";
 import {
@@ -26,6 +27,14 @@ export function PatientChart({ patientId }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
+  const [paperFiles, setPaperFiles] = useState([]);
+
+  const reload = useCallback(() => {
+    api(`/v1/eye/patients/${patientId}/files`)
+      .then((payload) => setPaperFiles(payload.files.filter((item) => item.kind === "paper_chart" && item.paper?.summary)))
+      .catch(() => {});
+  }, [api, patientId]);
+
   useEffect(() => {
     Promise.all([api(`/v1/eye/patients/${patientId}/chart`), api("/v1/eye/context")])
       .then(([chartPayload, contextPayload]) => {
@@ -33,7 +42,8 @@ export function PatientChart({ patientId }) {
         setContext(contextPayload.context);
       })
       .catch((nextError) => setError(nextError.message));
-  }, [api, patientId]);
+    reload();
+  }, [api, patientId, reload]);
 
   if (error) return <main className="eye-page"><p className="alert alert-danger" role="alert">{error}</p></main>;
   if (!chart) return <main className="eye-page"><p className="loading">読み込み中…</p></main>;
@@ -82,6 +92,20 @@ export function PatientChart({ patientId }) {
             <h2>現在の状態</h2>
             {latestFinalized ? <LatestSummary encounter={latestFinalized} /> : <p className="empty">確定済みのカルテはまだありません。</p>}
           </section>
+          {paperFiles.length ? (
+            <section className="panel">
+              <h2>紙カルテからの要約</h2>
+              <ul className="plain">
+                {paperFiles.map((file) => (
+                  <li className="paper-item" key={file.fileId}>
+                    <strong>{formatDate(file.takenOn)} {file.title}</strong>
+                    <span className={`tag ${file.paper.reviewedBy ? "tag-ok" : "tag-warn"}`}>{file.paper.reviewedBy ? "医師確認済み" : "未確認"}</span>
+                    <p className="pre small">{file.paper.summary}</p>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
           <section className="panel">
             <h2>経過</h2>
             <TrendPanel trend={trend} />
@@ -102,6 +126,7 @@ export function PatientChart({ patientId }) {
               </ul>
             )}
           </section>
+          <FilesPanel context={context} onChanged={reload} patientId={patientId} />
           <DocumentsPanel canWrite={Boolean(context?.canWriteDocuments)} patientId={patientId} />
           <section className="panel">
           <h2>カルテ履歴</h2>

@@ -4,6 +4,7 @@ import {
   eyeAuditLogPath,
   eyeDailyCounterPath,
   eyeDocumentPath,
+  eyeFilePath,
   eyeDrugPresetPath,
   eyeEncounterPath,
   eyeEncounterVersionPath,
@@ -109,6 +110,31 @@ export class FirestoreEyeStore {
   async listDrugPresets(orgId) {
     return docs(await this.orgCollection(orgId, collections.eyeDrugPresets).get())
       .sort((left, right) => String(left.name).localeCompare(String(right.name), "ja"));
+  }
+
+  async createFile(orgId, file) {
+    await this.doc(eyeFilePath(orgId, file.fileId)).create(file);
+    return file;
+  }
+
+  async getFile(orgId, fileId) {
+    return dataOrNull(await this.doc(eyeFilePath(orgId, fileId)).get());
+  }
+
+  async listPatientFiles(orgId, patientId) {
+    const snapshot = await this.orgCollection(orgId, collections.eyeFiles).where("patientId", "==", patientId).get();
+    return docs(snapshot).sort((left, right) => String(right.takenOn).localeCompare(String(left.takenOn)) || String(right.createdAt).localeCompare(String(left.createdAt)));
+  }
+
+  async replaceFile(orgId, file, expectedRevision) {
+    return this.db.runTransaction(async (transaction) => {
+      const ref = this.doc(eyeFilePath(orgId, file.fileId));
+      const current = dataOrNull(await transaction.get(ref));
+      if (!current) throw storeError("NotFoundError", 404, "file not found");
+      if (current.revision !== expectedRevision) throw storeError("ConflictError", 409, "file was updated by someone else; reload and try again");
+      transaction.set(ref, file);
+      return file;
+    });
   }
 
   async createDocument(orgId, document) {

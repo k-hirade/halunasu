@@ -2,8 +2,10 @@
 // ログイン → 初診作成・確定 → 再診（前回引き継ぎ・差分）→ 経過 → 印刷 → 設定 → 権限 を通しで確認する。
 import { strict as assert } from "node:assert";
 import { spawn } from "node:child_process";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
-import { dirname, resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
@@ -133,6 +135,38 @@ async function runDoctorFlow(browser) {
   await page.locator("form.add-row").filter({ has: page.getByLabel("1本あたりの滴数") }).getByRole("button", { name: "追加" }).click();
   await page.getByText("を保存しました").waitFor();
   await page.getByText("カルテを確定").first().waitFor();
+
+  // 画像・紙カルテの取り込み（開発用のメモリ保管で同じ流れを通す）
+  const fixtures = mkdtempSync(join(tmpdir(), "eye-smoke-"));
+  const pngPath = join(fixtures, "oct.png");
+  writeFileSync(pngPath, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64"));
+  const jpegPath = join(fixtures, "paper.jpg");
+  writeFileSync(jpegPath, Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46, 0x49, 0x46, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0xff, 0xd9]));
+  await page.goto(`${baseUrl}/`);
+  await page.getByLabel("患者検索").fill("見本");
+  await page.locator(".patient-row").filter({ hasText: "見本 花子" }).click();
+  await page.getByRole("heading", { name: "画像・ファイル" }).waitFor();
+  await page.getByLabel("ファイル", { exact: true }).setInputFiles(pngPath);
+  await page.getByLabel("ファイルの種類").selectOption("oct");
+  await page.getByLabel("ファイルの題名").fill("OCT 黄斑");
+  await page.getByRole("button", { name: "取り込む" }).click();
+  await page.getByRole("button", { name: "OCT 黄斑" }).click();
+  await page.locator(".dialog-viewer img.file-preview").waitFor();
+  await page.getByRole("button", { name: "閉じる" }).click();
+  await page.getByLabel("ファイル", { exact: true }).setInputFiles(jpegPath);
+  await page.getByLabel("ファイルの種類").selectOption("paper_chart");
+  await page.getByLabel("ファイルの題名").fill("紙カルテ 2019");
+  await page.getByRole("button", { name: "取り込む" }).click();
+  await page.getByRole("button", { name: "紙カルテ 2019" }).click();
+  await page.locator(".paper-summary textarea").fill("2019年 緑内障と診断。ラタノプロスト開始。");
+  await page.getByRole("button", { name: "要約を保存" }).click();
+  await page.getByRole("button", { name: "要約を確認済みにする" }).click();
+  await page.getByText(/医師確認済み（/u).first().waitFor();
+  await page.getByRole("button", { name: "閉じる" }).click();
+  await page.getByRole("link", { name: "比較表示" }).click();
+  await page.getByRole("heading", { name: /画像の比較/ }).waitFor();
+  await page.locator(".compare-grid img.file-preview").first().waitFor();
+  await page.goto(`${baseUrl}/settings`);
 
   // 定型文とセットを登録して、新しいカルテで使う
   await page.getByLabel("差し込む欄").selectOption("plan");

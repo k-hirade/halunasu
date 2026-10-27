@@ -25,6 +25,7 @@ export const ENCOUNTER_SECTIONS = Object.freeze([
 export const OPTICAL_TYPES = Object.freeze(["", "glasses", "contact"]);
 export const OPTICAL_PURPOSES = Object.freeze(["far", "near", "middle", "progressive", "bifocal"]);
 export const DOCUMENT_TYPES = Object.freeze(["referral", "reply", "certificate", "other"]);
+export const FILE_KINDS = Object.freeze(["oct", "vf", "fundus_photo", "anterior_photo", "topography", "paper_chart", "referral_in", "other"]);
 export const EYE_DOCUMENT_ROLES = Object.freeze(["admin", "doctor", "orthoptist", "nurse", "medical_clerk"]);
 // 検査・処置の標準カタログ。医院ごとの追加はセットで行う。
 export const DEFAULT_ORDER_CATALOG = Object.freeze([
@@ -227,6 +228,37 @@ function validateOptical(input) {
     validDays: optionalNumber(input.validDays, "content.optical.validDays", { min: 1, max: 365, integer: true }),
     note: optionalString(input.note, "content.optical.note", MAX_SHORT_TEXT),
     issue: Boolean(input.issue)
+  };
+}
+
+export function validateCreateFileInput(input = {}) {
+  const size = optionalNumber(input.size, "size", { min: 1, max: 20 * 1024 * 1024, integer: true });
+  if (size === null) throw validationError("size is required", "size");
+  return {
+    patientId: requiredString(input.patientId, "patientId", MAX_SHORT_TEXT),
+    encounterId: optionalString(input.encounterId, "encounterId", MAX_SHORT_TEXT),
+    kind: optionalEnum(input.kind, FILE_KINDS, "kind") || "other",
+    eye: optionalEnum(input.eye, EYE_TARGETS, "eye"),
+    takenOn: requiredDate(input.takenOn, "takenOn"),
+    title: optionalString(input.title, "title", MAX_SHORT_TEXT),
+    fileName: optionalString(input.fileName, "fileName", MAX_SHORT_TEXT),
+    contentType: requiredEnum(input.contentType, ["application/pdf", "image/jpeg", "image/png", "image/webp"], "contentType"),
+    size
+  };
+}
+
+export function validateUpdateFileInput(input = {}) {
+  const expectedRevision = Number(input.expectedRevision);
+  if (!Number.isInteger(expectedRevision) || expectedRevision < 1) {
+    throw validationError("expectedRevision must be a positive integer", "expectedRevision");
+  }
+  return {
+    expectedRevision,
+    kind: input.kind === undefined ? undefined : requiredEnum(input.kind, FILE_KINDS, "kind"),
+    eye: input.eye === undefined ? undefined : optionalEnum(input.eye, EYE_TARGETS, "eye"),
+    takenOn: input.takenOn === undefined ? undefined : requiredDate(input.takenOn, "takenOn"),
+    title: input.title === undefined ? undefined : optionalString(input.title, "title", MAX_SHORT_TEXT),
+    summary: input.summary === undefined ? undefined : optionalText(input.summary, "summary")
   };
 }
 

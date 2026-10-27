@@ -717,6 +717,7 @@ deploy_env() {
     "PLATFORM_GOOGLE_CLOUD_PROJECT=${core_project}" \
     "GOOGLE_CLOUD_REGION=${REGION}" \
     "EYE_STORE_BACKEND=firestore" \
+    "EYE_FILES_BUCKET=${eye_project}-files" \
     "PLATFORM_STORE_BACKEND=firestore" \
     "APP_SESSION_COOKIE_NAME=${session_cookie_name}" \
     "APP_CSRF_COOKIE_NAME=${csrf_cookie_name}"

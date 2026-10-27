@@ -439,6 +439,40 @@ provision_care_environment() {
   add_project_role "${core_project}" "${member}" roles/datastore.viewer
 }
 
+# 眼科カルテのファイル保管（OCT・視野・紙カルテなど）。ブラウザから署名付き URL で直接アップロードする。
+# 公開アクセスは禁止し、CORS は眼科カルテの画面の origin だけに絞る。
+ensure_eye_files_bucket() {
+  local project="$1"
+  local env="$2"
+  local bucket="${project}-files"
+  local origins
+  if [[ "${env}" == "stg" ]]; then
+    origins='["https://eye.stg.halunasu.com","https://halunasu-eye-stg.netlify.app"]'
+  else
+    origins='["https://eye.halunasu.com","https://halunasu-eye-prod.netlify.app"]'
+  fi
+  if gcloud storage buckets describe "gs://${bucket}" --quiet >/dev/null 2>&1; then
+    echo "Eye files bucket already exists: gs://${bucket}"
+  else
+    run_or_print gcloud storage buckets create "gs://${bucket}" \
+      --project "${project}" \
+      --location "${REGION}" \
+      --uniform-bucket-level-access \
+      --public-access-prevention \
+      --quiet
+  fi
+  local cors_file
+  cors_file="$(mktemp)"
+  printf '[{"origin":%s,"method":["PUT","GET","HEAD"],"responseHeader":["Content-Type","x-goog-content-length-range"],"maxAgeSeconds":3600}]' "${origins}" > "${cors_file}"
+  run_or_print gcloud storage buckets update "gs://${bucket}" --cors-file="${cors_file}" --quiet
+  rm -f "${cors_file}"
+  local member="serviceAccount:halunasu-eye-api@${project}.iam.gserviceaccount.com"
+  run_or_print gcloud storage buckets add-iam-policy-binding "gs://${bucket}" --member="${member}" --role=roles/storage.objectAdmin --quiet
+  # 署名付き URL の署名（Cloud Run 上では IAM の signBlob を使う）
+  run_or_print gcloud iam service-accounts add-iam-policy-binding "halunasu-eye-api@${project}.iam.gserviceaccount.com" \
+    --project "${project}" --member="${member}" --role=roles/iam.serviceAccountTokenCreator --quiet
+}
+
 # 眼科カルテ: 独立プロジェクト。患者の登録・更新と監査記録のため Core Firestore への書き込みが要る。
 provision_eye_environment() {
   local env="$1"
@@ -463,6 +497,7 @@ provision_eye_environment() {
     cloudbuild.googleapis.com \
     firestore.googleapis.com \
     iam.googleapis.com \
+    iamcredentials.googleapis.com \
     run.googleapis.com \
     secretmanager.googleapis.com \
     storage.googleapis.com
@@ -482,6 +517,7 @@ provision_eye_environment() {
   add_project_role "${eye_project}" "${member}" roles/logging.logWriter
   add_project_role "${eye_project}" "${member}" roles/secretmanager.secretAccessor
   add_project_role "${core_project}" "${member}" roles/datastore.user
+  ensure_eye_files_bucket "${eye_project}" "${env}"
 }
 
 if [[ "${TARGET_PRODUCT}" == "eye" ]]; then

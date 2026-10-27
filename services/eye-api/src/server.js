@@ -20,6 +20,7 @@ import {
   validateAppointmentStatusInput,
   validateCreateAppointmentInput,
   validateCreateDocumentInput,
+  validateCreateFileInput,
   validateCreateEncounterInput,
   validateExamConfirmInput,
   validateDrugPresetInput,
@@ -29,6 +30,7 @@ import {
   validatePatientProfileInput,
   validateUpdateAppointmentInput,
   validateUpdateDocumentInput,
+  validateUpdateFileInput,
   validateUpdateEncounterInput
 } from "../../../packages/eye-contracts/src/index.js";
 import {
@@ -69,6 +71,7 @@ import {
   diagnosesChanged,
   diagnosesForEncounter
 } from "./profiles.js";
+import { createBlobStoreFromEnv, MAX_FILE_BYTES, sniffContentType } from "./store/blob-store.js";
 import { createEyeStoreFromEnv } from "./store/create-store.js";
 
 const PATIENT_WRITE_ROLES = [...EYE_WRITE_ROLES, "medical_clerk"];
@@ -82,10 +85,13 @@ export function createEyeApiServer(options = {}) {
   const region = options.region || process.env.GOOGLE_CLOUD_REGION || "asia-northeast1";
   const platformStore = options.platformStore || createPlatformStoreFromEnv();
   const eyeStore = options.eyeStore || createEyeStoreFromEnv();
+  const blobStore = options.blobStore || createBlobStoreFromEnv();
 
   return http.createServer(async (req, res) => {
     try {
-      const body = await readJsonBody(req, options.maxJsonBytes || DEFAULT_MAX_JSON_BYTES);
+      const rawUpload = req.method === "PUT" && /^\/v1\/eye\/files\/[^/]+\/blob(\?|$)/u.test(req.url || "");
+      const rawBody = rawUpload ? await readRawBody(req, MAX_FILE_BYTES) : undefined;
+      const body = rawUpload ? undefined : await readJsonBody(req, options.maxJsonBytes || DEFAULT_MAX_JSON_BYTES);
       const response = await handleEyeApiRequest({
         method: req.method,
         path: req.url,
@@ -97,9 +103,15 @@ export function createEyeApiServer(options = {}) {
         startedAt,
         platformStore,
         eyeStore,
+        blobStore,
+        rawBody,
         now: options.now,
         sessionSecret: options.sessionSecret
       });
+      if (response.raw) {
+        sendRaw(res, response);
+        return;
+      }
       sendJson(res, response.statusCode, response.body, response.headers);
     } catch (error) {
       const response = errorResponse(error);
@@ -122,6 +134,7 @@ async function routeEyeApiRequest(input = {}) {
   const parts = url.pathname.split("/").filter(Boolean);
   const platformStore = input.platformStore || createPlatformStoreFromEnv();
   const eyeStore = input.eyeStore || createEyeStoreFromEnv();
+  const blobStore = input.blobStore || createBlobStoreFromEnv();
 
   if (method === "GET" && url.pathname === "/healthz") {
     return ok({ status: "ok", service: "eye-api" });
@@ -133,6 +146,7 @@ async function routeEyeApiRequest(input = {}) {
       env: input.env || "local",
       projectId: input.projectId || "halunasu-eye-stg",
       region: input.region || "asia-northeast1",
+      fileStorage: blobStore.configured ? "configured" : "not_configured",
       startedAt: input.startedAt instanceof Date ? input.startedAt.toISOString() : new Date().toISOString()
     });
   }
@@ -533,6 +547,135 @@ async function routeEyeApiRequest(input = {}) {
     }
   }
 
+  if (method === "GET" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "eye", "patients"]) && parts[4] === "files") {
+    const patient = await requirePatient(platformStore, orgId, parts[3]);
+    const files = (await eyeStore.listPatientFiles(orgId, patient.patientId)).filter((item) => item.status === "stored" && !item.archived);
+    return ok({ files });
+  }
+
+  if (method === "POST" && matches(parts, ["v1", "eye", "files", "uploads"])) {
+    requireAccess(context, EYE_DOCUMENT_ROLES, "File upload access is required");
+    requirePlatformCsrf(input.headers || {}, context.session);
+    const validated = validateCreateFileInput(input.body || {});
+    const patient = await requirePatient(platformStore, orgId, validated.patientId);
+    const fileId = createId("efile");
+    const file = {
+      fileId,
+      orgId,
+      patientId: patient.patientId,
+      encounterId: validated.encounterId,
+      kind: validated.kind,
+      eye: validated.eye,
+      takenOn: validated.takenOn,
+      title: validated.title || validated.fileName,
+      fileName: validated.fileName,
+      contentType: validated.contentType,
+      declaredSize: validated.size,
+      size: 0,
+      md5Hash: "",
+      storagePath: `orgs/${orgId}/patients/${patient.patientId}/${fileId}`,
+      status: "pending",
+      archived: false,
+      paper: validated.kind === "paper_chart" ? { summary: "", reviewedBy: null, reviewedAt: "" } : null,
+      revision: 1,
+      uploadedBy: actor,
+      createdAt: now,
+      updatedAt: now,
+      schemaVersion: 1
+    };
+    const upload = await blobStore.createUploadUrl({ storagePath: file.storagePath, contentType: file.contentType, fileId });
+    await eyeStore.createFile(orgId, file);
+    return created({ file, upload });
+  }
+
+  if (parts.length >= 4 && matches(parts.slice(0, 3), ["v1", "eye", "files"]) && parts[3] !== "uploads") {
+    const fileId = parts[3];
+    const action = parts[4] || "";
+    const current = await eyeStore.getFile(orgId, fileId);
+    if (!current) throw notFoundError("file not found");
+
+    if (action === "blob" && parts.length === 5 && typeof blobStore.acceptUpload === "function") {
+      const token = String(url.searchParams.get("token") || "");
+      if (method === "PUT") {
+        await blobStore.acceptUpload({ fileId, token, contentType: headerValue(input.headers || {}, "content-type") || "", body: input.rawBody || Buffer.alloc(0) });
+        return ok({ uploaded: true });
+      }
+      if (method === "GET") {
+        const object = await blobStore.readForDownload({ fileId, token });
+        return { statusCode: 200, raw: object.body, headers: { "content-type": object.contentType } };
+      }
+    }
+
+    if (method === "POST" && action === "complete" && parts.length === 5) {
+      requireAccess(context, EYE_DOCUMENT_ROLES, "File upload access is required");
+      requirePlatformCsrf(input.headers || {}, context.session);
+      if (current.status !== "pending") return ok({ file: current });
+      const stored = await blobStore.describe(current.storagePath);
+      if (!stored) throw badRequest("アップロードが完了していません。", "file");
+      const detected = sniffContentType(stored.head);
+      if (!detected || detected !== current.contentType) throw badRequest("ファイルの形式が申告と一致しません（PDF・JPEG・PNG・WebP のみ）。", "contentType");
+      if (stored.size <= 0 || stored.size > MAX_FILE_BYTES) throw badRequest("ファイルのサイズが不正です。", "size");
+      const file = { ...current, status: "stored", size: stored.size, md5Hash: stored.md5Hash || "", revision: current.revision + 1, updatedAt: now };
+      await eyeStore.replaceFile(orgId, file, current.revision);
+      await audit({ eventType: "eye.file_uploaded", targetType: "file", targetId: fileId, patientId: file.patientId, safePayload: { kind: file.kind, size: file.size } });
+      return ok({ file });
+    }
+
+    if (current.status !== "stored") throw notFoundError("file not found");
+
+    if (method === "GET" && action === "url" && parts.length === 5) {
+      const download = await blobStore.createDownloadUrl({ storagePath: current.storagePath, fileId });
+      await audit({ eventType: "eye.file_viewed", targetType: "file", targetId: fileId, patientId: current.patientId });
+      return ok({ file: current, download });
+    }
+
+    if (method === "PATCH" && parts.length === 4) {
+      requireAccess(context, EYE_DOCUMENT_ROLES, "File access is required");
+      requirePlatformCsrf(input.headers || {}, context.session);
+      const validated = validateUpdateFileInput(input.body || {});
+      if (current.archived) throw badRequest("削除済みのファイルは変更できません。", "file");
+      const paper = current.paper && validated.summary !== undefined
+        ? { ...current.paper, summary: validated.summary, reviewedBy: validated.summary === current.paper.summary ? current.paper.reviewedBy : null, reviewedAt: validated.summary === current.paper.summary ? current.paper.reviewedAt : "" }
+        : current.paper;
+      const file = {
+        ...current,
+        kind: validated.kind ?? current.kind,
+        eye: validated.eye ?? current.eye,
+        takenOn: validated.takenOn ?? current.takenOn,
+        title: validated.title ?? current.title,
+        paper: (validated.kind ?? current.kind) === "paper_chart" ? (paper || { summary: "", reviewedBy: null, reviewedAt: "" }) : paper,
+        revision: current.revision + 1,
+        updatedAt: now
+      };
+      await eyeStore.replaceFile(orgId, file, validated.expectedRevision);
+      await audit({ eventType: "eye.file_updated", targetType: "file", targetId: fileId, patientId: file.patientId });
+      return ok({ file });
+    }
+
+    if (method === "POST" && action === "review" && parts.length === 5) {
+      requireAccess(context, EYE_FINALIZE_ROLES, "Only a doctor can review a paper chart summary");
+      requirePlatformCsrf(input.headers || {}, context.session);
+      const expectedRevision = requiredRevision(input.body);
+      if (!current.paper?.summary?.trim()) throw badRequest("要約が空のため確認できません。", "summary");
+      const file = { ...current, paper: { ...current.paper, reviewedBy: actor, reviewedAt: now }, revision: current.revision + 1, updatedAt: now };
+      await eyeStore.replaceFile(orgId, file, expectedRevision);
+      await audit({ eventType: "eye.paper_reviewed", targetType: "file", targetId: fileId, patientId: file.patientId });
+      return ok({ file });
+    }
+
+    if (method === "POST" && action === "archive" && parts.length === 5) {
+      requireAccess(context, EYE_FINALIZE_ROLES, "Only a doctor can remove a file");
+      requirePlatformCsrf(input.headers || {}, context.session);
+      const expectedRevision = requiredRevision(input.body);
+      const reason = String(input.body?.reason || "").trim();
+      if (!reason) throw badRequest("削除の理由を入力してください。", "reason");
+      const file = { ...current, archived: true, archivedReason: reason, archivedBy: actor, archivedAt: now, revision: current.revision + 1, updatedAt: now };
+      await eyeStore.replaceFile(orgId, file, expectedRevision);
+      await audit({ eventType: "eye.file_archived", targetType: "file", targetId: fileId, patientId: file.patientId });
+      return ok({ file });
+    }
+  }
+
   if (method === "GET" && matches(parts, ["v1", "eye", "drug-presets"])) {
     return ok({ drugPresets: await eyeStore.listDrugPresets(orgId) });
   }
@@ -710,6 +853,32 @@ async function readJsonBody(req, maxBytes) {
   } catch {
     throw badRequest("Request body must be valid JSON");
   }
+}
+
+async function readRawBody(req, maxBytes) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > maxBytes) {
+      const error = new Error("File is too large");
+      error.name = "PayloadTooLargeError";
+      error.statusCode = 413;
+      throw error;
+    }
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
+function sendRaw(res, response) {
+  res.writeHead(response.statusCode, {
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "content-disposition": "inline",
+    ...response.headers
+  });
+  res.end(response.raw);
 }
 
 function sendJson(res, statusCode, body, headers = {}) {

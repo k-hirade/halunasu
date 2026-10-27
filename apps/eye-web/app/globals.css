@@ -1902,3 +1902,89 @@ fieldset:disabled .input::placeholder {
 .optical-print-table td {
   text-align: center;
 }
+
+/* 画像・ファイル */
+.upload-form {
+  background: var(--surface-muted);
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding: 10px;
+}
+
+.upload-form .row-line {
+  margin: 0;
+}
+
+.file-list li {
+  border-bottom: 1px solid var(--line);
+  padding: 6px 0;
+}
+
+.file-link {
+  background: none;
+  border: 0;
+  color: var(--teal-dark);
+  font-weight: 700;
+  padding: 0;
+  text-align: left;
+  text-decoration: underline;
+}
+
+.dialog.dialog-viewer {
+  max-height: calc(100vh - 32px);
+  max-width: 1000px;
+  overflow-y: auto;
+}
+
+.file-preview {
+  background: #0f172a;
+  border: 0;
+  border-radius: 8px;
+  display: block;
+  height: 70vh;
+  object-fit: contain;
+  width: 100%;
+}
+
+.file-preview.is-empty {
+  align-items: center;
+  background: var(--surface-muted);
+  color: var(--muted);
+  display: flex;
+  justify-content: center;
+}
+
+.compare-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.compare-grid .panel + .panel {
+  margin-top: 0;
+}
+
+.compare-grid .input {
+  margin-bottom: 8px;
+}
+
+.paper-summary {
+  margin-top: 12px;
+}
+
+.paper-item {
+  border-bottom: 1px solid var(--line);
+  padding: 6px 0;
+}
+
+.archive-box {
+  margin-top: 12px;
+}
+
+@media (max-width: 900px) {
+  .compare-grid {
+    grid-template-columns: 1fr;
+  }
+}
