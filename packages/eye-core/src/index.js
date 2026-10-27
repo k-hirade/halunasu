@@ -259,10 +259,31 @@ export function evaluateFinalizeReadiness(content = {}, { examConfirmations = nu
     if (!String(item.name || "").trim()) blockers.push({ code: "prescription_name_missing", field: `content.prescriptions.${index}.name`, message: "薬剤名が空の処方があります。" });
     else if ((item.kind === "eye_drop" || item.kind === "eye_ointment") && !item.eye) blockers.push({ code: "prescription_eye_missing", field: `content.prescriptions.${index}.eye`, message: `「${item.name}」の眼（右・左・両）が未指定です。` });
   });
+  for (const item of evaluateOpticalPrescription(content.optical)) blockers.push(item);
   if (!String(content.chiefComplaint || "").trim()) warnings.push({ code: "chief_complaint_empty", message: "主訴が空です。" });
   if (!String(content.plan || "").trim()) warnings.push({ code: "plan_empty", message: "方針が空です。" });
   if ((content.prescriptions || []).length > 0 && !content.nextVisit?.intervalWeeks && !content.nextVisit?.date) {
     warnings.push({ code: "next_visit_missing", message: "処方がありますが、次回受診が未設定です。" });
   }
   return { blockers, warnings };
+}
+
+// 眼鏡・CL を発行するときの値の整合。発行しない（issue=false）なら何も見ない。
+export function evaluateOpticalPrescription(optical = {}) {
+  if (!optical?.issue) return [];
+  const problems = [];
+  const push = (code, field, message) => problems.push({ code, field: `content.optical${field}`, message });
+  if (!optical.type) push("optical_type_missing", ".type", "眼鏡・CL の種類が未選択です。");
+  for (const side of EYE_SIDES) {
+    const value = optical[side] || {};
+    const label = side === "od" ? "右眼" : "左眼";
+    if (!Number.isFinite(value.sphere)) push("optical_sphere_missing", `.${side}.sphere`, `${label}の球面度数（S）が未入力です。`);
+    const hasCylinder = Number.isFinite(value.cylinder) && value.cylinder !== 0;
+    if (hasCylinder !== Number.isFinite(value.axis)) push("optical_axis_mismatch", `.${side}.axis`, `${label}の円柱度数（C）と軸（Ax）はそろえて入力してください。`);
+    if (optical.type === "contact" && (!Number.isFinite(value.bc) || !Number.isFinite(value.dia))) {
+      push("optical_cl_fit_missing", `.${side}.bc`, `${label}のベースカーブ（BC）と直径（DIA）が必要です。`);
+    }
+  }
+  if (optical.type === "glasses" && !Number.isFinite(optical.pd)) push("optical_pd_missing", ".pd", "瞳孔間距離（PD）が未入力です。");
+  return problems;
 }

@@ -580,3 +580,59 @@ test("does not count bottles for prescriptions that are not issued this time", a
   assert.equal(detail.body.bottleSuggestions[1].applicable, true);
   assert.equal(detail.body.encounter.content.prescriptions[1].route, "outside");
 });
+
+test("drafts a referral letter from the chart, finalizes it, and requires a copy for changes", async () => {
+  const stores = createStores();
+  const doctor = await signedHeaders(stores.platformStore, "doctor");
+  const clerk = await signedHeaders(stores.platformStore, "clerk");
+  const patient = await createPatient(stores, doctor);
+  await request(stores, "PUT", `/v1/eye/patients/${patient.patientId}/profile`, {
+    expectedRevision: 0,
+    allergies: [{ substance: "ペニシリン系", reaction: "発疹", severity: "moderate" }],
+    diagnoses: [{ name: "原発開放隅角緑内障", eye: "ou", startDate: "2026-07-01" }]
+  }, doctor);
+  await finalizedEncounter(stores, doctor, patient.patientId, "2026-07-28", glaucomaContent({ iopOd: 15 }));
+
+  const created = await request(stores, "POST", "/v1/eye/documents", { patientId: patient.patientId, type: "referral" }, clerk);
+  assert.equal(created.statusCode, 201);
+  const document = created.body.document;
+  assert.equal(document.title, "診療情報提供書");
+  assert.match(document.body, /両眼 原発開放隅角緑内障/u);
+  assert.match(document.body, /ペニシリン系（発疹・中等度）/u);
+  assert.match(document.body, /眼圧 右 15 mmHg/u);
+  assert.match(document.body, /ラタノプロスト点眼液（両眼 1日1回）/u);
+
+  const edited = await request(stores, "PATCH", `/v1/eye/documents/${document.documentId}`, {
+    expectedRevision: 1,
+    recipient: { institution: "県立病院", department: "眼科", doctor: "山田" },
+    body: document.body.replace("【紹介目的】\n", "【紹介目的】\n手術のご検討をお願いします。\n")
+  }, clerk);
+  assert.equal(edited.body.document.recipient.institution, "県立病院");
+
+  assert.equal((await request(stores, "POST", `/v1/eye/documents/${document.documentId}/finalize`, { expectedRevision: 2 }, clerk)).statusCode, 403);
+  const finalized = await request(stores, "POST", `/v1/eye/documents/${document.documentId}/finalize`, { expectedRevision: 2 }, doctor);
+  assert.equal(finalized.body.document.status, "finalized");
+  assert.match(finalized.body.document.contentHash, /^[0-9a-f]{64}$/u);
+  assert.equal((await request(stores, "PATCH", `/v1/eye/documents/${document.documentId}`, { expectedRevision: 3, body: "x" }, doctor)).statusCode, 409);
+
+  const copy = await request(stores, "POST", `/v1/eye/documents/${document.documentId}/duplicate`, {}, doctor);
+  assert.equal(copy.body.document.status, "draft");
+  assert.equal(copy.body.document.sourceDocumentId, document.documentId);
+  const list = await request(stores, "GET", `/v1/eye/patients/${patient.patientId}/documents`, undefined, doctor);
+  assert.equal(list.body.documents.length, 2);
+});
+
+test("blocks finalizing an issued glasses prescription with inconsistent values", async () => {
+  const stores = createStores();
+  const doctor = await signedHeaders(stores.platformStore, "doctor");
+  const patient = await createPatient(stores, doctor);
+  const draft = await request(stores, "POST", "/v1/eye/encounters", {
+    patientId: patient.patientId,
+    encounterDate: "2026-10-27",
+    visitType: "initial",
+    content: { optical: { type: "glasses", issue: true, od: { sphere: -2, cylinder: -0.5 }, os: { sphere: -1.5 }, pd: 62 } }
+  }, doctor);
+  const blocked = await request(stores, "POST", `/v1/eye/encounters/${draft.body.encounter.encounterId}/finalize`, { expectedRevision: 1 }, doctor);
+  assert.equal(blocked.statusCode, 400);
+  assert.deepEqual(blocked.body.details.blockers.map((item) => item.code), ["optical_axis_mismatch"]);
+});

@@ -10,7 +10,8 @@ import {
 import { AppointmentDialog } from "./appointment-dialog";
 import { AmendDialog, ConfirmDialog, SaveIndicator } from "./encounter-dialogs";
 import { CandidatesPanel, ComparePanel, HistoryPane, ReadinessPanel, SetsAndPhrasesPanel, VersionsPanel } from "./encounter-panels";
-import { DilationFlags, ExamTable, NextVisit, Orders, Prescriptions, Section, setIn, Sketches } from "./encounter-sections";
+import { DocumentsPanel } from "./documents-panel";
+import { DilationFlags, ExamTable, NextVisit, OpticalSection, Orders, Prescriptions, Section, setIn, Sketches } from "./encounter-sections";
 import { StatusTag } from "./home-workspace";
 import { CommonDiagnosesList, PatientBanner } from "./patient-banner";
 import { useEncounterDraft } from "./use-encounter-draft";
@@ -21,6 +22,7 @@ const SIDE_TABS = [
   ["compare", "前回比較"],
   ["candidates", "候補"],
   ["booking", "次回予約"],
+  ["documents", "文書"],
   ["versions", "確定履歴"]
 ];
 
@@ -283,6 +285,10 @@ export function EncounterEditor({ encounterId }) {
             <Prescriptions content={content} drugPresets={drugPresets} editable={editable} nextDays={nextDays} update={update} />
           </Section>
 
+          <Section id="optical" title="眼鏡・コンタクトレンズ処方">
+            <OpticalSection content={content} editable={editable} encounterId={encounterId} update={update} />
+          </Section>
+
           <Section id="staff-note" title="スタッフメモ">
             <textarea aria-label="スタッフメモ" className="input" onChange={(event) => update(["staffNote"], event.target.value)} rows={2} value={content.staffNote} />
           </Section>
@@ -330,6 +336,9 @@ export function EncounterEditor({ encounterId }) {
                   <button className="btn btn-ghost" onClick={() => setBooking({ open: true, saved: null })} type="button">次回予約を取る</button>
                 ) : <p className="muted small">予約の登録は受付の権限が必要です。</p>}
               </section>
+            ) : null}
+            {sideTab === "documents" ? (
+              <DocumentsPanel canWrite={Boolean(context?.canWriteDocuments)} encounterId={encounter.status === "finalized" ? encounterId : ""} patientId={encounter.patientId} />
             ) : null}
             {sideTab === "versions" ? (
               detail.versions.length

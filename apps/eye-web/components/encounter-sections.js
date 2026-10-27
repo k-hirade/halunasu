@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { calculateEyeDropBottles } from "@halunasu/eye-core";
+import { calculateEyeDropBottles, evaluateOpticalPrescription } from "@halunasu/eye-core";
 import { SKETCH_TEMPLATE_LABELS, SketchPad } from "./sketch-pad";
 import {
   addDays,
@@ -254,6 +254,111 @@ export function DilationFlags({ content, update, editable, now = Date.now() }) {
         <input checked={Boolean(flags.myopiaTreatment)} disabled={!editable} onChange={(event) => update(["flags"], { ...flags, myopiaTreatment: event.target.checked })} type="checkbox" />
         近視治療中
       </label>
+    </div>
+  );
+}
+
+const OPTICAL_PURPOSE_LABELS = { far: "遠用", near: "近用", middle: "中間", progressive: "遠近両用（累進）", bifocal: "二重焦点" };
+
+// 眼鏡・コンタクトレンズの処方。「発行する」にすると確定前チェックの対象になる。
+export function OpticalSection({ content, update, editable, encounterId }) {
+  const optical = content.optical || { type: "", purpose: "far", od: {}, os: {}, issue: false };
+  const set = (patch) => update(["optical"], { ...optical, ...patch });
+  const setSide = (side, key, value) => update(["optical"], { ...optical, [side]: { ...optical[side], [key]: value } });
+  const problems = evaluateOpticalPrescription({ ...optical, issue: true });
+  const contact = optical.type === "contact";
+
+  function copyFromExam() {
+    const next = { ...optical };
+    for (const side of SIDES) {
+      const correction = content.exam[side].correction || {};
+      next[side] = { ...optical[side], sphere: correction.sphere ?? null, cylinder: correction.cylinder ?? null, axis: correction.axis ?? null, va: content.exam[side].vaCorrected || "" };
+    }
+    update(["optical"], next);
+  }
+
+  const numberCell = (side, key, props = {}) => (
+    <input
+      aria-label={`${EYE_LABELS[side]} ${props.label || key}`}
+      className="input input-num"
+      onChange={(event) => setSide(side, key, parseNumber(event.target.value))}
+      step={props.step || 0.25}
+      type="number"
+      value={optical[side]?.[key] ?? ""}
+    />
+  );
+
+  return (
+    <div>
+      <div className="row-line">
+        <select aria-label="眼鏡・CL の種類" className="input" onChange={(event) => set({ type: event.target.value })} value={optical.type}>
+          <option value="">処方しない</option>
+          <option value="glasses">眼鏡</option>
+          <option value="contact">コンタクトレンズ</option>
+        </select>
+        {optical.type ? (
+          <>
+            <select aria-label="用途" className="input" onChange={(event) => set({ purpose: event.target.value })} value={optical.purpose}>
+              {Object.entries(OPTICAL_PURPOSE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+            {editable ? <button className="btn btn-chip" onClick={copyFromExam} type="button">検査の矯正値を写す</button> : null}
+          </>
+        ) : null}
+      </div>
+      {optical.type ? (
+        <>
+          <div className="table-scroll">
+            <table className="exam-table optical-table">
+              <thead>
+                <tr>
+                  <th />
+                  <th>S</th><th>C</th><th>Ax</th>
+                  {contact ? <><th>BC</th><th>DIA</th><th>製品名</th></> : <><th>ADD</th><th>プリズム</th><th>基底</th></>}
+                  <th>矯正視力</th>
+                </tr>
+              </thead>
+              <tbody>
+                {SIDES.map((side) => (
+                  <tr key={side}>
+                    <th className={`eye-${side}`} scope="row">{EYE_LABELS[side]}</th>
+                    <td>{numberCell(side, "sphere", { label: "S" })}</td>
+                    <td>{numberCell(side, "cylinder", { label: "C" })}</td>
+                    <td>{numberCell(side, "axis", { label: "Ax", step: 1 })}</td>
+                    {contact ? (
+                      <>
+                        <td>{numberCell(side, "bc", { label: "BC", step: 0.1 })}</td>
+                        <td>{numberCell(side, "dia", { label: "DIA", step: 0.1 })}</td>
+                        <td><input aria-label={`${EYE_LABELS[side]} 製品名`} className="input" onChange={(event) => setSide(side, "product", event.target.value)} value={optical[side]?.product || ""} /></td>
+                      </>
+                    ) : (
+                      <>
+                        <td>{numberCell(side, "add", { label: "ADD" })}</td>
+                        <td>{numberCell(side, "prism", { label: "プリズム", step: 0.5 })}</td>
+                        <td><input aria-label={`${EYE_LABELS[side]} 基底`} className="input input-unit" onChange={(event) => setSide(side, "base", event.target.value)} placeholder="BI等" value={optical[side]?.base || ""} /></td>
+                      </>
+                    )}
+                    <td><input aria-label={`${EYE_LABELS[side]} 矯正視力（眼鏡）`} className="input input-unit" onChange={(event) => setSide(side, "va", event.target.value)} value={optical[side]?.va || ""} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="row-line">
+            {!contact ? (
+              <label className="inline-field"><span>PD</span><input aria-label="瞳孔間距離" className="input input-num" onChange={(event) => set({ pd: parseNumber(event.target.value) })} step="0.5" type="number" value={optical.pd ?? ""} /><span>mm</span></label>
+            ) : null}
+            <label className="inline-field"><span>有効期間</span><input aria-label="有効期間" className="input input-num" onChange={(event) => set({ validDays: parseNumber(event.target.value) })} type="number" value={optical.validDays ?? ""} /><span>日</span></label>
+            <input aria-label="備考" className="input grow" onChange={(event) => set({ note: event.target.value })} placeholder="備考（装用時間・レンズの種類など）" value={optical.note || ""} />
+          </div>
+          <div className="row-line">
+            <label className="check-line"><input checked={Boolean(optical.issue)} onChange={(event) => set({ issue: event.target.checked })} type="checkbox" />今回{contact ? "CL 指示書" : "眼鏡処方箋"}を発行する</label>
+            {optical.issue ? <a className="btn btn-chip" href={`/encounters/${encounterId}/optical`} rel="noreferrer" target="_blank">{contact ? "CL 指示書" : "眼鏡処方箋"}を印刷</a> : null}
+          </div>
+          {optical.issue && problems.length ? (
+            <ul className="readiness">{problems.map((item, index) => <li className="is-blocker" key={index}>{item.message}</li>)}</ul>
+          ) : null}
+        </>
+      ) : null}
     </div>
   );
 }

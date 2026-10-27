@@ -1826,3 +1826,79 @@ fieldset:disabled .input::placeholder {
 .exam-table select.input {
   min-width: 120px;
 }
+
+/* 文書・眼鏡処方 */
+.doc-create {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.doc-list li {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 0;
+}
+
+.document-form {
+  margin: 0 auto;
+  max-width: 900px;
+}
+
+.document-body {
+  font-family: inherit;
+  line-height: 1.7;
+}
+
+.optical-table td:nth-child(2),
+.optical-table td:nth-child(3) {
+  background: none;
+}
+
+.letter {
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.letter-title {
+  font-size: 22px;
+  letter-spacing: 0.2em;
+  margin: 8px 0 16px;
+  text-align: center;
+}
+
+.letter-date {
+  text-align: right;
+}
+
+.letter-recipient {
+  font-size: 15px;
+  margin: 8px 0 16px;
+}
+
+.letter-sender {
+  margin: 16px 0;
+  text-align: right;
+}
+
+.letter-sender p {
+  margin: 0;
+}
+
+.letter-patient {
+  margin-bottom: 16px;
+}
+
+.letter-body {
+  border-top: 1px solid var(--text);
+  padding-top: 12px;
+}
+
+.optical-print-table th,
+.optical-print-table td {
+  text-align: center;
+}

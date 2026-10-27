@@ -14,6 +14,34 @@ export class MemoryEyeStore {
     this.patientProfiles = new Map();
     this.orderSets = new Map();
     this.phrases = new Map();
+    this.documents = new Map();
+  }
+
+  createDocument(orgId, document) {
+    const records = this.forOrg(this.documents, orgId);
+    if (records.has(document.documentId)) throw storeError("ConflictError", 409, "document already exists");
+    records.set(document.documentId, clone(document));
+    return clone(document);
+  }
+
+  getDocument(orgId, documentId) {
+    return cloneOrNull(this.forOrg(this.documents, orgId).get(documentId));
+  }
+
+  listPatientDocuments(orgId, patientId) {
+    return [...this.forOrg(this.documents, orgId).values()]
+      .filter((item) => item.patientId === patientId)
+      .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)))
+      .map(clone);
+  }
+
+  replaceDocument(orgId, document, expectedRevision) {
+    const records = this.forOrg(this.documents, orgId);
+    const current = records.get(document.documentId);
+    if (!current) throw storeError("NotFoundError", 404, "document not found");
+    if (current.revision !== expectedRevision) throw storeError("ConflictError", 409, "document was updated by someone else; reload and try again");
+    records.set(document.documentId, clone(document));
+    return clone(document);
   }
 
   upsertOrderSet(orgId, item) {

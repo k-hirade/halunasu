@@ -3,6 +3,7 @@ import {
   eyeAppointmentPath,
   eyeAuditLogPath,
   eyeDailyCounterPath,
+  eyeDocumentPath,
   eyeDrugPresetPath,
   eyeEncounterPath,
   eyeEncounterVersionPath,
@@ -108,6 +109,31 @@ export class FirestoreEyeStore {
   async listDrugPresets(orgId) {
     return docs(await this.orgCollection(orgId, collections.eyeDrugPresets).get())
       .sort((left, right) => String(left.name).localeCompare(String(right.name), "ja"));
+  }
+
+  async createDocument(orgId, document) {
+    await this.doc(eyeDocumentPath(orgId, document.documentId)).create(document);
+    return document;
+  }
+
+  async getDocument(orgId, documentId) {
+    return dataOrNull(await this.doc(eyeDocumentPath(orgId, documentId)).get());
+  }
+
+  async listPatientDocuments(orgId, patientId) {
+    const snapshot = await this.orgCollection(orgId, collections.eyeDocuments).where("patientId", "==", patientId).get();
+    return docs(snapshot).sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)));
+  }
+
+  async replaceDocument(orgId, document, expectedRevision) {
+    return this.db.runTransaction(async (transaction) => {
+      const ref = this.doc(eyeDocumentPath(orgId, document.documentId));
+      const current = dataOrNull(await transaction.get(ref));
+      if (!current) throw storeError("NotFoundError", 404, "document not found");
+      if (current.revision !== expectedRevision) throw storeError("ConflictError", 409, "document was updated by someone else; reload and try again");
+      transaction.set(ref, document);
+      return document;
+    });
   }
 
   async upsertOrderSet(orgId, item) {

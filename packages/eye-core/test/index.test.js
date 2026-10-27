@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   buildTrend,
   evaluateFinalizeReadiness,
+  evaluateOpticalPrescription,
   calculateEyeDropBottles,
   copyContentForRevisit,
   daysUntilNextVisit,
@@ -136,4 +137,17 @@ test("evaluates blockers and warnings before finalization", () => {
   });
   assert.deepEqual(result.blockers.map((item) => item.code), ["prescription_name_missing", "prescription_eye_missing"]);
   assert.deepEqual(result.warnings.map((item) => item.code), ["next_visit_missing"]);
+});
+
+test("checks glasses and contact lens prescriptions only when they are issued", () => {
+  assert.deepEqual(evaluateOpticalPrescription({ type: "glasses", issue: false }), []);
+  const glasses = evaluateOpticalPrescription({
+    type: "glasses",
+    issue: true,
+    od: { sphere: -2, cylinder: -0.5, axis: null },
+    os: { sphere: -1.75 }
+  });
+  assert.deepEqual(glasses.map((item) => item.code), ["optical_axis_mismatch", "optical_pd_missing"]);
+  const contact = evaluateOpticalPrescription({ type: "contact", issue: true, od: { sphere: -3, bc: 8.6, dia: 14.2 }, os: { sphere: -3 } });
+  assert.deepEqual(contact.map((item) => item.code), ["optical_cl_fit_missing"]);
 });

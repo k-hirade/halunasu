@@ -156,9 +156,37 @@ async function runDoctorFlow(browser) {
   await page.locator(".order-row").first().waitFor();
   await page.locator(".phrase-row").getByRole("button", { name: "挿入" }).click();
   assert.match(await page.getByRole("textbox", { name: "方針", exact: true }).inputValue(), /点眼継続。次回同様。/u);
+  // 眼鏡処方
+  await page.getByLabel("眼鏡・CL の種類").selectOption("glasses");
+  await page.getByLabel("右眼 S", { exact: true }).fill("-2");
+  await page.getByLabel("左眼 S", { exact: true }).fill("-1.5");
+  await page.getByLabel("瞳孔間距離").fill("62");
+  await page.getByText("今回眼鏡処方箋を発行する").click();
+  await page.getByRole("link", { name: "眼鏡処方箋を印刷" }).waitFor();
+  assert.equal(await page.locator("#optical-heading ~ div .readiness .is-blocker").count(), 0);
   await page.getByRole("button", { name: "左右に分ける" }).first().click();
   assert.deepEqual(await page.getByRole("combobox", { name: "処方の眼" }).evaluateAll((items) => items.map((item) => item.value)).then((values) => values.slice(0, 2)), ["od", "os"]);
   await page.getByText("保存済み").waitFor({ timeout: 15_000 });
+  const opticalPage = await context.newPage();
+  await opticalPage.goto(`${page.url()}/optical`);
+  await opticalPage.getByRole("heading", { name: "眼鏡処方箋" }).waitFor();
+  assert.equal(await opticalPage.getByText("-2.00").count() > 0, true);
+  await opticalPage.close();
+
+  // 紹介状を作成・確定・印刷
+  await page.getByRole("tab", { name: "文書" }).click();
+  await page.getByRole("button", { name: "紹介状を作成" }).click();
+  await page.getByRole("heading", { name: /診療情報提供書/ }).waitFor();
+  assert.match(await page.locator("textarea.document-body").inputValue(), /アレルギー・副作用歴】\nペニシリン系（発疹）/u);
+  await page.getByLabel("宛先 医療機関").fill("県立中央病院");
+  await page.getByText("保存済み").waitFor({ timeout: 15_000 });
+  await page.getByRole("button", { name: "確定する" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "確定する" }).click();
+  await page.getByRole("button", { name: "複製して修正" }).waitFor();
+  const letter = await context.newPage();
+  await letter.goto(`${page.url()}/print`);
+  await letter.getByText("県立中央病院").waitFor();
+  await letter.close();
 
   assert.deepEqual(pageErrors, []);
   await context.close();

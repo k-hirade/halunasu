@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useEyeApi } from "./eye-api";
 import { StatusTag } from "./home-workspace";
+import { DocumentsPanel } from "./documents-panel";
 import { PatientBanner } from "./patient-banner";
 import { TrendPanel } from "./trend-chart";
 import {
@@ -101,6 +102,7 @@ export function PatientChart({ patientId }) {
               </ul>
             )}
           </section>
+          <DocumentsPanel canWrite={Boolean(context?.canWriteDocuments)} patientId={patientId} />
           <section className="panel">
           <h2>カルテ履歴</h2>
           {encounters.length === 0 ? <p className="empty">まだカルテがありません。</p> : (

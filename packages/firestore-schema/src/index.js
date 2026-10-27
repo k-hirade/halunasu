@@ -44,6 +44,7 @@ export const collections = Object.freeze({
   eyeAppointments: "eye_appointments",
   eyePatientProfiles: "eye_patient_profiles",
   eyeOrderSets: "eye_order_sets",
+  eyeDocuments: "eye_documents",
   eyePhrases: "eye_phrases",
   eyeDailyCounters: "eye_daily_counters",
   referrals: "referrals"
@@ -248,6 +249,10 @@ export function eyeEncounterVersionPath(orgId, versionId) {
 
 export function eyeDrugPresetPath(orgId, presetId) {
   return orgDocPath(orgId, collections.eyeDrugPresets, presetId, "presetId");
+}
+
+export function eyeDocumentPath(orgId, documentId) {
+  return orgDocPath(orgId, collections.eyeDocuments, documentId, "documentId");
 }
 
 export function eyeOrderSetPath(orgId, setId) {

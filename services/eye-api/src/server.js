@@ -8,6 +8,7 @@ import {
 } from "../../../packages/auth-client/src/index.js";
 import {
   DEFAULT_ORDER_CATALOG,
+  EYE_DOCUMENT_ROLES,
   EYE_FINALIZE_ROLES,
   EYE_PRODUCT_ID,
   EYE_PROFILE_ROLES,
@@ -18,6 +19,7 @@ import {
   validateAmendEncounterInput,
   validateAppointmentStatusInput,
   validateCreateAppointmentInput,
+  validateCreateDocumentInput,
   validateCreateEncounterInput,
   validateExamConfirmInput,
   validateDrugPresetInput,
@@ -26,6 +28,7 @@ import {
   validatePhraseInput,
   validatePatientProfileInput,
   validateUpdateAppointmentInput,
+  validateUpdateDocumentInput,
   validateUpdateEncounterInput
 } from "../../../packages/eye-contracts/src/index.js";
 import {
@@ -52,6 +55,13 @@ import {
   buildAppointment,
   isActiveAppointment
 } from "./appointments.js";
+import {
+  applyDocumentUpdate,
+  buildDocumentDraft,
+  documentSummary,
+  duplicateDocument,
+  finalizeDocument
+} from "./documents.js";
 import { createId } from "./ids.js";
 import {
   applyProfileUpdate,
@@ -451,6 +461,78 @@ async function routeEyeApiRequest(input = {}) {
     }
   }
 
+  if (method === "GET" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "eye", "patients"]) && parts[4] === "documents") {
+    const patient = await requirePatient(platformStore, orgId, parts[3]);
+    return ok({ documents: (await eyeStore.listPatientDocuments(orgId, patient.patientId)).map(documentSummary) });
+  }
+
+  if (method === "POST" && matches(parts, ["v1", "eye", "documents"])) {
+    requireAccess(context, EYE_DOCUMENT_ROLES, "Document access is required");
+    requirePlatformCsrf(input.headers || {}, context.session);
+    const validated = validateCreateDocumentInput(input.body || {});
+    const patient = await requirePatient(platformStore, orgId, validated.patientId);
+    const history = await eyeStore.listPatientEncounters(orgId, patient.patientId);
+    const encounter = validated.encounterId
+      ? history.find((item) => item.encounterId === validated.encounterId)
+      : history.filter((item) => item.status === "finalized").at(-1) || null;
+    if (validated.encounterId && !encounter) throw notFoundError("encounter not found");
+    const [profile, facilities] = await Promise.all([
+      loadProfile(eyeStore, orgId, patient.patientId, history),
+      platformStore.listFacilities(orgId)
+    ]);
+    const document = buildDocumentDraft({
+      documentId: createId("edoc"),
+      orgId,
+      patientSnapshot: patientSnapshot(patient, new Date(now)),
+      encounter,
+      profile,
+      facility: facilities.find((item) => item.status === "active") || facilities[0] || null,
+      type: validated.type,
+      actor,
+      now
+    });
+    await eyeStore.createDocument(orgId, document);
+    await audit({ eventType: "eye.document_created", targetType: "document", targetId: document.documentId, patientId: document.patientId, safePayload: { type: document.type } });
+    return created({ document });
+  }
+
+  if (parts.length >= 4 && matches(parts.slice(0, 3), ["v1", "eye", "documents"])) {
+    const documentId = parts[3];
+    const action = parts[4] || "";
+    const current = await eyeStore.getDocument(orgId, documentId);
+    if (!current) throw notFoundError("document not found");
+    if (method === "GET" && parts.length === 4) {
+      await audit({ eventType: "eye.document_viewed", targetType: "document", targetId: documentId, patientId: current.patientId });
+      return ok({ document: current });
+    }
+    if (method === "PATCH" && parts.length === 4) {
+      requireAccess(context, EYE_DOCUMENT_ROLES, "Document access is required");
+      requirePlatformCsrf(input.headers || {}, context.session);
+      const validated = validateUpdateDocumentInput(input.body || {});
+      const document = applyDocumentUpdate(current, validated, { actor, now });
+      await eyeStore.replaceDocument(orgId, document, validated.expectedRevision);
+      await audit({ eventType: "eye.document_updated", targetType: "document", targetId: documentId, patientId: document.patientId });
+      return ok({ document });
+    }
+    if (method === "POST" && action === "finalize" && parts.length === 5) {
+      requireAccess(context, EYE_FINALIZE_ROLES, "Only a doctor can finalize a document");
+      requirePlatformCsrf(input.headers || {}, context.session);
+      const expectedRevision = requiredRevision(input.body);
+      const document = finalizeDocument(current, { actor, now });
+      await eyeStore.replaceDocument(orgId, document, expectedRevision);
+      await audit({ eventType: "eye.document_finalized", targetType: "document", targetId: documentId, patientId: document.patientId, safePayload: { contentHash: document.contentHash } });
+      return ok({ document });
+    }
+    if (method === "POST" && action === "duplicate" && parts.length === 5) {
+      requireAccess(context, EYE_DOCUMENT_ROLES, "Document access is required");
+      requirePlatformCsrf(input.headers || {}, context.session);
+      const document = duplicateDocument(current, { documentId: createId("edoc"), actor, now });
+      await eyeStore.createDocument(orgId, document);
+      await audit({ eventType: "eye.document_created", targetType: "document", targetId: document.documentId, patientId: document.patientId, safePayload: { type: document.type, sourceDocumentId: documentId } });
+      return created({ document });
+    }
+  }
+
   if (method === "GET" && matches(parts, ["v1", "eye", "drug-presets"])) {
     return ok({ drugPresets: await eyeStore.listDrugPresets(orgId) });
   }
@@ -590,7 +672,8 @@ function contextView(context) {
     canManageSettings: hasProductAccess(context.session, EYE_PRODUCT_ID, EYE_SETTINGS_ROLES),
     canReceive: hasProductAccess(context.session, EYE_PRODUCT_ID, EYE_RECEPTION_ROLES),
     canEditProfile: hasProductAccess(context.session, EYE_PRODUCT_ID, EYE_PROFILE_ROLES),
-    canEditDiagnoses: hasProductAccess(context.session, EYE_PRODUCT_ID, EYE_FINALIZE_ROLES)
+    canEditDiagnoses: hasProductAccess(context.session, EYE_PRODUCT_ID, EYE_FINALIZE_ROLES),
+    canWriteDocuments: hasProductAccess(context.session, EYE_PRODUCT_ID, EYE_DOCUMENT_ROLES)
   };
 }
 

@@ -20,8 +20,12 @@ export const ORDER_STATUSES = Object.freeze(["planned", "performed", "cancelled"
 // 受診カルテの項目。保存と衝突判定はこの単位で行う。
 export const ENCOUNTER_SECTIONS = Object.freeze([
   "chiefComplaint", "history", "exam", "findings", "sketches", "diagnoses", "assessment", "plan",
-  "prescriptions", "nextVisit", "staffNote", "orders", "flags"
+  "prescriptions", "nextVisit", "staffNote", "orders", "flags", "optical"
 ]);
+export const OPTICAL_TYPES = Object.freeze(["", "glasses", "contact"]);
+export const OPTICAL_PURPOSES = Object.freeze(["far", "near", "middle", "progressive", "bifocal"]);
+export const DOCUMENT_TYPES = Object.freeze(["referral", "reply", "certificate", "other"]);
+export const EYE_DOCUMENT_ROLES = Object.freeze(["admin", "doctor", "orthoptist", "nurse", "medical_clerk"]);
 // 検査・処置の標準カタログ。医院ごとの追加はセットで行う。
 export const DEFAULT_ORDER_CATALOG = Object.freeze([
   { code: "va", name: "視力検査", kind: "exam", requiresEye: true },
@@ -191,7 +195,65 @@ export function validateEncounterContent(input = {}) {
     nextVisit: validateNextVisit(input.nextVisit || {}),
     staffNote: optionalText(input.staffNote, "content.staffNote"),
     orders: validateOrders(input.orders),
-    flags: validateFlags(input.flags || {})
+    flags: validateFlags(input.flags || {}),
+    optical: validateOptical(input.optical || {})
+  };
+}
+
+// 眼鏡・コンタクトレンズの処方。発行するときの値の整合は確定前チェックで見る。
+function validateOptical(input) {
+  if (!isPlainObject(input)) throw validationError("optical must be an object", "content.optical");
+  const side = (value, field) => {
+    const item = isPlainObject(value) ? value : {};
+    return {
+      sphere: optionalNumber(item.sphere, `${field}.sphere`, { min: -30, max: 30 }),
+      cylinder: optionalNumber(item.cylinder, `${field}.cylinder`, { min: -10, max: 10 }),
+      axis: optionalNumber(item.axis, `${field}.axis`, { min: 0, max: 180, integer: true }),
+      add: optionalNumber(item.add, `${field}.add`, { min: 0, max: 4 }),
+      prism: optionalNumber(item.prism, `${field}.prism`, { min: 0, max: 20 }),
+      base: optionalString(item.base, `${field}.base`, 20),
+      bc: optionalNumber(item.bc, `${field}.bc`, { min: 6, max: 10 }),
+      dia: optionalNumber(item.dia, `${field}.dia`, { min: 8, max: 16 }),
+      product: optionalString(item.product, `${field}.product`, MAX_SHORT_TEXT),
+      va: optionalString(item.va, `${field}.va`, 40)
+    };
+  };
+  return {
+    type: optionalEnum(input.type, OPTICAL_TYPES, "content.optical.type"),
+    purpose: optionalEnum(input.purpose, OPTICAL_PURPOSES, "content.optical.purpose") || "far",
+    od: side(input.od, "content.optical.od"),
+    os: side(input.os, "content.optical.os"),
+    pd: optionalNumber(input.pd, "content.optical.pd", { min: 40, max: 85 }),
+    validDays: optionalNumber(input.validDays, "content.optical.validDays", { min: 1, max: 365, integer: true }),
+    note: optionalString(input.note, "content.optical.note", MAX_SHORT_TEXT),
+    issue: Boolean(input.issue)
+  };
+}
+
+export function validateCreateDocumentInput(input = {}) {
+  return {
+    patientId: requiredString(input.patientId, "patientId", MAX_SHORT_TEXT),
+    encounterId: optionalString(input.encounterId, "encounterId", MAX_SHORT_TEXT),
+    type: optionalEnum(input.type, DOCUMENT_TYPES, "type") || "referral"
+  };
+}
+
+export function validateUpdateDocumentInput(input = {}) {
+  const expectedRevision = Number(input.expectedRevision);
+  if (!Number.isInteger(expectedRevision) || expectedRevision < 1) {
+    throw validationError("expectedRevision must be a positive integer", "expectedRevision");
+  }
+  const recipient = isPlainObject(input.recipient) ? input.recipient : {};
+  return {
+    expectedRevision,
+    title: optionalString(input.title, "title", MAX_SHORT_TEXT),
+    recipient: {
+      institution: optionalString(recipient.institution, "recipient.institution", MAX_SHORT_TEXT),
+      department: optionalString(recipient.department, "recipient.department", MAX_SHORT_TEXT),
+      doctor: optionalString(recipient.doctor, "recipient.doctor", MAX_SHORT_TEXT)
+    },
+    body: optionalText(input.body, "body"),
+    issueDate: optionalDate(input.issueDate, "issueDate")
   };
 }
 
