@@ -178,6 +178,20 @@ export function useEncounterDraft(encounterId) {
     setSaveState("dirty");
   }, []);
 
+  // 内容を書き換えて、すぐに保存する（確定ダイアログから引き継ぎ処方を確認済みにするときなど）。
+  const saveWith = useCallback(async (transform) => {
+    if (savingRef.current) await savingRef.current;
+    const current = contentRef.current;
+    const next = transform(current);
+    for (const key of Object.keys(next)) {
+      if (JSON.stringify(next[key]) !== JSON.stringify(current?.[key])) dirtyRef.current.add(key);
+    }
+    contentRef.current = next;
+    setContent(next);
+    setSaveState("dirty");
+    return saveRef.current();
+  }, []);
+
   const updateMeta = useCallback((patch) => {
     setMeta((current) => ({ ...current, ...patch }));
     dirtyRef.current.add("meta");
@@ -222,6 +236,7 @@ export function useEncounterDraft(encounterId) {
     save,
     update,
     replaceContent,
+    saveWith,
     updateMeta,
     runAction,
     confirmExam

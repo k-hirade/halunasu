@@ -15,18 +15,30 @@ import {
 
 const SIDES = ["od", "os"];
 
-export function Section({ title, id, children }) {
+export function Section({ title, id, children, actions = null }) {
   return (
-    <section aria-labelledby={`${id}-heading`} className="form-section">
-      <h2 id={`${id}-heading`}>{title}</h2>
+    <section aria-labelledby={`${id}-heading`} className="form-section" id={`sec-${id}`}>
+      <div className="form-section-head">
+        <h2 id={`${id}-heading`}>{title}</h2>
+        {actions}
+      </div>
       {children}
     </section>
   );
 }
 
+const VA_VALUES = [
+  "2.0", "1.5", "1.2", "1.0", "0.9", "0.8", "0.7", "0.6", "0.5", "0.4", "0.3", "0.2", "0.15", "0.1",
+  "0.09", "0.08", "0.07", "0.06", "0.05", "0.04", "0.03", "0.02", "0.01", "n.d.", "m.m.", "s.l.(+)", "s.l.(-)"
+];
+const LAST_IOP_METHOD_KEY = "halunasu-eye-last-iop-method";
+
+// 検査値。見た目は「右眼 | 左眼」の表だが、入力順（Tab・Enter）は右眼の全項目 → 左眼の全項目の順にする。
 export function ExamTable({ content, previous, update, confirmations = null, onConfirm = null, canConfirm = false }) {
+  const exam = content.exam;
+  const otherSide = (side) => (side === "od" ? "os" : "od");
   const numberInput = (side, path, props = {}) => {
-    const value = getIn(content.exam[side], path);
+    const value = getIn(exam[side], path);
     return (
       <input
         className="input input-num"
@@ -42,115 +54,165 @@ export function ExamTable({ content, previous, update, confirmations = null, onC
     const value = previous ? getIn(previous.exam?.[side] || {}, path) : null;
     return value === null || value === undefined || value === "" ? null : <span className="prev-hint">前回 {format(value)}</span>;
   };
+  // 測定法・矯正の種類は、反対眼が未選択なら同じものを入れる（両眼同じ方法で測ることがほとんどのため）。
+  const setShared = (side, key, value) => {
+    update(["exam", side, key], value);
+    if (value && !exam[otherSide(side)][key]) update(["exam", otherSide(side), key], value);
+    if (key === "iopMethod" && value) rememberIopMethod(value);
+  };
+  const setIop = (side, raw) => {
+    update(["exam", side, "iop"], parseNumber(raw));
+    const last = lastIopMethod();
+    if (raw !== "" && !exam[side].iopMethod && last) update(["exam", side, "iopMethod"], last);
+  };
+
+  const rows = [
+    {
+      key: "vaUncorrected",
+      label: "裸眼視力",
+      render: (side) => (
+        <>
+          <input aria-label={`${EYE_LABELS[side]} 裸眼視力`} className="input input-va" inputMode="decimal" list="va-values" onChange={(event) => update(["exam", side, "vaUncorrected"], event.target.value)} value={exam[side].vaUncorrected} />
+          {hint(side, ["vaUncorrected"])}
+        </>
+      )
+    },
+    {
+      key: "vaCorrected",
+      label: "矯正視力",
+      render: (side) => (
+        <>
+          <input aria-label={`${EYE_LABELS[side]} 矯正視力`} className="input input-va" inputMode="decimal" list="va-values" onChange={(event) => update(["exam", side, "vaCorrected"], event.target.value)} value={exam[side].vaCorrected} />
+          {hint(side, ["vaCorrected"])}
+        </>
+      )
+    },
+    {
+      key: "iop",
+      label: "眼圧 mmHg",
+      render: (side) => (
+        <>
+          <span className="pair">
+            <input aria-label={`${EYE_LABELS[side]} 眼圧`} className="input input-num input-iop" inputMode="decimal" max={90} min={0} onChange={(event) => setIop(side, event.target.value)} step={1} type="number" value={exam[side].iop ?? ""} />
+            <select aria-label={`${EYE_LABELS[side]} 眼圧の測定法`} className="input" data-enter-skip onChange={(event) => setShared(side, "iopMethod", event.target.value)} value={exam[side].iopMethod}>
+              <option value="">測定法</option>
+              {Object.entries(IOP_METHOD_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </span>
+          {hint(side, ["iop"], (value) => `${value}`)}
+          {Number.isFinite(exam[side].iop) && exam[side].iop > 21 ? <span className="flag">21 mmHg を超えています</span> : null}
+        </>
+      )
+    },
+    {
+      key: "correction",
+      label: "矯正 S / C / Ax",
+      render: (side) => (
+        <>
+          <span className="triple">
+            {numberInput(side, ["correction", "sphere"], { "aria-label": `${EYE_LABELS[side]} 矯正 球面`, "data-enter-skip": true, step: 0.25, placeholder: "S" })}
+            {numberInput(side, ["correction", "cylinder"], { "aria-label": `${EYE_LABELS[side]} 矯正 円柱`, "data-enter-skip": true, step: 0.25, placeholder: "C" })}
+            {numberInput(side, ["correction", "axis"], { "aria-label": `${EYE_LABELS[side]} 矯正 軸`, "data-enter-skip": true, step: 1, min: 0, max: 180, placeholder: "Ax" })}
+          </span>
+          {previous && formatRefraction(previous.exam?.[side]?.correction) ? <span className="prev-hint">前回 {formatRefraction(previous.exam[side].correction)}</span> : null}
+        </>
+      )
+    },
+    {
+      key: "refraction",
+      label: "他覚屈折 S / C / Ax",
+      render: (side) => (
+        <span className="triple">
+          {numberInput(side, ["refraction", "sphere"], { "aria-label": `${EYE_LABELS[side]} 屈折 球面`, "data-enter-skip": true, step: 0.25, placeholder: "S" })}
+          {numberInput(side, ["refraction", "cylinder"], { "aria-label": `${EYE_LABELS[side]} 屈折 円柱`, "data-enter-skip": true, step: 0.25, placeholder: "C" })}
+          {numberInput(side, ["refraction", "axis"], { "aria-label": `${EYE_LABELS[side]} 屈折 軸`, "data-enter-skip": true, step: 1, min: 0, max: 180, placeholder: "Ax" })}
+        </span>
+      )
+    },
+    {
+      key: "measure",
+      label: "矯正の種類・時刻",
+      render: (side) => (
+        <span className="pair">
+          <select aria-label={`${EYE_LABELS[side]} 矯正の種類`} className="input" data-enter-skip onChange={(event) => setShared(side, "vaCorrectionType", event.target.value)} value={exam[side].vaCorrectionType || ""}>
+            {Object.entries(CORRECTION_TYPE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+          <input aria-label={`${EYE_LABELS[side]} 測定時刻`} className="input input-time" data-enter-skip onChange={(event) => update(["exam", side, "measuredAt"], event.target.value)} type="time" value={exam[side].measuredAt || ""} />
+          <button className="btn btn-chip" onClick={() => update(["exam", side, "measuredAt"], nowTime())} type="button">今</button>
+        </span>
+      )
+    }
+  ];
+  if (confirmations) {
+    rows.push({
+      key: "confirm",
+      label: "確認",
+      render: (side) => {
+        const confirmation = confirmations[side];
+        if (confirmation) {
+          return (
+            <span className="confirm-ok">
+              確認済み（{confirmation.by?.displayName} {formatTime(confirmation.at)}）
+              {canConfirm ? <button className="btn btn-chip" onClick={() => onConfirm(side, false)} type="button">取消</button> : null}
+            </span>
+          );
+        }
+        if (!hasExamValues(exam[side])) return <span className="muted small">未入力</span>;
+        return canConfirm ? <button className="btn btn-ghost btn-sm" onClick={() => onConfirm(side, true)} type="button">{EYE_LABELS[side]}を確認</button> : <span className="confirm-pending">未確認</span>;
+      }
+    });
+  }
 
   return (
-    <div className="table-scroll">
-      <table className="exam-table">
-        <thead>
-          <tr>
-            <th scope="col" />
-            <th className="eye-od" scope="col">右眼 (R)</th>
-            <th className="eye-os" scope="col">左眼 (L)</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <th scope="row">裸眼視力</th>
-            {SIDES.map((side) => (
-              <td key={side}>
-                <input aria-label={`${EYE_LABELS[side]} 裸眼視力`} className="input input-va" onChange={(event) => update(["exam", side, "vaUncorrected"], event.target.value)} placeholder="例 0.3" value={content.exam[side].vaUncorrected} />
-                {hint(side, ["vaUncorrected"])}
-              </td>
-            ))}
-          </tr>
-          <tr>
-            <th scope="row">矯正視力</th>
-            {SIDES.map((side) => (
-              <td key={side}>
-                <input aria-label={`${EYE_LABELS[side]} 矯正視力`} className="input input-va" onChange={(event) => update(["exam", side, "vaCorrected"], event.target.value)} placeholder="例 1.2" value={content.exam[side].vaCorrected} />
-                {hint(side, ["vaCorrected"])}
-              </td>
-            ))}
-          </tr>
-          <tr>
-            <th scope="row">矯正 S / C / Ax</th>
-            {SIDES.map((side) => (
-              <td key={side}>
-                <span className="triple">
-                  {numberInput(side, ["correction", "sphere"], { "aria-label": `${EYE_LABELS[side]} 矯正 球面`, step: 0.25, placeholder: "S" })}
-                  {numberInput(side, ["correction", "cylinder"], { "aria-label": `${EYE_LABELS[side]} 矯正 円柱`, step: 0.25, placeholder: "C" })}
-                  {numberInput(side, ["correction", "axis"], { "aria-label": `${EYE_LABELS[side]} 矯正 軸`, step: 1, min: 0, max: 180, placeholder: "Ax" })}
-                </span>
-                {previous ? <span className="prev-hint">{formatRefraction(previous.exam?.[side]?.correction) ? `前回 ${formatRefraction(previous.exam[side].correction)}` : ""}</span> : null}
-              </td>
-            ))}
-          </tr>
-          <tr>
-            <th scope="row">他覚屈折 S / C / Ax</th>
-            {SIDES.map((side) => (
-              <td key={side}>
-                <span className="triple">
-                  {numberInput(side, ["refraction", "sphere"], { "aria-label": `${EYE_LABELS[side]} 屈折 球面`, step: 0.25, placeholder: "S" })}
-                  {numberInput(side, ["refraction", "cylinder"], { "aria-label": `${EYE_LABELS[side]} 屈折 円柱`, step: 0.25, placeholder: "C" })}
-                  {numberInput(side, ["refraction", "axis"], { "aria-label": `${EYE_LABELS[side]} 屈折 軸`, step: 1, min: 0, max: 180, placeholder: "Ax" })}
-                </span>
-              </td>
-            ))}
-          </tr>
-          <tr>
-            <th scope="row">矯正の種類・測定時刻</th>
-            {SIDES.map((side) => (
-              <td key={side}>
-                <span className="pair">
-                  <select aria-label={`${EYE_LABELS[side]} 矯正の種類`} className="input" onChange={(event) => update(["exam", side, "vaCorrectionType"], event.target.value)} value={content.exam[side].vaCorrectionType || ""}>
-                    {Object.entries(CORRECTION_TYPE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                  </select>
-                  <input aria-label={`${EYE_LABELS[side]} 測定時刻`} className="input input-time" onChange={(event) => update(["exam", side, "measuredAt"], event.target.value)} type="time" value={content.exam[side].measuredAt || ""} />
-                  <button className="btn btn-chip" onClick={() => update(["exam", side, "measuredAt"], nowTime())} type="button">今</button>
-                </span>
-              </td>
-            ))}
-          </tr>
-          <tr>
-            <th scope="row">眼圧 (mmHg)</th>
-            {SIDES.map((side) => (
-              <td key={side}>
-                <span className="pair">
-                  {numberInput(side, ["iop"], { "aria-label": `${EYE_LABELS[side]} 眼圧`, step: 1, min: 0, max: 90 })}
-                  <select aria-label={`${EYE_LABELS[side]} 眼圧の測定法`} className="input" onChange={(event) => update(["exam", side, "iopMethod"], event.target.value)} value={content.exam[side].iopMethod}>
-                    <option value="">測定法</option>
-                    {Object.entries(IOP_METHOD_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                  </select>
-                </span>
-                {hint(side, ["iop"], (value) => `${value}`)}
-                {Number.isFinite(content.exam[side].iop) && content.exam[side].iop > 21 ? <span className="flag">21 mmHg を超えています</span> : null}
-              </td>
-            ))}
-          </tr>
-          {confirmations ? (
-            <tr className="confirm-row">
-              <th scope="row">確認</th>
-              {SIDES.map((side) => {
-                const confirmation = confirmations[side];
-                return (
-                  <td key={side}>
-                    {confirmation ? (
-                      <span className="confirm-ok">
-                        確認済み（{confirmation.by?.displayName} {formatTime(confirmation.at)}）
-                        {canConfirm ? <button className="btn btn-chip" onClick={() => onConfirm(side, false)} type="button">取消</button> : null}
-                      </span>
-                    ) : hasExamValues(content.exam[side]) ? (
-                      canConfirm ? <button className="btn btn-primary btn-sm" onClick={() => onConfirm(side, true)} type="button">{EYE_LABELS[side]}を確認</button> : <span className="confirm-pending">未確認</span>
-                    ) : <span className="muted small">未入力</span>}
-                  </td>
-                );
-              })}
-            </tr>
-          ) : null}
-        </tbody>
-      </table>
+    <div className="exam-grid" onKeyDown={moveToNextOnEnter}>
+      <datalist id="va-values">
+        {VA_VALUES.map((value) => <option key={value} value={value} />)}
+      </datalist>
+      {rows.map((row, index) => (
+        <div className="exam-label" key={row.key} style={{ "--row": index + 2 }}>{row.label}</div>
+      ))}
+      {SIDES.map((side, column) => (
+        <div className={`exam-eye exam-eye-${side}`} key={side} role="group" aria-label={EYE_LABELS[side]}>
+          <h3 className={`exam-eye-head eye-${side}`} style={{ "--col": column + 2 }}>{side === "od" ? "右眼 R" : "左眼 L"}</h3>
+          {rows.map((row, index) => (
+            <div className={`exam-cell exam-cell-${row.key}`} key={row.key} style={{ "--row": index + 2, "--col": column + 2 }}>
+              <span className="exam-cell-label" aria-hidden="true">{row.label}</span>
+              {row.render(side)}
+            </div>
+          ))}
+        </div>
+      ))}
     </div>
   );
+}
+
+// Enter で次の入力欄へ進む。視力・眼圧だけを 右眼 → 左眼 の順にたどる（屈折値・選択肢・時刻は Tab で入る）。
+function moveToNextOnEnter(event) {
+  const target = event.target;
+  if (event.key !== "Enter" || event.isComposing || target.tagName !== "INPUT" || target.type === "checkbox") return;
+  const fields = [...event.currentTarget.querySelectorAll("input:not([type=checkbox]):not([data-enter-skip]):not(:disabled)")];
+  const next = fields[fields.indexOf(target) + 1];
+  if (next) {
+    event.preventDefault();
+    next.focus();
+    next.select?.();
+  }
+}
+
+function lastIopMethod() {
+  try {
+    return window.localStorage.getItem(LAST_IOP_METHOD_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+function rememberIopMethod(value) {
+  try {
+    window.localStorage.setItem(LAST_IOP_METHOD_KEY, value);
+  } catch {
+    // 覚えられない環境では毎回選ぶ
+  }
 }
 
 const CORRECTION_TYPE_LABELS = { "": "矯正の種類", glasses: "眼鏡", contact: "CL", pinhole: "ピンホール", trial: "検眼レンズ" };
@@ -403,7 +465,9 @@ export function Sketches({ content, editable, update }) {
 
 export function Prescriptions({ content, drugPresets, nextDays, update, editable }) {
   const rows = content.prescriptions;
-  const setRow = (index, patch) => update(["prescriptions", index], { ...rows[index], ...patch });
+  // 行を編集したら、その処方は今回の内容として確認したものとみなす。
+  const setRow = (index, patch) => update(["prescriptions", index], { ...rows[index], carriedOver: false, ...patch });
+  const carriedCount = rows.filter((row) => row.carriedOver).length;
   const presetByName = new Map(drugPresets.map((preset) => [preset.name, preset]));
 
   function changeName(index, name) {
@@ -436,7 +500,13 @@ export function Prescriptions({ content, drugPresets, nextDays, update, editable
       <datalist id="common-usages">
         {COMMON_USAGES.map((usage) => <option key={usage} value={usage} />)}
       </datalist>
-      {rows.length === 0 ? <p className="empty">処方はありません。</p> : null}
+      {carriedCount ? (
+        <div className="rx-carried-note">
+          <span>前回から引き継いだ処方が <strong>{carriedCount}件</strong> あります。内容を確かめてください（確定時にも確認できます）。</span>
+          {editable ? <button className="btn btn-chip" onClick={() => update(["prescriptions"], rows.map((row) => ({ ...row, carriedOver: false })))} type="button">すべて今回の処方として確認</button> : null}
+        </div>
+      ) : null}
+      {rows.length === 0 ? <p className="empty">処方はありません。右の「候補」やセットから追加できます。</p> : null}
       {rows.map((row, index) => {
         const preset = row.presetId ? drugPresets.find((item) => item.presetId === row.presetId) : null;
         const days = row.days || nextDays;
@@ -444,63 +514,61 @@ export function Prescriptions({ content, drugPresets, nextDays, update, editable
           ? calculateEyeDropBottles({ timesPerDay: row.timesPerDay, eye: row.eye, days, dropsPerBottle: preset?.dropsPerBottle })
           : null;
         return (
-          <div className={`rx-row${row.issued === false ? " is-not-issued" : ""}`} key={index}>
-            <div className="row-line">
-              <select aria-label="処方の種類" className="input" onChange={(event) => setRow(index, { kind: event.target.value })} value={row.kind}>
-                {Object.entries(PRESCRIPTION_KIND_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-              </select>
-              <input aria-label="薬剤名" className="input grow" list="drug-presets" onChange={(event) => changeName(index, event.target.value)} placeholder="薬剤名" value={row.name} />
-              <select aria-label="処方の眼" className="input" onChange={(event) => setRow(index, { eye: event.target.value })} value={row.eye}>
+          <div className={`rx-row${row.issued === false ? " is-not-issued" : ""}${row.carriedOver ? " is-carried" : ""}`} key={index}>
+            <div className="rx-main">
+              <input aria-label="薬剤名" className="input rx-name" list="drug-presets" onChange={(event) => changeName(index, event.target.value)} placeholder="薬剤名" value={row.name} />
+              <select aria-label="処方の眼" className="input rx-eye" onChange={(event) => setRow(index, { eye: event.target.value })} value={row.eye}>
                 <option value="">眼</option>
                 {Object.entries(EYE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
-              <select aria-label="院内・院外" className="input" onChange={(event) => setRow(index, { route: event.target.value })} value={row.route || "outside"}>
+              <label className="inline-field">
+                <span>1日</span>
+                <input aria-label="1日の回数" className="input input-num input-short" min="0" onChange={(event) => setRow(index, { timesPerDay: parseNumber(event.target.value) })} type="number" value={row.timesPerDay ?? ""} />
+                <span>回</span>
+              </label>
+              <input aria-label="用法" className="input rx-usage" list="common-usages" onChange={(event) => setRow(index, { usage: event.target.value })} placeholder="用法" value={row.usage || ""} />
+            </div>
+            <div className="rx-sub">
+              {row.carriedOver ? (
+                <span className="tag tag-warn">前回から引き継ぎ</span>
+              ) : null}
+              <select aria-label="処方の種類" className="input input-compact" onChange={(event) => setRow(index, { kind: event.target.value })} value={row.kind}>
+                {Object.entries(PRESCRIPTION_KIND_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+              <select aria-label="院内・院外" className="input input-compact" onChange={(event) => setRow(index, { route: event.target.value })} value={row.route || "outside"}>
                 <option value="outside">院外</option>
                 <option value="inside">院内</option>
               </select>
-            </div>
-            <div className="row-line">
               <label className="inline-field">
-                <span>1日</span>
-                <input aria-label="1日の回数" className="input input-num" min="0" onChange={(event) => setRow(index, { timesPerDay: parseNumber(event.target.value) })} type="number" value={row.timesPerDay ?? ""} />
-                <span>回</span>
-              </label>
-              <input aria-label="用法" className="input grow" list="common-usages" onChange={(event) => setRow(index, { usage: event.target.value })} placeholder="用法（例: 就寝前）" value={row.usage || ""} />
-              <label className="inline-field">
-                <input aria-label="数量" className="input input-num" disabled={row.issued === false} min="0" onChange={(event) => setRow(index, { quantity: parseNumber(event.target.value) })} step="any" type="number" value={row.quantity ?? ""} />
-                <input aria-label="単位" className="input input-unit" disabled={row.issued === false} onChange={(event) => setRow(index, { unit: event.target.value })} placeholder="本" value={row.unit} />
+                <input aria-label="数量" className="input input-num input-short input-compact" disabled={row.issued === false} min="0" onChange={(event) => setRow(index, { quantity: parseNumber(event.target.value) })} step="any" type="number" value={row.quantity ?? ""} />
+                <input aria-label="単位" className="input input-unit input-compact" disabled={row.issued === false} onChange={(event) => setRow(index, { unit: event.target.value })} placeholder="本" value={row.unit} />
               </label>
               <label className="inline-field">
-                <input aria-label="日数" className="input input-num" disabled={row.issued === false} min="0" onChange={(event) => setRow(index, { days: parseNumber(event.target.value) })} type="number" value={row.days ?? ""} />
+                <input aria-label="日数" className="input input-num input-short input-compact" disabled={row.issued === false} min="0" onChange={(event) => setRow(index, { days: parseNumber(event.target.value) })} type="number" value={row.days ?? ""} />
                 <span>日分</span>
               </label>
-              <label className="inline-field" title="継続中だが今回は薬を出さない">
+              <label className="check-line rx-issued" title="継続中だが今回は薬を出さない場合は外す">
                 <input checked={row.issued !== false} onChange={(event) => setRow(index, { issued: event.target.checked })} type="checkbox" />
-                <span>今回処方</span>
+                今回処方
               </label>
-              {row.eye === "ou" && (row.kind === "eye_drop" || row.kind === "eye_ointment") ? (
-                <button className="btn btn-chip" onClick={() => splitEyes(index)} type="button">左右に分ける</button>
+              {bottles?.bottles ? (
+                <span className="rx-bottles">
+                  目安 <strong>{bottles.bottles}本</strong>
+                  <span className="muted small" title={`${days}日 × 1日${row.timesPerDay}回 × ${row.eye === "ou" ? 2 : 1}眼 = ${bottles.dropsNeeded}滴 ÷ 1本${bottles.dropsPerBottle}滴`}>（{days}日{row.days ? "" : "・次回まで"}）</span>
+                  {editable && !(row.quantity === bottles.bottles && row.unit === "本") ? (
+                    <button className="btn btn-chip" onClick={() => setRow(index, { quantity: bottles.bottles, unit: "本" })} type="button">反映</button>
+                  ) : null}
+                </span>
               ) : null}
-              <button aria-label="この処方を削除" className="btn btn-chip danger-text" onClick={() => update(["prescriptions"], rows.filter((_, rowIndex) => rowIndex !== index))} type="button">削除</button>
+              <span className="rx-actions">
+                {row.carriedOver && editable ? <button className="btn btn-chip" onClick={() => setRow(index, {})} type="button">確認</button> : null}
+                {row.eye === "ou" && (row.kind === "eye_drop" || row.kind === "eye_ointment") ? (
+                  <button className="btn btn-chip" onClick={() => splitEyes(index)} type="button">左右に分ける</button>
+                ) : null}
+                <button aria-label="この処方を削除" className="btn btn-chip danger-text" onClick={() => update(["prescriptions"], rows.filter((_, rowIndex) => rowIndex !== index))} type="button">削除</button>
+              </span>
             </div>
-            {row.issued === false ? <div className="rx-hint is-muted"><span className="small">継続中・今回は処方しません（本数の計算対象外）。</span></div> : null}
-            {bottles ? (
-              <div className="rx-hint">
-                {bottles.bottles ? (
-                  <>
-                    <span>
-                      本数の目安 <strong>{bottles.bottles}本</strong>
-                      <span className="muted small">（{days}日 × 1日{row.timesPerDay}回 × {row.eye === "ou" ? 2 : 1}眼 = {bottles.dropsNeeded}滴 ÷ 1本{bottles.dropsPerBottle}滴{row.days ? "" : "・日数は次回受診まで"}）</span>
-                    </span>
-                    {editable && !(row.quantity === bottles.bottles && row.unit === "本") ? (
-                      <button className="btn btn-chip" onClick={() => setRow(index, { quantity: bottles.bottles, unit: "本" })} type="button">{bottles.bottles}本を反映</button>
-                    ) : null}
-                  </>
-                ) : (
-                  <span className="muted small">眼・1日の回数・次回受診（または日数）を入れると本数の目安を計算します。</span>
-                )}
-              </div>
-            ) : null}
+            {row.issued === false ? <p className="muted small rx-note">継続中・今回は処方しません（本数の計算対象外）。</p> : null}
           </div>
         );
       })}

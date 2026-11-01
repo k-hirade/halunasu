@@ -61,6 +61,9 @@ try {
         await page.waitForTimeout(name === "login" ? 1500 : 2500);
         await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
         if (name === "menu" && width < 768) await page.getByRole("button", { name: "メニュー" }).click();
+        if (name === "editor-history" && width < 1280) await page.getByRole("button", { name: /^過去カルテ/u }).click();
+        if (name === "editor-side" && width < 1024) await page.getByRole("button", { name: /^確認・比較/u }).click();
+        if (name.startsWith("editor-") && !name.endsWith("dark")) await page.waitForTimeout(400);
         const tag = `${name}-${width}x${height}`;
         await page.screenshot({ path: join(outDir, `${tag}.png`) });
         await page.screenshot({ path: join(outDir, `${tag}-full.png`), fullPage: true });
@@ -139,7 +142,9 @@ async function prepare(browser) {
       settings: "/settings",
       "editor-dark": encounterPath,
       "reception-dark": "/reception",
-      menu: "/reception"
+      menu: "/reception",
+      "editor-history": encounterPath,
+      "editor-side": encounterPath
     }
   };
 }

@@ -151,3 +151,12 @@ test("checks glasses and contact lens prescriptions only when they are issued", 
   const contact = evaluateOpticalPrescription({ type: "contact", issue: true, od: { sphere: -3, bc: 8.6, dia: 14.2 }, os: { sphere: -3 } });
   assert.deepEqual(contact.map((item) => item.code), ["optical_cl_fit_missing"]);
 });
+
+test("prescriptions carried over to a revisit must be confirmed before finalizing", () => {
+  const copied = copyContentForRevisit({ prescriptions: [{ kind: "eye_drop", name: "ラタノプロスト点眼液", eye: "ou", timesPerDay: 1 }] });
+  assert.equal(copied.prescriptions[0].carriedOver, true);
+  const blocked = evaluateFinalizeReadiness({ ...copied, chiefComplaint: "定期", plan: "継続", nextVisit: { intervalWeeks: 8 } });
+  assert.deepEqual(blocked.blockers.map((item) => item.code), ["prescription_carried_over"]);
+  const confirmed = { ...copied, prescriptions: copied.prescriptions.map((item) => ({ ...item, carriedOver: false })) };
+  assert.deepEqual(evaluateFinalizeReadiness({ ...confirmed, chiefComplaint: "定期", plan: "継続", nextVisit: { intervalWeeks: 8 } }).blockers, []);
+});

@@ -2,38 +2,44 @@
 
 import { useState } from "react";
 import { useEyeApi } from "./eye-api";
-import { EYE_LABELS, formatDate, patientLine } from "../lib/format";
+import { EYE_LABELS, formatDate, patientLine, todayIso } from "../lib/format";
 
 const ALLERGY_CATEGORY_LABELS = { drug: "薬剤", food: "食物", contrast: "造影剤", latex: "ラテックス", other: "その他" };
 const SEVERITY_LABELS = { unknown: "程度不明", mild: "軽度", moderate: "中等度", severe: "重篤" };
 const STATUS_LABELS = { active: "確定", suspected: "疑い", resolved: "治癒・終了" };
 const OUTCOME_LABELS = { "": "—", cured: "治癒", discontinued: "中止", transferred: "転医", deceased: "死亡", other: "その他" };
 
-// 患者の帯。アレルギーはどの画面でも必ず見える位置に出す。
-export function PatientBanner({ patient, profile, context, onProfileSaved, actions = null, sub = null }) {
+// 患者の帯。アレルギーはどの画面でも必ず見える位置に出す。compact はカルテ画面用の 1 行表示。
+export function PatientBanner({ patient, profile, context, onProfileSaved, actions = null, sub = null, compact = false, leading = null }) {
   const [editing, setEditing] = useState(false);
   const active = (profile?.diagnoses || []).filter((item) => item.status !== "resolved");
+  const shown = compact ? 2 : 4;
+  const flags = (
+    <div className="patient-banner-flags">
+      <AllergyBadge profile={profile} />
+      {active.slice(0, shown).map((item) => (
+        <span className={`tag ${item.status === "suspected" ? "tag-warn" : ""}`} key={item.diagnosisId || item.name}>
+          {item.primary ? "★" : ""}{EYE_LABELS[item.eye]} {item.name}{item.status === "suspected" ? "（疑い）" : ""}
+        </span>
+      ))}
+      {active.length > shown ? <span className="muted small" title={active.slice(shown).map((item) => item.name).join("、")}>ほか{active.length - shown}件</span> : null}
+      {context?.canEditProfile ? (
+        <button aria-label="アレルギー・病名" className="btn btn-chip" onClick={() => setEditing(true)} title="アレルギー・病名・既往を編集" type="button">{compact ? "編集" : "アレルギー・病名"}</button>
+      ) : null}
+    </div>
+  );
   return (
-    <div className="patient-banner">
+    <div className={`patient-banner${compact ? " is-compact" : ""}`}>
       <div className="patient-banner-main">
         <div className="patient-banner-name">
+          {leading}
           <h1>{patient.displayName} <span className="kana">{patient.displayNameKana}</span></h1>
-          <span className="muted">{patientLine(patient)}{patient.birthDate ? ` ・ ${formatDate(patient.birthDate)}生` : ""}</span>
+          <span className="muted patient-banner-line">{patientLine(patient)}{patient.birthDate ? ` ・ ${formatDate(patient.birthDate)}生` : ""}</span>
           {profile?.contactLensUser ? <span className="tag">CL装用</span> : null}
           {sub}
+          {compact ? flags : null}
         </div>
-        <div className="patient-banner-flags">
-          <AllergyBadge profile={profile} />
-          {active.slice(0, 4).map((item) => (
-            <span className={`tag ${item.status === "suspected" ? "tag-warn" : ""}`} key={item.diagnosisId || item.name}>
-              {item.primary ? "★" : ""}{EYE_LABELS[item.eye]} {item.name}{item.status === "suspected" ? "（疑い）" : ""}
-            </span>
-          ))}
-          {active.length > 4 ? <span className="muted small">ほか{active.length - 4}件</span> : null}
-          {context?.canEditProfile ? (
-            <button className="btn btn-chip" onClick={() => setEditing(true)} type="button">アレルギー・病名</button>
-          ) : null}
-        </div>
+        {compact ? null : flags}
       </div>
       {actions ? <div className="patient-banner-actions">{actions}</div> : null}
       {editing ? (
@@ -152,7 +158,7 @@ function ProfileDialog({ patientId, profile, canEditDiagnoses, onCancel, onSaved
               </div>
             </div>
           ))}
-          <button className="btn btn-ghost" onClick={() => setDraft({ ...draft, diagnoses: [...draft.diagnoses, { name: "", eye: "ou", status: "active", startDate: new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10), endDate: "", outcome: "", primary: false, note: "" }] })} type="button">傷病名を追加</button>
+          <button className="btn btn-ghost" onClick={() => setDraft({ ...draft, diagnoses: [...draft.diagnoses, { name: "", eye: "ou", status: "active", startDate: todayIso(), endDate: "", outcome: "", primary: false, note: "" }] })} type="button">傷病名を追加</button>
         </fieldset>
 
         <h3>既往・その他</h3>

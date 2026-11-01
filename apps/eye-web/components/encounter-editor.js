@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   daysUntilNextVisit,
@@ -9,16 +9,30 @@ import {
   evaluateFinalizeReadiness
 } from "@halunasu/eye-core";
 import { AppointmentDialog } from "./appointment-dialog";
-import { AmendDialog, ConfirmDialog, SaveIndicator } from "./encounter-dialogs";
+import { AmendDialog, ConfirmDialog, FinalizeDialog, SaveIndicator } from "./encounter-dialogs";
 import { CandidatesPanel, ComparePanel, HistoryPane, ReadinessPanel, SetsAndPhrasesPanel, VersionsPanel } from "./encounter-panels";
 import { DocumentsPanel } from "./documents-panel";
-import { DilationFlags, ExamTable, NextVisit, OpticalSection, Orders, Prescriptions, Section, setIn, Sketches } from "./encounter-sections";
+import { DilationFlags, ExamTable, hasExamValues, NextVisit, OpticalSection, Orders, Prescriptions, Section, setIn, Sketches } from "./encounter-sections";
 import { StatusTag } from "./home-workspace";
 import { CommonDiagnosesList, PatientBanner } from "./patient-banner";
 import { useEncounterDraft } from "./use-encounter-draft";
+import { useMediaQuery } from "./use-media-query";
 import { addDays, EYE_LABELS, formatDate, formatDateTime } from "../lib/format";
 
 const SIDES = ["od", "os"];
+const SECTION_LINKS = [
+  ["subjective", "主訴"],
+  ["exam", "検査"],
+  ["orders", "オーダー"],
+  ["findings", "所見"],
+  ["sketches", "シェーマ"],
+  ["diagnoses", "病名"],
+  ["plan", "方針"],
+  ["prescriptions", "処方"],
+  ["next-visit", "次回"],
+  ["optical", "眼鏡"],
+  ["staff-note", "メモ"]
+];
 const SIDE_TABS = [
   ["compare", "前回比較"],
   ["candidates", "候補"],
@@ -32,13 +46,17 @@ export function EncounterEditor({ encounterId }) {
   const draft = useEncounterDraft(encounterId);
   const {
     detail, setDetail, context, bootstrap, content, meta, encounter, editable, saveState, error, setError, conflict,
-    load, save, update, replaceContent, updateMeta, runAction: runDraftAction, confirmExam
+    load, save, update, replaceContent, saveWith, updateMeta, runAction: runDraftAction, confirmExam
   } = draft;
   const [notice, setNotice] = useState("");
   const [dialog, setDialog] = useState(null);
   const [booking, setBooking] = useState({ open: false, saved: null });
   const [sideTab, setSideTab] = useState("compare");
   const [historyOpen, setHistoryOpen] = useState(true);
+  const [drawer, setDrawer] = useState(null);
+  const wide = useMediaQuery("(min-width: 1280px)", true);
+  const pageRef = useRef(null);
+  const barRef = useRef(null);
   const [now, setNow] = useState(Date.now());
   const drugPresets = bootstrap.drugPresets;
 
@@ -46,6 +64,33 @@ export function EncounterEditor({ encounterId }) {
     const handle = setInterval(() => setNow(Date.now()), 30000);
     return () => clearInterval(handle);
   }, []);
+
+  // 固定ヘッダーの高さを CSS に渡す（左右の列の追従位置と、項目へ移動したときの位置合わせに使う）。
+  useEffect(() => {
+    const bar = barRef.current;
+    const page = pageRef.current;
+    if (!bar || !page || typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(() => page.style.setProperty("--bar-h", `${bar.offsetHeight}px`));
+    observer.observe(bar);
+    return () => observer.disconnect();
+  }, [Boolean(detail && content)]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ⌘/Ctrl + Enter で確定ダイアログを開く。Esc で引き出しを閉じる。
+  useEffect(() => {
+    function onKeyDown(event) {
+      if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && detail?.encounter?.status === "draft" && context?.canFinalize) {
+        event.preventDefault();
+        setDialog("finalize");
+      }
+      if (event.key === "Escape") setDrawer(null);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [context?.canFinalize, detail?.encounter?.status]);
+
+  useEffect(() => {
+    if (wide) setDrawer((current) => (current === "history" || current === "side" ? null : current));
+  }, [wide]);
 
   const previous = detail?.previous || null;
   const changes = useMemo(() => {
@@ -136,34 +181,65 @@ export function EncounterEditor({ encounterId }) {
   const nextDays = daysUntilNextVisit(meta.encounterDate, content.nextVisit);
   const profile = detail.profile;
   const activeDiagnoses = (profile?.diagnoses || []).filter((item) => item.status !== "resolved");
+  const blockerCount = readiness.blockers.length;
+  const showHistory = wide ? historyOpen : true;
+
+  function toggleHistory() {
+    if (wide) setHistoryOpen(!historyOpen);
+    else setDrawer(drawer === "history" ? null : "history");
+  }
+
+  function fillNormalFindings(sides) {
+    let next = content;
+    for (const side of sides) {
+      for (const key of ["anterior", "lens", "fundus"]) {
+        if (!next.findings[side][key]) next = setIn(next, ["findings", side, key], "異常なし");
+      }
+    }
+    replaceContent(next);
+  }
 
   return (
-    <main className="eye-page encounter-page">
-      <div className="encounter-bar">
+    <main className="eye-page encounter-page" ref={pageRef}>
+      <header className="encounter-bar" ref={barRef}>
         <PatientBanner
           actions={(
             <div className="encounter-actions">
               {editable ? <SaveIndicator onRetry={save} state={saveState} /> : null}
               <a className="btn btn-ghost" href={`/encounters/${encounterId}/print`} rel="noreferrer" target="_blank">印刷</a>
-              {encounter.status === "draft" && encounter.versionCount === 0 && context?.canWrite ? (
-                <button className="btn btn-ghost danger-text" onClick={() => setDialog("discard")} type="button">下書きを破棄</button>
-              ) : null}
               {encounter.status === "draft" && context?.canFinalize ? (
-                <button className="btn btn-primary" onClick={() => setDialog("finalize")} type="button">確定する</button>
+                <button className="btn btn-primary" onClick={() => setDialog("finalize")} title="⌘/Ctrl + Enter" type="button">確定する</button>
               ) : null}
               {encounter.status === "finalized" && context?.canFinalize ? (
                 <button className="btn btn-ghost" onClick={() => setDialog("amend")} type="button">修正する</button>
               ) : null}
+              {encounter.status === "draft" && encounter.versionCount === 0 && context?.canWrite ? (
+                <details className="more-menu">
+                  <summary aria-label="その他の操作" className="btn btn-ghost">…</summary>
+                  <div className="more-menu-list">
+                    <button className="btn btn-ghost danger-text" onClick={() => setDialog("discard")} type="button">下書きを破棄</button>
+                  </div>
+                </details>
+              ) : null}
             </div>
           )}
+          compact
           context={context}
+          leading={<Link aria-label="患者のカルテ一覧へ" className="back-link" href={`/patients/${encounter.patientId}`}>←</Link>}
           onProfileSaved={(saved) => setDetail((current) => ({ ...current, profile: saved }))}
           patient={patient}
           profile={profile}
           sub={<StatusTag encounter={{ ...encounter, amending: Boolean(encounter.amendment) }} />}
         />
-        <div className="encounter-meta-row">
-          <Link className="back-link" href={`/patients/${encounter.patientId}`}>← カルテ一覧</Link>
+        <div className="encounter-toolbar">
+          <button aria-expanded={wide ? historyOpen : drawer === "history"} className="btn btn-chip" onClick={toggleHistory} type="button">
+            過去カルテ {detail.history.length}件
+          </button>
+          <nav aria-label="項目へ移動" className="section-jump">
+            {SECTION_LINKS.map(([id, label]) => (
+              <a className="section-jump-link" href={`#sec-${id}`} key={id} onClick={(event) => jumpTo(event, id)}>{label}</a>
+            ))}
+          </nav>
           <label className="inline-field">
             <span>診療日</span>
             <input className="input input-date" disabled={!editable} onChange={(event) => updateMeta({ encounterDate: event.target.value })} type="date" value={meta.encounterDate} />
@@ -175,11 +251,11 @@ export function EncounterEditor({ encounterId }) {
               <option value="revisit">再診</option>
             </select>
           </label>
-          <button aria-expanded={historyOpen} className="btn btn-chip history-toggle" onClick={() => setHistoryOpen(!historyOpen)} type="button">
-            過去カルテ {detail.history.length}件{historyOpen ? "を隠す" : "を表示"}
+          <button aria-expanded={drawer === "side"} className={`btn btn-chip side-drawer-toggle${blockerCount ? " has-blockers" : ""}`} onClick={() => setDrawer(drawer === "side" ? null : "side")} type="button">
+            {encounter.status === "draft" ? `確認・比較${blockerCount ? `（要確認 ${blockerCount}）` : ""}` : "比較・履歴"}
           </button>
         </div>
-      </div>
+      </header>
 
       {error ? (
         <p className="alert alert-danger" role="alert">
@@ -195,25 +271,30 @@ export function EncounterEditor({ encounterId }) {
         <p className="alert alert-info">下書きとして保存されます。確定は医師が行います。</p>
       ) : null}
 
-      <div className={`encounter-3col${historyOpen ? "" : " is-history-hidden"}`}>
-        {historyOpen ? (
+      <div className={`encounter-3col${showHistory && wide ? "" : " is-history-hidden"}${drawer ? ` is-drawer-${drawer}` : ""}`}>
+        {showHistory ? (
           <aside aria-label="過去カルテ" className="encounter-history">
-            <h2 className="pane-title">過去カルテ</h2>
-            <HistoryPane editable={editable} history={detail.history} onCopy={copyFrom} />
+            <div className="pane-head">
+              <h2 className="pane-title">過去カルテ</h2>
+              <button className="btn btn-chip" onClick={() => (wide ? setHistoryOpen(false) : setDrawer(null))} type="button">閉じる</button>
+            </div>
+            <HistoryPane editable={editable} history={detail.history} onCopy={(kind, source) => { copyFrom(kind, source); if (!wide) setDrawer(null); }} />
           </aside>
         ) : null}
 
         <fieldset className="encounter-form" disabled={!editable}>
           <CommonDiagnosesList />
           <Section id="subjective" title="主訴・経過">
+            <div className="subjective-grid">
             <label className="field">
               <span>主訴</span>
               <textarea className="input" onChange={(event) => update(["chiefComplaint"], event.target.value)} rows={2} value={content.chiefComplaint} />
             </label>
             <label className="field">
               <span>現病歴・経過</span>
-              <textarea className="input" onChange={(event) => update(["history"], event.target.value)} rows={3} value={content.history} />
+              <textarea className="input" onChange={(event) => update(["history"], event.target.value)} rows={2} value={content.history} />
             </label>
+            </div>
           </Section>
 
           <Section id="exam" title="検査">
@@ -232,15 +313,22 @@ export function EncounterEditor({ encounterId }) {
             <Orders catalog={bootstrap.orderCatalog} content={content} editable={editable} update={update} />
           </Section>
 
-          <Section id="findings" title="所見">
+          <Section
+            actions={editable ? <button className="btn btn-chip" onClick={() => fillNormalFindings(SIDES)} type="button">空欄を「異常なし」に</button> : null}
+            id="findings"
+            title="所見"
+          >
             <div className="eye-columns">
               {SIDES.map((side) => (
                 <div className="eye-column" key={side}>
-                  <h3 className={`eye-heading eye-${side}`}>{EYE_LABELS[side]}</h3>
+                  <div className="eye-column-head">
+                    <h3 className={`eye-heading eye-${side}`}>{EYE_LABELS[side]}</h3>
+                    {editable ? <button className="btn btn-chip" onClick={() => fillNormalFindings([side])} type="button">{EYE_LABELS[side]} 異常なし</button> : null}
+                  </div>
                   {[["anterior", "前眼部"], ["lens", "中間透光体"], ["fundus", "眼底"]].map(([key, label]) => (
                     <label className="field" key={key}>
                       <span>{label}</span>
-                      <textarea className="input" onChange={(event) => update(["findings", side, key], event.target.value)} rows={2} value={content.findings[side][key]} />
+                      <textarea className="input" onChange={(event) => update(["findings", side, key], event.target.value)} rows={1} value={content.findings[side][key]} />
                     </label>
                   ))}
                 </div>
@@ -274,16 +362,16 @@ export function EncounterEditor({ encounterId }) {
             </label>
             <label className="field">
               <span>方針</span>
-              <textarea className="input" onChange={(event) => update(["plan"], event.target.value)} rows={3} value={content.plan} />
+              <textarea className="input" onChange={(event) => update(["plan"], event.target.value)} rows={2} value={content.plan} />
             </label>
-          </Section>
-
-          <Section id="next-visit" title="次回受診">
-            <NextVisit content={content} editable={editable} encounterDate={meta.encounterDate} suggestion={detail.nextVisitSuggestion} update={update} />
           </Section>
 
           <Section id="prescriptions" title="処方">
             <Prescriptions content={content} drugPresets={drugPresets} editable={editable} nextDays={nextDays} update={update} />
+          </Section>
+
+          <Section id="next-visit" title="次回受診">
+            <NextVisit content={content} editable={editable} encounterDate={meta.encounterDate} suggestion={detail.nextVisitSuggestion} update={update} />
           </Section>
 
           <Section id="optical" title="眼鏡・コンタクトレンズ処方">
@@ -296,6 +384,10 @@ export function EncounterEditor({ encounterId }) {
         </fieldset>
 
         <aside aria-label="補助パネル" className="encounter-side">
+          <div className="pane-head drawer-only">
+            <h2 className="pane-title">確認・比較</h2>
+            <button className="btn btn-chip" onClick={() => setDrawer(null)} type="button">閉じる</button>
+          </div>
           {encounter.status === "draft" ? (
             <section className="panel">
               <h2>確定前の確認</h2>
@@ -348,19 +440,20 @@ export function EncounterEditor({ encounterId }) {
             ) : null}
           </div>
         </aside>
+        {drawer ? <button aria-label="閉じる" className="drawer-backdrop" onClick={() => setDrawer(null)} type="button" /> : null}
       </div>
 
       {dialog === "finalize" ? (
-        <ConfirmDialog
-          confirmLabel="確定する"
+        <FinalizeDialog
+          content={content}
+          changes={changes}
+          confirmations={encounter.examConfirmations || { od: null, os: null }}
+          error={error}
           onCancel={() => setDialog(null)}
-          onConfirm={() => runAction(`/v1/eye/encounters/${encounterId}/finalize`, {})}
-          title="カルテを確定しますか？"
-        >
-          <p>確定すると v{encounter.versionCount + 1} として保存され、以後の変更は「修正する」から理由を付けて行います。</p>
-          <ReadinessPanel readiness={readiness} />
-          {changes.length ? <p className="muted small">前回からの変更: {changes.map((change) => change.label).join("、")}</p> : null}
-        </ConfirmDialog>
+          onConfirm={finalizeWithReview}
+          readiness={readiness}
+          version={encounter.versionCount + 1}
+        />
       ) : null}
       {booking.open ? (
         <AppointmentDialog
@@ -394,6 +487,29 @@ export function EncounterEditor({ encounterId }) {
       ) : null}
     </main>
   );
+
+  // 確定ダイアログで内容を見たうえで確定する。引き継ぎ処方と検査値の確認も、ここで一緒に済ませる。
+  async function finalizeWithReview() {
+    if (content.prescriptions.some((item) => item.carriedOver)) {
+      const saved = await saveWith((current) => ({ ...current, prescriptions: current.prescriptions.map((item) => ({ ...item, carriedOver: false })) }));
+      if (!saved) return;
+    }
+    const confirmations = encounter.examConfirmations || {};
+    for (const side of SIDES) {
+      if (!confirmations[side] && hasExamValues(content.exam[side])) {
+        if (!(await confirmExam(side, true))) return;
+      }
+    }
+    await runAction(`/v1/eye/encounters/${encounterId}/finalize`, {});
+  }
+
+  function jumpTo(event, id) {
+    const target = document.getElementById(`sec-${id}`);
+    if (!target) return;
+    event.preventDefault();
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+    target.querySelector("input, textarea, select")?.focus({ preventScroll: true });
+  }
 }
 
 // 過去カルテからの複写。今回すでに書いた内容は上書きしない。
@@ -421,7 +537,7 @@ function applyCopy(current, source, kind) {
       const keyOf = (row) => `${row.name}|${row.eye || ""}`;
       const existing = new Set(next.prescriptions.map(keyOf));
       const added = (source.prescriptions || []).filter((row) => !existing.has(keyOf(row)));
-      next = { ...next, prescriptions: [...next.prescriptions, ...added.map((row) => ({ ...row }))] };
+      next = { ...next, prescriptions: [...next.prescriptions, ...added.map((row) => ({ ...row, carriedOver: true }))] };
       if (added.length < (source.prescriptions || []).length) notes.push("同じ処方はすでにあるため重ねていません。");
     }
     if (item === "plan") {

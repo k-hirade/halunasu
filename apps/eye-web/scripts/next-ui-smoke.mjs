@@ -85,7 +85,8 @@ async function runDoctorFlow(browser) {
   await page.getByRole("button", { name: "処方を追加" }).click();
   await page.getByRole("combobox", { name: "薬剤名", exact: true }).fill("ラタノプロスト点眼液0.005%");
   await page.getByLabel("1日の回数").fill("1");
-  await page.getByRole("button", { name: "2本を反映" }).click();
+  await page.getByRole("button", { name: "反映", exact: true }).click();
+  assert.equal(await page.getByLabel("数量").inputValue(), "2");
   await page.getByRole("button", { name: "シェーマを追加" }).click();
   await drawStroke(page);
   await page.getByText("保存済み").waitFor({ timeout: 15_000 });
@@ -102,20 +103,30 @@ async function runDoctorFlow(browser) {
   await page.locator(".history-card").first().waitFor();
   assert.equal(await page.getByLabel("右眼 眼圧", { exact: true }).inputValue(), "", "measurements must not be copied");
   assert.equal(await page.getByRole("combobox", { name: "薬剤名", exact: true }).inputValue(), "ラタノプロスト点眼液0.005%");
+  // Enter で 右眼 矯正視力 → 右眼 眼圧 → 左眼 裸眼視力 と進む
   await page.getByLabel("右眼 矯正視力").fill("0.8");
-  await page.getByLabel("右眼 眼圧", { exact: true }).fill("23");
+  await page.getByLabel("右眼 矯正視力").press("Enter");
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "右眼 眼圧");
+  await page.keyboard.type("23");
+  await page.keyboard.press("Enter");
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "左眼 裸眼視力");
   await page.getByText("21 mmHg を超えています").waitFor();
   await page.getByText("保存済み").waitFor({ timeout: 15_000 });
   await page.getByText("右眼の検査値が未確認です。").first().waitFor();
   await page.getByRole("button", { name: "右眼を確認" }).click();
   assert.equal(await page.getByRole("button", { name: "左眼を確認" }).count(), 0, "an eye without values needs no confirmation");
-  await page.locator(".encounter-side .readiness .is-blocker").first().waitFor({ state: "detached" });
+  await page.locator(".encounter-side .readiness").getByText("右眼の検査値が未確認です。").waitFor({ state: "detached" });
+  // 前回から引き継いだ処方は、確定ダイアログで内容を見てから確定する
+  await page.locator(".rx-row.is-carried").getByText("前回から引き継ぎ").waitFor();
+  await page.locator(".encounter-side .readiness").getByText("前回から引き継いだ処方 1件が未確認です。").waitFor();
   const changes = await page.locator(".changes").innerText();
   assert.match(changes, /右眼 矯正視力[\s\S]*1\.0[\s\S]*0\.8/u);
   assert.match(changes, /右眼 眼圧[\s\S]*18[\s\S]*23/u);
-  await page.getByRole("button", { name: "確定する" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "確定する" }).click();
+  await page.keyboard.press("ControlOrMeta+Enter");
+  await page.getByRole("dialog").getByText("前回から引き継ぎ").waitFor();
+  await page.getByRole("dialog").getByRole("button", { name: "内容を確認して確定する" }).click();
   await page.getByText("確定 v1").first().waitFor();
+  assert.equal(await page.locator(".rx-row.is-carried").count(), 0, "finalizing confirms carried-over prescriptions");
   const encounterUrl = page.url();
 
   await page.getByRole("link", { name: /カルテ一覧/ }).click();

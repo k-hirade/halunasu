@@ -452,7 +452,9 @@ function validatePrescriptions(value) {
       note: optionalString(item.note, `${field}.note`, MAX_SHORT_TEXT),
       route: optionalEnum(item.route, PRESCRIPTION_ROUTES, `${field}.route`) || "outside",
       usage: optionalString(item.usage, `${field}.usage`, MAX_SHORT_TEXT),
-      issued: item.issued === undefined ? true : Boolean(item.issued)
+      issued: item.issued === undefined ? true : Boolean(item.issued),
+      // 前回から引き継いだまま、まだ今回の内容として確認していない処方
+      carriedOver: Boolean(item.carriedOver)
     };
   });
 }

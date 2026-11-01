@@ -99,7 +99,7 @@ export function copyContentForRevisit(previousContent = {}) {
     sketches: source.sketches,
     assessment: source.assessment,
     plan: source.plan,
-    prescriptions: source.prescriptions,
+    prescriptions: source.prescriptions.map((item) => ({ ...item, carriedOver: true })),
     nextVisit: { intervalWeeks: source.nextVisit.intervalWeeks, date: "", note: "" }
   };
 }
@@ -259,6 +259,8 @@ export function evaluateFinalizeReadiness(content = {}, { examConfirmations = nu
     if (!String(item.name || "").trim()) blockers.push({ code: "prescription_name_missing", field: `content.prescriptions.${index}.name`, message: "薬剤名が空の処方があります。" });
     else if ((item.kind === "eye_drop" || item.kind === "eye_ointment") && !item.eye) blockers.push({ code: "prescription_eye_missing", field: `content.prescriptions.${index}.eye`, message: `「${item.name}」の眼（右・左・両）が未指定です。` });
   });
+  const carried = (content.prescriptions || []).filter((item) => item.carriedOver).length;
+  if (carried) blockers.push({ code: "prescription_carried_over", field: "content.prescriptions", message: `前回から引き継いだ処方 ${carried}件が未確認です。` });
   for (const item of evaluateOpticalPrescription(content.optical)) blockers.push(item);
   if (!String(content.chiefComplaint || "").trim()) warnings.push({ code: "chief_complaint_empty", message: "主訴が空です。" });
   if (!String(content.plan || "").trim()) warnings.push({ code: "plan_empty", message: "方針が空です。" });
