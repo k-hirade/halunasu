@@ -41,6 +41,7 @@ export function FilesPanel({ patientId, encounterId = "", context, onChanged }) 
   const [error, setError] = useState("");
   const [viewing, setViewing] = useState(null);
   const inputRef = useRef(null);
+  const [fileName, setFileName] = useState("");
 
   const load = useCallback(async () => {
     const payload = await api(`/v1/eye/patients/${patientId}/files`);
@@ -69,6 +70,7 @@ export function FilesPanel({ patientId, encounterId = "", context, onChanged }) 
       await transfer(started.upload.url, { method: "PUT", headers: started.upload.headers, body: file });
       await api(`/v1/eye/files/${started.file.fileId}/complete`, { method: "POST", body: {} });
       inputRef.current.value = "";
+      setFileName("");
       setForm({ ...form, title: "" });
       await load();
       onChanged?.();
@@ -97,7 +99,12 @@ export function FilesPanel({ patientId, encounterId = "", context, onChanged }) 
       {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
       {canUpload ? (
         <form className="upload-form" onSubmit={upload}>
-          <input accept={ACCEPT} aria-label="ファイル" className="input" ref={inputRef} required type="file" />
+          {/* ブラウザ標準の「Choose File」は英語表示になるため、見た目は日本語のボタンにする */}
+          <label className="file-picker">
+            <input accept={ACCEPT} aria-label="ファイル" className="file-picker-input" onChange={(event) => setFileName(event.target.files?.[0]?.name || "")} ref={inputRef} required type="file" />
+            <span className="btn btn-ghost" aria-hidden="true">ファイルを選択</span>
+            <span className={fileName ? "file-picker-name" : "muted small"}>{fileName || "PDF・JPEG・PNG・WebP（20MB まで）"}</span>
+          </label>
           <div className="row-line">
             <select aria-label="ファイルの種類" className="input" onChange={(event) => setForm({ ...form, kind: event.target.value })} value={form.kind}>
               {Object.entries(FILE_KIND_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -112,7 +119,6 @@ export function FilesPanel({ patientId, encounterId = "", context, onChanged }) 
             <input aria-label="ファイルの題名" className="input grow" onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="題名（省略時はファイル名）" value={form.title} />
             <button className="btn btn-primary" disabled={busy} type="submit">{busy ? "取り込み中…" : "取り込む"}</button>
           </div>
-          <p className="muted small">PDF・JPEG・PNG・WebP、20MB まで。</p>
         </form>
       ) : null}
       {files === null ? <p className="loading">読み込み中…</p> : files.length === 0 ? <p className="empty">ファイルはまだありません。</p> : (

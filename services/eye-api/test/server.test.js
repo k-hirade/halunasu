@@ -235,6 +235,7 @@ test("builds the patient chart with trend and records view audit events", async 
   assert.ok(types.includes("eye.chart_viewed"));
   assert.ok(types.includes("eye.encounter_finalized"));
   assert.equal(JSON.stringify(logs.body.auditLogs).includes("ラタノプロスト"), false);
+  assert.equal(logs.body.patients[patient.patientId].displayName, patient.displayName);
 });
 
 test("discards a never-finalized draft", async () => {

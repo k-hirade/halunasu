@@ -145,7 +145,10 @@ async function runDoctorFlow(browser) {
   await page.getByLabel("1本あたりの滴数").fill("120");
   await page.locator("form.add-row").filter({ has: page.getByLabel("1本あたりの滴数") }).getByRole("button", { name: "追加" }).click();
   await page.getByText("を保存しました").waitFor();
-  await page.getByText("カルテを確定").first().waitFor();
+  await page.getByRole("tab", { name: "操作記録" }).click();
+  await page.getByRole("cell", { name: "カルテを確定" }).first().waitFor();
+  await page.getByLabel("操作記録を絞り込む").fill("見本");
+  await page.getByRole("cell", { name: /見本 花子/ }).first().waitFor();
 
   // 画像・紙カルテの取り込み（開発用のメモリ保管で同じ流れを通す）
   const fixtures = mkdtempSync(join(tmpdir(), "eye-smoke-"));
@@ -180,10 +183,12 @@ async function runDoctorFlow(browser) {
   await page.goto(`${baseUrl}/settings`);
 
   // 定型文とセットを登録して、新しいカルテで使う
+  await page.getByRole("tab", { name: "定型文" }).click();
   await page.getByLabel("差し込む欄").selectOption("plan");
   await page.getByLabel("定型文").fill("点眼継続。次回同様。");
   await page.locator("form.add-row").filter({ has: page.getByLabel("定型文") }).getByRole("button", { name: "追加" }).click();
   await page.getByRole("cell", { name: "点眼継続。次回同様。" }).waitFor();
+  await page.getByRole("tab", { name: "セット" }).click();
   await page.getByRole("button", { name: "セットを追加" }).click();
   await page.getByLabel("セット名").fill("緑内障 定期");
   await page.locator(".set-editor").getByRole("button", { name: "検査を追加" }).click();

@@ -21,8 +21,30 @@ const EVENT_LABELS = {
   "eye.exam_unconfirmed": "検査値の確認を取消",
   "eye.appointment_created": "予約・受付を登録",
   "eye.appointment_updated": "予約を変更",
-  "eye.appointment_status_changed": "受付の状態を変更"
+  "eye.appointment_status_changed": "受付の状態を変更",
+  "eye.patient_created": "患者を登録",
+  "eye.patient_updated": "患者情報を更新",
+  "eye.patient_exported": "患者データを出力",
+  "eye.clinic_exported": "医院データを出力",
+  "eye.document_created": "文書を作成",
+  "eye.document_updated": "文書を更新",
+  "eye.document_finalized": "文書を確定",
+  "eye.document_viewed": "文書を閲覧",
+  "eye.file_uploaded": "画像・書類を取り込み",
+  "eye.file_updated": "画像・書類の情報を更新",
+  "eye.file_archived": "画像・書類を保管済みに",
+  "eye.file_viewed": "画像・書類を閲覧",
+  "eye.paper_reviewed": "紙カルテの要約を確認",
+  "eye.billing_exported": "会計連携 CSV を出力",
+  "eye.billing_handed_off": "会計へ連携"
 };
+const SETTINGS_TABS = [
+  ["drugs", "よく使う薬剤", false],
+  ["sets", "セット", false],
+  ["phrases", "定型文", false],
+  ["export", "データ出力", true],
+  ["audit", "操作記録", true]
+];
 const EMPTY_PRESET = { name: "", kind: "eye_drop", defaultTimesPerDay: "", dropsPerBottle: "", bottleVolumeMl: "", defaultUsage: "", route: "outside" };
 
 export function SettingsWorkspace() {
@@ -33,6 +55,9 @@ export function SettingsWorkspace() {
   const [phrases, setPhrases] = useState([]);
   const [orderCatalog, setOrderCatalog] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
+  const [auditPatients, setAuditPatients] = useState({});
+  const [auditQuery, setAuditQuery] = useState("");
+  const [tab, setTab] = useState("drugs");
   const [draft, setDraft] = useState(EMPTY_PRESET);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -46,7 +71,9 @@ export function SettingsWorkspace() {
     setPhrases(payload.phrases || []);
     setOrderCatalog(payload.orderCatalog || []);
     if (nextContext.canManageSettings) {
-      setAuditLogs((await api("/v1/eye/audit-logs")).auditLogs);
+      const audit = await api("/v1/eye/audit-logs");
+      setAuditLogs(audit.auditLogs);
+      setAuditPatients(audit.patients || {});
     }
   }
 
@@ -76,17 +103,29 @@ export function SettingsWorkspace() {
     }
   }
 
+  const query = auditQuery.trim();
+  const auditRows = auditLogs
+    .map((log) => ({ log, label: EVENT_LABELS[log.eventType] || "その他の操作", patient: log.patientId ? auditPatients[log.patientId] : null }))
+    .filter(({ log, label, patient }) => !query || [label, log.actorLoginId, patient?.displayName, patient?.primaryPatientNumber].some((value) => String(value || "").includes(query)));
+
   if (!context) return <main className="eye-page">{error ? <p className="alert alert-danger">{error}</p> : <p className="loading">読み込み中…</p>}</main>;
 
   return (
     <main className="eye-page">
       <header className="page-head"><h1>設定</h1></header>
+      <div className="status-tabs settings-tabs" role="tablist">
+        {SETTINGS_TABS.filter(([, , adminOnly]) => !adminOnly || context.canManageSettings).map(([key, label]) => (
+          <button aria-selected={tab === key} className="status-tab" key={key} onClick={() => { setTab(key); setNotice(""); }} role="tab" type="button">{label}</button>
+        ))}
+      </div>
       {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
       {notice ? <p className="alert alert-ok" role="status">{notice}</p> : null}
 
+      {tab === "drugs" ? (
       <section className="panel">
         <h2>よく使う薬剤</h2>
         <p className="muted small">処方入力の候補に出ます。「1本あたりの滴数」は点眼本数の計算に使います（未設定なら100滴で計算します）。</p>
+        <div className="table-scroll">
         <table className="data-table">
           <thead><tr><th>薬剤名</th><th>種類</th><th>1日の回数</th><th>用法</th><th>院内外</th><th>1本の滴数</th><th>容量(mL)</th><th>状態</th></tr></thead>
           <tbody>
@@ -100,17 +139,21 @@ export function SettingsWorkspace() {
                 <td>{preset.dropsPerBottle ?? "—"}</td>
                 <td>{preset.bottleVolumeMl ?? "—"}</td>
                 <td>
-                  {context.canManageSettings ? (
-                    <button className="btn btn-chip" onClick={() => savePreset(null, { ...preset, active: preset.active === false })} type="button">
-                      {preset.active === false ? "再開する" : "使用中・停止する"}
-                    </button>
-                  ) : (preset.active === false ? "停止" : "使用中")}
+                  <span className="status-cell">
+                    <span className={`tag ${preset.active === false ? "" : "tag-ok"}`}>{preset.active === false ? "停止中" : "使用中"}</span>
+                    {context.canManageSettings ? (
+                      <button aria-label={`${preset.name}を${preset.active === false ? "再開" : "停止"}`} className="btn btn-chip" onClick={() => savePreset(null, { ...preset, active: preset.active === false })} type="button">
+                        {preset.active === false ? "再開" : "停止"}
+                      </button>
+                    ) : null}
+                  </span>
                 </td>
               </tr>
             ))}
             {presets.length === 0 ? <tr><td className="empty" colSpan={8}>まだ登録されていません。</td></tr> : null}
           </tbody>
         </table>
+        </div>
         {context.canManageSettings ? (
           <form className="add-row" onSubmit={savePreset}>
             <input aria-label="薬剤名" className="input grow" onChange={(event) => setDraft({ ...draft, name: event.target.value })} placeholder="薬剤名" required value={draft.name} />
@@ -129,11 +172,12 @@ export function SettingsWorkspace() {
           </form>
         ) : <p className="muted small">薬剤の登録は管理者が行います。</p>}
       </section>
+      ) : null}
 
-      <OrderSetsSection canEdit={context.canManageSettings} catalog={orderCatalog} onSaved={load} orderSets={orderSets} presets={presets} />
-      <PhrasesSection canEdit={context.canManageSettings} onSaved={load} phrases={phrases} />
+      {tab === "sets" ? <OrderSetsSection canEdit={context.canManageSettings} catalog={orderCatalog} onSaved={load} orderSets={orderSets} presets={presets} /> : null}
+      {tab === "phrases" ? <PhrasesSection canEdit={context.canManageSettings} onSaved={load} phrases={phrases} /> : null}
 
-      {context.canManageSettings ? (
+      {tab === "export" && context.canManageSettings ? (
         <section className="panel">
           <h2>医院データの出力</h2>
           <p className="muted small">全患者の記録と設定を JSON（halunasu-eye-export-v1）で保存します。システム移行・保管用です。ファイル本体は含まず、保管場所を載せます。</p>
@@ -147,22 +191,28 @@ export function SettingsWorkspace() {
         </section>
       ) : null}
 
-      {context.canManageSettings ? (
+      {tab === "audit" && context.canManageSettings ? (
         <section className="panel">
-          <h2>操作記録（直近200件）</h2>
-          <table className="data-table">
-            <thead><tr><th>日時</th><th>操作</th><th>担当</th><th>対象</th></tr></thead>
-            <tbody>
-              {auditLogs.map((log) => (
-                <tr key={log.auditLogId}>
-                  <td>{formatDateTime(log.createdAt)}</td>
-                  <td>{EVENT_LABELS[log.eventType] || log.eventType}</td>
-                  <td>{log.actorLoginId}</td>
-                  <td className="mono small">{log.patientId || log.targetId}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="panel-head">
+            <h2>操作記録（直近200件）</h2>
+            <input aria-label="操作記録を絞り込む" className="input audit-filter" onChange={(event) => setAuditQuery(event.target.value)} placeholder="患者名・担当・操作で絞り込み" type="search" value={auditQuery} />
+          </div>
+          <div className="table-scroll">
+            <table className="data-table">
+              <thead><tr><th>日時</th><th>操作</th><th>担当</th><th>患者</th></tr></thead>
+              <tbody>
+                {auditRows.map(({ log, label, patient }) => (
+                  <tr key={log.auditLogId}>
+                    <td className="nowrap">{formatDateTime(log.createdAt)}</td>
+                    <td>{label}</td>
+                    <td>{log.actorLoginId}</td>
+                    <td>{patient ? <>{patient.displayName}{patient.primaryPatientNumber ? <span className="muted small"> No.{patient.primaryPatientNumber}</span> : null}</> : <span className="muted small">—</span>}</td>
+                  </tr>
+                ))}
+                {auditRows.length === 0 ? <tr><td className="empty" colSpan={4}>該当する記録はありません。</td></tr> : null}
+              </tbody>
+            </table>
+          </div>
         </section>
       ) : null}
     </main>
@@ -277,6 +327,7 @@ function PhrasesSection({ phrases, canEdit, onSaved }) {
     <section className="panel">
       <h2>定型文</h2>
       {error ? <p className="alert alert-danger">{error}</p> : null}
+      <div className="table-scroll">
       <table className="data-table">
         <thead><tr><th>差し込む欄</th><th>表示名</th><th>文</th><th>状態</th></tr></thead>
         <tbody>
@@ -285,12 +336,18 @@ function PhrasesSection({ phrases, canEdit, onSaved }) {
               <td>{PHRASE_TARGET_LABELS[item.target]}</td>
               <td>{item.label || "—"}</td>
               <td className="small">{item.text}</td>
-              <td>{canEdit ? <button className="btn btn-chip" onClick={() => save(null, { ...item, active: item.active === false })} type="button">{item.active === false ? "再開する" : "使用中・停止する"}</button> : (item.active === false ? "停止" : "使用中")}</td>
+              <td>
+                <span className="status-cell">
+                  <span className={`tag ${item.active === false ? "" : "tag-ok"}`}>{item.active === false ? "停止中" : "使用中"}</span>
+                  {canEdit ? <button className="btn btn-chip" onClick={() => save(null, { ...item, active: item.active === false })} type="button">{item.active === false ? "再開" : "停止"}</button> : null}
+                </span>
+              </td>
             </tr>
           ))}
           {phrases.length === 0 ? <tr><td className="empty" colSpan={4}>まだ登録されていません。</td></tr> : null}
         </tbody>
       </table>
+      </div>
       {canEdit ? (
         <form className="add-row" onSubmit={save}>
           <select aria-label="差し込む欄" className="input" onChange={(event) => setDraft({ ...draft, target: event.target.value })} value={draft.target}>

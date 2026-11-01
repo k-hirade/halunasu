@@ -91,12 +91,19 @@ export function BillingWorkspace() {
           {day.drafts.length ? (
             <p className="alert alert-warn no-print">未確定のカルテが {day.drafts.length}件あります（{day.drafts.map((item) => item.patientSnapshot?.displayName).join("、")}）。確定すると連携の対象になります。</p>
           ) : null}
+          {day.encounters.length ? (
           <div className="billing-actions no-print">
             <button className="btn btn-primary" disabled={busy || selected.size === 0} onClick={handoff} type="button">選択した{selected.size}件を CSV 出力して連携済みにする</button>
             <button className="btn btn-ghost" disabled={!day.encounters.length} onClick={downloadAll} type="button">この日のすべてを CSV で再出力</button>
             <button className="btn btn-ghost" disabled={!day.encounters.length} onClick={() => window.print()} type="button">会計連絡票を印刷</button>
           </div>
-          {day.encounters.length === 0 ? <p className="empty">この日の確定済みカルテはありません。</p> : (
+          ) : null}
+          {day.encounters.length === 0 ? (
+            <div className="empty-state">
+              <p><strong>この日の確定済みカルテはありません。</strong></p>
+              <p className="muted small">医師がカルテを確定すると、実施した検査・処置、処方、文書がここに並び、レセコンへ渡す CSV と会計連絡票を作れます。</p>
+            </div>
+          ) : (
             <div className="billing-list">
               {day.encounters.map((item) => (
                 <article className={`billing-card is-${item.handoff.state}`} key={item.encounterId}>

@@ -788,7 +788,14 @@ async function routeEyeApiRequest(input = {}) {
 
   if (method === "GET" && matches(parts, ["v1", "eye", "audit-logs"])) {
     requireAccess(context, EYE_SETTINGS_ROLES, "Eye settings access is required");
-    return ok({ auditLogs: await eyeStore.listAuditLogs(orgId, 200) });
+    const auditLogs = await eyeStore.listAuditLogs(orgId, 200);
+    // 操作記録を人が読めるよう、対象患者の氏名と患者番号を添える（ID だけでは誰の記録か分からないため）。
+    const patients = {};
+    for (const patientId of new Set(auditLogs.map((log) => log.patientId).filter(Boolean))) {
+      const patient = await Promise.resolve().then(() => platformStore.getPatient(orgId, patientId)).catch(() => null);
+      if (patient) patients[patientId] = { displayName: patient.displayName, primaryPatientNumber: patient.primaryPatientNumber || "" };
+    }
+    return ok({ auditLogs, patients });
   }
 
   return notFound("Route not found");

@@ -45,6 +45,7 @@ export function OpticalPrint({ encounterId }) {
           <tr><th>処方日</th><td>{formatDate(encounter.encounterDate)}</td><th>用途</th><td>{PURPOSE_LABELS[optical.purpose] || "—"}</td></tr>
         </tbody>
       </table>
+      <div className="table-scroll">
       <table className="exam-table print-table optical-print-table">
         <thead>
           <tr>
@@ -79,6 +80,7 @@ export function OpticalPrint({ encounterId }) {
           ))}
         </tbody>
       </table>
+      </div>
       <p>{!contact ? `瞳孔間距離（PD） ${Number.isFinite(optical.pd) ? `${optical.pd} mm` : "—"}　` : ""}{validUntil ? `有効期限 ${formatDate(validUntil)}まで` : ""}</p>
       {optical.note ? <p className="pre">備考: {optical.note}</p> : null}
       <div className="letter-sender">

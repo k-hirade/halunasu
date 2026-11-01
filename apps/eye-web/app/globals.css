@@ -2938,3 +2938,80 @@ fieldset:disabled .input::placeholder {
 .home-grid {
   align-items: start;
 }
+
+.settings-tabs {
+  margin-bottom: 16px;
+}
+
+.audit-filter {
+  max-width: 320px;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.file-picker {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  position: relative;
+}
+
+.file-picker-input {
+  height: 1px;
+  left: 0;
+  opacity: 0;
+  position: absolute;
+  top: 0;
+  width: 1px;
+}
+
+.file-picker-input:focus-visible + .btn {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.file-picker-name {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.empty-state {
+  background: var(--surface);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+  padding: 24px;
+  text-align: center;
+}
+
+.empty-state p {
+  margin: 4px 0;
+}
+
+.status-cell {
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+/* ログイン画面（共通部品）: スマホでは説明を短くしてフォームを先に見せる */
+@media (max-width: 767px) {
+  .operator-gate-features,
+  .operator-gate-foot,
+  .operator-gate-pitch p {
+    display: none;
+  }
+
+  .operator-gate-pitch h2 {
+    font-size: 22px;
+  }
+}
+
+/* 文書画面: 見出しと入力欄の幅をそろえる */
+.document-page {
+  max-width: 948px;
+}
