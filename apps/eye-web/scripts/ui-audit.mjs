@@ -104,7 +104,7 @@ async function prepare(browser) {
   const card = page.locator(".board-card", { hasText: "模擬 和子" });
   await page.locator(".board").waitFor();
   if (!(await card.count())) {
-    await page.locator("tr", { hasText: "模擬 和子" }).getByRole("button", { name: "受付する" }).click();
+    await page.locator(".upcoming-row", { hasText: "模擬 和子" }).getByRole("button", { name: "受付する" }).click();
   }
   await card.getByRole("button", { name: /カルテを開く|カルテ作成/u }).click();
   await page.waitForURL(/\/encounters\//u);

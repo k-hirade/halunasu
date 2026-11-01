@@ -61,7 +61,7 @@ async function runDoctorFlow(browser) {
   await login(page, "director");
   await page.getByRole("heading", { name: "受診一覧" }).waitFor();
 
-  await page.getByRole("link", { name: /見本 花子/ }).click();
+  await page.locator(".patient-row").filter({ hasText: "見本 花子" }).click();
   await page.getByRole("button", { name: "初診カルテを作成" }).click();
   await page.getByRole("heading", { name: "検査", exact: true }).waitFor();
   await page.getByLabel("診療日").fill("2026-07-28");
@@ -252,7 +252,7 @@ async function runReceptionFlow(browser) {
   await page.getByRole("button", { name: /試験 一郎/ }).click();
   await page.locator('input[type="time"]').fill("09:30");
   await page.getByRole("button", { name: "予約する" }).click();
-  await page.getByRole("cell", { name: "試験 一郎" }).waitFor();
+  await page.locator(".upcoming-row").filter({ hasText: "試験 一郎" }).waitFor();
   await page.getByRole("button", { name: "受付する" }).click();
   await page.locator(".board-checked_in .board-card").filter({ hasText: "試験 一郎" }).waitFor();
 
@@ -294,7 +294,7 @@ async function runOrthoptistFlow(browser) {
   const context = await browser.newContext({ viewport: { width: 820, height: 1180 } });
   const page = await context.newPage();
   await login(page, "orthoptist");
-  await page.getByRole("link", { name: /試験 一郎/ }).click();
+  await page.locator(".patient-row").filter({ hasText: "試験 一郎" }).click();
   await page.getByRole("button", { name: "初診カルテを作成" }).click();
   await page.getByRole("heading", { name: "検査", exact: true }).waitFor();
   assert.equal(await page.getByRole("button", { name: "確定する" }).count(), 0, "orthoptists cannot finalize");

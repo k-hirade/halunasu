@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { APPOINTMENT_TRANSITIONS } from "@halunasu/eye-contracts";
 import { useEyeApi } from "./eye-api";
 import { AppointmentDialog } from "./appointment-dialog";
+import { useMediaQuery } from "./use-media-query";
 import {
   addDays,
   APPOINTMENT_PURPOSE_LABELS,
@@ -37,6 +38,8 @@ export function ReceptionWorkspace() {
   const [registering, setRegistering] = useState(null);
   const [error, setError] = useState("");
   const [now, setNow] = useState(Date.now());
+  const [filter, setFilter] = useState("active");
+  const wide = useMediaQuery("(min-width: 1024px)", true);
 
   const load = useCallback(async () => {
     const payload = await api(`/v1/eye/appointments?date=${date}`);
@@ -96,6 +99,24 @@ export function ReceptionWorkspace() {
   const booked = appointments.filter((item) => item.status === "booked");
   const finished = appointments.filter((item) => ["done", "cancelled", "no_show"].includes(item.status));
   const isToday = date === todayIso();
+  const inHouse = appointments.filter((item) => BOARD_COLUMNS.includes(item.status));
+  const filtered = filter === "active" ? inHouse : appointments.filter((item) => item.status === filter);
+
+  function renderCard(item, showStatus = false) {
+    return (
+      <BoardCard
+        appointment={item}
+        canReceive={canReceive}
+        encounter={data.encountersByPatient[item.patientId]}
+        key={item.appointmentId}
+        now={now}
+        onMove={move}
+        onOpenChart={openChart}
+        onRegister={() => setRegistering(item)}
+        showStatus={showStatus}
+      />
+    );
+  }
 
   return (
     <main className="eye-page">
@@ -121,56 +142,62 @@ export function ReceptionWorkspace() {
       </header>
       {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
 
-      <section className="board" aria-label="院内の進捗">
-        {BOARD_COLUMNS.map((status) => {
-          const items = appointments.filter((item) => item.status === status);
-          return (
-            <div className={`board-column board-${status}`} key={status}>
-              <h2>{APPOINTMENT_STATUS_LABELS[status]} <span className="count">{items.length}</span></h2>
-              {items.map((item) => (
-                <BoardCard
-                  appointment={item}
-                  canReceive={canReceive}
-                  encounter={data.encountersByPatient[item.patientId]}
-                  key={item.appointmentId}
-                  now={now}
-                  onMove={move}
-                  onOpenChart={openChart}
-                  onRegister={() => setRegistering(item)}
-                />
-              ))}
-              {items.length === 0 ? <p className="board-empty">なし</p> : null}
-            </div>
-          );
-        })}
-      </section>
+      {wide ? (
+        <section className="board" aria-label="院内の進捗">
+          {BOARD_COLUMNS.map((status) => {
+            const items = appointments.filter((item) => item.status === status);
+            return (
+              <div className={`board-column board-${status}${items.length ? "" : " is-empty"}`} key={status}>
+                <h2>{APPOINTMENT_STATUS_LABELS[status]} <span className="count">{items.length}</span></h2>
+                {items.map((item) => renderCard(item))}
+                {items.length === 0 ? <p className="board-empty">なし</p> : null}
+              </div>
+            );
+          })}
+        </section>
+      ) : (
+        <section aria-label="院内の進捗" className="board-compact">
+          <div className="status-tabs" role="tablist">
+            {[["active", "院内すべて", inHouse.length], ...BOARD_COLUMNS.map((status) => [status, APPOINTMENT_STATUS_LABELS[status], appointments.filter((item) => item.status === status).length])].map(([key, label, count]) => (
+              <button aria-selected={filter === key} className="status-tab" key={key} onClick={() => setFilter(key)} role="tab" type="button">
+                {label} <span className="count">{count}</span>
+              </button>
+            ))}
+          </div>
+          {filtered.length === 0 ? <p className="empty">該当する患者はいません。</p> : (
+            <div className="board-list">{filtered.map((item) => renderCard(item, true))}</div>
+          )}
+        </section>
+      )}
 
       <div className="reception-lists">
         <section className="panel" aria-labelledby="booked-heading">
           <h2 id="booked-heading">未来院の予約 <span className="count">{booked.length}</span></h2>
           {booked.length === 0 ? <p className="empty">未来院の予約はありません。</p> : (
-            <table className="data-table">
-              <thead><tr><th>時刻</th><th>患者</th><th>目的</th><th>メモ</th><th /></tr></thead>
-              <tbody>
-                {booked.map((item) => (
-                  <tr key={item.appointmentId}>
-                    <td className="mono">{item.time || "—"}</td>
-                    <td>{item.patientId ? <Link href={`/patients/${item.patientId}`}>{item.patientName}</Link> : <>{item.patientName} <span className="tag tag-warn">未登録</span></>}</td>
-                    <td>{APPOINTMENT_PURPOSE_LABELS[item.purpose]}</td>
-                    <td className="small">{item.note}</td>
-                    <td>
-                      {canReceive ? (
-                        <div className="row-actions">
-                          {isToday ? <button className="btn btn-primary btn-sm" onClick={() => move(item, "checked_in")} type="button">受付する</button> : null}
-                          <button className="btn btn-chip" onClick={() => move(item, "cancelled")} type="button">キャンセル</button>
-                          {isToday ? <button className="btn btn-chip" onClick={() => move(item, "no_show")} type="button">来院なし</button> : null}
+            <ul className="upcoming-list">
+              {booked.map((item) => (
+                <li className="upcoming-row" key={item.appointmentId}>
+                  <span className="upcoming-time mono">{item.time || "—"}</span>
+                  <span className="upcoming-patient">
+                    {item.patientId ? <Link href={`/patients/${item.patientId}`}>{item.patientName}</Link> : <>{item.patientName} <span className="tag tag-warn">未登録</span></>}
+                    <span className="tag">{APPOINTMENT_PURPOSE_LABELS[item.purpose]}</span>
+                  </span>
+                  <span className="upcoming-note small muted">{item.note}</span>
+                  {canReceive ? (
+                    <span className="row-actions">
+                      {isToday ? <button className="btn btn-primary btn-sm" onClick={() => move(item, "checked_in")} type="button">受付する</button> : null}
+                      <details className="more-menu">
+                        <summary aria-label={`${item.patientName} のその他の操作`} className="btn btn-chip">…</summary>
+                        <div className="more-menu-list">
+                          <button className="btn btn-ghost" onClick={() => move(item, "cancelled")} type="button">キャンセル</button>
+                          {isToday ? <button className="btn btn-ghost" onClick={() => move(item, "no_show")} type="button">来院なし</button> : null}
                         </div>
-                      ) : null}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      </details>
+                    </span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
           )}
         </section>
         <section className="panel" aria-labelledby="finished-heading">
@@ -211,7 +238,7 @@ export function ReceptionWorkspace() {
   );
 }
 
-function BoardCard({ appointment, canReceive, encounter, now, onMove, onOpenChart, onRegister }) {
+function BoardCard({ appointment, canReceive, encounter, now, onMove, onOpenChart, onRegister, showStatus = false }) {
   const next = NEXT_ACTIONS[appointment.status];
   const previous = (APPOINTMENT_TRANSITIONS[appointment.status] || []).find((status) => BOARD_COLUMNS.includes(status) && BOARD_COLUMNS.indexOf(status) < BOARD_COLUMNS.indexOf(appointment.status));
   const lastChange = appointment.statusHistory?.at(-1)?.at;
@@ -221,9 +248,10 @@ function BoardCard({ appointment, canReceive, encounter, now, onMove, onOpenChar
     <article className={`board-card${waited !== null && waited >= 30 ? " is-long" : ""}`}>
       <div className="board-card-head">
         <span className="queue-number">{appointment.queueNumber ?? "—"}</span>
-        <div>
-          <strong>{appointment.patientName}</strong>
+        <div className="board-card-title">
+          <strong className="board-card-name">{appointment.patientName}</strong>
           <div className="small muted">
+            {showStatus ? <span className="tag">{APPOINTMENT_STATUS_LABELS[appointment.status]}</span> : null}{" "}
             {APPOINTMENT_PURPOSE_LABELS[appointment.purpose]}
             {appointment.time ? ` ・ 予約 ${appointment.time}` : " ・ 予約なし"}
           </div>
@@ -245,7 +273,7 @@ function BoardCard({ appointment, canReceive, encounter, now, onMove, onOpenChar
         ) : canReceive ? (
           <button className="btn btn-chip" onClick={onRegister} type="button">患者登録</button>
         ) : null}
-        {canReceive && previous ? <button className="btn btn-chip" onClick={() => onMove(appointment, previous)} type="button" aria-label={`${APPOINTMENT_STATUS_LABELS[previous]}に戻す`}>戻す</button> : null}
+        {canReceive && previous ? <button className="btn btn-chip board-back" onClick={() => onMove(appointment, previous)} type="button" aria-label={`${APPOINTMENT_STATUS_LABELS[previous]}に戻す`}>戻す</button> : null}
       </div>
     </article>
   );

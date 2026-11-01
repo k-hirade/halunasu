@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useEyeApi } from "./eye-api";
-import { addDays, diagnosisText, formatDate, patientLine, todayIso, VISIT_TYPE_LABELS } from "../lib/format";
+import { addDays, APPOINTMENT_PURPOSE_LABELS, APPOINTMENT_STATUS_LABELS, diagnosisText, formatDate, patientLine, todayIso, VISIT_TYPE_LABELS } from "../lib/format";
 
 const EMPTY_PATIENT = { displayName: "", displayNameKana: "", birthDate: "", sex: "unknown", primaryPatientNumber: "" };
 
@@ -13,6 +13,7 @@ export function HomeWorkspace() {
   const router = useRouter();
   const [date, setDate] = useState(todayIso());
   const [encounters, setEncounters] = useState([]);
+  const [appointments, setAppointments] = useState([]);
   const [query, setQuery] = useState("");
   const [patients, setPatients] = useState([]);
   const [context, setContext] = useState(null);
@@ -27,8 +28,12 @@ export function HomeWorkspace() {
 
   useEffect(() => {
     let cancelled = false;
-    api(`/v1/eye/encounters?date=${date}`)
-      .then((payload) => { if (!cancelled) setEncounters(payload.encounters); })
+    Promise.all([api(`/v1/eye/encounters?date=${date}`), api(`/v1/eye/appointments?date=${date}`)])
+      .then(([encounterPayload, appointmentPayload]) => {
+        if (cancelled) return;
+        setEncounters(encounterPayload.encounters);
+        setAppointments(appointmentPayload.appointments);
+      })
       .catch((nextError) => { if (!cancelled) setError(nextError.message); });
     return () => { cancelled = true; };
   }, [api, date]);
@@ -42,6 +47,38 @@ export function HomeWorkspace() {
     }, 250);
     return () => { cancelled = true; clearTimeout(handle); };
   }, [api, query]);
+
+  // 受付（予約・来院）とカルテを 1 つの一覧にする。予約のない患者のカルテも末尾に出す。
+  const encounterByPatient = new Map(encounters.map((encounter) => [encounter.patientId, encounter]));
+  const rows = [
+    ...appointments
+      .filter((item) => !["cancelled", "no_show"].includes(item.status))
+      .map((item) => {
+        const encounter = item.patientId ? encounterByPatient.get(item.patientId) : null;
+        return {
+          key: item.appointmentId,
+          slot: item.queueNumber ? `#${item.queueNumber}` : item.time || "—",
+          name: item.patientName,
+          kana: item.patientSnapshot?.displayNameKana || "",
+          appointmentStatus: item.status,
+          encounter,
+          href: encounter ? `/encounters/${encounter.encounterId}` : item.patientId ? `/patients/${item.patientId}` : "/reception",
+          detail: encounter ? (encounter.diagnoses.map(diagnosisText).join("、") || encounter.chiefComplaint || APPOINTMENT_PURPOSE_LABELS[item.purpose]) : [APPOINTMENT_PURPOSE_LABELS[item.purpose], item.note].filter(Boolean).join(" ・ ")
+        };
+      }),
+    ...encounters
+      .filter((encounter) => !appointments.some((item) => item.patientId === encounter.patientId))
+      .map((encounter) => ({
+        key: encounter.encounterId,
+        slot: "—",
+        name: encounter.patientSnapshot?.displayName,
+        kana: encounter.patientSnapshot?.displayNameKana,
+        appointmentStatus: "",
+        encounter,
+        href: `/encounters/${encounter.encounterId}`,
+        detail: encounter.diagnoses.map(diagnosisText).join("、") || encounter.chiefComplaint || VISIT_TYPE_LABELS[encounter.visitType]
+      }))
+  ];
 
   async function registerPatient(event) {
     event.preventDefault();
@@ -69,7 +106,7 @@ export function HomeWorkspace() {
       <div className="home-grid">
         <section className="panel" aria-labelledby="today-heading">
           <div className="panel-head">
-            <h2 id="today-heading">{date === todayIso() ? "本日の受診" : `${formatDate(date)} の受診`}</h2>
+            <h2 id="today-heading">{date === todayIso() ? "本日の患者" : `${formatDate(date)} の患者`} <span className="count">{rows.length}</span></h2>
             <div className="date-nav">
               <button className="btn btn-ghost" onClick={() => setDate(addDays(date, -1))} type="button" aria-label="前日">‹</button>
               <input aria-label="受診日" className="input input-date" onChange={(event) => setDate(event.target.value || todayIso())} type="date" value={date} />
@@ -77,22 +114,23 @@ export function HomeWorkspace() {
               {date !== todayIso() ? <button className="btn btn-ghost" onClick={() => setDate(todayIso())} type="button">今日</button> : null}
             </div>
           </div>
-          {encounters.length === 0 ? (
-            <p className="empty">この日のカルテはまだありません。右の患者検索から患者を開き、カルテを作成してください。</p>
+          {rows.length === 0 ? (
+            <p className="empty">この日の予約・カルテはまだありません。受付で当日受付するか、右の患者検索から患者を開いてください。</p>
           ) : (
             <ul className="encounter-list">
-              {encounters.map((encounter) => (
-                <li key={encounter.encounterId}>
-                  <Link className="encounter-row" href={`/encounters/${encounter.encounterId}`}>
+              {rows.map((row) => (
+                <li key={row.key}>
+                  <Link className="encounter-row" href={row.href}>
                     <span className="encounter-name">
-                      <strong>{encounter.patientSnapshot?.displayName}</strong>
-                      <span className="muted">{encounter.patientSnapshot?.displayNameKana}</span>
+                      <span className="encounter-slot mono">{row.slot}</span>
+                      <strong>{row.name}</strong>
+                      <span className="muted">{row.kana}</span>
                     </span>
                     <span className="encounter-meta">
-                      <span className="tag">{VISIT_TYPE_LABELS[encounter.visitType]}</span>
-                      <StatusTag encounter={encounter} />
+                      {row.appointmentStatus ? <span className={`tag appointment-${row.appointmentStatus}`}>{APPOINTMENT_STATUS_LABELS[row.appointmentStatus]}</span> : null}
+                      {row.encounter ? <StatusTag encounter={row.encounter} /> : <span className="tag">カルテ未作成</span>}
                     </span>
-                    <span className="encounter-dx muted">{encounter.diagnoses.map(diagnosisText).join("、") || encounter.chiefComplaint || "—"}</span>
+                    <span className="encounter-dx muted">{row.detail}</span>
                   </Link>
                 </li>
               ))}

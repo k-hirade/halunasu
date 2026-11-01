@@ -2778,3 +2778,163 @@ fieldset:disabled .input::placeholder {
 .inline-field .input.input-num.input-short {
   width: 64px;
 }
+
+/* 受付: 横長の画面は 5 列のボード、タブレット・スマホは状態タブ + カード一覧 */
+.board {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  overflow-x: visible;
+}
+
+.board-column {
+  min-height: 120px;
+}
+
+.board-column.is-empty {
+  opacity: 0.85;
+}
+
+.board-card-title {
+  min-width: 0;
+}
+
+.board-card-name {
+  display: block;
+  font-size: var(--fs-lg);
+  line-height: 1.3;
+}
+
+.board-actions .btn.btn-primary {
+  flex: 1 1 auto;
+}
+
+.board-back {
+  margin-left: auto;
+}
+
+.status-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.status-tab {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text-soft);
+  font-size: var(--fs-md);
+  font-weight: 700;
+  min-height: 40px;
+  padding: 6px 14px;
+  white-space: nowrap;
+}
+
+.status-tab[aria-selected="true"] {
+  background: var(--teal-soft);
+  border-color: var(--teal);
+  color: var(--teal-dark);
+}
+
+.board-list {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  margin-bottom: 16px;
+}
+
+.board-list .board-card {
+  margin: 0;
+}
+
+.upcoming-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.upcoming-row {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 4px 12px;
+  grid-template-columns: 56px minmax(0, 1.2fr) minmax(0, 1fr) auto;
+  padding: 8px 0;
+}
+
+.upcoming-time {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+}
+
+.upcoming-patient {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+.upcoming-patient a {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  padding: 4px 0;
+}
+
+@media (max-width: 767px) {
+  .upcoming-row {
+    grid-template-columns: 56px minmax(0, 1fr) auto;
+  }
+
+  .upcoming-note {
+    grid-column: 2 / -1;
+    grid-row: 2;
+  }
+
+  .page-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .head-actions {
+    justify-content: flex-start;
+  }
+}
+
+.encounter-slot {
+  color: var(--muted);
+  display: inline-block;
+  font-weight: 700;
+  min-width: 44px;
+}
+
+.encounter-row {
+  align-items: center;
+}
+
+.tag.appointment-waiting_doctor {
+  background: var(--amber-soft);
+  border-color: var(--amber-line);
+  color: var(--amber);
+}
+
+.tag.appointment-in_consult,
+.tag.appointment-in_exam {
+  background: var(--teal-soft);
+  border-color: var(--teal);
+  color: var(--teal-dark);
+}
+
+.tag.appointment-done {
+  background: var(--green-soft);
+  border-color: var(--green-line);
+  color: var(--green);
+}
+
+.home-grid .panel + .panel {
+  margin-top: 0;
+}
+
+.home-grid {
+  align-items: start;
+}
