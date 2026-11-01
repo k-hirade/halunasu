@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { APPOINTMENT_TRANSITIONS } from "@halunasu/eye-contracts";
@@ -138,7 +139,7 @@ export function ReceptionWorkspace() {
                   onRegister={() => setRegistering(item)}
                 />
               ))}
-              {items.length === 0 ? <p className="board-empty">—</p> : null}
+              {items.length === 0 ? <p className="board-empty">なし</p> : null}
             </div>
           );
         })}
@@ -154,7 +155,7 @@ export function ReceptionWorkspace() {
                 {booked.map((item) => (
                   <tr key={item.appointmentId}>
                     <td className="mono">{item.time || "—"}</td>
-                    <td>{item.patientId ? <a href={`/patients/${item.patientId}`}>{item.patientName}</a> : <>{item.patientName} <span className="tag tag-warn">未登録</span></>}</td>
+                    <td>{item.patientId ? <Link href={`/patients/${item.patientId}`}>{item.patientName}</Link> : <>{item.patientName} <span className="tag tag-warn">未登録</span></>}</td>
                     <td>{APPOINTMENT_PURPOSE_LABELS[item.purpose]}</td>
                     <td className="small">{item.note}</td>
                     <td>

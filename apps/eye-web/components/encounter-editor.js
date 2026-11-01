@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -162,7 +163,7 @@ export function EncounterEditor({ encounterId }) {
           sub={<StatusTag encounter={{ ...encounter, amending: Boolean(encounter.amendment) }} />}
         />
         <div className="encounter-meta-row">
-          <a className="back-link" href={`/patients/${encounter.patientId}`}>← カルテ一覧</a>
+          <Link className="back-link" href={`/patients/${encounter.patientId}`}>← カルテ一覧</Link>
           <label className="inline-field">
             <span>診療日</span>
             <input className="input input-date" disabled={!editable} onChange={(event) => updateMeta({ encounterDate: event.target.value })} type="date" value={meta.encounterDate} />

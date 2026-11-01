@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useEyeApi } from "./eye-api";
 import { FILE_KIND_LABELS, FilePreview, useFileObjectUrl } from "./files-panel";
@@ -48,7 +49,7 @@ export function ImageCompare({ patientId }) {
   const byId = new Map(files.map((item) => [item.fileId, item]));
   return (
     <main className="eye-page">
-      <a className="back-link" href={`/patients/${patientId}`}>← カルテ一覧</a>
+      <Link className="back-link" href={`/patients/${patientId}`}>← カルテ一覧</Link>
       <header className="page-head">
         <div>
           <h1>画像の比較{patient ? ` ・ ${patient.displayName}` : ""}</h1>

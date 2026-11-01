@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useEyeApi } from "./eye-api";
-import { downloadJson, EYE_LABELS, formatDateTime, PHRASE_TARGET_LABELS, PRESCRIPTION_KIND_LABELS } from "../lib/format";
+import { downloadJson, EYE_LABELS, formatDateTime, PHRASE_TARGET_LABELS, PRESCRIPTION_KIND_LABELS, todayIso } from "../lib/format";
 
 const EVENT_LABELS = {
   "eye.chart_viewed": "患者カルテを閲覧",
@@ -139,7 +139,7 @@ export function SettingsWorkspace() {
           <p className="muted small">全患者の記録と設定を JSON（halunasu-eye-export-v1）で保存します。システム移行・保管用です。ファイル本体は含まず、保管場所を載せます。</p>
           <button className="btn btn-ghost" onClick={async () => {
             try {
-              downloadJson(await api("/v1/eye/export"), `eye-clinic-export-${new Date().toISOString().slice(0, 10)}.json`);
+              downloadJson(await api("/v1/eye/export"), `eye-clinic-export-${todayIso()}.json`);
             } catch (nextError) {
               setError(nextError.message);
             }

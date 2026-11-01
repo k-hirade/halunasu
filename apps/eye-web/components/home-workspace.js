@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useEyeApi } from "./eye-api";
@@ -60,7 +61,7 @@ export function HomeWorkspace() {
       <header className="page-head">
         <div>
           <h1>受診一覧</h1>
-          <p className="page-sub">{context ? `${context.displayName}（${roleLabel(context)}）` : " "}</p>
+          <p className="page-sub">{context ? userLine(context) : " "}</p>
         </div>
       </header>
       {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
@@ -82,7 +83,7 @@ export function HomeWorkspace() {
             <ul className="encounter-list">
               {encounters.map((encounter) => (
                 <li key={encounter.encounterId}>
-                  <a className="encounter-row" href={`/encounters/${encounter.encounterId}`}>
+                  <Link className="encounter-row" href={`/encounters/${encounter.encounterId}`}>
                     <span className="encounter-name">
                       <strong>{encounter.patientSnapshot?.displayName}</strong>
                       <span className="muted">{encounter.patientSnapshot?.displayNameKana}</span>
@@ -92,7 +93,7 @@ export function HomeWorkspace() {
                       <StatusTag encounter={encounter} />
                     </span>
                     <span className="encounter-dx muted">{encounter.diagnoses.map(diagnosisText).join("、") || encounter.chiefComplaint || "—"}</span>
-                  </a>
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -118,11 +119,11 @@ export function HomeWorkspace() {
           <ul className="patient-list">
             {patients.map((patient) => (
               <li key={patient.patientId}>
-                <a className="patient-row" href={`/patients/${patient.patientId}`}>
+                <Link className="patient-row" href={`/patients/${patient.patientId}`}>
                   <strong>{patient.displayName}</strong>
                   <span className="muted">{patient.displayNameKana}</span>
                   <span className="muted small">{patientLine(patient)}</span>
-                </a>
+                </Link>
               </li>
             ))}
             {patients.length === 0 ? <li className="empty">該当する患者がいません。</li> : null}
@@ -176,6 +177,12 @@ export function StatusTag({ encounter }) {
   if (encounter.status === "finalized") return <span className="tag tag-ok">確定 v{encounter.versionCount}</span>;
   if (encounter.amending) return <span className="tag tag-warn">修正中</span>;
   return <span className="tag tag-draft">下書き</span>;
+}
+
+// 表示名に役割がすでに含まれている（デモ利用者など）ときは重ねて出さない。
+function userLine(context) {
+  const role = roleLabel(context);
+  return context.displayName.includes(role) ? context.displayName : `${context.displayName}（${role}）`;
 }
 
 function roleLabel(context) {

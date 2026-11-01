@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ConfirmDialog, SaveIndicator } from "./encounter-dialogs";
@@ -63,6 +64,13 @@ export function DocumentEditor({ documentId }) {
     return () => clearTimeout(handle);
   }); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // 画面内リンクで別のページへ移るときは待たずに保存する。
+  const saveRef = useRef(save);
+  saveRef.current = save;
+  useEffect(() => () => {
+    if (dirtyRef.current) saveRef.current();
+  }, []);
+
   function change(patch) {
     setForm((current) => ({ ...current, ...patch }));
     dirtyRef.current = true;
@@ -98,7 +106,7 @@ export function DocumentEditor({ documentId }) {
     <main className="eye-page document-page">
       <header className="page-head">
         <div>
-          <a className="back-link" href={`/patients/${document.patientId}`}>← {document.patientSnapshot.displayName} のカルテ一覧</a>
+          <Link className="back-link" href={`/patients/${document.patientId}`}>← {document.patientSnapshot.displayName} のカルテ一覧</Link>
           <h1>{form.title} <span className={`tag ${document.status === "finalized" ? "tag-ok" : "tag-draft"}`}>{document.status === "finalized" ? "確定" : "下書き"}</span></h1>
           {document.status === "finalized" ? <p className="page-sub">確定 {formatDateTime(document.finalizedAt)} {document.finalizedBy?.displayName}</p> : null}
         </div>

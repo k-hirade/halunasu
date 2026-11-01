@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useEyeApi, useEyeFileTransfer } from "./eye-api";
 import { EYE_LABELS, formatDate, formatDateTime, todayIso } from "../lib/format";
@@ -91,7 +92,7 @@ export function FilesPanel({ patientId, encounterId = "", context, onChanged }) 
     <section className="panel">
       <div className="panel-head">
         <h2>画像・ファイル</h2>
-        <a className="btn btn-chip" href={`/patients/${patientId}/images`}>比較表示</a>
+        <Link className="btn btn-chip" href={`/patients/${patientId}/images`}>比較表示</Link>
       </div>
       {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
       {canUpload ? (

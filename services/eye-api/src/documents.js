@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { prescriptionLabel } from "../../../packages/eye-core/src/index.js";
+import { japanDate } from "./dates.js";
 
 // 紹介状・返書・診断書。下書きはカルテ・患者プロファイルから差し込んで作り、医師が確定すると変更できなくなる。
 
@@ -26,7 +27,7 @@ export function buildDocumentDraft({ documentId, orgId, patientSnapshot, encount
     recipient: { institution: "", department: "", doctor: "" },
     sender: senderFromFacility(facility, actor),
     body: renderTemplate(type, { encounter, profile }),
-    issueDate: now.slice(0, 10),
+    issueDate: japanDate(now),
     status: "draft",
     revision: 1,
     contentHash: "",
@@ -84,7 +85,7 @@ export function duplicateDocument(source, { documentId, actor, now }) {
     revision: 1,
     contentHash: "",
     sourceDocumentId: source.documentId,
-    issueDate: now.slice(0, 10),
+    issueDate: japanDate(now),
     createdBy: actor,
     updatedBy: actor,
     finalizedBy: null,

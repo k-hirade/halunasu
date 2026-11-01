@@ -118,6 +118,11 @@ export function useEncounterDraft(encounterId) {
     return () => clearTimeout(handle);
   }, [save, saveState, content, meta]);
 
+  // 画面内リンクで別のページへ移るときは自動保存の待ち時間を待たずに保存する。
+  useEffect(() => () => {
+    if (dirtyRef.current.size) saveRef.current();
+  }, []);
+
   // 他の端末の更新（検査員が入れた値など）を、編集していない項目にだけ取り込む。
   useEffect(() => {
     if (!encounter || encounter.status !== "draft") return undefined;

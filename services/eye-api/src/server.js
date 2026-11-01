@@ -66,6 +66,7 @@ import {
   duplicateDocument,
   finalizeDocument
 } from "./documents.js";
+import { japanDate } from "./dates.js";
 import { createId } from "./ids.js";
 import {
   applyProfileUpdate,
@@ -853,7 +854,7 @@ async function billingDay(eyeStore, platformStore, orgId, date) {
   const documentsByPatient = new Map();
   for (const patientId of new Set(finalized.map((item) => item.patientId))) {
     const documents = (await eyeStore.listPatientDocuments(orgId, patientId))
-      .filter((item) => item.status === "finalized" && String(item.finalizedAt).slice(0, 10) <= date && item.issueDate === date);
+      .filter((item) => item.status === "finalized" && japanDate(item.finalizedAt) <= date && item.issueDate === date);
     documentsByPatient.set(patientId, documents);
   }
   // レセコンとの突き合わせに使う患者番号は、カルテの写しではなく最新の患者情報から取る。
@@ -965,8 +966,7 @@ function timestamp(input) {
 // 診療日は日本時間で決める。
 function today(input) {
   const value = typeof input.now === "function" ? input.now() : input.now;
-  const date = value instanceof Date ? value : new Date();
-  return new Date(date.getTime() + 9 * 3600000).toISOString().slice(0, 10);
+  return japanDate(value instanceof Date ? value : new Date());
 }
 
 async function readJsonBody(req, maxBytes) {

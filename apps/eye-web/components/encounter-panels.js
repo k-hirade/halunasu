@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { diagnosisText, formatDate, formatDateTime, PHRASE_TARGET_LABELS, prescriptionText } from "../lib/format";
 
 export function ComparePanel({ changes, previous }) {
@@ -40,7 +41,7 @@ export function ComparePanel({ changes, previous }) {
         <dt>方針</dt>
         <dd>{previous.content.plan || "—"}</dd>
       </dl>
-      <a className="small" href={`/encounters/${previous.encounterId}`}>前回カルテを開く</a>
+      <Link className="small" href={`/encounters/${previous.encounterId}`}>前回カルテを開く</Link>
     </section>
   );
 }

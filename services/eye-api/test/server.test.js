@@ -6,6 +6,7 @@ import {
 } from "../../../packages/auth-client/src/index.js";
 import { createSignedSession } from "../../platform-api/src/auth/session.js";
 import { MemoryPlatformStore } from "../../platform-api/src/store/memory-store.js";
+import { japanDate } from "../src/dates.js";
 import { handleEyeApiRequest } from "../src/server.js";
 import { MemoryBlobStore } from "../src/store/blob-store.js";
 import { MemoryEyeStore } from "../src/store/memory-store.js";
@@ -781,4 +782,10 @@ test("exports a patient bundle and the clinic for migration", async () => {
   assert.equal(clinic.body.format, "halunasu-eye-export-v1");
   assert.equal(clinic.body.patients.length, 1);
   assert.equal((await request(stores, "GET", "/v1/eye/export", undefined, doctor)).statusCode, 403);
+});
+
+test("dates follow Japan time, so early-morning documents are not dated the previous day", () => {
+  assert.equal(japanDate(new Date("2026-10-31T23:28:00.000Z")), "2026-11-01");
+  assert.equal(japanDate("2026-11-01T14:59:59.000Z"), "2026-11-01");
+  assert.equal(japanDate("2026-11-01T15:00:00.000Z"), "2026-11-02");
 });

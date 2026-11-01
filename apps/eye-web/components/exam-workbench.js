@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { SaveIndicator } from "./encounter-dialogs";
 import { DilationFlags, ExamTable, Orders, Section } from "./encounter-sections";
@@ -30,8 +31,8 @@ export function ExamWorkbench({ encounterId }) {
           actions={(
             <div className="encounter-actions">
               {editable ? <SaveIndicator onRetry={save} state={saveState} /> : null}
-              <a className="btn btn-ghost" href="/reception">受付に戻る</a>
-              <a className="btn btn-ghost" href={`/encounters/${encounterId}`}>カルテ全体を開く</a>
+              <Link className="btn btn-ghost" href="/reception">受付に戻る</Link>
+              <Link className="btn btn-ghost" href={`/encounters/${encounterId}`}>カルテ全体を開く</Link>
             </div>
           )}
           context={context}

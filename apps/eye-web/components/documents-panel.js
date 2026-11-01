@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useEyeApi } from "./eye-api";
@@ -45,7 +46,7 @@ export function DocumentsPanel({ patientId, encounterId = "", canWrite }) {
         <ul className="plain doc-list">
           {documents.map((item) => (
             <li key={item.documentId}>
-              <a href={`/documents/${item.documentId}`}>{item.title}</a>
+              <Link href={`/documents/${item.documentId}`}>{item.title}</Link>
               <span className="muted small"> {formatDate(item.issueDate)} {item.recipient?.institution || ""}</span>
               <span className={`tag ${item.status === "finalized" ? "tag-ok" : "tag-draft"}`}>{item.status === "finalized" ? "確定" : "下書き"}</span>
             </li>

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useEyeApi } from "./eye-api";
@@ -70,11 +71,11 @@ export function PatientChart({ patientId }) {
 
   return (
     <main className="eye-page">
-      <a className="back-link" href="/">← カルテ一覧</a>
+      <Link className="back-link" href="/">← カルテ一覧</Link>
       <div className="encounter-bar is-static">
         <PatientBanner
           actions={todayDraft ? (
-            <a className="btn btn-primary" href={`/encounters/${todayDraft.encounterId}`}>本日のカルテを開く</a>
+            <Link className="btn btn-primary" href={`/encounters/${todayDraft.encounterId}`}>本日のカルテを開く</Link>
           ) : context?.canWrite ? (
             <button className="btn btn-primary" disabled={busy} onClick={startEncounter} type="button">
               {hasFinalized ? "本日のカルテを作成（前回から引き継ぐ）" : "初診カルテを作成"}
@@ -148,14 +149,14 @@ export function PatientChart({ patientId }) {
             <ol className="history">
               {encounters.map((encounter) => (
                 <li key={encounter.encounterId}>
-                  <a className="history-row" href={`/encounters/${encounter.encounterId}`}>
+                  <Link className="history-row" href={`/encounters/${encounter.encounterId}`}>
                     <span className="history-date">{formatDate(encounter.encounterDate)}</span>
                     <span className="history-tags">
                       <span className="tag">{VISIT_TYPE_LABELS[encounter.visitType]}</span>
                       <StatusTag encounter={encounter} />
                     </span>
                     <span className="muted small">{encounter.diagnoses.map(diagnosisText).join("、") || encounter.chiefComplaint || "—"}</span>
-                  </a>
+                  </Link>
                 </li>
               ))}
             </ol>
