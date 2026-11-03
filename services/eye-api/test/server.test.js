@@ -441,6 +441,19 @@ test("links a walk-in to a newly registered patient and shows upcoming visits on
   const draft = await request(stores, "POST", "/v1/eye/encounters", { patientId: patient.patientId, encounterDate: "2026-10-27" }, doctor);
   const board = await request(stores, "GET", "/v1/eye/appointments?date=2026-10-27", undefined, doctor);
   assert.equal(board.body.encountersByPatient[patient.patientId].encounterId, draft.body.encounter.encounterId);
+  assert.deepEqual(board.body.encountersByPatient[patient.patientId].exam, { va: false, iop: false });
+
+  await request(stores, "PATCH", `/v1/eye/encounters/${draft.body.encounter.encounterId}`, {
+    expectedRevision: draft.body.encounter.revision,
+    sections: {
+      exam: { od: { vaCorrected: "1.0", iop: 15 }, os: {} },
+      orders: [{ orderId: "ord_1", code: "oct", name: "OCT", kind: "exam", eye: "ou", status: "planned" }]
+    }
+  }, doctor);
+  const progressed = (await request(stores, "GET", "/v1/eye/appointments?date=2026-10-27", undefined, doctor)).body.encountersByPatient[patient.patientId];
+  assert.deepEqual(progressed.exam, { va: true, iop: true });
+  assert.deepEqual(progressed.orders, [{ name: "OCT", status: "planned" }]);
+  assert.equal(JSON.stringify(progressed).includes("1.0"), false, "the board summary does not expose measured values");
 });
 
 test("viewers cannot change reception", async () => {

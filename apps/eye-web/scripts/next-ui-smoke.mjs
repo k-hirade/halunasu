@@ -258,27 +258,31 @@ async function runReceptionFlow(browser) {
   await page.getByRole("button", { name: /試験 一郎/ }).click();
   await page.locator('input[type="time"]').fill("09:30");
   await page.getByRole("button", { name: "予約する" }).click();
-  await page.locator(".upcoming-row").filter({ hasText: "試験 一郎" }).waitFor();
-  await page.getByRole("button", { name: "受付する" }).click();
-  await page.locator(".board-checked_in .board-card").filter({ hasText: "試験 一郎" }).waitFor();
+  const row = page.locator(".flow-row").filter({ hasText: "試験 一郎" });
+  await page.locator(".flow-group.status-booked .flow-row").filter({ hasText: "試験 一郎" }).waitFor();
+  await row.getByRole("button", { name: "受付する" }).click();
+  await page.locator(".flow-group.status-checked_in .flow-row").filter({ hasText: "試験 一郎" }).waitFor();
 
-  // 予約なし・未登録の当日受付 → 患者登録
+  // 予約なし・未登録の当日受付 → 患者登録（行の「…」メニューから）
   await page.getByRole("button", { name: "当日受付" }).click();
   await page.getByLabel("患者を検索").fill("飛込 花子");
   await page.getByRole("button", { name: "受け付ける" }).click();
-  const walkIn = page.locator(".board-card").filter({ hasText: "飛込 花子" });
+  const walkIn = page.locator(".flow-row").filter({ hasText: "飛込 花子" });
   await walkIn.waitFor();
-  assert.equal((await walkIn.locator(".queue-number").innerText()).trim(), "2");
+  assert.equal((await walkIn.locator(".flow-slot").innerText()).trim(), "#2");
+  await walkIn.locator("summary").click();
   await walkIn.getByRole("button", { name: "患者登録" }).click();
   await page.getByRole("button", { name: "登録して受付に紐づける" }).click();
-  await walkIn.getByRole("button", { name: "カルテ作成" }).waitFor();
+  await walkIn.getByText("未登録").waitFor({ state: "detached" });
 
-  // 進捗ボードを進める
-  const card = page.locator(".board-card").filter({ hasText: "試験 一郎" });
-  await card.getByRole("button", { name: "検査開始" }).click();
-  await page.locator(".board-in_exam .board-card").filter({ hasText: "試験 一郎" }).waitFor();
-  await card.getByRole("button", { name: "検査終了" }).click();
-  await page.locator(".board-waiting_doctor .board-card").filter({ hasText: "試験 一郎" }).waitFor();
+  // 段階を進める（行の右端のボタンは 1 つだけ）。人数チップで絞り込める
+  await row.getByRole("button", { name: "検査開始" }).click();
+  await page.locator(".flow-group.status-in_exam .flow-row").filter({ hasText: "試験 一郎" }).waitFor();
+  await row.getByRole("button", { name: "検査終了" }).click();
+  await page.locator(".flow-group.status-waiting_doctor .flow-row").filter({ hasText: "試験 一郎" }).waitFor();
+  await page.getByRole("button", { name: /^診察待ち/u }).click();
+  assert.equal(await page.locator(".flow-row").count(), 1, "the count chip filters the list to one stage");
+  await page.getByRole("button", { name: "すべて表示" }).click();
 
   // 会計連携: 医師が確定した本日のカルテを CSV にして連携済みにする
   await page.getByRole("link", { name: "会計連携" }).click();

@@ -106,12 +106,12 @@ async function prepare(browser) {
   await page.getByRole("button", { name: "確認" }).click();
   await page.getByRole("link", { name: "受付", exact: true }).click();
   // 過去カルテのあるデモ患者で撮る。未受付なら受付してからカルテを開く。
-  const card = page.locator(".board-card", { hasText: "模擬 和子" });
-  await page.locator(".board").waitFor();
-  if (!(await card.count())) {
-    await page.locator(".upcoming-row", { hasText: "模擬 和子" }).getByRole("button", { name: "受付する" }).click();
-  }
-  await card.getByRole("button", { name: /カルテを開く|カルテ作成/u }).click();
+  const row = page.locator(".flow-row", { hasText: "模擬 和子" });
+  await page.locator(".flow-list").waitFor();
+  await page.locator(".flow-more").click().catch(() => null);
+  if (await row.getByRole("button", { name: "受付する" }).count()) await row.getByRole("button", { name: "受付する" }).click();
+  await row.locator("summary").click();
+  await row.getByRole("button", { name: /カルテを開く|カルテ作成/u }).click();
   await page.waitForURL(/\/encounters\//u);
   const encounterPath = new URL(page.url()).pathname;
   await page.getByLabel("右眼 裸眼視力").waitFor();

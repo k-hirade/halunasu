@@ -462,7 +462,11 @@ async function routeEyeApiRequest(input = {}) {
       encounterId: encounter.encounterId,
       status: encounter.status,
       dilationStartedAt: encounter.content?.flags?.dilationStartedAt || "",
-      plannedOrders: (encounter.content?.orders || []).filter((order) => order.status === "planned").map((order) => order.name)
+      dilationEye: encounter.content?.flags?.dilationEye || "",
+      plannedOrders: (encounter.content?.orders || []).filter((order) => order.status === "planned").map((order) => order.name),
+      // 受付一覧で検査の進み具合を出すための要約（値そのものは返さない）
+      exam: examProgress(encounter.content?.exam),
+      orders: (encounter.content?.orders || []).filter((order) => order.status !== "cancelled").map((order) => ({ name: order.name, status: order.status }))
     }]));
     return ok({ date, appointments, encountersByPatient });
   }
@@ -968,6 +972,14 @@ function contextView(context) {
 function timestamp(input) {
   const value = typeof input.now === "function" ? input.now() : input.now;
   return (value instanceof Date ? value : new Date()).toISOString();
+}
+
+function examProgress(exam = {}) {
+  const sides = [exam.od || {}, exam.os || {}];
+  return {
+    va: sides.some((side) => Boolean(side.vaUncorrected || side.vaCorrected)),
+    iop: sides.some((side) => Number.isFinite(side.iop))
+  };
 }
 
 // 診療日は日本時間で決める。

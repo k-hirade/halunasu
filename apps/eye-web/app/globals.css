@@ -3167,3 +3167,379 @@ kbd {
     white-space: nowrap;
   }
 }
+
+/* 受付: 段階の人数チップ + 段階ごとにまとめた 1 本のリスト（1 人 1 行） */
+:root {
+  --st-booked: #94a3b8;
+  --st-checked_in: #64748b;
+  --st-in_exam: #2563eb;
+  --st-dilating: #7c3aed;
+  --st-waiting_doctor: #d97706;
+  --st-in_consult: #0f766e;
+  --st-checkout: #0891b2;
+  --st-finished: #cbd5e1;
+}
+
+:root[data-theme="dark"] {
+  --st-booked: #64748b;
+  --st-checked_in: #94a3b8;
+  --st-in_exam: #60a5fa;
+  --st-dilating: #a78bfa;
+  --st-waiting_doctor: #fbbf24;
+  --st-in_consult: #2dd4bf;
+  --st-checkout: #22d3ee;
+  --st-finished: #475569;
+}
+
+.status-booked { --st: var(--st-booked); }
+.status-checked_in { --st: var(--st-checked_in); }
+.status-in_exam { --st: var(--st-in_exam); }
+.status-dilating { --st: var(--st-dilating); }
+.status-waiting_doctor { --st: var(--st-waiting_doctor); }
+.status-in_consult { --st: var(--st-in_consult); }
+.status-checkout { --st: var(--st-checkout); }
+.status-finished { --st: var(--st-finished); }
+
+.flow-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.flow-chip {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text-soft);
+  display: inline-flex;
+  font-size: var(--fs-md);
+  font-weight: 700;
+  gap: 6px;
+  min-height: 36px;
+  padding: 4px 12px;
+}
+
+.flow-chip strong {
+  color: var(--text);
+  font-size: var(--fs-lg);
+  font-variant-numeric: tabular-nums;
+}
+
+.flow-chip[aria-pressed="true"] {
+  background: var(--teal-soft);
+  border-color: var(--teal);
+}
+
+.flow-dot {
+  background: var(--st);
+  border-radius: 50%;
+  height: 8px;
+  width: 8px;
+}
+
+.flow-list {
+  padding: 4px 0 8px;
+}
+
+.flow-group + .flow-group {
+  border-top: 1px solid var(--line);
+}
+
+.flow-group-head {
+  align-items: center;
+  display: flex;
+  font-size: var(--fs-md);
+  gap: 8px;
+  margin: 0;
+  padding: 12px 18px 6px;
+}
+
+.flow-group-toggle {
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  padding: 0;
+}
+
+.flow-group > .empty {
+  padding: 0 18px;
+}
+
+.flow-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.flow-row {
+  align-items: center;
+  border-top: 1px solid var(--line);
+  box-shadow: inset 4px 0 0 var(--st);
+  display: grid;
+  gap: 4px 12px;
+  grid-template-areas: "slot time name age purpose progress wait actions";
+  grid-template-columns: 36px 52px minmax(180px, 1fr) 44px minmax(140px, 1.3fr) minmax(120px, 1fr) 64px auto;
+  min-height: 48px;
+  padding: 6px 18px 6px 20px;
+  position: relative;
+}
+
+.flow-row:first-child {
+  border-top: 0;
+}
+
+.flow-row:hover {
+  background: var(--surface-muted);
+}
+
+/* 行全体を押してカルテ（または患者のページ）を開く。中のボタンはその上に重ねる */
+.flow-row-open {
+  background: none;
+  border: 0;
+  cursor: pointer;
+  inset: 0;
+  position: absolute;
+}
+
+.flow-row-open:focus-visible {
+  outline-offset: -3px;
+}
+
+.flow-actions,
+.flow-name .tag {
+  position: relative;
+  z-index: 1;
+}
+
+.flow-slot { grid-area: slot; color: var(--muted); font-weight: 700; }
+.flow-time { grid-area: time; color: var(--text-soft); }
+.flow-age { grid-area: age; color: var(--muted); font-size: var(--fs-sm); white-space: nowrap; }
+
+.flow-name {
+  align-items: baseline;
+  display: flex;
+  gap: 8px;
+  grid-area: name;
+  min-width: 0;
+}
+
+.flow-name strong {
+  font-size: var(--fs-lg);
+  white-space: nowrap;
+}
+
+.flow-kana {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flow-purpose {
+  align-items: center;
+  color: var(--text-soft);
+  display: flex;
+  gap: 6px;
+  grid-area: purpose;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.flow-new {
+  background: var(--blue-soft);
+  border: 1px solid var(--blue-line);
+  border-radius: 4px;
+  color: var(--blue-ink);
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  padding: 0 5px;
+}
+
+.flow-note {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  max-width: 12em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.flow-progress {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  grid-area: progress;
+  min-width: 0;
+}
+
+.flow-step {
+  border-radius: 4px;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
+.flow-step.is-done {
+  color: var(--green);
+}
+
+.flow-step.is-todo {
+  color: var(--muted);
+}
+
+.flow-dilation {
+  align-items: center;
+  color: var(--st-dilating);
+  display: inline-flex;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.flow-dilation.is-ready {
+  background: var(--green-soft);
+  border-radius: 4px;
+  color: var(--green);
+  padding: 0 6px;
+}
+
+.flow-dilation-bar {
+  background: var(--line);
+  border-radius: 999px;
+  display: inline-block;
+  height: 6px;
+  overflow: hidden;
+  width: 48px;
+}
+
+.flow-dilation-bar > span {
+  background: var(--st-dilating);
+  display: block;
+  height: 100%;
+}
+
+.flow-wait {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  grid-area: wait;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.flow-wait.is-warn {
+  color: var(--amber);
+}
+
+.flow-wait.is-alert {
+  color: var(--red);
+}
+
+.flow-actions {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  grid-area: actions;
+  justify-content: flex-end;
+}
+
+.flow-more {
+  margin: 6px 18px 4px;
+}
+
+.status-finished .flow-row {
+  opacity: 0.75;
+}
+
+/* タブレット: 2 段（1 段目 番号・時刻・氏名・待ち・操作 / 2 段目 目的・進み具合） */
+@media (max-width: 1100px) {
+  .flow-row {
+    grid-template-areas:
+      "slot time name name wait actions"
+      ". . purpose progress progress progress";
+    grid-template-columns: 36px 52px minmax(0, 1fr) minmax(0, 1fr) 64px auto;
+    min-height: 56px;
+    row-gap: 2px;
+  }
+
+  .flow-row > .flow-age {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .flow-row {
+    grid-template-areas:
+      "slot name name"
+      "time progress progress"
+      ". wait actions";
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+    padding: 8px 12px 8px 14px;
+  }
+
+  .flow-row > .flow-purpose {
+    display: none;
+  }
+
+  .flow-wait {
+    text-align: left;
+  }
+
+  .flow-group-head {
+    padding: 12px 12px 6px;
+  }
+}
+
+/* 「…」メニューを開いた行は、下の行のボタンより手前に出す */
+.flow-row:has(details[open]) .flow-actions {
+  z-index: 20;
+}
+
+.flow-time {
+  white-space: nowrap;
+}
+
+.flow-note {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+  max-width: 16em;
+}
+
+.flow-note-label {
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  font-size: var(--fs-xs);
+  padding: 0 4px;
+}
+
+@media (max-width: 767px) {
+  .flow-chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .flow-chip {
+    flex: 0 0 auto;
+  }
+
+  .flow-row {
+    grid-template-areas:
+      "time name actions"
+      "slot progress wait";
+    grid-template-columns: 48px minmax(0, 1fr) auto;
+  }
+
+  .flow-row > .flow-wait {
+    text-align: right;
+  }
+}
