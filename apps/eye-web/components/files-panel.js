@@ -30,18 +30,93 @@ export function useFileObjectUrl() {
   }, [api, transfer]);
 }
 
-// 患者のファイル（検査結果・写真・紙カルテ）。取り込みと一覧。
-export function FilesPanel({ patientId, encounterId = "", context, onChanged }) {
+export function isImageFile(file) {
+  return /^image\//u.test(file?.contentType || "");
+}
+
+export function revokeObjectUrl(url) {
+  if (typeof url === "string" && url.startsWith("blob:")) URL.revokeObjectURL(url);
+}
+
+// 表示用 URL を fileId ごとに読み込む。使わなくなった blob URL とアンマウント時はすべて解放する。
+export function useFileUrls(fileIds) {
+  const objectUrl = useFileObjectUrl();
+  const [urls, setUrls] = useState({});
+  const [failed, setFailed] = useState({});
+  const urlsRef = useRef({});
+  const key = [...new Set(fileIds.filter(Boolean))].sort().join(",");
+
+  useEffect(() => {
+    const wanted = new Set(key ? key.split(",") : []);
+    let cancelled = false;
+    const kept = {};
+    for (const [fileId, url] of Object.entries(urlsRef.current)) {
+      if (wanted.has(fileId)) kept[fileId] = url;
+      else revokeObjectUrl(url);
+    }
+    urlsRef.current = kept;
+    setUrls(kept);
+    for (const fileId of wanted) {
+      if (kept[fileId]) continue;
+      objectUrl(fileId)
+        .then((url) => {
+          if (cancelled) {
+            revokeObjectUrl(url);
+            return;
+          }
+          urlsRef.current = { ...urlsRef.current, [fileId]: url };
+          setUrls(urlsRef.current);
+        })
+        .catch(() => { if (!cancelled) setFailed((current) => ({ ...current, [fileId]: true })); });
+    }
+    return () => { cancelled = true; };
+  }, [key, objectUrl]);
+
+  useEffect(() => () => {
+    for (const url of Object.values(urlsRef.current)) revokeObjectUrl(url);
+    urlsRef.current = {};
+  }, []);
+
+  return { urls, failed };
+}
+
+export function byNewest(left, right) {
+  return String(right.takenOn || "").localeCompare(String(left.takenOn || "")) || String(right.createdAt || "").localeCompare(String(left.createdAt || ""));
+}
+
+// 種類ごとに最新 1 件（新しい順、最大 limit 件）。
+export function latestPerKind(files, limit = 4) {
+  const seen = new Set();
+  const picked = [];
+  for (const file of [...files].sort(byNewest)) {
+    if (seen.has(file.kind)) continue;
+    seen.add(file.kind);
+    picked.push(file);
+    if (picked.length >= limit) break;
+  }
+  return picked;
+}
+
+export const EYE_SHORT_LABELS = { od: "右", os: "左", ou: "両" };
+
+// 今年の日付は月/日だけにする（サムネイルの幅に収める）
+export function compactDate(iso) {
+  if (!iso) return "";
+  return iso.slice(0, 4) === todayIso().slice(0, 4) ? formatDate(iso).slice(5) : formatDate(iso).slice(2);
+}
+
+export function shortDate(iso) {
+  return iso ? formatDate(iso).slice(2) : "";
+}
+
+// 患者のファイル（検査結果・写真・紙カルテ）。種類ごとの最新をサムネイルで出し、取り込みはダイアログで行う。
+export function FilesPanel({ patientId, context, onChanged, onUpload, reloadKey = 0 }) {
   const api = useEyeApi();
-  const transfer = useEyeFileTransfer();
   const objectUrl = useFileObjectUrl();
   const [files, setFiles] = useState(null);
-  const [form, setForm] = useState({ kind: "oct", eye: "ou", takenOn: todayIso(), title: "" });
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [viewing, setViewing] = useState(null);
-  const inputRef = useRef(null);
-  const [fileName, setFileName] = useState("");
+  const [showAll, setShowAll] = useState(false);
 
   const load = useCallback(async () => {
     const payload = await api(`/v1/eye/patients/${patientId}/files`);
@@ -50,7 +125,119 @@ export function FilesPanel({ patientId, encounterId = "", context, onChanged }) 
 
   useEffect(() => {
     load().catch((nextError) => setError(nextError.message));
-  }, [load]);
+  }, [load, reloadKey]);
+
+  const thumbs = files ? latestPerKind(files, 4) : [];
+  const { urls, failed } = useFileUrls(thumbs.filter(isImageFile).map((file) => file.fileId));
+
+  async function open(file) {
+    try {
+      setViewing({ file, url: await objectUrl(file.fileId) });
+    } catch (nextError) {
+      setError(nextError.message);
+    }
+  }
+
+  function close() {
+    revokeObjectUrl(viewing?.url);
+    setViewing(null);
+  }
+
+  const canUpload = Boolean(context?.canWriteDocuments) && Boolean(onUpload);
+  const others = files ? files.length - thumbs.length : 0;
+  return (
+    <section className="panel side-panel">
+      <div className="side-head">
+        <h2>画像{files?.length ? <span className="side-count">{files.length}</span> : null}</h2>
+        <span className="side-head-actions">
+          {files?.length ? <Link className="btn btn-chip btn-sm" href={`/patients/${patientId}/images`}>比較 ›</Link> : null}
+          {canUpload ? <button className="btn btn-chip btn-sm" onClick={onUpload} type="button">＋取込</button> : null}
+        </span>
+      </div>
+      {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
+      {files === null ? <p className="loading">読み込み中…</p> : files.length === 0 ? <p className="empty">ファイルはまだありません。</p> : (
+        <>
+          <ul className="thumb-grid">
+            {thumbs.map((file) => (
+              <li key={file.fileId}>
+                <button aria-label={file.title} className="thumb" onClick={() => open(file)} title={`${file.title}（${formatDate(file.takenOn)}）`} type="button">
+                  <ThumbImage failed={failed[file.fileId]} file={file} url={urls[file.fileId]} />
+                  <span className="thumb-caption">
+                    <strong>{FILE_KIND_LABELS[file.kind] || "ファイル"}</strong>
+                    <span>{file.eye ? `${EYE_SHORT_LABELS[file.eye]} ` : ""}{compactDate(file.takenOn)}</span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          {others > 0 ? (
+            <button aria-expanded={showAll} className="side-more" onClick={() => setShowAll(!showAll)} type="button">
+              {showAll ? "一覧を閉じる" : `ほか ${others}件を一覧で見る`}
+            </button>
+          ) : null}
+          {showAll ? (
+            <ul className="side-list">
+              {[...files].sort(byNewest).map((file) => (
+                <li key={file.fileId}>
+                  <button className="side-row" onClick={() => open(file)} type="button">
+                    <span className="side-row-date">{shortDate(file.takenOn)}</span>
+                    <span className="side-row-title">{file.title}</span>
+                    <span className="side-row-meta">{FILE_KIND_LABELS[file.kind]}{file.eye ? ` ${EYE_SHORT_LABELS[file.eye]}` : ""}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </>
+      )}
+      {viewing ? (
+        <FileViewerDialog
+          context={context}
+          file={viewing.file}
+          onClose={close}
+          onSaved={async () => { close(); await load(); onChanged?.(); }}
+          url={viewing.url}
+        />
+      ) : null}
+    </section>
+  );
+}
+
+export function ThumbImage({ file, url, failed }) {
+  if (isImageFile(file) && url) return <img alt="" className="thumb-img" decoding="async" loading="lazy" src={url} />;
+  const label = file.contentType === "application/pdf" ? "PDF" : isImageFile(file) ? (failed ? "表示不可" : "…") : "ファイル";
+  return <span aria-hidden="true" className="thumb-img is-icon">{label}</span>;
+}
+
+// 取り込みダイアログ。患者ページと画像の比較で共通に使う。ファイル選択欄はドロップ先も兼ねる。
+export function UploadDialog({ patientId, encounterId = "", defaultKind = "oct", onClose, onUploaded }) {
+  const api = useEyeApi();
+  const transfer = useEyeFileTransfer();
+  const [form, setForm] = useState({ kind: defaultKind, eye: "ou", takenOn: todayIso(), title: "" });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [fileName, setFileName] = useState("");
+  const [dragging, setDragging] = useState(false);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    const onKey = (event) => { if (event.key === "Escape" && !busy) onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [busy, onClose]);
+
+  function onDrop(event) {
+    event.preventDefault();
+    setDragging(false);
+    const dropped = event.dataTransfer?.files;
+    if (!dropped?.length || !inputRef.current) return;
+    try {
+      inputRef.current.files = dropped;
+      setFileName(dropped[0].name);
+    } catch {
+      setError("「ファイルを選択」から選んでください。");
+    }
+  }
 
   async function upload(event) {
     event.preventDefault();
@@ -69,81 +256,60 @@ export function FilesPanel({ patientId, encounterId = "", context, onChanged }) 
       });
       await transfer(started.upload.url, { method: "PUT", headers: started.upload.headers, body: file });
       await api(`/v1/eye/files/${started.file.fileId}/complete`, { method: "POST", body: {} });
-      inputRef.current.value = "";
-      setFileName("");
-      setForm({ ...form, title: "" });
-      await load();
-      onChanged?.();
+      setBusy(false);
+      onClose();
+      onUploaded?.(started.file);
     } catch (nextError) {
       setError(nextError.message);
-    } finally {
       setBusy(false);
     }
   }
 
-  async function open(file) {
-    try {
-      setViewing({ file, url: await objectUrl(file.fileId) });
-    } catch (nextError) {
-      setError(nextError.message);
-    }
-  }
-
-  const canUpload = Boolean(context?.canWriteDocuments);
   return (
-    <section className="panel">
-      <div className="panel-head">
-        <h2>画像・ファイル</h2>
-        <Link className="btn btn-chip" href={`/patients/${patientId}/images`}>比較表示</Link>
-      </div>
-      {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
-      {canUpload ? (
-        <form className="upload-form" onSubmit={upload}>
-          {/* ブラウザ標準の「Choose File」は英語表示になるため、見た目は日本語のボタンにする */}
-          <label className="file-picker">
-            <input accept={ACCEPT} aria-label="ファイル" className="file-picker-input" onChange={(event) => setFileName(event.target.files?.[0]?.name || "")} ref={inputRef} required type="file" />
-            <span className="btn btn-ghost" aria-hidden="true">ファイルを選択</span>
-            <span className={fileName ? "file-picker-name" : "muted small"}>{fileName || "PDF・JPEG・PNG・WebP（20MB まで）"}</span>
-          </label>
-          <div className="row-line">
+    <div className="dialog-backdrop" role="presentation">
+      <form aria-labelledby="upload-heading" className="dialog upload-dialog" onSubmit={upload} role="dialog">
+        <h2 id="upload-heading">画像・ファイルを取り込む</h2>
+        {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
+        {/* ブラウザ標準の「Choose File」は英語表示になるため、見た目は日本語のボタンにする */}
+        <label
+          className={`file-picker file-drop${dragging ? " is-dragging" : ""}`}
+          onDragLeave={() => setDragging(false)}
+          onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
+          onDrop={onDrop}
+        >
+          <input accept={ACCEPT} aria-label="ファイル" className="file-picker-input" onChange={(event) => setFileName(event.target.files?.[0]?.name || "")} ref={inputRef} required type="file" />
+          <span className="btn btn-ghost" aria-hidden="true">ファイルを選択</span>
+          <span className={fileName ? "file-picker-name" : "muted small"}>{fileName || "またはここにドロップ（PDF・JPEG・PNG・WebP、20MB まで）"}</span>
+        </label>
+        <div className="upload-fields">
+          <label className="field">
+            <span>種類</span>
             <select aria-label="ファイルの種類" className="input" onChange={(event) => setForm({ ...form, kind: event.target.value })} value={form.kind}>
               {Object.entries(FILE_KIND_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
+          </label>
+          <label className="field">
+            <span>眼</span>
             <select aria-label="ファイルの眼" className="input" onChange={(event) => setForm({ ...form, eye: event.target.value })} value={form.eye}>
-              <option value="">眼の指定なし</option>
+              <option value="">指定なし</option>
               {Object.entries(EYE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
+          </label>
+          <label className="field">
+            <span>検査日</span>
             <input aria-label="検査日" className="input" onChange={(event) => setForm({ ...form, takenOn: event.target.value })} type="date" value={form.takenOn} />
-          </div>
-          <div className="row-line">
-            <input aria-label="ファイルの題名" className="input grow" onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="題名（省略時はファイル名）" value={form.title} />
-            <button className="btn btn-primary" disabled={busy} type="submit">{busy ? "取り込み中…" : "取り込む"}</button>
-          </div>
-        </form>
-      ) : null}
-      {files === null ? <p className="loading">読み込み中…</p> : files.length === 0 ? <p className="empty">ファイルはまだありません。</p> : (
-        <ul className="plain file-list">
-          {files.map((file) => (
-            <li key={file.fileId}>
-              <button className="file-link" onClick={() => open(file)} type="button">{file.title}</button>
-              <span className="muted small"> {FILE_KIND_LABELS[file.kind]} {file.eye ? EYE_LABELS[file.eye] : ""} {formatDate(file.takenOn)}</span>
-              {file.kind === "paper_chart" ? (
-                <span className={`tag ${file.paper?.reviewedBy ? "tag-ok" : "tag-warn"}`}>{file.paper?.reviewedBy ? "要約確認済み" : "要約未確認"}</span>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      )}
-      {viewing ? (
-        <FileViewerDialog
-          context={context}
-          file={viewing.file}
-          onClose={() => setViewing(null)}
-          onSaved={async () => { setViewing(null); await load(); onChanged?.(); }}
-          url={viewing.url}
-        />
-      ) : null}
-    </section>
+          </label>
+        </div>
+        <label className="field">
+          <span>題名</span>
+          <input aria-label="ファイルの題名" className="input" onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="省略時はファイル名" value={form.title} />
+        </label>
+        <div className="dialog-actions">
+          <button className="btn btn-ghost" disabled={busy} onClick={onClose} type="button">キャンセル</button>
+          <button className="btn btn-primary" disabled={busy} type="submit">{busy ? "取り込み中…" : "取り込む"}</button>
+        </div>
+      </form>
+    </div>
   );
 }
 
@@ -154,7 +320,7 @@ export function FilePreview({ file, url }) {
     : <img alt={file.title} className="file-preview" src={url} />;
 }
 
-function FileViewerDialog({ file, url, context, onClose, onSaved }) {
+export function FileViewerDialog({ file, url, context, onClose, onSaved }) {
   const api = useEyeApi();
   const [summary, setSummary] = useState(file.paper?.summary || "");
   const [reason, setReason] = useState("");

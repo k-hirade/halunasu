@@ -1,0 +1,990 @@
+/*
+ * 患者ページ（/patients/[id]）と画像の比較（/patients/[id]/images）。
+ * globals.css の先頭で読み込まれるため、後ろにある共通の指定より強くなるよう .pt-page / .cmp-page を前に付ける。
+ */
+
+/* ---------- 患者帯の操作（主操作 1 つ + …メニュー） ---------- */
+.pt-actions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.pt-page .pt-menu {
+  min-width: 240px;
+}
+
+.pt-page .more-menu-list .btn,
+.cmp-page .more-menu-list .btn {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.more-menu-sub {
+  color: var(--muted);
+  display: block;
+  font-size: var(--fs-xs);
+  font-weight: 400;
+}
+
+.more-menu-note {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  margin: 6px 8px 2px;
+  max-width: 220px;
+}
+
+/* ---------- 2 列（1024 でも 2 列を保つ） ---------- */
+.pt-page .pt-grid {
+  grid-template-columns: minmax(0, 1fr) 320px;
+}
+
+.pt-page .chart-side .panel + .panel {
+  margin-top: 12px;
+}
+
+@media (max-width: 1279px) {
+  .pt-page .pt-grid {
+    grid-template-columns: minmax(0, 1fr) 280px;
+  }
+}
+
+@media (max-width: 900px) {
+  .pt-page .pt-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* 右列などの小さなパネル共通の見出し行 */
+.side-head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.side-head h2 {
+  font-size: var(--fs-lg);
+  margin: 0;
+}
+
+.side-head-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.side-count {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  margin-left: 6px;
+}
+
+.pt-page .side-panel {
+  padding: 14px 16px;
+}
+
+.side-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.side-row {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  color: inherit;
+  display: grid;
+  font: inherit;
+  font-size: var(--fs-md);
+  gap: 8px;
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  min-height: 40px;
+  padding: 0 4px;
+  text-align: left;
+  text-decoration: none;
+  width: 100%;
+}
+
+.side-list li:last-child .side-row {
+  border-bottom: 0;
+}
+
+.side-row:hover {
+  background: var(--surface-muted);
+}
+
+.side-row-date {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.side-row-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.side-row-sub,
+.side-row-meta {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.side-row-status {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.side-row-status.is-draft,
+.side-row-status.is-warn {
+  color: var(--amber);
+}
+
+.side-more {
+  background: none;
+  border: 0;
+  color: var(--teal-dark);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  min-height: 36px;
+  padding: 4px 0;
+}
+
+/* ---------- 現況ストリップ ---------- */
+.pt-current {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 12px 18px;
+}
+
+.pt-current.is-empty .empty {
+  margin: 0;
+}
+
+.pt-current-head {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+
+.pt-current-title {
+  font-size: var(--fs-lg);
+  font-weight: 800;
+}
+
+.pt-current-ago,
+.pt-current-state,
+.pt-current-next {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.pt-current-next {
+  margin-left: auto;
+}
+
+.pt-current-eyes {
+  display: grid;
+  gap: 8px 24px;
+  grid-template-columns: repeat(2, minmax(0, max-content));
+}
+
+.pt-eye {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+
+.pt-eye-label {
+  font-size: var(--fs-lg);
+  font-weight: 800;
+}
+
+.pt-eye-od .pt-eye-label {
+  color: var(--od);
+}
+
+.pt-eye-os .pt-eye-label {
+  color: var(--os);
+}
+
+.pt-metric {
+  align-items: baseline;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.pt-metric-label {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.pt-metric-value {
+  font-size: var(--fs-lg);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.pt-va-corrected {
+  margin-left: 2px;
+}
+
+.pt-delta {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.pt-delta.is-up {
+  color: var(--amber);
+}
+
+.pt-current-lines {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+}
+
+.pt-current-lines > div {
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+}
+
+.pt-current-lines dt {
+  color: var(--muted);
+  flex-shrink: 0;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  line-height: 22px;
+  width: 3.5em;
+}
+
+.pt-current-lines dd {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- 経過（グラフ + 受診表） ---------- */
+.pt-course-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.trend-head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-bottom: 4px;
+}
+
+.trend-toggles {
+  display: flex;
+  gap: 4px;
+}
+
+.trend-legend {
+  display: flex;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  gap: 10px;
+}
+
+.pt-page .trend-period {
+  font-size: var(--fs-sm);
+  margin-left: auto;
+  min-height: 32px;
+  padding: 4px 8px;
+  width: auto;
+}
+
+.trend-plot {
+  position: relative;
+}
+
+.trend-svg {
+  display: block;
+  height: auto;
+  overflow: visible;
+  width: 100%;
+}
+
+.trend-svg .grid {
+  stroke: var(--line);
+}
+
+.trend-svg .axis {
+  fill: var(--muted);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.trend-svg .band-label {
+  fill: var(--text-soft);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
+
+.trend-svg .band-unit {
+  fill: var(--muted);
+  font-size: 11px;
+}
+
+.trend-svg .line {
+  fill: none;
+  stroke-width: 2;
+}
+
+.trend-svg .hit,
+.trend-svg .mark-hit {
+  fill: transparent;
+}
+
+.trend-svg .dot-hit,
+.trend-svg .mark {
+  cursor: pointer;
+}
+
+.trend-svg .last-label {
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+}
+
+.trend-svg .series-od .last-label {
+  fill: var(--od);
+}
+
+.trend-svg .series-os .last-label {
+  fill: var(--os);
+}
+
+.trend-svg .mark-rule {
+  stroke: var(--line);
+  stroke-dasharray: 2 3;
+}
+
+.trend-svg .mark-started path {
+  fill: var(--teal);
+}
+
+.trend-svg .mark-stopped path {
+  fill: var(--muted);
+}
+
+.trend-svg .mark-injection path {
+  fill: var(--amber);
+}
+
+.trend-svg .mark:focus {
+  outline: none;
+}
+
+.trend-svg .mark:focus-visible path {
+  stroke: var(--text);
+  stroke-width: 2;
+}
+
+.trend-pop {
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  font-size: var(--fs-sm);
+  padding: 6px 10px;
+  pointer-events: none;
+  position: absolute;
+  width: 180px;
+  z-index: 5;
+}
+
+.trend-pop div + div {
+  color: var(--text-soft);
+}
+
+.trend-note {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  margin: 2px 0 0;
+}
+
+.visit-table {
+  border-top: 1px solid var(--line);
+}
+
+.visit-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.visit-row {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  color: inherit;
+  display: grid;
+  font-size: var(--fs-md);
+  font-variant-numeric: tabular-nums;
+  gap: 0 10px;
+  grid-template-columns: 116px 36px 64px 64px 44px 44px minmax(0, 1fr) 64px;
+  min-height: 36px;
+  padding: 0 8px;
+  text-decoration: none;
+}
+
+a.visit-row:hover {
+  background: var(--surface-muted);
+}
+
+a.visit-row:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: -3px;
+}
+
+.visit-head {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  min-height: 30px;
+}
+
+.visit-head .v-od {
+  color: var(--od);
+}
+
+.visit-head .v-os {
+  color: var(--os);
+}
+
+.visit-row .v-date {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.v-today {
+  color: var(--teal-dark);
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  margin-left: 6px;
+}
+
+.v-type {
+  color: var(--text-soft);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+
+.v-eye {
+  display: none;
+}
+
+/* 表では値の 4 セルを行のグリッドに直接並べる（スマホでは 1 行にまとめる） */
+.v-vals {
+  display: contents;
+}
+
+.v-changes {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.v-change + .v-change {
+  margin-left: 8px;
+}
+
+.v-change.is-stopped,
+.v-change.is-more,
+.v-none {
+  color: var(--muted);
+}
+
+.v-state {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.v-state.is-final {
+  color: var(--muted);
+}
+
+.v-state.is-draft,
+.v-state.is-amending {
+  color: var(--amber);
+}
+
+/* ---------- 右列 ---------- */
+.appt-line {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  padding: 4px 0;
+}
+
+.appt-when {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.appt-line.is-next .appt-when {
+  font-size: var(--fs-lg);
+  font-weight: 800;
+}
+
+.appt-note {
+  color: var(--muted);
+  flex-basis: 100%;
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pt-side .side-list .appt-line {
+  border-top: 1px solid var(--line);
+}
+
+.thumb-grid {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.thumb {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: inherit;
+  display: grid;
+  font: inherit;
+  overflow: hidden;
+  padding: 0;
+  text-align: left;
+  width: 100%;
+}
+
+.thumb:hover {
+  border-color: var(--line-strong);
+}
+
+.thumb-img {
+  aspect-ratio: 1;
+  background: var(--surface-muted);
+  display: block;
+  object-fit: cover;
+  width: 100%;
+}
+
+.thumb-img.is-icon {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  justify-content: center;
+}
+
+.thumb-caption {
+  display: grid;
+  font-size: var(--fs-xs);
+  line-height: 1.35;
+  padding: 3px 5px 4px;
+}
+
+.thumb-caption > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thumb-caption span {
+  color: var(--muted);
+}
+
+.pt-side .paper-item {
+  border-bottom: 1px solid var(--line);
+  padding: 6px 0;
+}
+
+.pt-side .paper-item:last-child {
+  border-bottom: 0;
+}
+
+.paper-item-head {
+  align-items: baseline;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.paper-item-summary {
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  color: var(--text-soft);
+  display: -webkit-box;
+  font-size: var(--fs-sm);
+  margin: 4px 0 0;
+  overflow: hidden;
+  white-space: pre-wrap;
+}
+
+/* ---------- 取り込みダイアログ ---------- */
+.dialog.upload-dialog {
+  max-width: 560px;
+}
+
+.file-picker.file-drop {
+  background: var(--surface-muted);
+  border: 1.5px dashed var(--line-strong);
+  border-radius: 8px;
+  margin-bottom: 12px;
+  padding: 14px;
+}
+
+.file-picker.file-drop.is-dragging {
+  background: var(--teal-soft);
+  border-color: var(--teal);
+}
+
+.upload-fields {
+  display: grid;
+  gap: 0 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (max-width: 540px) {
+  .upload-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---------- 1 列（iPad 縦）: 受診表をグラフより先に ---------- */
+@media (max-width: 900px) {
+  .pt-course-chart {
+    order: 2;
+  }
+}
+
+/* ---------- スマホ ---------- */
+@media (max-width: 767px) {
+  .eye-page.pt-page {
+    padding-bottom: 96px;
+  }
+
+  .pt-page .pt-actions {
+    background: var(--surface);
+    border-top: 1px solid var(--line);
+    bottom: 0;
+    left: 0;
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+    position: fixed;
+    right: 0;
+    z-index: 30;
+  }
+
+  .pt-page .pt-actions .btn-primary {
+    flex: 1;
+    min-height: 44px;
+  }
+
+  .pt-page .pt-actions .more-menu-list {
+    bottom: calc(100% + 4px);
+    top: auto;
+  }
+
+  .pt-current {
+    padding: 12px;
+  }
+
+  .pt-current-next {
+    margin-left: 0;
+  }
+
+  .pt-current-eyes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pt-eye {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    display: grid;
+    gap: 2px;
+    padding: 6px 10px;
+  }
+
+  .visit-head {
+    display: none;
+  }
+
+  .visit-row {
+    gap: 2px 10px;
+    grid-template-areas:
+      "date type status"
+      "vals vals vals"
+      "chg chg chg";
+    grid-template-columns: auto 1fr auto;
+    padding: 6px 4px;
+  }
+
+  .visit-row .v-date { grid-area: date; }
+  .visit-row .v-type { grid-area: type; }
+  .visit-row .v-status { grid-area: status; }
+  .visit-row .v-changes { grid-area: chg; color: var(--text-soft); font-size: var(--fs-sm); }
+
+  /* 2 行目は「VA 右 1.0 左 0.4　IOP 右 13 左 14」 */
+  .visit-row .v-vals {
+    align-items: baseline;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 10px;
+    grid-area: vals;
+  }
+
+  /* 値のない回（下書き）は 2 行目を出さない */
+  .visit-row.is-open .v-vals {
+    display: none;
+  }
+
+  .visit-row .v-va.v-od::before,
+  .visit-row .v-iop.v-od::before {
+    color: var(--muted);
+    font-size: var(--fs-sm);
+    font-weight: 700;
+    margin-right: 6px;
+  }
+
+  .visit-row .v-va.v-od::before { content: "VA"; }
+  .visit-row .v-iop.v-od::before { content: "IOP"; }
+  .visit-row .v-iop.v-od { margin-left: 8px; }
+
+  .v-eye {
+    display: inline;
+    font-size: var(--fs-sm);
+    font-weight: 700;
+    margin-right: 3px;
+  }
+
+  .v-od .v-eye { color: var(--od); }
+  .v-os .v-eye { color: var(--os); }
+
+  .visit-row .v-changes:has(.v-none) {
+    display: none;
+  }
+}
+
+/* ---------- 画像の比較 ---------- */
+.cmp-head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin: 4px 0 10px;
+}
+
+.cmp-head h2 {
+  font-size: var(--fs-lg);
+  margin: 0;
+}
+
+.cmp-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cmp-page .cmp-chip {
+  font: inherit;
+  font-size: var(--fs-md);
+  font-weight: 700;
+}
+
+.cmp-eyes {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.cmp-strip {
+  display: flex;
+  gap: 6px;
+  list-style: none;
+  margin: 0 0 10px;
+  overflow-x: auto;
+  padding: 2px 2px 8px;
+}
+
+.cmp-strip li {
+  flex: 0 0 76px;
+}
+
+.cmp-thumb {
+  position: relative;
+}
+
+.cmp-thumb.is-shown {
+  border-color: var(--teal);
+  box-shadow: inset 0 0 0 1px var(--teal);
+}
+
+.cmp-thumb-mark {
+  background: var(--surface);
+  border-radius: 4px;
+  color: var(--teal-dark);
+  font-size: var(--fs-sm);
+  font-weight: 800;
+  left: 3px;
+  padding: 0 4px;
+  position: absolute;
+  top: 3px;
+}
+
+.cmp-page .cmp-grid {
+  gap: 12px;
+}
+
+.cmp-pane {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  min-width: 0;
+  padding: 10px;
+}
+
+.cmp-pane.is-active {
+  border-color: var(--teal);
+  box-shadow: inset 0 0 0 1px var(--teal);
+}
+
+.cmp-pane-head {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.cmp-pane-select {
+  align-items: baseline;
+  background: none;
+  border: 0;
+  color: inherit;
+  display: flex;
+  flex-wrap: wrap;
+  font: inherit;
+  gap: 2px 8px;
+  min-height: 36px;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+}
+
+.cmp-pane-mark {
+  align-items: center;
+  align-self: center;
+  background: var(--text);
+  border-radius: 50%;
+  color: var(--surface);
+  display: inline-flex;
+  font-size: var(--fs-sm);
+  font-weight: 800;
+  height: 22px;
+  justify-content: center;
+  width: 22px;
+}
+
+.cmp-pane-rel {
+  font-weight: 700;
+}
+
+.cmp-pane-date {
+  font-size: var(--fs-lg);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.cmp-pane-meta {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.cmp-pane-step {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+}
+
+.cmp-pane-step .btn {
+  font-size: 18px;
+  min-width: 40px;
+}
+
+.cmp-pane-title {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  margin: 0 0 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cmp-page .file-preview {
+  height: max(360px, calc(100vh - 430px));
+}
+
+.cmp-empty {
+  align-items: flex-start;
+  background: var(--surface);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 20px;
+}
+
+.cmp-empty .empty {
+  margin: 0;
+}
+
+.cmp-footnote {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  margin: 12px 0 0;
+}
+
+@media (max-width: 767px) {
+  .cmp-eyes {
+    margin-left: 0;
+  }
+
+  .cmp-page .file-preview {
+    height: 45vh;
+  }
+}

@@ -1,5 +1,6 @@
 /* 共通デザインの CSS はこのファイルの先頭で読み込む。同じファイル内なので必ず先に入り、以下の眼科側の指定が優先される。 */
 @import "@halunasu/web-ui/styles/halunasu-ui.css";
+@import "./styles/patient.css";
 
 /*
  * 眼科カルテのデザイントークン（唯一の定義元）。
@@ -805,83 +806,17 @@ fieldset:disabled .input::placeholder {
   align-self: start;
 }
 
-.history-row {
-  grid-template-columns: auto 1fr;
-}
-
-.history-date {
-  font-weight: 700;
-}
-
-.history-row .small {
-  grid-column: 1 / -1;
-}
-
-.summary-cols {
-  display: grid;
-  gap: 16px;
-  grid-template-columns: 1fr 1fr;
-}
-
-.summary-plan {
-  background: var(--surface-muted);
-  border-radius: 8px;
-  padding: 8px 10px;
-}
-
 .plain li {
   padding: 2px 0;
 }
 
 /* 経過グラフ */
-.legend {
-  display: flex;
-  gap: 16px;
-  font-size: var(--fs-md);
-  font-weight: 700;
-}
-
 .legend-item.series-od {
   color: var(--od);
 }
 
 .legend-item.series-os {
   color: var(--os);
-}
-
-.chart {
-  margin: 8px 0 0;
-}
-
-.chart figcaption {
-  color: var(--muted);
-  font-size: var(--fs-sm);
-  font-weight: 700;
-}
-
-.chart svg {
-  display: block;
-  height: auto;
-  width: 100%;
-}
-
-.chart .grid {
-  stroke: var(--line);
-}
-
-.chart .threshold {
-  stroke: var(--amber);
-  stroke-dasharray: 4 4;
-}
-
-.chart .axis {
-  fill: var(--muted);
-  font-size: var(--fs-xs);
-}
-
-.chart .line {
-  fill: none;
-  stroke-width: 2;
 }
 
 .series-od .line {
@@ -898,48 +833,6 @@ fieldset:disabled .input::placeholder {
 
 .series-os .dot {
   fill: var(--os);
-}
-
-.events h4 {
-  color: var(--muted);
-  font-size: var(--fs-sm);
-  margin: 12px 0 4px;
-}
-
-.events ol {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.event {
-  border-left: 3px solid var(--line-strong);
-  display: flex;
-  font-size: var(--fs-md);
-  gap: 10px;
-  margin-bottom: 4px;
-  padding-left: 8px;
-}
-
-.event-started {
-  border-left-color: var(--teal);
-}
-
-.event-stopped {
-  border-left-color: var(--muted);
-}
-
-.event-injection {
-  border-left-color: var(--amber);
-}
-
-.event-date {
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.event-kind {
-  font-weight: 700;
 }
 
 /* カルテ編集 */
@@ -2041,34 +1934,6 @@ fieldset:disabled .input::placeholder {
 }
 
 /* 画像・ファイル */
-.upload-form {
-  background: var(--surface-muted);
-  border-radius: 8px;
-  display: grid;
-  gap: 6px;
-  margin-bottom: 10px;
-  padding: 10px;
-}
-
-.upload-form .row-line {
-  margin: 0;
-}
-
-.file-list li {
-  border-bottom: 1px solid var(--line);
-  padding: 6px 0;
-}
-
-.file-link {
-  background: none;
-  border: 0;
-  color: var(--teal-dark);
-  font-weight: 700;
-  padding: 0;
-  text-align: left;
-  text-decoration: underline;
-}
-
 .dialog.dialog-viewer {
   max-height: calc(100vh - 32px);
   max-width: 1000px;
@@ -2101,10 +1966,6 @@ fieldset:disabled .input::placeholder {
 
 .compare-grid .panel + .panel {
   margin-top: 0;
-}
-
-.compare-grid .input {
-  margin-bottom: 8px;
 }
 
 .paper-summary {
