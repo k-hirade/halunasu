@@ -282,7 +282,8 @@ async function runReceptionFlow(browser) {
   await page.locator(".flow-group.status-waiting_doctor .flow-row").filter({ hasText: "試験 一郎" }).waitFor();
   await page.getByRole("button", { name: /^診察待ち/u }).click();
   assert.equal(await page.locator(".flow-row").count(), 1, "the count chip filters the list to one stage");
-  await page.getByRole("button", { name: "すべて表示" }).click();
+  await page.getByRole("button", { name: /^すべて/u }).click();
+  assert.equal(await page.getByRole("button", { name: /^すべて/u }).getAttribute("aria-pressed"), "true");
 
   // 会計連携: 医師が確定した本日のカルテを CSV にして連携済みにする
   await page.getByRole("link", { name: "会計連携" }).click();

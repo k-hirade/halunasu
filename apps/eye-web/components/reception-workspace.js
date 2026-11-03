@@ -233,12 +233,14 @@ export function ReceptionWorkspace() {
       {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
 
       <div aria-label="段階ごとの人数（押すとその段階だけを表示）" className="flow-chips" role="group">
+        <button aria-pressed={filter === null} className="flow-chip flow-chip-all" onClick={() => setFilter(null)} type="button">
+          すべて<strong>{appointments.length}</strong>
+        </button>
         {GROUPS.map((group) => (
           <button aria-pressed={filter === group.key} className={`flow-chip status-${group.key}`} key={group.key} onClick={() => setFilter(filter === group.key ? null : group.key)} type="button">
             <span className="flow-dot" aria-hidden="true" />{group.label}<strong>{grouped[group.key].length}</strong>
           </button>
         ))}
-        {filter ? <button className="btn btn-chip" onClick={() => setFilter(null)} type="button">すべて表示</button> : null}
       </div>
 
       <section aria-label="予約・受付の一覧" className="panel flow-list">
