@@ -73,6 +73,13 @@ export class MemoryEyeStore {
       .map(clone);
   }
 
+  listRecentDocuments(orgId, { limit = 300 } = {}) {
+    return [...this.forOrg(this.documents, orgId).values()]
+      .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)))
+      .slice(0, limit)
+      .map(clone);
+  }
+
   replaceDocument(orgId, document, expectedRevision) {
     const records = this.forOrg(this.documents, orgId);
     const current = records.get(document.documentId);

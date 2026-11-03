@@ -51,6 +51,7 @@ for (const methodName of [
   "createDocument",
   "getDocument",
   "listPatientDocuments",
+  "listRecentDocuments",
   "replaceDocument",
   "upsertOrderSet",
   "listOrderSets",
