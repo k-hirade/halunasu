@@ -1,0 +1,466 @@
+/*
+ * 文書の作成・編集（/documents/[id]）。左に入力、右に印刷と同じ紙面のプレビュー。
+ * 1100px 未満は1列にして「入力 / プレビュー」を切り替える。
+ */
+.eye-page.doc-page {
+  max-width: 1400px;
+}
+
+.doc-head {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.doc-head h1 {
+  font-size: var(--fs-xl);
+  margin: 0;
+}
+
+.doc-head-sub {
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 12px;
+  margin: 2px 0 0;
+}
+
+.doc-head-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.doc-pane-switch {
+  display: none;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.doc-pane-switch .btn.btn-chip[aria-selected="true"] {
+  background: var(--teal-soft);
+  border-color: var(--teal);
+  color: var(--teal-dark);
+}
+
+.doc-workspace {
+  align-items: start;
+  display: grid;
+  gap: 24px;
+  grid-template-columns: minmax(440px, 560px) minmax(0, 1fr);
+}
+
+.doc-workspace.is-readonly {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.doc-workspace.is-readonly .doc-preview-pane {
+  margin: 0 auto;
+  max-width: calc(210mm + 4px);
+  position: static;
+  width: 100%;
+}
+
+.doc-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.doc-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 16px 14px;
+}
+
+.doc-card h2,
+.doc-checks h2 {
+  font-size: var(--fs-lg);
+  margin: 0 0 8px;
+}
+
+.doc-card-head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.doc-card-head h2 {
+  margin: 0;
+}
+
+.doc-required {
+  color: var(--red);
+  font-size: var(--fs-xs);
+  font-style: normal;
+  font-weight: 700;
+  margin-left: 4px;
+}
+
+/* 確定前の確認: 色は状態だけ（左端の帯と点） */
+.doc-checks {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--green);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+}
+
+.doc-checks.has-warnings {
+  border-left-color: var(--amber);
+}
+
+.doc-checks.has-blockers {
+  border-left-color: var(--red);
+}
+
+.doc-checks h2 {
+  font-size: var(--fs-md);
+  margin-bottom: 4px;
+}
+
+.doc-checks li {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  padding: 3px 0;
+}
+
+.doc-checks li > span::before {
+  border-radius: 50%;
+  content: "";
+  display: inline-block;
+  height: 8px;
+  margin-right: 8px;
+  vertical-align: middle;
+  width: 8px;
+}
+
+.doc-checks li.is-blocker > span {
+  color: var(--red);
+  font-weight: 700;
+}
+
+.doc-checks li.is-blocker > span::before {
+  background: var(--red);
+}
+
+.doc-checks li.is-warning > span::before {
+  background: var(--amber);
+}
+
+.doc-checks li.is-info > span,
+.doc-checks li.is-ok > span {
+  color: var(--muted);
+}
+
+.doc-checks li.is-info > span::before {
+  background: var(--line-strong);
+}
+
+.doc-checks li.is-ok > span::before {
+  background: var(--green);
+}
+
+.doc-recipient-grid {
+  display: grid;
+  gap: 8px 10px;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+}
+
+.doc-recipient-grid .field:first-child {
+  grid-column: 1 / -1;
+}
+
+.doc-suggest {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.doc-suggest-label {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.doc-suggest .btn.btn-chip {
+  font-weight: 500;
+  white-space: normal;
+}
+
+.doc-suggest-meta {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  font-weight: 400;
+}
+
+.doc-seg,
+.doc-insert-seg {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.input.doc-purpose,
+.doc-card .input.doc-purpose {
+  field-sizing: content;
+  min-height: 64px;
+  resize: vertical;
+}
+
+.doc-phrases,
+.doc-toc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.doc-toc {
+  margin: 0 0 8px;
+}
+
+.doc-toc .btn.btn-chip {
+  font-size: var(--fs-sm);
+  min-height: 30px;
+}
+
+.doc-toc .btn.btn-chip.is-empty {
+  border-color: var(--red);
+  border-style: dashed;
+  color: var(--red);
+}
+
+.doc-hint {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  margin: 6px 0 0;
+}
+
+.input.document-body,
+.doc-card .input.document-body {
+  field-sizing: content;
+  font-family: inherit;
+  line-height: 1.7;
+  min-height: 320px;
+  overflow: hidden;
+  resize: none;
+}
+
+.doc-settings > summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.doc-settings-grid {
+  display: grid;
+  gap: 8px 10px;
+  grid-template-columns: minmax(0, 1fr) 180px;
+  margin-top: 10px;
+}
+
+/* 右: プレビュー（印刷と同じ紙面を幅に合わせて縮小） */
+.doc-preview-pane {
+  min-width: 0;
+  position: sticky;
+  top: calc(var(--nav-h) + 12px);
+}
+
+.doc-preview-frame {
+  background: var(--page);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  max-height: calc(100vh - var(--nav-h) - 32px);
+  overflow: auto;
+  padding: 12px;
+}
+
+.doc-workspace.is-readonly .doc-preview-frame {
+  border: 0;
+  max-height: none;
+  overflow: visible;
+  padding: 0;
+}
+
+.sheet.doc-preview-sheet {
+  margin: 0 auto;
+  max-width: none;
+}
+
+/* カルテから挿入 */
+.doc-insert {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - var(--nav-h) - 32px);
+  overflow: hidden;
+}
+
+.doc-insert-head,
+.doc-insert-foot {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  padding: 10px 14px;
+}
+
+.doc-insert-head {
+  border-bottom: 1px solid var(--line);
+}
+
+.doc-insert-head h2 {
+  font-size: var(--fs-lg);
+  margin: 0;
+}
+
+.doc-insert-foot {
+  border-top: 1px solid var(--line);
+  justify-content: flex-end;
+}
+
+.doc-insert > .field,
+.doc-insert > .doc-insert-options,
+.doc-insert > .doc-insert-note,
+.doc-insert > .loading,
+.doc-insert > .empty,
+.doc-insert > .alert {
+  margin: 10px 14px 0;
+}
+
+.doc-insert-source .input {
+  max-width: 260px;
+}
+
+.doc-insert-note {
+  color: var(--amber);
+  font-size: var(--fs-sm);
+}
+
+.doc-insert-options {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  justify-content: space-between;
+}
+
+.doc-insert-options .check {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.doc-insert-groups {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 4px 14px 12px;
+}
+
+.doc-insert-group {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 8px 0 0;
+  padding: 6px 0 0;
+}
+
+.doc-insert-group legend {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  padding: 0 6px 0 0;
+}
+
+.doc-insert-item {
+  align-items: flex-start;
+  display: flex;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.doc-insert-item input {
+  flex: none;
+  height: 18px;
+  margin-top: 3px;
+  width: 18px;
+}
+
+.doc-insert-item span {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 1099px) {
+  .doc-pane-switch {
+    display: flex;
+  }
+
+  .doc-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .doc-workspace[data-pane="input"] .doc-preview-pane {
+    display: none;
+  }
+
+  .doc-workspace[data-pane="preview"] .doc-inputs {
+    display: none;
+  }
+
+  .doc-workspace.is-readonly .doc-preview-pane {
+    display: block;
+  }
+
+  .doc-preview-pane {
+    position: static;
+  }
+
+  .doc-preview-frame {
+    max-height: none;
+  }
+
+  /* 挿入パネルは下から出るシートにする（入力中でも見える） */
+  .doc-workspace[data-pane="input"] .doc-preview-pane:has(.doc-insert) {
+    display: block;
+  }
+
+  .doc-insert {
+    border-radius: 14px 14px 0 0;
+    bottom: 0;
+    box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.2);
+    left: 0;
+    max-height: 75vh;
+    position: fixed;
+    right: 0;
+    z-index: 40;
+  }
+}
+
+@media (max-width: 719px) {
+  .doc-head-actions {
+    width: 100%;
+  }
+
+  .doc-recipient-grid,
+  .doc-settings-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .doc-preview-frame {
+    padding: 6px;
+  }
+}

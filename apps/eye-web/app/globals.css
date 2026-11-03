@@ -1,5 +1,7 @@
 /* 共通デザインの CSS はこのファイルの先頭で読み込む。同じファイル内なので必ず先に入り、以下の眼科側の指定が優先される。 */
 @import "@halunasu/web-ui/styles/halunasu-ui.css";
+@import "./styles/print.css";
+@import "./styles/documents.css";
 
 /*
  * 眼科カルテのデザイントークン（唯一の定義元）。
@@ -1276,58 +1278,7 @@ fieldset:disabled .input::placeholder {
   margin-top: 16px;
 }
 
-/* 印刷 */
-.print-page {
-  background: #fff;
-  margin: 0 auto;
-  max-width: 900px;
-  padding: 24px;
-}
-
-.print-toolbar {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 12px;
-}
-
-.print-head {
-  border-bottom: 2px solid var(--text);
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 12px;
-  padding-bottom: 8px;
-}
-
-.print-head p {
-  margin: 2px 0;
-}
-
-.print-meta {
-  text-align: right;
-}
-
-.draft-mark {
-  color: var(--red);
-  font-weight: 700;
-}
-
-.print-page section {
-  break-inside: avoid;
-  margin-bottom: 12px;
-}
-
-.print-page h2 {
-  border-left: 4px solid var(--teal);
-  font-size: var(--fs-md);
-  margin-bottom: 6px;
-  padding-left: 8px;
-}
-
-.print-table td:nth-child(2),
-.print-table td:nth-child(3) {
-  background: none;
-}
-
+/* 印刷（シェーマの並び。印刷画面の枠と紙面は styles/print.css） */
 .print-sketches {
   display: grid;
   gap: 12px;
@@ -1352,10 +1303,6 @@ fieldset:disabled .input::placeholder {
   body,
   html {
     background: #fff;
-  }
-
-  .print-page {
-    padding: 0;
   }
 }
 
@@ -1981,11 +1928,6 @@ fieldset:disabled .input::placeholder {
   padding: 6px 0;
 }
 
-.document-form {
-  margin: 0 auto;
-  max-width: 900px;
-}
-
 .document-body {
   font-family: inherit;
   line-height: 1.7;
@@ -1994,50 +1936,6 @@ fieldset:disabled .input::placeholder {
 .optical-table td:nth-child(2),
 .optical-table td:nth-child(3) {
   background: none;
-}
-
-.letter {
-  font-size: var(--fs-md);
-  line-height: 1.7;
-}
-
-.letter-title {
-  font-size: 22px;
-  letter-spacing: 0.2em;
-  margin: 8px 0 16px;
-  text-align: center;
-}
-
-.letter-date {
-  text-align: right;
-}
-
-.letter-recipient {
-  font-size: 15px;
-  margin: 8px 0 16px;
-}
-
-.letter-sender {
-  margin: 16px 0;
-  text-align: right;
-}
-
-.letter-sender p {
-  margin: 0;
-}
-
-.letter-patient {
-  margin-bottom: 16px;
-}
-
-.letter-body {
-  border-top: 1px solid var(--text);
-  padding-top: 12px;
-}
-
-.optical-print-table th,
-.optical-print-table td {
-  text-align: center;
 }
 
 /* 画像・ファイル */
@@ -2206,7 +2104,7 @@ fieldset:disabled .input::placeholder {
     --surface-muted: #f6f8fb;
     --line: #d8e1ea;
     --text: #142131;
-    --text-soft: var(--text-soft);
+    --text-soft: #334155;
     --muted: #586678;
     color-scheme: light;
   }
@@ -3009,11 +2907,6 @@ fieldset:disabled .input::placeholder {
   .operator-gate-pitch h2 {
     font-size: 22px;
   }
-}
-
-/* 文書画面: 見出しと入力欄の幅をそろえる */
-.document-page {
-  max-width: 948px;
 }
 
 /* ヘッダーの患者検索 */
