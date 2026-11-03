@@ -69,6 +69,11 @@ try {
         if (name === "editor-history" && width < 1280) await page.getByRole("button", { name: /^過去カルテ/u }).click();
         if (name === "editor-side" && width < 1024) await page.getByRole("button", { name: /^確認・比較/u }).click();
         if (name.startsWith("editor-") && !name.endsWith("dark")) await page.waitForTimeout(400);
+        // 設定: 一覧の行を押して右の編集パネルを開いた状態も撮る
+        if (name.startsWith("settings-panel") || name === "settings-sets") {
+          await page.locator(".master-row").nth(name === "settings-sets" ? 0 : 1).click().catch(() => null);
+          await page.waitForTimeout(400);
+        }
         const tag = `${name}-${width}x${height}`;
         await page.screenshot({ path: join(outDir, `${tag}.png`) });
         await page.screenshot({ path: join(outDir, `${tag}-full.png`), fullPage: true });
@@ -145,6 +150,12 @@ async function prepare(browser) {
       document: documentPath,
       billing: "/billing",
       settings: "/settings",
+      "settings-panel": "/settings#drugs",
+      "settings-sets": "/settings#sets",
+      "settings-phrases": "/settings#phrases",
+      "settings-export": "/settings#export",
+      "settings-audit": "/settings#audit",
+      "settings-panel-dark": "/settings#drugs",
       "editor-dark": encounterPath,
       "reception-dark": "/reception",
       menu: "/reception",
