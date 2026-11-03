@@ -92,7 +92,21 @@ function buildPatientSearchPrefixes(patient = {}) {
       prefixes.add(chars.slice(0, index).join(""));
     }
   }
+  // services/platform-api/src/store の buildPatientSearchPrefixes と同じ: 氏名・カナの 2 語目以降（名だけ）の接頭辞
+  for (const value of patientNameWordValues(patient)) {
+    const chars = [...value].slice(0, 32);
+    for (let index = 1; index <= chars.length; index += 1) {
+      prefixes.add(chars.slice(0, index).join(""));
+    }
+  }
   return prefixes.size ? [...prefixes].slice(0, 200) : undefined;
+}
+
+function patientNameWordValues(patient = {}) {
+  return [patient.displayName, patient.displayNameKana]
+    .flatMap((value) => String(value || "").normalize("NFKC").trim().split(/\s+/u).slice(1))
+    .map(normalizePatientSearchValue)
+    .filter(Boolean);
 }
 
 function buildPatientSearchFieldsWithoutPrefixes(patient = {}) {

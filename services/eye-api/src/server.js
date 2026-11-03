@@ -19,6 +19,7 @@ import {
   EYE_RECEPTION_ROLES,
   EYE_SETTINGS_ROLES,
   EYE_WRITE_ROLES,
+  patientSearchVariants,
   validateAmendEncounterInput,
   validateAppointmentStatusInput,
   validateCreateAppointmentInput,
@@ -194,10 +195,20 @@ async function routeEyeApiRequest(input = {}) {
   }
 
   // 患者検索の語は氏名などの個人情報なので、アクセスログに残る URL ではなく本文で受け取る。
+  // 生年月日（birthDate: YYYY-MM-DD）でも探せる。ひらがな・カタカナはどちらで入れても当たるよう両方の形で引く。
   if (method === "POST" && matches(parts, ["v1", "eye", "patients", "search"])) {
     const search = String(input.body?.q || "").trim().slice(0, 100);
-    const patients = await platformStore.listPatients(orgId, { search, limit: 50 });
+    const birthDate = String(input.body?.birthDate || "").trim();
+    if (birthDate && !DATE_PATTERN.test(birthDate)) throw badRequest("birthDate must be YYYY-MM-DD", "birthDate");
+    const patients = await searchPatients(platformStore, orgId, { search, birthDate });
     return ok({ patients: patients.filter((patient) => patient.status !== "merged") });
+  }
+
+  // 診察画面の「要対応」: 未確定カルテ（前日以前も含む）・紙カルテ要約の未確認・文書の下書き。
+  // 一覧と同じ範囲の項目（氏名・日付・状態）だけを返し、本文や要約は返さない。
+  if (method === "GET" && matches(parts, ["v1", "eye", "worklist"])) {
+    requireAccess(context, EYE_WRITE_ROLES, "Eye chart write access is required");
+    return ok(await buildWorklist(eyeStore, platformStore, orgId));
   }
 
   if (method === "GET" && matches(parts, ["v1", "eye", "patients"])) {
@@ -894,6 +905,80 @@ async function listAuditLogsFiltered(eyeStore, orgId, filters) {
   }
   // 最後に見た記録の次から続きを読む。読み切ったときは続きなし。
   return { auditLogs, nextCursor: exhausted || !lastScannedId ? null : lastScannedId };
+}
+
+const SEARCH_LIMIT = 50;
+const WORKLIST_SCAN_LIMIT = 200;
+const WORKLIST_ITEM_LIMIT = 50;
+
+async function searchPatients(platformStore, orgId, { search, birthDate }) {
+  if (birthDate) return platformStore.listPatients(orgId, { search, birthDate, limit: SEARCH_LIMIT });
+  const variants = search ? patientSearchVariants(search) : [""];
+  const byId = new Map();
+  for (const variant of variants) {
+    for (const patient of await platformStore.listPatients(orgId, { search: variant, limit: SEARCH_LIMIT })) {
+      if (!byId.has(patient.patientId)) byId.set(patient.patientId, patient);
+    }
+  }
+  return [...byId.values()].slice(0, SEARCH_LIMIT);
+}
+
+async function buildWorklist(eyeStore, platformStore, orgId) {
+  const [encounters, files, documents] = await Promise.all([
+    eyeStore.listDraftEncounters(orgId, WORKLIST_SCAN_LIMIT),
+    eyeStore.listUnreviewedPaperFiles(orgId, WORKLIST_SCAN_LIMIT),
+    eyeStore.listDraftDocuments(orgId, WORKLIST_SCAN_LIMIT)
+  ]);
+  const newestFirst = (left, right) => String(right.updatedAt || right.createdAt).localeCompare(String(left.updatedAt || left.createdAt));
+  const draftEncounters = encounters.filter((item) => item.status === "draft").sort(newestFirst);
+  const paperFiles = files
+    .filter((item) => item.kind === "paper_chart" && item.status === "stored" && !item.archived && !item.paper?.reviewedBy)
+    .sort(newestFirst);
+  const draftDocuments = documents.filter((item) => item.status === "draft").sort(newestFirst);
+  // 紙カルテには氏名の写しがないので、表示する分だけ患者を引く
+  const names = new Map();
+  for (const patientId of new Set(paperFiles.slice(0, WORKLIST_ITEM_LIMIT).map((item) => item.patientId))) {
+    const patient = await platformStore.getPatient(orgId, patientId);
+    if (patient) names.set(patientId, { displayName: patient.displayName, displayNameKana: patient.displayNameKana || "", status: patient.status });
+  }
+  const activePaperFiles = paperFiles.filter((item) => names.get(item.patientId)?.status !== "merged");
+  return {
+    draftEncounters: draftEncounters.slice(0, WORKLIST_ITEM_LIMIT).map((item) => ({
+      encounterId: item.encounterId,
+      patientId: item.patientId,
+      patientName: item.patientSnapshot?.displayName || "",
+      patientNameKana: item.patientSnapshot?.displayNameKana || "",
+      encounterDate: item.encounterDate,
+      amending: Boolean(item.amendment),
+      updatedAt: item.updatedAt,
+      updatedBy: item.updatedBy?.displayName || ""
+    })),
+    unreviewedPaperCharts: activePaperFiles.slice(0, WORKLIST_ITEM_LIMIT).map((item) => ({
+      fileId: item.fileId,
+      patientId: item.patientId,
+      patientName: names.get(item.patientId)?.displayName || "",
+      patientNameKana: names.get(item.patientId)?.displayNameKana || "",
+      takenOn: item.takenOn || "",
+      hasSummary: Boolean(item.paper?.summary?.trim()),
+      updatedAt: item.updatedAt
+    })),
+    draftDocuments: draftDocuments.slice(0, WORKLIST_ITEM_LIMIT).map((item) => ({
+      documentId: item.documentId,
+      patientId: item.patientId,
+      patientName: item.patientSnapshot?.displayName || "",
+      patientNameKana: item.patientSnapshot?.displayNameKana || "",
+      type: item.type,
+      issueDate: item.issueDate || "",
+      updatedAt: item.updatedAt
+    })),
+    counts: {
+      draftEncounters: draftEncounters.length,
+      unreviewedPaperCharts: activePaperFiles.length,
+      draftDocuments: draftDocuments.length
+    },
+    // 取得の上限に達したとき（件数は「以上」の意味になる）
+    truncated: encounters.length >= WORKLIST_SCAN_LIMIT || files.length >= WORKLIST_SCAN_LIMIT || documents.length >= WORKLIST_SCAN_LIMIT
+  };
 }
 
 async function requireEyeContext(input, platformStore) {

@@ -1,5 +1,6 @@
 // UI 監査。デモデータ入りのローカル環境（メモリストア）と Next 開発サーバーを起動し、
 // 主要画面を 5 つの画面幅で撮影して、文字サイズ・コントラスト・タップ領域・横あふれを計測する。
+// 診察（/）関連: home（診察）・home-tasks（要対応の一覧）・home-dark・search（検索）・register（新規患者登録）・menu
 //
 //   node scripts/ui-audit.mjs [--out DIR] [--pages editor,reception]
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -61,11 +62,19 @@ try {
         await page.goto(baseUrl + path, { waitUntil: "networkidle" }).catch(() => null);
         await page.waitForTimeout(name === "login" ? 1500 : 2500);
         await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
-        if (name === "menu" && width < 768) await page.getByRole("button", { name: "メニュー" }).click();
-        if (name === "search") {
-          if (width < 768) await page.getByRole("button", { name: "メニュー" }).click();
-          await page.getByLabel("患者検索").fill("模");
+        // 899px 以下は「メニュー」、それより広い画面は利用者メニュー（暗室表示・ログアウト）を開いて撮る
+        if (name === "menu") await (width < 900 ? page.getByRole("button", { name: "メニュー" }) : page.locator(".nav-user-button")).click();
+        if (name === "search" || name === "register") {
+          await page.getByLabel("患者検索").fill(name === "register" ? "もぎ" : "模");
           await page.waitForTimeout(800);
+        }
+        if (name === "register") {
+          await page.getByRole("button", { name: /新規患者を登録/u }).click();
+          await page.waitForTimeout(800);
+        }
+        if (name === "home-tasks") {
+          await page.getByRole("button", { name: /^未確定カルテ/u }).click();
+          await page.waitForTimeout(500);
         }
         if (name === "editor-history" && width < 1280) await page.getByRole("button", { name: /^過去カルテ/u }).click();
         if (name === "editor-side" && width < 1024) await page.getByRole("button", { name: /^確認・比較/u }).click();
@@ -137,6 +146,8 @@ async function prepare(browser) {
     await row.getByRole("button", { name: "受付する" }).click();
     // 受付の反映を待ってからメニューを開く（反映前に開くと「カルテ作成」がまだない）
     await row.getByRole("button", { name: "受付する" }).waitFor({ state: "detached" });
+    // 再読み込みが終わってから「…」を開く（古い行のメニューにはカルテの項目がない）
+    await page.locator(".flow-group.status-checked_in .flow-row", { hasText: "模擬 和子" }).waitFor();
   }
   await row.locator("summary").click();
   await row.getByRole("button", { name: /カルテを開く|カルテ作成/u }).click();
@@ -192,6 +203,9 @@ async function prepare(browser) {
       "encounter-print": `${encounterPath}/print`,
       "document-print": `${documentPath}/print`,
       search: "/",
+      register: "/",
+      "home-tasks": "/",
+      "home-dark": "/",
       "editor-history": encounterPath,
       "editor-side": encounterPath
     }

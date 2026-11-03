@@ -1256,9 +1256,12 @@ function sortByCreatedAt(items) {
 function filterPatientsForListOptions(patients = [], options = {}) {
   const normalized = normalizePatientListOptions(options);
   const keyword = normalizePatientSearchValue(normalized.search);
-  const filtered = keyword
-    ? patients.filter((patient) => patientMatchesPatientSearch(patient, keyword))
+  const byBirthDate = normalized.birthDate
+    ? patients.filter((patient) => patient.birthDate === normalized.birthDate)
     : patients;
+  const filtered = keyword
+    ? byBirthDate.filter((patient) => patientMatchesPatientSearch(patient, keyword))
+    : byBirthDate;
   return filtered
     .slice()
     .sort(comparePatientsByRecentUpdate)
@@ -1281,8 +1284,11 @@ function patientPublicView(patient = {}) {
 }
 
 function normalizePatientListOptions(options = {}) {
+  const birthDate = String(options.birthDate || "").trim();
   return {
     search: String(options.search || "").trim(),
+    // 生年月日の完全一致（YYYY-MM-DD）。形が違えば無視する（従来どおりの一覧・検索になる）
+    birthDate: /^\d{4}-\d{2}-\d{2}$/u.test(birthDate) ? birthDate : "",
     limit: Math.min(Math.max(Number.parseInt(options.limit, 10) || 30, 1), 100)
   };
 }
@@ -1372,7 +1378,22 @@ function buildPatientSearchPrefixes(patient = {}) {
       prefixes.add(chars.slice(0, index).join(""));
     }
   }
+  // 氏名・カナの 2 語目以降（名だけ）でも前方一致で引けるようにする。
+  // 既存の接頭辞の後ろに足すだけなので、上限 200 で従来の接頭辞が押し出されることはない。
+  for (const value of patientNameWordValues(patient)) {
+    const chars = [...value].slice(0, 32);
+    for (let index = 1; index <= chars.length; index += 1) {
+      prefixes.add(chars.slice(0, index).join(""));
+    }
+  }
   return prefixes.size ? [...prefixes].slice(0, 200) : undefined;
+}
+
+function patientNameWordValues(patient = {}) {
+  return [patient.displayName, patient.displayNameKana]
+    .flatMap((value) => String(value || "").normalize("NFKC").trim().split(/\s+/u).slice(1))
+    .map(normalizePatientSearchValue)
+    .filter(Boolean);
 }
 
 function buildPatientSearchFieldsWithoutPrefixes(patient = {}) {

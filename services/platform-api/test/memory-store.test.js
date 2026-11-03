@@ -434,3 +434,22 @@ test("prevents duplicate login identities", () => {
     /loginId already exists/
   );
 });
+
+test("finds patients by given name and by exact birth date", () => {
+  let counter = 0;
+  const store = new MemoryPlatformStore({
+    now: () => new Date("2026-11-03T00:00:00.000Z"),
+    idFactory: (prefix) => `${prefix}_${String(++counter).padStart(3, "0")}`
+  });
+  const organization = store.createOrganization({ organizationCode: "Clinic Given Name", displayName: "Clinic Given Name" });
+  const hanako = store.createPatient(organization.orgId, { displayName: "見本 花子", displayNameKana: "ミホン ハナコ", birthDate: "1953-01-09" });
+  const kazuko = store.createPatient(organization.orgId, { displayName: "模擬 和子", displayNameKana: "モギ カズコ", birthDate: "1950-03-04" });
+
+  const ids = (options) => store.listPatients(organization.orgId, options).map((patient) => patient.patientId);
+  assert.deepEqual(ids({ search: "ハナコ", limit: 10 }), [hanako.patientId]);
+  assert.deepEqual(ids({ search: "花子", limit: 10 }), [hanako.patientId]);
+  assert.deepEqual(ids({ birthDate: "1950-03-04", limit: 10 }), [kazuko.patientId]);
+  assert.deepEqual(ids({ birthDate: "1950-03-04", search: "ハナコ", limit: 10 }), []);
+  // 形の違う生年月日は無視して従来の一覧にする
+  assert.equal(ids({ birthDate: "S25.3.4", limit: 10 }).length, 2);
+});

@@ -617,3 +617,32 @@ function matchesFilter(left, operator, right) {
   if (operator === "<") return String(left) < String(right);
   throw new Error(`unsupported fake filter operator: ${operator}`);
 }
+
+test("finds patients by given name and birth date without reindexing legacy documents", async () => {
+  const db = new FakeFirestoreDb();
+  let counter = 0;
+  const store = new FirestorePlatformStore({
+    db,
+    now: () => new Date("2026-11-03T00:00:00.000Z"),
+    idFactory: (prefix) => `${prefix}_${String(++counter).padStart(3, "0")}`
+  });
+  const organization = await store.createOrganization({ organizationCode: "Clinic Given Name", displayName: "Clinic Given Name" });
+  const hanako = await store.createPatient(organization.orgId, { displayName: "見本 花子", displayNameKana: "ミホン ハナコ", birthDate: "1953-01-09" });
+  const kazuko = await store.createPatient(organization.orgId, { displayName: "模擬 和子", displayNameKana: "モギ カズコ", birthDate: "1950-03-04" });
+
+  // 以前の形式で保存された文書（名の接頭辞を持たない）を再現する
+  for (const [path, value] of db.documents.entries()) {
+    if (value?.patientId === kazuko.patientId && Array.isArray(value.patientSearchPrefixes)) {
+      db.documents.set(path, { ...value, patientSearchPrefixes: value.patientSearchPrefixes.filter((prefix) => !prefix.startsWith("カズコ") && !prefix.startsWith("和子")) });
+    }
+  }
+
+  const ids = async (options) => (await store.listPatients(organization.orgId, options)).map((patient) => patient.patientId);
+  assert.deepEqual(await ids({ search: "ハナコ", limit: 10 }), [hanako.patientId]);
+  assert.deepEqual(await ids({ search: "花子", limit: 10 }), [hanako.patientId]);
+  // 既存の文書も、これまでどおり氏名・カナの先頭からは引ける
+  assert.deepEqual(await ids({ search: "モギ", limit: 10 }), [kazuko.patientId]);
+  assert.deepEqual(await ids({ search: "模擬和", limit: 10 }), [kazuko.patientId]);
+  assert.deepEqual(await ids({ birthDate: "1950-03-04", limit: 10 }), [kazuko.patientId]);
+  assert.deepEqual(await ids({ birthDate: "1950-03-04", search: "ハナコ", limit: 10 }), []);
+});

@@ -1,0 +1,55 @@
+/* 診察（/）。行・チップは受付の .flow-* をそのまま使い、ここでは足りない分だけを足す */
+.status-task { --st: var(--st-checked_in); }
+
+.consult-chip-divider {
+  align-self: center;
+  background: var(--line-strong);
+  flex: 0 0 auto;
+  height: 24px;
+  margin: 0 4px;
+  width: 1px;
+}
+
+.consult-task-chip.has-items strong {
+  color: var(--amber);
+}
+
+.consult-upcoming {
+  flex: 1;
+  font-size: var(--fs-sm);
+  font-weight: 400;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.consult-chart-state {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--text-soft);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  padding: 0 6px;
+  white-space: nowrap;
+}
+
+.consult-page .page-head .head-actions {
+  align-items: center;
+}
+
+@media (max-width: 767px) {
+  .consult-page .page-head {
+    align-items: flex-start;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .consult-upcoming {
+    flex-basis: 100%;
+  }
+
+  .consult-page .flow-group-head {
+    flex-wrap: wrap;
+  }
+}
