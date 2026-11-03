@@ -262,6 +262,15 @@ export class MemoryEyeStore {
       .map(clone);
   }
 
+  // 新しい順。同じ時刻は ID の降順(Firestore の並びと同じ)。cursor の記録の次から返す。
+  listAuditLogPage(orgId, { fromIso = "", toIso = "", afterId = "", limit = 200 } = {}) {
+    const sorted = [...this.forOrg(this.auditLogs, orgId).values()]
+      .filter((log) => (!fromIso || String(log.createdAt) >= fromIso) && (!toIso || String(log.createdAt) < toIso))
+      .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)) || String(right.auditLogId).localeCompare(String(left.auditLogId)));
+    const start = afterId ? sorted.findIndex((log) => log.auditLogId === afterId) + 1 : 0;
+    return sorted.slice(start, start + limit).map(clone);
+  }
+
   forOrg(map, orgId) {
     if (!map.has(orgId)) map.set(orgId, new Map());
     return map.get(orgId);

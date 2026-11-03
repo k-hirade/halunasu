@@ -238,6 +238,65 @@ test("builds the patient chart with trend and records view audit events", async 
   assert.equal(logs.body.patients[patient.patientId].displayName, patient.displayName);
 });
 
+test("filters and pages audit logs on the server and names the actors", async () => {
+  const stores = createStores();
+  const director = await signedHeaders(stores.platformStore, "director");
+  const doctor = await signedHeaders(stores.platformStore, "doctor");
+  const patient = await createPatient(stores, doctor);
+  const members = stores.platformStore.listMembers((await request(stores, "GET", "/v1/eye/context", undefined, director)).body.context.orgId);
+  const doctorMember = members.find((member) => member.loginId === "eye-doctor");
+  const orgId = doctorMember.orgId;
+  const seed = (createdAt, eventType, extra = {}) => stores.eyeStore.recordAudit(orgId, {
+    createdAt, eventType, actorMemberId: doctorMember.memberId, actorLoginId: "eye-doctor", ...extra
+  });
+  // 日本時間 10/25 23:30 は UTC では 10/25 14:30、10/26 08:30 は UTC 10/25 23:30
+  seed("2026-10-25T14:30:00.000Z", "eye.chart_viewed", { patientId: patient.patientId, targetType: "patient", targetId: patient.patientId });
+  seed("2026-10-25T23:30:00.000Z", "eye.encounter_finalized", { patientId: patient.patientId });
+  seed("2026-10-26T02:00:00.000Z", "eye.drug_preset_saved", { targetType: "drug_preset", targetId: "edp_x" });
+  seed("2026-10-26T03:00:00.000Z", "eye.chart_viewed", { patientId: patient.patientId });
+
+  assert.equal((await request(stores, "GET", "/v1/eye/audit-logs?from=2026-10-26", undefined, doctor)).statusCode, 403);
+  assert.equal((await request(stores, "GET", "/v1/eye/audit-logs?from=2026/10/26", undefined, director)).statusCode, 400);
+  assert.equal((await request(stores, "GET", "/v1/eye/audit-logs?from=2026-10-27&to=2026-10-26", undefined, director)).statusCode, 400);
+  assert.equal((await request(stores, "GET", "/v1/eye/audit-logs?category=nope", undefined, director)).statusCode, 400);
+  assert.equal((await request(stores, "GET", "/v1/eye/audit-logs?limit=0", undefined, director)).statusCode, 400);
+
+  const day = await request(stores, "GET", "/v1/eye/audit-logs?from=2026-10-26&to=2026-10-26", undefined, director);
+  assert.equal(day.statusCode, 200);
+  assert.deepEqual(day.body.auditLogs.map((log) => log.createdAt), ["2026-10-26T03:00:00.000Z", "2026-10-26T02:00:00.000Z", "2026-10-25T23:30:00.000Z"]);
+  assert.deepEqual(day.body.range, { from: "2026-10-26", to: "2026-10-26" });
+  assert.equal(day.body.nextCursor, null);
+  assert.equal(day.body.actors[doctorMember.memberId].loginId, "eye-doctor");
+  assert.equal(typeof day.body.actors[doctorMember.memberId].displayName, "string");
+  assert.equal(JSON.stringify(day.body.actors).includes("password"), false);
+
+  const settingsOnly = await request(stores, "GET", "/v1/eye/audit-logs?category=settings", undefined, director);
+  assert.deepEqual(settingsOnly.body.auditLogs.map((log) => log.eventType), ["eye.drug_preset_saved"]);
+  const views = await request(stores, "GET", `/v1/eye/audit-logs?category=view&patientId=${patient.patientId}&actor=${doctorMember.memberId}`, undefined, director);
+  assert.ok(views.body.auditLogs.length >= 2);
+  assert.ok(views.body.auditLogs.every((log) => log.eventType.endsWith("_viewed") && log.patientId === patient.patientId));
+  const nobody = await request(stores, "GET", "/v1/eye/audit-logs?actor=someone-else", undefined, director);
+  assert.deepEqual(nobody.body.auditLogs, []);
+  assert.equal(nobody.body.nextCursor, null);
+
+  // 2件ずつ読み進めて、重複も抜けもなく最後まで辿れる
+  const seen = [];
+  let cursor = "";
+  for (let guard = 0; guard < 20; guard += 1) {
+    const pageResponse = await request(stores, "GET", `/v1/eye/audit-logs?from=2026-10-25&to=2026-10-26&limit=2${cursor ? `&cursor=${cursor}` : ""}`, undefined, director);
+    seen.push(...pageResponse.body.auditLogs.map((log) => log.auditLogId));
+    if (!pageResponse.body.nextCursor) break;
+    cursor = pageResponse.body.nextCursor;
+  }
+  assert.equal(seen.length, 4);
+  assert.equal(new Set(seen).size, 4);
+
+  // パラメータなしは従来どおり直近の記録(既定 200 件まで)
+  const legacy = await request(stores, "GET", "/v1/eye/audit-logs", undefined, director);
+  assert.ok(legacy.body.auditLogs.length >= 4);
+  assert.equal(legacy.body.patients[patient.patientId].displayName, patient.displayName);
+});
+
 test("discards a never-finalized draft", async () => {
   const stores = createStores();
   const doctor = await signedHeaders(stores.platformStore, "doctor");

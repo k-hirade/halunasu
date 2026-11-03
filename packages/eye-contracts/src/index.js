@@ -77,6 +77,21 @@ export const APPOINTMENT_TRANSITIONS = Object.freeze({
   no_show: ["booked"]
 });
 
+// 操作記録の種類。画面の絞り込みチップと API の category 絞り込みで同じ分け方を使う。
+export const AUDIT_CATEGORIES = Object.freeze(["view", "change", "finalize", "export", "settings", "other"]);
+const AUDIT_SETTINGS_EVENTS = new Set(["eye.drug_preset_saved", "eye.order_set_saved", "eye.phrase_saved"]);
+const AUDIT_CHANGE_SUFFIX = /_(created|updated|saved|discarded|amend_started|confirmed|unconfirmed|status_changed|uploaded|archived|reviewed)$/u;
+
+export function auditEventCategory(eventType) {
+  const type = String(eventType || "");
+  if (AUDIT_SETTINGS_EVENTS.has(type)) return "settings";
+  if (type.endsWith("_viewed")) return "view";
+  if (type.endsWith("_finalized")) return "finalize";
+  if (type.endsWith("_exported") || type === "eye.billing_handed_off") return "export";
+  if (AUDIT_CHANGE_SUFFIX.test(type)) return "change";
+  return "other";
+}
+
 const MAX_TEXT = 4000;
 const MAX_SHORT_TEXT = 200;
 const MAX_LIST = 40;
