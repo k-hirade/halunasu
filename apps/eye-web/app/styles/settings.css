@@ -971,3 +971,48 @@
     grid-column: 1 / -1;
   }
 }
+
+/* ---- 印刷用の氏名 ---- */
+.staff-cols .master-row-open {
+  grid-template-columns: minmax(120px, 0.45fr) minmax(0, 1fr) auto;
+}
+
+.staff-cols .master-kind {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.staff-facts {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 12px;
+}
+
+.staff-facts > div {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 6.5em minmax(0, 1fr);
+}
+
+.staff-facts dt {
+  color: var(--muted);
+}
+
+.staff-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .staff-cols .master-row-open {
+    gap: 2px 10px;
+    grid-template-areas: "name kind" "desc desc";
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-height: 56px;
+    padding: 8px 14px;
+  }
+
+  .staff-cols .master-name { grid-area: name; }
+  .staff-cols .master-kind { grid-area: kind; }
+  .staff-cols .master-desc { grid-area: desc; font-size: var(--fs-sm); }
+}

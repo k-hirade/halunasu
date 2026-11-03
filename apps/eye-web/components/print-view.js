@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { printableStaffName } from "@halunasu/eye-core";
 import { useEyeApi } from "./eye-api";
 import { facilityInfo, pickFacility, PrintMessage, PrintShell, VersionSelect } from "./print-shell";
 import { SKETCH_TEMPLATE_LABELS, SketchPad } from "./sketch-pad";
@@ -44,7 +45,7 @@ export function PrintView({ encounterId }) {
         api("/v1/eye/bootstrap").catch(() => ({ facilities: [] }))
       ]);
       const facility = pickFacility(bootstrap.facilities);
-      const base = { encounter: detail.encounter, versions: detail.versions || [], facility };
+      const base = { encounter: detail.encounter, versions: detail.versions || [], facility, printNames: bootstrap.printNames || {} };
       if (versionNumber) {
         const { version } = await api(`/v1/eye/encounters/${encounterId}/versions/${Number(versionNumber)}`);
         return { ...base, content: version.content, encounterDate: version.encounterDate, visitType: version.visitType, version };
@@ -64,8 +65,11 @@ export function PrintView({ encounterId }) {
   const patient = encounter.patientSnapshot || {};
   const finalizedInfo = version || (encounter.status === "finalized" ? { version: encounter.versionCount, finalizedAt: encounter.finalizedAt, finalizedBy: encounter.finalizedBy } : null);
   const draft = !finalizedInfo;
+  // 記載医は紙に載せる氏名（設定の「印刷用の氏名」、なければ表示名から役割の括弧を除いたもの）
+  const finalizer = finalizedInfo?.finalizedBy || null;
+  const doctorName = finalizer ? record.printNames[finalizer.memberId] || printableStaffName(finalizer.displayName) : "";
   const statusLabel = finalizedInfo
-    ? `確定 v${finalizedInfo.version}（${formatDateTime(finalizedInfo.finalizedAt)} ${finalizedInfo.finalizedBy?.displayName || ""}）`
+    ? `確定 v${finalizedInfo.version}（${formatDateTime(finalizedInfo.finalizedAt)} ${doctorName}）`
     : "下書き（未確定）";
   const age = ageOn(patient.birthDate, record.encounterDate);
   const info = facilityInfo(facility);
@@ -115,7 +119,7 @@ export function PrintView({ encounterId }) {
         </div>
         <p className="cs-visit">
           <span>受診日 {formatDate(record.encounterDate)}（{VISIT_TYPE_LABELS[record.visitType] || ""}）</span>
-          <span>記載医 {finalizedInfo?.finalizedBy?.displayName || "—"}</span>
+          <span>記載医 {doctorName || "—"}</span>
           <span>{statusLabel}</span>
         </p>
 
@@ -178,7 +182,8 @@ export function PrintView({ encounterId }) {
 
 function iopText(value = {}) {
   if (!Number.isFinite(value?.iop)) return "";
-  return [`${value.iop} mmHg`, IOP_METHOD_LABELS[value.iopMethod] || "", value.measuredAt || ""].filter(Boolean).join(" ");
+  // 眼圧は測定法と測定時刻を添える（例: 15 mmHg NCT 10:30測定）
+  return [`${value.iop} mmHg`, IOP_METHOD_LABELS[value.iopMethod] || "", value.measuredAt ? `${value.measuredAt}測定` : ""].filter(Boolean).join(" ");
 }
 
 function nextVisitText(nextVisit = {}) {

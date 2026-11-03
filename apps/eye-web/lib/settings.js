@@ -95,6 +95,7 @@ export const AUDIT_EVENT_LABELS = {
   "eye.drug_preset_saved": "薬剤設定を保存",
   "eye.order_set_saved": "セットを保存",
   "eye.phrase_saved": "定型文を保存",
+  "eye.staff_profile_saved": "印刷用の氏名を保存",
   "eye.profile_updated": "アレルギー・病名を更新",
   "eye.exam_confirmed": "検査値を確認",
   "eye.exam_unconfirmed": "検査値の確認を取消",
@@ -134,6 +135,10 @@ export function auditTargetLabel(log, masters = {}) {
   };
   if (log.targetType === "drug_preset") return findName(masters.drugPresets, "presetId", (item) => item.name);
   if (log.targetType === "order_set") return findName(masters.orderSets, "setId", (item) => item.name);
+  if (log.targetType === "staff_profile") {
+    const actor = masters.actors?.[log.targetId];
+    return actor ? actor.displayName || actor.loginId : `ID ${String(log.targetId || "").slice(0, 10)}`;
+  }
   if (log.targetType === "phrase") {
     return findName(masters.phrases, "phraseId", (item) => item.label || (item.text.length > 24 ? `${item.text.slice(0, 24)}…` : item.text));
   }
@@ -148,6 +153,13 @@ export function auditTargetLabel(log, masters = {}) {
   if (payload.type && DOCUMENT_TYPE_LABELS[payload.type]) parts.push(DOCUMENT_TYPE_LABELS[payload.type]);
   return parts.filter(Boolean).join("・");
 }
+
+// 印刷用の氏名の一覧の検索対象
+export function staffSearchValues(member) {
+  return [member.displayName, member.loginId, member.printName, ...(member.eyeRoles || []).map((role) => EYE_ROLE_LABELS[role] || role)];
+}
+
+export const EYE_ROLE_LABELS = { admin: "管理者", doctor: "医師", orthoptist: "視能訓練士", nurse: "看護師", medical_clerk: "医療事務", viewer: "閲覧" };
 
 // 期間の選択肢（日本時間の日付）
 export function auditRangeFor(preset, today) {

@@ -488,6 +488,19 @@
   white-space: nowrap;
 }
 
+/* （値）の中身。手書きの下線と同じ幅を最低限とり、値は太字で読み取りやすく */
+.rx-fill {
+  display: inline-block;
+  font-weight: 700;
+  min-width: 30mm;
+  padding: 0 2mm;
+}
+
+.rx-serial {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
 .rx-blank {
   border-bottom: 0.5pt solid var(--paper-line);
   display: inline-block;
@@ -784,6 +797,11 @@
 
   .rx-blank {
     min-width: 14mm;
+  }
+
+  .rx-fill {
+    min-width: 0;
+    padding: 0 1mm;
   }
 
   .rx-paren,

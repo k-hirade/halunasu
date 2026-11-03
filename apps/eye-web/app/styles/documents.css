@@ -464,3 +464,10 @@
     padding: 6px;
   }
 }
+
+/* 宛先の敬称: 診療科・医師名と同じ行に置く */
+@media (min-width: 720px) {
+  .doc-recipient-grid {
+    grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(8.5em, auto);
+  }
+}

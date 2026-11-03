@@ -7,8 +7,10 @@ import { ConfirmDialog, SaveIndicator } from "./encounter-dialogs";
 import { DocumentInsertPanel } from "./document-insert-panel";
 import { useEyeApi } from "./eye-api";
 import { LetterSheet } from "./letter-sheet";
+import { usePrintNames } from "./use-print-names";
 import { ageOn, formatDate, formatDateTime, SEX_LABELS } from "../lib/format";
 import { letterChecks, parseLetter, readPurpose, writePurpose } from "../lib/letter";
+import { DEFAULT_HONORIFIC, HONORIFIC_OPTIONS } from "../lib/paper";
 
 export { DocumentPrint } from "./document-print";
 
@@ -27,6 +29,7 @@ const STATUS_LABELS = { draft: "下書き", finalized: "確定", discarded: "破
 export function DocumentEditor({ documentId }) {
   const api = useEyeApi();
   const router = useRouter();
+  const printNames = usePrintNames();
   const [document, setDocument] = useState(null);
   const [context, setContext] = useState(null);
   const [form, setForm] = useState(null);
@@ -352,7 +355,12 @@ export function DocumentEditor({ documentId }) {
               <div className="doc-recipient-grid">
                 <label className="field"><span>医療機関</span><input aria-label="宛先 医療機関" autoComplete="off" className="input" onChange={(event) => changeRecipient({ institution: event.target.value })} value={form.recipient.institution} /></label>
                 <label className="field"><span>診療科</span><input aria-label="宛先 診療科" autoComplete="off" className="input" onChange={(event) => changeRecipient({ department: event.target.value })} value={form.recipient.department} /></label>
-                <label className="field"><span>医師名</span><input aria-label="宛先 医師" autoComplete="off" className="input" onChange={(event) => changeRecipient({ doctor: event.target.value })} placeholder="「先生」は自動で付きます" value={form.recipient.doctor} /></label>
+                <label className="field"><span>医師名</span><input aria-label="宛先 医師" autoComplete="off" className="input" onChange={(event) => changeRecipient({ doctor: event.target.value })} placeholder="氏名のみ" value={form.recipient.doctor} /></label>
+                <label className="field doc-honorific"><span>敬称</span>
+                  <select aria-label="宛先 敬称" className="input" onChange={(event) => changeRecipient({ honorific: event.target.value })} value={form.recipient.honorific || DEFAULT_HONORIFIC}>
+                    {HONORIFIC_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </select>
+                </label>
               </div>
               {visibleSuggestions.length ? (
                 <div className="doc-suggest">
@@ -450,7 +458,7 @@ export function DocumentEditor({ documentId }) {
             />
           ) : (
             <ScaledSheet>
-              <LetterSheet document={preview} showEmpty={editable} />
+              <LetterSheet document={preview} printNames={printNames} showEmpty={editable} />
             </ScaledSheet>
           )}
         </div>

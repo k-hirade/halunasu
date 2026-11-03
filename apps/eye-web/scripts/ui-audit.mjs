@@ -106,8 +106,8 @@ try {
           await page.emulateMedia({ media: "print" });
         }
         // 設定: 一覧の行を押して右の編集パネルを開いた状態も撮る
-        if (name.startsWith("settings-panel") || name === "settings-sets") {
-          await page.locator(".master-row").nth(name === "settings-sets" ? 0 : 1).click().catch(() => null);
+        if (name.startsWith("settings-panel") || name === "settings-sets" || name === "settings-staff") {
+          await page.locator(".master-row").nth(name === "settings-panel" || name === "settings-panel-dark" ? 1 : 0).click().catch(() => null);
           await page.waitForTimeout(400);
         }
         const tag = `${name}-${width}x${height}`;
@@ -169,6 +169,20 @@ async function prepare(browser) {
   await page.getByLabel("左眼 矯正視力").fill("0.6");
   await page.getByLabel("右眼 眼圧", { exact: true }).fill("14");
   await page.getByLabel("左眼 眼圧", { exact: true }).fill("23");
+  // 眼鏡処方（詳細つき）。処方箋の紙面の撮影用
+  await page.getByRole("button", { name: "＋ 眼鏡・CL" }).click();
+  await page.getByLabel("眼鏡・CL の種類").selectOption("glasses");
+  await page.getByLabel("右眼 S", { exact: true }).fill("-2");
+  await page.getByLabel("右眼 C", { exact: true }).fill("-0.5");
+  await page.getByLabel("右眼 Ax", { exact: true }).fill("180");
+  await page.getByLabel("左眼 S", { exact: true }).fill("-1.5");
+  await page.getByLabel("瞳孔間距離").fill("62");
+  await page.getByRole("button", { name: /詳細（素材・コート・カラー・装用方法）/u }).click();
+  await page.getByLabel("素材", { exact: true }).selectOption("organic");
+  await page.getByLabel("コート", { exact: true }).fill("UVカット");
+  await page.getByLabel("カラー", { exact: true }).fill("グレー 15%");
+  await page.getByLabel("装用方法", { exact: true }).selectOption("as_needed");
+  await page.getByText("今回眼鏡処方箋を発行する").click();
   await page.getByText("保存済み").waitFor({ timeout: 15_000 });
   const patientHref = await page.locator('a[href^="/patients/"]').first().getAttribute("href");
   await page.locator('.encounter-actions summary[aria-label="その他の操作"]').click();
@@ -207,6 +221,7 @@ async function prepare(browser) {
       "settings-panel": "/settings#drugs",
       "settings-sets": "/settings#sets",
       "settings-phrases": "/settings#phrases",
+      "settings-staff": "/settings#staff",
       "settings-export": "/settings#export",
       "settings-audit": "/settings#audit",
       "settings-panel-dark": "/settings#drugs",

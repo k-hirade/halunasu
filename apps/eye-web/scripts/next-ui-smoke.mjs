@@ -149,7 +149,10 @@ async function runDoctorFlow(browser) {
   assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "左眼 裸眼視力");
   await page.locator('input[aria-label="右眼 眼圧"].is-high').waitFor();
   // 他覚屈折は「詳細」の中。マイナスを打った途中の状態が消えず、表示は符号付き小数 2 桁になる
-  await page.getByRole("button", { name: /他覚屈折・矯正の種類・時刻/u }).click();
+  await page.getByRole("button", { name: /他覚屈折・矯正の種類・眼圧の時刻/u }).click();
+  // 眼圧を初めて入れた眼には、測定時刻（日本時間）が自動で入る。眼圧のない眼は空のまま
+  assert.match(await page.getByLabel("右眼 眼圧の測定時刻", { exact: true }).inputValue(), /^\d{2}:\d{2}$/u, "IOP time is filled when the first IOP is entered");
+  assert.equal(await page.getByLabel("左眼 眼圧の測定時刻", { exact: true }).inputValue(), "");
   const sphere = page.getByLabel("右眼 屈折 球面");
   await sphere.click();
   await page.keyboard.type("-");
@@ -236,6 +239,32 @@ async function runDoctorFlow(browser) {
   await page.waitForURL(/#audit$/u);
   await page.getByRole("cell", { name: "カルテを確定" }).first().waitFor();
   await page.getByRole("cell", { name: "ヒアレイン点眼液0.1%" }).first().waitFor();
+
+  // 印刷用の氏名: 未設定なら表示名から役割の（ ）を除いた名前、設定すると処方箋・カルテの印刷に出る
+  const finalizedOptical = await context.newPage();
+  await finalizedOptical.goto(`${encounterUrl}/optical`);
+  await finalizedOptical.locator(".rx-sign-name").waitFor();
+  assert.equal((await finalizedOptical.locator(".rx-sign-name").innerText()).replace("印", "").trim(), "院長", "the role in parentheses is not printed");
+  assert.match(await finalizedOptical.locator(".rx-no").innerText(), /No\. \d{8}-[0-9A-F]{6}-1/u, "the prescription number comes from the encounter and version");
+  await page.locator(".settings-nav-item", { hasText: "印刷用の氏名" }).click();
+  await page.waitForURL(/#staff$/u);
+  await page.locator(".master-row").filter({ hasText: "院長" }).first().click();
+  const staffPanel = page.getByRole("complementary", { name: "印刷用の氏名の編集" });
+  await staffPanel.getByLabel("印刷用の氏名").fill("山田 一郎");
+  await staffPanel.getByText("紙には「山田 一郎」と出ます。", { exact: false }).waitFor();
+  await staffPanel.getByRole("button", { name: "保存", exact: true }).click();
+  await staffPanel.getByText("保存しました").waitFor();
+  await page.locator(".master-row").filter({ hasText: "山田 一郎" }).waitFor();
+  assert.equal(await staffPanel.getByRole("button", { name: "停止する" }).count(), 0, "staff rows cannot be stopped");
+  await staffPanel.getByRole("button", { name: "閉じる", exact: true }).click();
+  await finalizedOptical.reload();
+  await finalizedOptical.locator(".rx-sign-name").filter({ hasText: "山田 一郎" }).waitFor();
+  await finalizedOptical.goto(`${encounterUrl}/print`);
+  await finalizedOptical.locator(".cs-visit").filter({ hasText: "記載医 山田 一郎" }).waitFor();
+  await finalizedOptical.close();
+  await page.locator(".settings-nav-item", { hasText: "操作記録" }).click();
+  await page.waitForURL(/#audit$/u);
+  await page.getByRole("cell", { name: "印刷用の氏名を保存" }).first().waitFor();
   assert.match(await page.locator(".audit-range-line").innerText(), /の記録/u);
   await page.getByRole("group", { name: "種類で絞り込む" }).getByRole("button", { name: "設定", exact: true }).click();
   await page.getByRole("cell", { name: "薬剤設定を保存" }).first().waitFor();
@@ -345,6 +374,12 @@ async function runDoctorFlow(browser) {
   await page.getByLabel("右眼 S", { exact: true }).fill("-2");
   await page.getByLabel("左眼 S", { exact: true }).fill("-1.5");
   await page.getByLabel("瞳孔間距離").fill("62");
+  // 詳細（素材・コート・カラー・装用方法）は畳んである。入れたら紙に ■ で出る
+  assert.equal(await page.getByLabel("素材", { exact: true }).count(), 0, "optical details start collapsed");
+  await page.getByRole("button", { name: /詳細（素材・コート・カラー・装用方法）/u }).click();
+  await page.getByLabel("素材", { exact: true }).selectOption("polycarbonate");
+  await page.getByLabel("コート", { exact: true }).fill("UVカット");
+  await page.getByLabel("装用方法", { exact: true }).selectOption("always");
   await page.getByText("今回眼鏡処方箋を発行する").click();
   await page.getByRole("link", { name: "眼鏡処方箋を印刷" }).waitFor();
   assert.equal(await page.locator("#optical-heading ~ div .readiness .is-blocker").count(), 0);
@@ -361,6 +396,8 @@ async function runDoctorFlow(browser) {
   assert.equal(await opticalPage.locator(".sheet .print-watermark").count(), 1);
   assert.equal((await opticalPage.locator(".rx-sign-name").innerText()).replace("印", "").trim(), "");
   assert.match(await opticalPage.locator(".rx-values").innerText(), /62/u);
+  assert.deepEqual(await opticalPage.locator(".rx-form .rx-choice.is-on").allInnerTexts(), ["■ポリカーボネート", "■単焦点", "■遠用", "■常時"], "selected details are printed as ■");
+  await opticalPage.locator(".rx-form .rx-fill").filter({ hasText: "UVカット" }).waitFor();
   await opticalPage.getByRole("button", { name: "A5" }).click();
   assert.equal(await opticalPage.locator(".sheet.sheet-a5").count(), 1);
   const draftChart = await context.newPage();
@@ -385,9 +422,15 @@ async function runDoctorFlow(browser) {
   await page.getByRole("dialog").getByRole("button", { name: "戻って編集" }).click();
   // 印刷プレビューは保存してから開く（打った直後の入力も紙に出る）。下書きは紙にも透かし
   await page.getByLabel("宛先 医療機関").fill("県立中央病院");
+  // 敬称: 未設定は従来どおり「先生 御侍史」。「御中」にすると施設宛ての宛名になる
+  await page.locator(".doc-preview-pane .ls-to-doctor").filter({ hasText: "ご担当 先生 御侍史" }).waitFor();
+  await page.getByLabel("宛先 敬称").selectOption("御中");
+  await page.locator(".doc-preview-pane .ls-to-inst").filter({ hasText: "県立中央病院 御中" }).waitFor();
+  assert.equal(await page.locator(".doc-preview-pane .ls-to-doctor").count(), 0, "no doctor line when addressed to the institution");
   await page.getByRole("button", { name: "印刷プレビュー" }).click();
   await page.waitForURL(/\/documents\/[^/]+\/print$/u);
   await page.locator(".sheet").getByText("県立中央病院").waitFor();
+  await page.locator(".sheet .ls-to-inst").filter({ hasText: "県立中央病院 御中" }).waitFor();
   assert.equal(await page.locator(".sheet .print-watermark").count(), 1);
   await page.getByRole("button", { name: "下書きとして印刷" }).waitFor();
   await page.getByRole("link", { name: "← 文書に戻る" }).click();
@@ -625,7 +668,10 @@ async function runOrthoptistFlow(browser) {
   assert.equal(await page.getByLabel("右眼 矯正 球面").inputValue(), "-2.50");
   assert.equal(await page.getByLabel("右眼 矯正 軸").inputValue(), "180");
   await page.getByLabel("右眼 矯正視力").fill("0.7");
+  await page.getByLabel("右眼 眼圧の測定時刻", { exact: true }).fill("09:05");
   await page.getByLabel("右眼 眼圧", { exact: true }).fill("14");
+  await page.getByLabel("右眼 眼圧", { exact: true }).press("Tab");
+  assert.equal(await page.getByLabel("右眼 眼圧の測定時刻", { exact: true }).inputValue(), "09:05", "an entered IOP time is never overwritten");
   // 視力の候補に「矯正不能（n.c.）」がある
   assert.equal(await page.locator('#va-values option[value="n.c."]').count(), 1);
 

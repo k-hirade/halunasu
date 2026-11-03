@@ -3,17 +3,22 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { evaluateOpticalPrescription } from "@halunasu/eye-core";
+import { evaluateOpticalPrescription, printableStaffName } from "@halunasu/eye-core";
+import { CL_REPLACEMENT_LABELS } from "@halunasu/eye-contracts";
 import { useEyeApi } from "./eye-api";
 import { facilityInfo, pickFacility, PrintMessage, PrintShell, readStoredPaper, storePaper, VersionSelect } from "./print-shell";
 import { addDays, ageOn, formatDate, formatDateTime } from "../lib/format";
+import { prescriptionSerial } from "../lib/paper";
 
 const PAPER_KEY = "halunasu-eye-optical-paper";
 const VALID_DAY_CHOICES = [5, 10, 30];
+// 様式の並び（ガラス・プラスチック）に合わせ、無機（ガラス）を先に置く
+const MATERIAL_CHOICES = [["inorganic", "ガラス"], ["organic", "プラスチック"], ["polycarbonate", "ポリカーボネート"], ["other", "その他"]];
 
 // 眼鏡処方箋（日本眼科医会の様式の並び）・コンタクトレンズ指示書の印刷。
 // 選択肢は ■（選択）/ □（未選択）で表し、値のない欄は手書きできるよう空欄のままにする。
-// 医師名は確定した医師（finalizedBy）だけを印字する。未確定なら空欄。
+// 医師名は確定した医師（finalizedBy）だけを印字する（設定の「印刷用の氏名」、なければ表示名から役割の括弧を除いたもの）。未確定なら空欄。
+// No. はカルテ（受診日・カルテ ID の末尾・確定版）から作る。院全体の連番は持たない。
 export function OpticalPrint({ encounterId }) {
   const api = useEyeApi();
   const router = useRouter();
@@ -35,7 +40,7 @@ export function OpticalPrint({ encounterId }) {
         api(`/v1/eye/encounters/${encounterId}`),
         api("/v1/eye/bootstrap").catch(() => ({ facilities: [] }))
       ]);
-      const base = { encounter: detail.encounter, versions: detail.versions || [], facility: pickFacility(bootstrap.facilities) };
+      const base = { encounter: detail.encounter, versions: detail.versions || [], facility: pickFacility(bootstrap.facilities), printNames: bootstrap.printNames || {} };
       if (versionNumber) {
         const { version } = await api(`/v1/eye/encounters/${encounterId}/versions/${Number(versionNumber)}`);
         return { ...base, optical: version.content?.optical || {}, encounterDate: version.encounterDate, finalized: { version: version.version, finalizedAt: version.finalizedAt, finalizedBy: version.finalizedBy } };
@@ -87,7 +92,11 @@ export function OpticalPrint({ encounterId }) {
     </p>
   ) : null;
 
-  const sheetProps = { optical, patient, encounterDate: data.encounterDate, finalized, info: facilityInfo(facility), title, subtitle };
+  const doctorName = finalized?.finalizedBy
+    ? data.printNames[finalized.finalizedBy.memberId] || printableStaffName(finalized.finalizedBy.displayName)
+    : "";
+  const serial = prescriptionSerial(encounter.encounterId, data.encounterDate, finalized?.version);
+  const sheetProps = { optical, patient, encounterDate: data.encounterDate, doctorName, info: facilityInfo(facility), serial, title, subtitle };
   return (
     <PrintShell
       {...back}
@@ -108,13 +117,13 @@ export function OpticalPrint({ encounterId }) {
   );
 }
 
-function GlassesSheet({ optical, patient, encounterDate, finalized, info, title, subtitle }) {
+function GlassesSheet({ optical, patient, encounterDate, doctorName, info, serial, title, subtitle }) {
   const typed = Boolean(optical.type);
   const purpose = typed ? optical.purpose : "";
   const focus = { far: "single", near: "single", middle: "single", bifocal: "bifocal", progressive: "progressive" }[purpose] || "";
   return (
     <div className="rx-sheet">
-      <p className="rx-no">No. <span className="rx-blank rx-blank-short" /></p>
+      <p className="rx-no">No. <span className="rx-serial">{serial}</span></p>
       <h1 className="rx-title">{title}</h1>
       {subtitle ? <p className="rx-subtitle">{subtitle}</p> : null}
       <PatientLine encounterDate={encounterDate} patient={patient} />
@@ -122,7 +131,13 @@ function GlassesSheet({ optical, patient, encounterDate, finalized, info, title,
       <h2 className="rx-sec">Ⅰ. レンズ種類</h2>
       <table className="rx-form">
         <tbody>
-          <tr><th scope="row">素材</th><td colSpan={3}><Choice>ガラス</Choice><Choice>プラスチック</Choice><span className="rx-paren">（<span className="rx-blank" />）</span></td></tr>
+          <tr>
+            <th scope="row">素材</th>
+            <td colSpan={3}>
+              {MATERIAL_CHOICES.map(([value, label]) => <Choice key={value} on={optical.material === value}>{label}</Choice>)}
+              <Paren />
+            </td>
+          </tr>
           <tr>
             <th scope="row">種類</th>
             <td colSpan={3}>
@@ -130,7 +145,7 @@ function GlassesSheet({ optical, patient, encounterDate, finalized, info, title,
               <span className="rx-paren">（<span className="rx-blank" />）</span>
             </td>
           </tr>
-          <tr><th scope="row">コート</th><td><span className="rx-paren">（<span className="rx-blank" />）</span></td><th scope="row">カラー</th><td><span className="rx-paren">（<span className="rx-blank" />）</span></td></tr>
+          <tr><th scope="row">コート</th><td><Paren>{optical.coating}</Paren></td><th scope="row">カラー</th><td><Paren>{optical.tint}</Paren></td></tr>
         </tbody>
       </table>
 
@@ -168,7 +183,7 @@ function GlassesSheet({ optical, patient, encounterDate, finalized, info, title,
               {purpose === "middle" ? <span className="rx-paren">（中間）</span> : null}
             </td>
           </tr>
-          <tr><th scope="row">装用方法</th><td><Choice>常時</Choice><Choice>必要時</Choice><span className="rx-paren">（<span className="rx-blank" />）</span></td></tr>
+          <tr><th scope="row">装用方法</th><td><Choice on={optical.wearMode === "always"}>常時</Choice><Choice on={optical.wearMode === "as_needed"}>必要時</Choice><Paren /></td></tr>
         </tbody>
       </table>
 
@@ -178,16 +193,16 @@ function GlassesSheet({ optical, patient, encounterDate, finalized, info, title,
         <ol className="rx-fixed"><li>頂間距離は12mmとする。</li><li>多焦点レンズの瞳孔間距離は遠用を基準とする。</li></ol>
       </div>
       <Remarks optical={optical} />
-      <Signature encounterDate={encounterDate} finalized={finalized} info={info} />
+      <Signature doctorName={doctorName} encounterDate={encounterDate} info={info} />
       <p className="rx-caution">（注）眼鏡が出来ましたら、検査のため一度ご自身でご持参ください。</p>
     </div>
   );
 }
 
-function ContactSheet({ optical, patient, encounterDate, finalized, info, title }) {
+function ContactSheet({ optical, patient, encounterDate, doctorName, info, serial, title }) {
   return (
     <div className="rx-sheet">
-      <p className="rx-no">No. <span className="rx-blank rx-blank-short" /></p>
+      <p className="rx-no">No. <span className="rx-serial">{serial}</span></p>
       <h1 className="rx-title">{title}</h1>
       <PatientLine encounterDate={encounterDate} patient={patient} />
       <table className="rx-values rx-values-cl">
@@ -213,13 +228,18 @@ function ContactSheet({ optical, patient, encounterDate, finalized, info, title 
       </table>
       <table className="rx-form">
         <tbody>
-          <tr><th scope="row">装用方法</th><td><Choice>終日</Choice><Choice>時間</Choice><span className="rx-paren">（<span className="rx-blank" />）</span></td></tr>
-          <tr><th scope="row">交換周期</th><td><span className="rx-paren">（<span className="rx-blank" />）</span></td></tr>
+          <tr><th scope="row">装用方法</th><td><Choice on={optical.wearSchedule === "daily_wear"}>終日装用</Choice><Choice on={optical.wearSchedule === "extended_wear"}>連続装用</Choice><Paren /></td></tr>
+          <tr>
+            <th scope="row">交換周期</th>
+            <td>
+              {Object.entries(CL_REPLACEMENT_LABELS).map(([value, label]) => <Choice key={value} on={optical.replacement === value}>{label}</Choice>)}
+            </td>
+          </tr>
         </tbody>
       </table>
       <ValidLine encounterDate={encounterDate} validDays={optical.validDays} />
       <Remarks optical={optical} />
-      <Signature encounterDate={encounterDate} finalized={finalized} info={info} />
+      <Signature doctorName={doctorName} encounterDate={encounterDate} info={info} />
       <p className="rx-caution">（注）定期検査を受けてください。異常があれば装用を中止し、受診してください。</p>
     </div>
   );
@@ -265,7 +285,7 @@ function Remarks({ optical }) {
   );
 }
 
-function Signature({ encounterDate, finalized, info }) {
+function Signature({ encounterDate, doctorName, info }) {
   const [year, month, day] = (encounterDate || "").split("-").map(Number);
   return (
     <div className="rx-sign">
@@ -273,10 +293,15 @@ function Signature({ encounterDate, finalized, info }) {
       <dl>
         <div><dt>医療機関</dt><dd>{info.name}</dd></div>
         <div><dt>所在地</dt><dd>{[info.postalCode ? `〒${info.postalCode}` : "", info.address].filter(Boolean).join(" ")}{info.phone ? `　TEL ${info.phone}` : ""}</dd></div>
-        <div><dt>医師名</dt><dd className="rx-sign-name">{finalized?.finalizedBy?.displayName || ""}<span aria-label="押印欄" className="rx-seal">印</span></dd></div>
+        <div><dt>医師名</dt><dd className="rx-sign-name">{doctorName}<span aria-label="押印欄" className="rx-seal">印</span></dd></div>
       </dl>
     </div>
   );
+}
+
+// （値）。値がなければ手書き用の下線。
+function Paren({ children }) {
+  return <span className="rx-paren">（{children ? <span className="rx-fill">{children}</span> : <span className="rx-blank" />}）</span>;
 }
 
 function Choice({ on = false, children }) {

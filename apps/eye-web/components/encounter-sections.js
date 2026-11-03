@@ -2,6 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { calculateEyeDropBottles, evaluateOpticalPrescription } from "@halunasu/eye-core";
+import {
+  CL_REPLACEMENT_LABELS,
+  CL_WEAR_SCHEDULE_LABELS,
+  OPTICAL_LENS_MATERIAL_LABELS,
+  OPTICAL_WEAR_MODE_LABELS
+} from "@halunasu/eye-contracts";
 import { AxisField, DiopterField, moveToNextOnEnter, NumberField, VaDatalist, VaField } from "./exam-inputs";
 import { SKETCH_TEMPLATE_LABELS, SketchPad } from "./sketch-pad";
 import { useMediaQuery } from "./use-media-query";
@@ -68,9 +74,12 @@ export function ExamTable({
     if (key === "iopMethod" && value) rememberIopMethod(value);
   };
   const setIop = (side, value) => {
+    const firstEntry = value !== null && !Number.isFinite(exam[side].iop);
     update(["exam", side, "iop"], value);
     const last = lastIopMethod();
     if (value !== null && !exam[side].iopMethod && last) update(["exam", side, "iopMethod"], last);
+    // 眼圧の測定時刻: その眼の眼圧を初めて入れたとき、時刻が空なら今の時刻（日本時間）を入れる。入っている時刻は変えない。
+    if (firstEntry && !exam[side].measuredAt) update(["exam", side, "measuredAt"], nowTime());
   };
 
   // 前回値・反対眼・他覚屈折の値を、空欄にだけ写す（入力済みの欄は上書きしない）。元に戻せる。
@@ -151,10 +160,11 @@ export function ExamTable({
       {Object.entries(CORRECTION_TYPE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
     </select>
   );
-  const time = (side) => (
+  const time = (side, { label = false } = {}) => (
     <span className="xt-time">
-      <input aria-label={`${EYE_LABELS[side]} 測定時刻`} className="input input-time" data-enter-skip onChange={(event) => update(["exam", side, "measuredAt"], event.target.value)} type="time" value={exam[side].measuredAt || ""} />
-      {editable ? <button aria-label={`${EYE_LABELS[side]} 測定時刻を今に`} className="btn btn-chip" onClick={() => update(["exam", side, "measuredAt"], nowTime())} type="button">今</button> : null}
+      {label ? <span aria-hidden="true" className="xt-time-label">測定時刻</span> : null}
+      <input aria-label={`${EYE_LABELS[side]} 眼圧の測定時刻`} className="input input-time" data-enter-skip onChange={(event) => update(["exam", side, "measuredAt"], event.target.value)} title="眼圧の測定時刻" type="time" value={exam[side].measuredAt || ""} />
+      {editable ? <button aria-label={`${EYE_LABELS[side]} 眼圧の測定時刻を今に`} className="btn btn-chip" onClick={() => update(["exam", side, "measuredAt"], nowTime())} type="button">今</button> : null}
     </span>
   );
 
@@ -218,7 +228,7 @@ export function ExamTable({
             {iop(side)}
             {iopHigh(side) ? <span className="xt-alert">{IOP_ALERT}超</span> : null}
             {method(side)}
-            {time(side)}
+            {time(side, { label: true })}
           </>
         ),
         previous: (side) => {
@@ -307,7 +317,8 @@ export function ExamTable({
   }
 
   // カルテ用: 1 眼 1 行。
-  const detailHasValues = SIDES.some((side) => hasRefraction(exam[side].refraction) || exam[side].vaCorrectionType || exam[side].measuredAt)
+  // 眼圧の測定時刻は眼圧を入れると自動で入るので、それだけでは「詳細」を開かない（毎回開いてしまうため）。
+  const detailHasValues = SIDES.some((side) => hasRefraction(exam[side].refraction) || exam[side].vaCorrectionType)
     || Boolean(content.flags?.myopiaTreatment);
   return (
     <ChartExam
@@ -403,7 +414,7 @@ function ChartExam({ content, prevExam, previousDate, confirmations, onConfirm, 
                 <span className={`xt-detail-eye eye-${side}`}>{side === "od" ? "R" : "L"}</span>
                 <span className="xt-detail-item"><span className="xt-detail-label">他覚屈折</span>{parts.triple(side, "refraction")}</span>
                 <span className="xt-detail-item"><span className="xt-detail-label">矯正の種類</span>{parts.correctionType(side)}</span>
-                <span className="xt-detail-item"><span className="xt-detail-label">測定時刻</span>{parts.time(side)}</span>
+                <span className="xt-detail-item"><span className="xt-detail-label">眼圧の測定時刻</span>{parts.time(side)}</span>
               </div>
             ) : null}
           </div>
@@ -411,7 +422,7 @@ function ChartExam({ content, prevExam, previousDate, confirmations, onConfirm, 
       })}
       <div className="xt-cell xt-detail-toggle" style={place(8, "1 / -1", 10, "1 / -1")}>
         <button aria-expanded={detailOpen} className="link-button" onClick={() => setDetailOpen(!detailOpen)} type="button">
-          {detailOpen ? "▾ 他覚屈折・矯正の種類・時刻" : "▸ 他覚屈折・矯正の種類・時刻"}
+          {detailOpen ? "▾ 他覚屈折・矯正の種類・眼圧の時刻" : "▸ 他覚屈折・矯正の種類・眼圧の時刻"}
         </button>
         {detailOpen ? (
           <label className="check-line xt-myopia">
@@ -732,6 +743,12 @@ export function OpticalSection({ content, update, editable, encounterId }) {
   const setSide = (side, key, value) => update(["optical"], { ...optical, [side]: { ...optical[side], [key]: value } });
   const problems = evaluateOpticalPrescription({ ...optical, issue: true });
   const contact = optical.type === "contact";
+  const detailKeys = contact ? CL_DETAIL_KEYS : GLASSES_DETAIL_KEYS;
+  const hasDetails = detailKeys.some((key) => optical[key]);
+  const [detailsOpen, setDetailsOpen] = useState(hasDetails);
+  // 読み込み後に値が入っていたら開く（閉じるのは手動だけ）
+  useEffect(() => { if (hasDetails) setDetailsOpen(true); }, [hasDetails]);
+  const detailSummary = detailKeys.map((key) => detailLabel(key, optical[key])).filter(Boolean).join("・");
 
   function copyFromExam() {
     const next = { ...optical };
@@ -815,6 +832,29 @@ export function OpticalSection({ content, update, editable, encounterId }) {
             <label className="inline-field"><span>有効期間</span><input aria-label="有効期間" className="input input-num" onChange={(event) => set({ validDays: parseNumber(event.target.value) })} type="number" value={optical.validDays ?? ""} /><span>日</span></label>
             <input aria-label="備考" className="input grow" onChange={(event) => set({ note: event.target.value })} placeholder="備考（装用時間・レンズの種類など）" value={optical.note || ""} />
           </div>
+          <div className="optical-details">
+            <button aria-controls={`optical-details-${encounterId}`} aria-expanded={detailsOpen} className="link-button" onClick={() => setDetailsOpen(!detailsOpen)} type="button">
+              {detailsOpen ? "▾" : "▸"} 詳細{contact ? "（装用方法・交換周期）" : "（素材・コート・カラー・装用方法）"}
+            </button>
+            {!detailsOpen && detailSummary ? <span className="optical-details-summary">{detailSummary}</span> : null}
+            {detailsOpen ? (
+              <div className="optical-details-body" id={`optical-details-${encounterId}`}>
+                {contact ? (
+                  <>
+                    <OpticalSelect label="装用方法" labels={CL_WEAR_SCHEDULE_LABELS} onChange={(value) => set({ wearSchedule: value })} value={optical.wearSchedule} />
+                    <OpticalSelect label="交換周期" labels={CL_REPLACEMENT_LABELS} onChange={(value) => set({ replacement: value })} value={optical.replacement} />
+                  </>
+                ) : (
+                  <>
+                    <OpticalSelect label="素材" labels={OPTICAL_LENS_MATERIAL_LABELS} onChange={(value) => set({ material: value })} value={optical.material} />
+                    <label className="inline-field"><span>コート</span><input aria-label="コート" className="input optical-short" maxLength={40} onChange={(event) => set({ coating: event.target.value })} placeholder="例: UVカット" value={optical.coating || ""} /></label>
+                    <label className="inline-field"><span>カラー</span><input aria-label="カラー" className="input optical-short" maxLength={40} onChange={(event) => set({ tint: event.target.value })} placeholder="例: グレー 15%" value={optical.tint || ""} /></label>
+                    <OpticalSelect label="装用方法" labels={OPTICAL_WEAR_MODE_LABELS} onChange={(value) => set({ wearMode: value })} value={optical.wearMode} />
+                  </>
+                )}
+              </div>
+            ) : null}
+          </div>
           <div className="row-line">
             <label className="check-line"><input checked={Boolean(optical.issue)} onChange={(event) => set({ issue: event.target.checked })} type="checkbox" />今回{contact ? "CL 指示書" : "眼鏡処方箋"}を発行する</label>
             {optical.issue ? <a className="btn btn-chip" href={`/encounters/${encounterId}/optical`} rel="noreferrer" target="_blank">{contact ? "CL 指示書" : "眼鏡処方箋"}を印刷</a> : null}
@@ -825,6 +865,35 @@ export function OpticalSection({ content, update, editable, encounterId }) {
         </>
       ) : null}
     </div>
+  );
+}
+
+const GLASSES_DETAIL_KEYS = ["material", "coating", "tint", "wearMode"];
+const CL_DETAIL_KEYS = ["wearSchedule", "replacement"];
+const DETAIL_LABELS = {
+  material: OPTICAL_LENS_MATERIAL_LABELS,
+  wearMode: OPTICAL_WEAR_MODE_LABELS,
+  wearSchedule: CL_WEAR_SCHEDULE_LABELS,
+  replacement: CL_REPLACEMENT_LABELS
+};
+
+function detailLabel(key, value) {
+  if (!value) return "";
+  if (key === "coating") return `コート ${value}`;
+  if (key === "tint") return `カラー ${value}`;
+  if (key === "replacement") return `交換 ${DETAIL_LABELS[key][value] || value}`;
+  return DETAIL_LABELS[key]?.[value] || value;
+}
+
+function OpticalSelect({ label, labels, value, onChange }) {
+  return (
+    <label className="inline-field">
+      <span>{label}</span>
+      <select aria-label={label} className="input" onChange={(event) => onChange(event.target.value)} value={value || ""}>
+        <option value="">未指定</option>
+        {Object.entries(labels).map(([key, text]) => <option key={key} value={key}>{text}</option>)}
+      </select>
+    </label>
   );
 }
 

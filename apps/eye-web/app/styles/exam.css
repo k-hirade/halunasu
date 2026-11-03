@@ -77,6 +77,24 @@
   gap: 4px;
 }
 
+.xt-time-label {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+
+/* 狭い画面では眼圧の測定時刻を1行で収める（ラベルは読み上げ用の aria-label に任せる） */
+@media (max-width: 639px) {
+  .xt-time {
+    flex-wrap: wrap;
+    max-width: 100%;
+  }
+
+  .xt-time-label {
+    display: none;
+  }
+}
+
 .xt-mlabel {
   display: none;
 }

@@ -1,30 +1,39 @@
 "use client";
 
+import { printableStaffName } from "@halunasu/eye-core";
 import { parseLetter } from "../lib/letter";
+import { recipientLines } from "../lib/paper";
 import { ageOn, formatDate, SEX_LABELS } from "../lib/format";
 
 // 文書の紙面。印刷ページと編集画面の右のプレビューで同じ部品を使う。
 // 本文の【見出し】ごとに表の行として描く（表示だけの処理。保存する本文は変えない）。
 // 【】の見出しがない本文は、1つの段落としてそのまま出す。
-export function LetterSheet({ document, showEmpty = false }) {
+// printNames（memberId → 印刷用の氏名）があれば署名にそれを使う。なければ表示名から役割の括弧を除いて出す。
+export function LetterSheet({ document, showEmpty = false, printNames = {} }) {
   const patient = document.patientSnapshot || {};
   const recipient = document.recipient || {};
   const sender = document.sender || {};
   const age = ageOn(patient.birthDate, document.issueDate || undefined);
   const { preamble, sections } = parseLetter(document.body);
   // 医師名は確定した医師だけを印字する。下書きは署名欄を空けておく（作成者が医師とは限らないため）。
-  const doctorName = document.status === "finalized" ? (document.finalizedBy?.displayName || sender.doctorName || "") : "";
-  const to = [recipient.institution, recipient.department].filter(Boolean).join(" ");
+  const finalizer = document.finalizedBy || null;
+  const doctorName = document.status === "finalized"
+    ? (finalizer?.memberId && printNames[finalizer.memberId]) || printableStaffName(finalizer?.displayName || sender.doctorName || "")
+    : "";
+  const address = recipientLines(recipient);
+  const to = address.to;
   return (
     <div className="letter-sheet">
       {/* 編集画面ではページの見出しと重なるので、紙面の表題は見出し要素にしない */}
       <p className="ls-title">{document.title}</p>
       <div className="ls-top">
         <div className="ls-to">
-          <p className={`ls-to-inst${to ? "" : " is-blank"}`}>{to || "　"}</p>
-          <p className="ls-to-doctor">
-            {recipient.doctor ? <>{recipient.doctor} 先生</> : <span className={to ? "" : "ls-blank-line"}>{to ? "ご担当 先生" : "　"}</span>} 御侍史
-          </p>
+          <p className={`ls-to-inst${to ? "" : " is-blank"}`}>{to || "　"}{to && address.toSuffix ? ` ${address.toSuffix}` : ""}</p>
+          {address.person === null ? null : (
+            <p className="ls-to-doctor">
+              {address.person ? address.person : <span className="ls-blank-line">　</span>}{address.suffix ? ` ${address.suffix}` : ""}
+            </p>
+          )}
         </div>
         <p className="ls-date">{formatJapaneseDate(document.issueDate)}</p>
       </div>

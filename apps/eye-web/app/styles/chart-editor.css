@@ -770,3 +770,29 @@
   flex: 0 0 auto;
   width: auto;
 }
+
+/* ---- 眼鏡・CL の詳細（素材・コート・カラー・装用方法・交換周期） ---- */
+.optical-details {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 4px 0 6px;
+}
+
+.optical-details-summary {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.optical-details-body {
+  align-items: center;
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.optical-details-body .optical-short {
+  width: 9.5em;
+}

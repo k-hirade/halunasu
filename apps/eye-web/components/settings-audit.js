@@ -186,7 +186,7 @@ export function AuditLogSection({ masters }) {
             {rows.map((log) => {
               const person = log.patientId ? patients[log.patientId] : null;
               const who = actors[log.actorMemberId];
-              const detail = auditTargetLabel(log, masters);
+              const detail = auditTargetLabel(log, { ...masters, actors });
               return (
                 <tr key={log.auditLogId}>
                   <td className="audit-time">{timeText(log.createdAt, crossesYear)}</td>

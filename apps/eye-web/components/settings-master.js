@@ -155,7 +155,8 @@ export function InactiveGroup({ items, forceOpen, children }) {
   );
 }
 
-export function MasterEditorPanel({ editor, title, canEdit, children, extraActions = null, label }) {
+// allowToggle=false で「停止する／再開する」を出さない（停止の概念がない一覧で使う）
+export function MasterEditorPanel({ editor, title, canEdit, children, extraActions = null, label, allowToggle = true }) {
   const panelRef = useRef(null);
   const { selection } = editor;
   const selectionKey = selection ? selection.id ?? "new" : null;
@@ -206,7 +207,7 @@ export function MasterEditorPanel({ editor, title, canEdit, children, extraActio
           <footer className="master-panel-actions">
             {canEdit ? (
               <>
-                {selection.id ? (
+                {selection.id && allowToggle ? (
                   <button className="btn btn-ghost" disabled={editor.busy} onClick={editor.toggleActive} type="button">{inactive ? "再開する" : "停止する"}</button>
                 ) : null}
                 {extraActions}

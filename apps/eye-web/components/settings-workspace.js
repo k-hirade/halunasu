@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { printableStaffName } from "@halunasu/eye-core";
 import { useEyeApi } from "./eye-api";
 import { AuditLogSection } from "./settings-audit";
+import { clearPrintNames } from "./use-print-names";
 import { FilterChips, InactiveGroup, MasterEditorPanel, MasterRows, MasterToolbar, useMasterEditor } from "./settings-master";
 import { COMMON_USAGES, downloadJson, formatDateTime, PHRASE_TARGET_LABELS, PRESCRIPTION_KIND_LABELS, todayIso } from "../lib/format";
 import {
@@ -13,14 +15,17 @@ import {
   matchesSearch,
   normalizeSearch,
   phraseSearchValues,
+  EYE_ROLE_LABELS,
   setContentText,
-  setSearchValues
+  setSearchValues,
+  staffSearchValues
 } from "../lib/settings";
 
 const SECTIONS = [
   { key: "drugs", label: "よく使う薬剤", group: "input" },
   { key: "sets", label: "セット", group: "input" },
   { key: "phrases", label: "定型文", group: "input" },
+  { key: "staff", label: "印刷用の氏名", group: "admin" },
   { key: "export", label: "データ出力", group: "admin" },
   { key: "audit", label: "操作記録", group: "admin" }
 ];
@@ -157,6 +162,7 @@ export function SettingsWorkspace() {
           {section === "drugs" ? <DrugsSection canEdit={context.canManageSettings} onDirtyChange={onDirtyChange} onSaved={upsert(setPresets, "presetId", (item) => item.name)} presets={presets} /> : null}
           {section === "sets" ? <OrderSetsSection canEdit={context.canManageSettings} catalog={orderCatalog} onDirtyChange={onDirtyChange} onSaved={upsert(setOrderSets, "setId", (item) => item.name)} orderSets={orderSets} presets={presets} /> : null}
           {section === "phrases" ? <PhrasesSection canEdit={context.canManageSettings} onDirtyChange={onDirtyChange} onSaved={upsert(setPhrases, "phraseId", phraseSortKey)} phrases={phrases} /> : null}
+          {section === "staff" ? <StaffSection onDirtyChange={onDirtyChange} /> : null}
           {section === "export" ? <ExportSection context={context} /> : null}
           {section === "audit" ? <AuditLogSection masters={{ drugPresets: presets, orderSets, phrases }} /> : null}
         </div>
@@ -652,6 +658,107 @@ function PhraseForm({ draft, setDraft }) {
         {draft.target.startsWith("findings.") ? "カルテでは右・左・両を選んで、その眼の所見に入ります。" : `カルテの「${PHRASE_TARGET_LABELS[draft.target]}」に入ります。`}
         改行もそのまま入ります。
       </p>
+    </>
+  );
+}
+
+/* ───────── 印刷用の氏名 ───────── */
+
+const PRINT_NAME_MAX = 40;
+
+function StaffSection({ onDirtyChange }) {
+  const api = useEyeApi();
+  const [staff, setStaff] = useState(null);
+  const [loadError, setLoadError] = useState("");
+  const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    api("/v1/eye/staff-profiles")
+      .then((payload) => { if (!cancelled) setStaff(payload.staff || []); })
+      .catch((nextError) => { if (!cancelled) setLoadError(nextError.message); });
+    return () => { cancelled = true; };
+  }, [api]);
+
+  const editor = useMasterEditor({
+    idKey: "memberId",
+    toDraft: (item) => ({ memberId: item?.memberId || "", printName: item?.printName || "" }),
+    toBody: (draft) => draft,
+    validate: (draft) => (draft.printName.trim().length > PRINT_NAME_MAX ? `${PRINT_NAME_MAX}文字以内で入れてください。` : ""),
+    fieldLabels: { printName: "印刷用の氏名" },
+    onDirtyChange,
+    save: async ({ memberId, printName }) => {
+      const { staffProfile } = await api(`/v1/eye/staff-profiles/${encodeURIComponent(memberId)}`, { method: "PUT", body: { printName: printName.trim() } });
+      setStaff((items) => (items || []).map((item) => (item.memberId === staffProfile.memberId ? staffProfile : item)));
+      clearPrintNames();
+      return staffProfile;
+    }
+  });
+
+  if (loadError) return <section aria-label="印刷用の氏名" className="settings-section"><p className="alert alert-danger" role="alert">{loadError}</p></section>;
+  if (!staff) return <section aria-label="印刷用の氏名" className="settings-section"><p className="loading">読み込み中…</p></section>;
+
+  const shown = staff.filter((item) => matchesSearch(query, staffSearchValues(item)));
+  const doctors = shown.filter((item) => item.eyeRoles.includes("doctor"));
+  const others = shown.filter((item) => !item.eyeRoles.includes("doctor"));
+  const selected = editor.selection ? staff.find((item) => item.memberId === editor.selection.id) : null;
+  const renderRow = (item) => (
+    <>
+      <span className="master-name"><strong>{item.printName || printableStaffName(item.displayName)}</strong></span>
+      <span className="master-desc">
+        {item.printName ? "" : <span className="muted">未設定（表示名から）</span>}
+        {item.printName ? <span className="muted">表示名 {item.displayName}</span> : null}
+      </span>
+      <span className="master-kind">{item.eyeRoles.map((role) => EYE_ROLE_LABELS[role] || role).join("・")}</span>
+    </>
+  );
+  const groups = [["医師", doctors], ["ほかの職員", others]].filter(([, items]) => items.length);
+
+  return (
+    <section aria-label="印刷用の氏名" className="settings-section">
+      <SectionHead title="印刷用の氏名">
+        眼鏡処方箋・カルテの印刷・紹介状の医師名に使います。未設定なら表示名から役割の（ ）を除いた名前を出します。
+      </SectionHead>
+      <div className={`master-layout${editor.selection ? " has-panel" : ""}`}>
+        <div className="master-list">
+          <MasterToolbar onQuery={setQuery} placeholder="氏名・ログイン ID で検索" query={query} searchLabel="職員を検索" />
+          {groups.length ? groups.map(([label, items]) => (
+            <div className="master-group" key={label}>
+              <h3 className="master-group-head">{label} <span className="master-count">{items.length}</span></h3>
+              <MasterRows className="staff-cols" idKey="memberId" items={items} onOpen={editor.open} renderRow={renderRow} selectedId={editor.selection?.id} />
+            </div>
+          )) : <p className="empty master-empty">{staff.length ? "該当する職員はいません。" : "眼科の役割を持つ職員がいません。"}</p>}
+        </div>
+        <MasterEditorPanel allowToggle={false} canEdit editor={editor} label="印刷用の氏名の編集" title={selected?.displayName || "印刷用の氏名"}>
+          {editor.selection && selected ? <StaffForm draft={editor.selection.draft} member={selected} setDraft={editor.setDraft} /> : null}
+        </MasterEditorPanel>
+      </div>
+    </section>
+  );
+}
+
+function StaffForm({ draft, setDraft, member }) {
+  const preview = printableStaffName(member.displayName, draft.printName);
+  return (
+    <>
+      <dl className="staff-facts">
+        <div><dt>表示名</dt><dd>{member.displayName}</dd></div>
+        <div><dt>ログイン ID</dt><dd>{member.loginId}</dd></div>
+        <div><dt>役割</dt><dd>{member.eyeRoles.map((role) => EYE_ROLE_LABELS[role] || role).join("・")}</dd></div>
+      </dl>
+      <label className="field">
+        <span>印刷用の氏名</span>
+        <input
+          aria-label="印刷用の氏名"
+          autoComplete="off"
+          className="input"
+          maxLength={PRINT_NAME_MAX}
+          onChange={(event) => setDraft((current) => ({ ...current, printName: event.target.value }))}
+          placeholder={printableStaffName(member.displayName)}
+          value={draft.printName}
+        />
+      </label>
+      <p className="muted small">紙には「<strong>{preview || "（空欄）"}</strong>」と出ます。空にすると表示名から役割の（ ）を除いた名前に戻ります。</p>
     </>
   );
 }

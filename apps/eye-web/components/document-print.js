@@ -4,12 +4,14 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useEyeApi } from "./eye-api";
 import { LetterSheet } from "./letter-sheet";
+import { usePrintNames } from "./use-print-names";
 import { PrintMessage, PrintShell } from "./print-shell";
 import { formatDateTime } from "../lib/format";
 
 // 文書の印刷。保存済みの内容を出す（編集画面は保存してからこのページへ移る）。
 export function DocumentPrint({ documentId }) {
   const api = useEyeApi();
+  const printNames = usePrintNames();
   const [document, setDocument] = useState(null);
   const [error, setError] = useState("");
 
@@ -50,7 +52,7 @@ export function DocumentPrint({ documentId }) {
       title={document.title}
       watermark={discarded ? "破棄済み" : "下書き・未確定"}
     >
-      <LetterSheet document={document} />
+      <LetterSheet document={document} printNames={printNames} />
     </PrintShell>
   );
 }

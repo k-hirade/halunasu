@@ -28,7 +28,7 @@ export const OPTICAL_TYPES = Object.freeze(["", "glasses", "contact"]);
 export const OPTICAL_PURPOSES = Object.freeze(["far", "near", "middle", "progressive", "bifocal"]);
 // 処方箋の詳細（日本眼科医会の様式の項目）。どれも任意で、未入力の古いデータはそのまま通す。
 export const OPTICAL_LENS_MATERIALS = Object.freeze(["organic", "inorganic", "polycarbonate", "other"]);
-export const OPTICAL_LENS_MATERIAL_LABELS = Object.freeze({ organic: "有機（プラスチック）", inorganic: "無機（ガラス）", polycarbonate: "ポリカーボネート", other: "その他" });
+export const OPTICAL_LENS_MATERIAL_LABELS = Object.freeze({ organic: "プラスチック（有機）", inorganic: "ガラス（無機）", polycarbonate: "ポリカーボネート", other: "その他" });
 export const OPTICAL_WEAR_MODES = Object.freeze(["always", "as_needed"]);
 export const OPTICAL_WEAR_MODE_LABELS = Object.freeze({ always: "常時", as_needed: "必要時" });
 export const CL_WEAR_SCHEDULES = Object.freeze(["daily_wear", "extended_wear"]);
