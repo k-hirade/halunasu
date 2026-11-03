@@ -53,8 +53,9 @@ export function formatRefraction(value = {}) {
   return parts.join(" ");
 }
 
-export function patientLine(patient = {}) {
-  const age = ageOn(patient.birthDate);
+// onDate を渡すとその日の年齢（受診日・発行日の年齢）にする。省略すると今日の年齢。
+export function patientLine(patient = {}, onDate = undefined) {
+  const age = ageOn(patient.birthDate, onDate || undefined);
   return [
     patient.primaryPatientNumber ? `No.${patient.primaryPatientNumber}` : "",
     age === null ? "" : `${age}歳`,
@@ -87,6 +88,24 @@ export function prescriptionText(item = {}) {
     item.issued !== false && item.days ? `${item.days}日分` : ""
   ].filter(Boolean);
   return details.length ? `${item.name}（${details.join(" ")}）` : item.name;
+}
+
+export const VA_CORRECTION_TYPE_LABELS = { glasses: "眼鏡", contact: "CL", pinhole: "ピンホール", trial: "試験枠" };
+
+// 視力を眼科の慣習の1行にまとめる: 裸眼(矯正×S-1.00D=C-0.50D Ax180°)。値がなければ空文字。
+export function formatVisualAcuityLine(value = {}) {
+  const correction = value.correction || {};
+  const lens = [
+    Number.isFinite(correction.sphere) ? `S${signed(correction.sphere)}D` : "",
+    Number.isFinite(correction.cylinder) ? `C${signed(correction.cylinder)}D` : ""
+  ].filter(Boolean).join("=");
+  const axis = Number.isFinite(correction.axis) ? ` Ax${correction.axis}°` : "";
+  const lensText = lens || axis ? `${lens}${axis}`.trim() : "";
+  const corrected = value.vaCorrected || "";
+  if (!value.vaUncorrected && !corrected && !lensText) return "";
+  const inner = corrected || lensText ? `（${corrected}${lensText ? `×${lensText}` : ""}）` : "";
+  const type = VA_CORRECTION_TYPE_LABELS[value.vaCorrectionType] ? ` ${VA_CORRECTION_TYPE_LABELS[value.vaCorrectionType]}` : "";
+  return `${value.vaUncorrected || "—"}${inner}${inner ? type : ""}`;
 }
 
 function signed(value) {

@@ -160,3 +160,21 @@ test("prescriptions carried over to a revisit must be confirmed before finalizin
   const confirmed = { ...copied, prescriptions: copied.prescriptions.map((item) => ({ ...item, carriedOver: false })) };
   assert.deepEqual(evaluateFinalizeReadiness({ ...confirmed, chiefComplaint: "定期", plan: "継続", nextVisit: { intervalWeeks: 8 } }).blockers, []);
 });
+
+test("document text helpers format chart data the same way the letter templates do", async () => {
+  const { documentDiagnoses, documentDiagnosisText, documentFindingLines, documentIopLine, documentVaLine, isNormalFinding, documentAllergyText } = await import("../src/index.js");
+  const exam = { od: { vaUncorrected: "0.9", vaCorrected: "1.2", iop: 14 }, os: { vaCorrected: "0.6", iop: null } };
+  assert.equal(documentVaLine(exam), "視力 右 0.9（1.2）　左 —（0.6）");
+  assert.equal(documentIopLine(exam), "眼圧 右 14 mmHg　左 —");
+  const findings = { od: { anterior: "清明", lens: "IOL 嚢内固定", fundus: "異常なし。" }, os: { anterior: "", lens: "核白内障 NS2", fundus: "特記事項なし" } };
+  assert.deepEqual(documentFindingLines(findings).map((item) => item.text), [
+    "右眼 前眼部: 清明", "右眼 中間透光体: IOL 嚢内固定", "右眼 眼底: 異常なし。", "左眼 中間透光体: 核白内障 NS2", "左眼 眼底: 特記事項なし"
+  ]);
+  assert.deepEqual(documentFindingLines(findings, { abnormalOnly: true }).map((item) => item.text), ["右眼 中間透光体: IOL 嚢内固定", "左眼 中間透光体: 核白内障 NS2"]);
+  assert.equal(isNormalFinding("前房深く清明"), false, "only whole-text normal phrases are treated as normal");
+  const diagnoses = documentDiagnoses({ diagnoses: [{ name: "緑内障", eye: "ou", status: "suspected" }, { name: "結膜炎", eye: "od", status: "resolved" }, { name: "", eye: "os" }] });
+  assert.deepEqual(diagnoses.map(documentDiagnosisText), ["両眼 緑内障（疑い）"]);
+  assert.equal(documentAllergyText({ allergies: [{ substance: "ヨード", reaction: "発疹", severity: "severe" }] }), "ヨード（発疹・重篤）");
+  assert.equal(documentAllergyText({ noKnownAllergies: true }), "なし");
+  assert.equal(documentAllergyText(null), "未確認");
+});

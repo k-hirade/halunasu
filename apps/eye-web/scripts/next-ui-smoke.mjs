@@ -169,8 +169,11 @@ async function runDoctorFlow(browser) {
 
   const printPage = await context.newPage();
   await printPage.goto(`${encounterUrl}/print`);
-  await printPage.getByRole("button", { name: "印刷する" }).waitFor();
+  await printPage.getByRole("button", { name: "印刷", exact: true }).waitFor();
   assert.equal(await printPage.locator(".print-sketches polyline").count() > 0, true, "copied sketch strokes are printed");
+  assert.equal(await printPage.locator(".print-watermark").count(), 0, "a finalized chart prints without the draft watermark");
+  assert.match(await printPage.locator(".cs-table").innerText(), /0\.8/u);
+  await printPage.getByRole("link", { name: "← カルテに戻る" }).waitFor();
   await printPage.close();
 
   // 設定: 薬剤を追加 → 1本で何日分の表示 → 既存の薬剤を編集 → 停止・再開
@@ -321,22 +324,68 @@ async function runDoctorFlow(browser) {
   await opticalPage.goto(`${page.url()}/optical`);
   await opticalPage.getByRole("heading", { name: "眼鏡処方箋" }).waitFor();
   assert.equal(await opticalPage.getByText("-2.00").count() > 0, true);
+  // 未確定のカルテの処方箋は、紙にも透かしが入り、医師名は空欄（最後に保存した人を医師として出さない）
+  await opticalPage.getByRole("button", { name: "下書きとして印刷" }).waitFor();
+  assert.equal(await opticalPage.locator(".sheet .print-watermark").count(), 1);
+  assert.equal((await opticalPage.locator(".rx-sign-name").innerText()).replace("印", "").trim(), "");
+  assert.match(await opticalPage.locator(".rx-values").innerText(), /62/u);
+  await opticalPage.getByRole("button", { name: "A5" }).click();
+  assert.equal(await opticalPage.locator(".sheet.sheet-a5").count(), 1);
+  const draftChart = await context.newPage();
+  await draftChart.goto(`${page.url()}/print`);
+  await draftChart.getByRole("button", { name: "下書きとして印刷" }).waitFor();
+  assert.equal(await draftChart.locator(".sheet .print-watermark").count(), 1, "a draft chart prints with the watermark");
+  await draftChart.close();
   await opticalPage.close();
 
   // 紹介状を作成・確定・印刷
   await page.getByRole("tab", { name: "文書" }).click();
   await page.getByRole("button", { name: "紹介状を作成" }).click();
   await page.getByRole("heading", { name: /診療情報提供書/ }).waitFor();
+  const documentUrl = page.url();
   assert.match(await page.locator("textarea.document-body").inputValue(), /アレルギー・副作用歴】\nペニシリン系（発疹）/u);
+  // 紹介目的が空の紹介状は確定できない
+  await page.locator(".doc-checks").getByText("紹介目的が空です。").waitFor();
+  await page.getByRole("button", { name: "確定する" }).click();
+  assert.equal(await page.getByRole("dialog").getByRole("button", { name: "確定する" }).isDisabled(), true);
+  await page.getByRole("dialog").getByRole("button", { name: "戻って編集" }).click();
+  // 印刷プレビューは保存してから開く（打った直後の入力も紙に出る）。下書きは紙にも透かし
   await page.getByLabel("宛先 医療機関").fill("県立中央病院");
+  await page.getByRole("button", { name: "印刷プレビュー" }).click();
+  await page.waitForURL(/\/documents\/[^/]+\/print$/u);
+  await page.locator(".sheet").getByText("県立中央病院").waitFor();
+  assert.equal(await page.locator(".sheet .print-watermark").count(), 1);
+  await page.getByRole("button", { name: "下書きとして印刷" }).waitFor();
+  await page.getByRole("link", { name: "← 文書に戻る" }).click();
+  await page.waitForURL(documentUrl);
+  await page.getByRole("textbox", { name: "紹介目的", exact: true }).fill("緑内障の精査をお願いいたします。");
+  assert.match(await page.locator("textarea.document-body").inputValue(), /【紹介目的】\n緑内障の精査をお願いいたします。\n/u);
+  await page.locator(".doc-preview-pane .ls-grid").getByText("緑内障の精査をお願いいたします。").waitFor();
+  // カルテから挿入: 既にある本文は変えず、末尾（カーソル位置）に足すだけ
+  const bodyBefore = await page.locator("textarea.document-body").inputValue();
+  await page.getByRole("button", { name: "＋カルテから挿入" }).click();
+  await page.getByRole("button", { name: /^選んだ [1-9]\d* 件をカーソル位置に挿入$/u }).click();
+  const bodyAfter = await page.locator("textarea.document-body").inputValue();
+  assert.equal(bodyAfter.startsWith(bodyBefore), true, `inserting keeps the existing text\n${JSON.stringify(bodyBefore)}\n${JSON.stringify(bodyAfter)}`);
+  assert.equal(bodyAfter.length > bodyBefore.length, true);
   await page.getByText("保存済み").waitFor({ timeout: 15_000 });
   await page.getByRole("button", { name: "確定する" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "確定する" }).click();
   await page.getByRole("button", { name: "複製して修正" }).waitFor();
+  assert.equal(await page.locator("textarea.document-body").count(), 0, "a finalized document is shown read-only");
   const letter = await context.newPage();
-  await letter.goto(`${page.url()}/print`);
-  await letter.getByText("県立中央病院").waitFor();
+  await letter.goto(`${documentUrl}/print`);
+  await letter.locator(".sheet").getByText("県立中央病院").waitFor();
+  await letter.getByRole("button", { name: "印刷", exact: true }).waitFor();
+  assert.equal(await letter.locator(".print-watermark").count(), 0);
   await letter.close();
+  // 複製した下書きは破棄できる（一覧から消える）
+  await page.getByRole("button", { name: "複製して修正" }).click();
+  await page.waitForURL((url) => url.pathname.startsWith("/documents/") && url.href !== documentUrl);
+  await page.locator('summary[aria-label="文書のその他の操作"]').click();
+  await page.getByRole("button", { name: "下書きを破棄" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "破棄する" }).click();
+  await page.waitForURL(/\/patients\//u);
 
   assert.deepEqual(pageErrors, []);
   await context.close();

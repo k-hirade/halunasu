@@ -65,9 +65,11 @@ import { billingCsv, buildBillingEncounter, handoffListItem, handoffSnapshotOf, 
 import {
   applyDocumentUpdate,
   buildDocumentDraft,
+  discardDocument,
   documentSummary,
   duplicateDocument,
-  finalizeDocument
+  finalizeDocument,
+  summarizeRecipients
 } from "./documents.js";
 import { japanDate } from "./dates.js";
 import { createId } from "./ids.js";
@@ -533,7 +535,15 @@ async function routeEyeApiRequest(input = {}) {
 
   if (method === "GET" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "eye", "patients"]) && parts[4] === "documents") {
     const patient = await requirePatient(platformStore, orgId, parts[3]);
-    return ok({ documents: (await eyeStore.listPatientDocuments(orgId, patient.patientId)).map(documentSummary) });
+    const documents = await eyeStore.listPatientDocuments(orgId, patient.patientId);
+    return ok({ documents: documents.filter((item) => item.status !== "discarded").map(documentSummary) });
+  }
+
+  // 院内でよく使う紹介先（確定済み文書の宛先）。宛先の入力候補に使う。
+  if (method === "GET" && matches(parts, ["v1", "eye", "documents", "recipients"])) {
+    requireAccess(context, EYE_DOCUMENT_ROLES, "Document access is required");
+    const documents = await eyeStore.listRecentDocuments(orgId, { limit: 300 });
+    return ok({ recipients: summarizeRecipients(documents) });
   }
 
   if (method === "POST" && matches(parts, ["v1", "eye", "documents"])) {
@@ -591,6 +601,15 @@ async function routeEyeApiRequest(input = {}) {
       const document = finalizeDocument(current, { actor, now });
       await eyeStore.replaceDocument(orgId, document, expectedRevision);
       await audit({ eventType: "eye.document_finalized", targetType: "document", targetId: documentId, patientId: document.patientId, safePayload: { contentHash: document.contentHash } });
+      return ok({ document });
+    }
+    if (method === "POST" && action === "discard" && parts.length === 5) {
+      requireAccess(context, EYE_DOCUMENT_ROLES, "Document access is required");
+      requirePlatformCsrf(input.headers || {}, context.session);
+      const expectedRevision = requiredRevision(input.body);
+      const document = discardDocument(current, { actor, now });
+      await eyeStore.replaceDocument(orgId, document, expectedRevision);
+      await audit({ eventType: "eye.document_discarded", targetType: "document", targetId: documentId, patientId: document.patientId, safePayload: { type: document.type } });
       return ok({ document });
     }
     if (method === "POST" && action === "duplicate" && parts.length === 5) {

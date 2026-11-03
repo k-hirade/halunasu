@@ -1,0 +1,870 @@
+/*
+ * 印刷画面（カルテの印刷・眼鏡/CL 処方箋・文書の印刷）の共通の枠と紙面。
+ * 画面: 灰色の机（--page）の上に実寸の白い用紙。紙面は暗室表示でも白地に黒（紙の色は暗室表示で変えない）。
+ * 紙面の色は白黒・FAX・コピーで読めるよう黒と灰色だけ。ティールは画面のツールバーだけで使う。
+ */
+:root {
+  --paper: #ffffff;
+  --paper-ink: #111111;
+  --paper-soft: #333333;
+  --paper-muted: #555555;
+  --paper-line: #666666;
+  --paper-line-soft: #b5b5b5;
+  --paper-mark: #000000;
+  --paper-alert: #b42318;
+  --paper-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+}
+
+/* ===== 画面: ツールバー・警告の帯・机 ===== */
+.print-shell {
+  min-height: calc(100vh - var(--nav-h));
+}
+
+.print-bar {
+  align-items: center;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 8px 16px;
+  position: sticky;
+  top: var(--nav-h);
+  z-index: 20;
+}
+
+.print-bar-title {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  min-width: 0;
+}
+
+.print-bar-title strong {
+  font-size: var(--fs-lg);
+}
+
+.print-bar-subject {
+  color: var(--muted);
+}
+
+.print-state {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text-soft);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  padding: 2px 10px;
+  white-space: nowrap;
+}
+
+.print-state.is-draft {
+  background: var(--amber-soft);
+  border-color: var(--amber-line);
+  color: var(--amber);
+}
+
+.print-bar-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.print-paper {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.print-version {
+  align-items: center;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: var(--fs-sm);
+  gap: 6px;
+}
+
+.print-version .input {
+  min-height: 36px;
+  padding: 4px 8px;
+  width: auto;
+}
+
+.btn.btn-ghost.print-go.is-draft {
+  border-color: var(--amber-line);
+  color: var(--amber);
+}
+
+.print-alerts {
+  margin: 12px auto 0;
+  max-width: calc(210mm + 32px);
+  padding: 0 16px;
+}
+
+.print-alert {
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--muted);
+  border-radius: 8px;
+  background: var(--surface);
+  margin: 0 0 8px;
+  padding: 8px 12px;
+}
+
+.print-alert a {
+  margin-left: 8px;
+  white-space: nowrap;
+}
+
+.print-alert.is-draft {
+  border-left-color: var(--amber);
+}
+
+.print-alert.is-warn {
+  border-left-color: var(--amber);
+  color: var(--text-soft);
+}
+
+.print-alert.is-danger {
+  border-left-color: var(--red);
+  color: var(--red);
+}
+
+.print-desk {
+  background: var(--page);
+  padding: 20px 16px 64px;
+}
+
+/* ===== 紙 ===== */
+.sheet {
+  --text: var(--paper-ink);
+  --text-soft: var(--paper-soft);
+  --muted: var(--paper-muted);
+  --line: var(--paper-line-soft);
+  --line-strong: var(--paper-line);
+  --surface: var(--paper);
+  --surface-muted: var(--paper);
+  --red: var(--paper-alert);
+  background: var(--paper);
+  box-shadow: var(--paper-shadow);
+  color: var(--paper-ink);
+  color-scheme: light;
+  font-size: 10pt;
+  line-height: 1.55;
+  margin: 0 auto;
+  max-width: 100%;
+  padding: 12mm;
+  position: relative;
+  width: 210mm;
+}
+
+.sheet.sheet-a5 {
+  font-size: 9pt;
+  padding: 10mm;
+  width: 148mm;
+}
+
+.sheet.sheet-letter {
+  padding: 15mm 18mm;
+}
+
+.sheet.sheet-rx {
+  padding: 15mm;
+}
+
+.sheet.sheet-rx.sheet-a5 {
+  padding: 10mm;
+}
+
+.sheet h1,
+.sheet h2,
+.sheet p {
+  color: inherit;
+}
+
+.print-watermark {
+  align-items: center;
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  overflow: hidden;
+  pointer-events: none;
+  position: absolute;
+  z-index: 2;
+}
+
+.print-watermark span {
+  border: 3px solid var(--paper-mark);
+  color: var(--paper-mark);
+  font-size: 54pt;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  opacity: 0.1;
+  padding: 0 0.3em;
+  transform: rotate(-30deg);
+  white-space: nowrap;
+}
+
+.sheet-a5 .print-watermark span {
+  font-size: 36pt;
+}
+
+/* ===== カルテの印刷（診療録の写し） ===== */
+.chart-sheet .cs-facility {
+  border-bottom: 1.5pt solid var(--paper-ink);
+  color: var(--paper-muted);
+  display: flex;
+  font-size: 8pt;
+  gap: 12px;
+  justify-content: space-between;
+  padding-bottom: 3px;
+}
+
+.chart-sheet .cs-kind {
+  color: var(--paper-ink);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.chart-sheet .cs-patient {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  margin-top: 8px;
+}
+
+.chart-sheet .cs-patient h1 {
+  font-size: 13pt;
+  margin: 0;
+}
+
+.chart-sheet .cs-kana {
+  font-size: 9pt;
+  font-weight: 400;
+  margin-left: 4px;
+}
+
+.chart-sheet .cs-patient p {
+  margin: 0;
+}
+
+.chart-sheet .cs-visit {
+  border-bottom: 0.5pt solid var(--paper-line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 16px;
+  margin: 2px 0 8px;
+  padding-bottom: 6px;
+}
+
+.cs-table {
+  border-collapse: collapse;
+  margin-bottom: 8px;
+  table-layout: fixed;
+  width: 100%;
+}
+
+.cs-table .cs-col-label {
+  width: 22mm;
+}
+
+.cs-table th,
+.cs-table td {
+  border-bottom: 0.5pt solid var(--paper-line-soft);
+  padding: 3px 6px 3px 0;
+  text-align: left;
+  vertical-align: top;
+}
+
+.cs-table tbody + tbody tr:first-child > * {
+  border-top: 0.5pt solid var(--paper-line);
+}
+
+.cs-table th[scope="row"] {
+  font-size: 9pt;
+  font-weight: 700;
+}
+
+.cs-table .cs-eye-head th {
+  font-size: 9pt;
+}
+
+.cs-table td {
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.chart-sheet .cs-section h2,
+.chart-sheet .cs-list dt {
+  font-size: 9pt;
+  font-weight: 700;
+}
+
+.chart-sheet .cs-section h2 {
+  margin: 6px 0 4px;
+}
+
+.chart-sheet .print-sketches figcaption {
+  font-size: 8pt;
+}
+
+.chart-sheet .cs-list {
+  margin: 0;
+}
+
+.chart-sheet .cs-list > div {
+  border-bottom: 0.5pt solid var(--paper-line-soft);
+  display: grid;
+  gap: 0;
+  grid-template-columns: 22mm minmax(0, 1fr);
+  padding: 3px 0;
+}
+
+.chart-sheet .cs-list dd {
+  margin: 0;
+}
+
+.chart-sheet .cs-list ul {
+  margin: 0;
+  padding-left: 1.2em;
+}
+
+.chart-sheet .cs-small {
+  color: var(--paper-muted);
+  font-size: 8pt;
+  margin: 6px 0 0;
+}
+
+/* ===== 眼鏡処方箋・CL 指示書 ===== */
+.rx-sheet {
+  font-size: 10pt;
+}
+
+.sheet-a5 .rx-sheet {
+  font-size: 9pt;
+}
+
+.rx-no {
+  margin: 0;
+  text-align: right;
+}
+
+.rx-title {
+  font-size: 16pt;
+  letter-spacing: 0.5em;
+  margin: 4px 0 14px;
+  text-align: center;
+}
+
+.rx-title::after {
+  border-bottom: 1pt solid var(--paper-ink);
+  content: "";
+  display: block;
+  margin: 2px auto 0;
+  width: 60%;
+}
+
+.rx-subtitle {
+  font-size: 9pt;
+  margin: -10px 0 10px;
+  text-align: center;
+}
+
+.rx-patient {
+  align-items: baseline;
+  border-bottom: 0.5pt solid var(--paper-line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  margin: 0 0 10px;
+  padding-bottom: 6px;
+}
+
+.rx-field {
+  white-space: nowrap;
+}
+
+.rx-label {
+  color: var(--paper-muted);
+  font-size: 0.9em;
+  margin-right: 6px;
+}
+
+.rx-kana {
+  font-size: 0.85em;
+  margin-left: 2px;
+}
+
+.rx-sec {
+  font-size: 10.5pt;
+  margin: 10px 0 4px;
+}
+
+.rx-form,
+.rx-values {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.rx-form th,
+.rx-form td,
+.rx-values th,
+.rx-values td {
+  border: 0.5pt solid var(--paper-line);
+  padding: 4px 6px;
+  vertical-align: middle;
+}
+
+.rx-form th {
+  font-weight: 700;
+  text-align: center;
+  white-space: nowrap;
+  width: 20mm;
+}
+
+.rx-values {
+  table-layout: fixed;
+}
+
+.rx-values thead th {
+  font-size: 9pt;
+  font-weight: 700;
+  text-align: center;
+}
+
+.rx-values tbody th {
+  font-weight: 700;
+  text-align: center;
+  width: 9mm;
+}
+
+.rx-values thead th:first-child {
+  width: 9mm;
+}
+
+.rx-values td {
+  font-size: 12pt;
+  font-variant-numeric: tabular-nums;
+  height: 11mm;
+}
+
+.sheet-a5 .rx-values td {
+  font-size: 10.5pt;
+  height: 9mm;
+}
+
+.rx-values td.rx-text {
+  font-size: 10pt;
+  overflow-wrap: anywhere;
+}
+
+.rx-value {
+  align-items: baseline;
+  display: flex;
+  gap: 1mm;
+  justify-content: flex-end;
+}
+
+.rx-unit {
+  color: var(--paper-soft);
+  font-size: 8.5pt;
+  min-width: 1.4em;
+  text-align: left;
+}
+
+.rx-choice {
+  display: inline-block;
+  margin-right: 10px;
+  white-space: nowrap;
+}
+
+.rx-choice.is-on {
+  font-weight: 700;
+}
+
+.rx-paren {
+  white-space: nowrap;
+}
+
+.rx-blank {
+  border-bottom: 0.5pt solid var(--paper-line);
+  display: inline-block;
+  min-width: 30mm;
+  vertical-align: bottom;
+}
+
+.rx-blank-short {
+  min-width: 14mm;
+}
+
+.rx-blank-wide {
+  display: block;
+  min-height: 1.6em;
+  width: 100%;
+}
+
+.rx-line {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 26mm minmax(0, 1fr);
+  margin: 8px 0 0;
+}
+
+.rx-line-label {
+  font-weight: 700;
+}
+
+.rx-until {
+  color: var(--paper-soft);
+  margin-left: 6px;
+}
+
+.rx-fixed {
+  margin: 0;
+  padding-left: 1.4em;
+}
+
+.rx-remarks p {
+  margin: 0;
+}
+
+.rx-va {
+  color: var(--paper-soft);
+  font-size: 9pt;
+}
+
+.rx-sign {
+  margin: 16px 0 0 auto;
+  max-width: 120mm;
+}
+
+.rx-date {
+  margin: 0 0 6px;
+}
+
+.rx-sign dl {
+  margin: 0;
+}
+
+.rx-sign dl > div {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 20mm minmax(0, 1fr);
+  padding: 2px 0;
+}
+
+.rx-sign dt {
+  color: var(--paper-muted);
+}
+
+.rx-sign dd {
+  margin: 0;
+}
+
+.rx-sign-name {
+  align-items: center;
+  border-bottom: 0.5pt solid var(--paper-line);
+  display: flex;
+  justify-content: space-between;
+  min-height: 2em;
+}
+
+.rx-seal,
+.ls-seal {
+  align-items: center;
+  border: 0.5pt solid var(--paper-line);
+  border-radius: 50%;
+  color: var(--paper-muted);
+  display: inline-flex;
+  font-size: 8pt;
+  height: 12mm;
+  justify-content: center;
+  width: 12mm;
+}
+
+.rx-caution {
+  border-top: 0.5pt solid var(--paper-line-soft);
+  font-size: 9pt;
+  margin: 14px 0 0;
+  padding-top: 6px;
+}
+
+/* ===== 文書（紹介状など）の紙面: 印刷と編集画面のプレビューで共用 ===== */
+.letter-sheet {
+  font-size: 10.5pt;
+  line-height: 1.7;
+}
+
+.ls-title {
+  font-weight: 700;
+  font-size: 16pt;
+  letter-spacing: 0.4em;
+  margin: 0 0 14px;
+  text-align: center;
+}
+
+.ls-top {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.ls-to p {
+  margin: 0;
+}
+
+.ls-to-inst {
+  font-size: 11.5pt;
+}
+
+.ls-to-inst.is-blank,
+.ls-blank-line {
+  border-bottom: 0.5pt solid var(--paper-line);
+  display: inline-block;
+  min-width: 70mm;
+}
+
+.ls-to-doctor {
+  font-size: 11.5pt;
+}
+
+.ls-date {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.ls-from {
+  margin: 10px 0 12px auto;
+  max-width: 95mm;
+  text-align: left;
+}
+
+.ls-from p {
+  margin: 0;
+}
+
+.ls-facility {
+  font-weight: 700;
+}
+
+.ls-sign {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-top: 4px !important;
+}
+
+.ls-sign-name {
+  border-bottom: 0.5pt solid var(--paper-line);
+  flex: 1 1 auto;
+  min-height: 1.6em;
+  min-width: 40mm;
+}
+
+.ls-preamble {
+  margin: 0 0 10px;
+  white-space: pre-wrap;
+}
+
+.ls-grid {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+}
+
+.ls-grid .ls-col-head {
+  width: 30mm;
+}
+
+.ls-grid th,
+.ls-grid td {
+  border: 0.5pt solid var(--paper-line);
+  padding: 4px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.ls-grid th {
+  font-size: 9.5pt;
+  font-weight: 700;
+}
+
+.ls-grid td {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.ls-note {
+  display: block;
+  font-size: 8pt;
+  font-weight: 400;
+}
+
+.ls-kana {
+  font-size: 9pt;
+  margin-left: 2px;
+}
+
+.ls-patient-meta {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0 12px;
+  margin-left: 12px;
+}
+
+.ls-missing {
+  border: 1px dashed var(--red);
+  border-radius: 4px;
+  color: var(--red);
+  font-size: 9pt;
+  padding: 0 6px;
+}
+
+.ls-grid tr.is-empty th {
+  color: var(--red);
+}
+
+.ls-meta {
+  color: var(--paper-muted);
+  font-size: 8pt;
+  margin: 8px 0 0;
+}
+
+/* ===== 狭い画面: ツールバーを2段に、用紙は幅いっぱい ===== */
+@media (max-width: 719px) {
+  .print-bar {
+    padding: 8px 12px;
+  }
+
+  .print-bar-title {
+    flex-basis: calc(100% - 140px);
+  }
+
+  .print-bar-actions {
+    justify-content: flex-end;
+    width: 100%;
+  }
+
+  .print-desk {
+    padding: 12px 0 48px;
+  }
+
+  .sheet,
+  .sheet.sheet-a5,
+  .sheet.sheet-letter,
+  .sheet.sheet-rx {
+    padding: 16px 14px;
+    width: 100%;
+  }
+
+  .rx-values thead th {
+    font-size: 8pt;
+    padding: 2px;
+  }
+
+  .rx-values td {
+    font-size: 10pt;
+    padding: 2px 3px;
+  }
+
+  .rx-unit {
+    display: none;
+  }
+
+  .rx-title {
+    letter-spacing: 0.2em;
+  }
+
+  .rx-form th {
+    width: auto;
+  }
+
+  .rx-blank {
+    min-width: 14mm;
+  }
+
+  .rx-paren,
+  .rx-field {
+    white-space: normal;
+  }
+
+  .rx-line,
+  .rx-sign dl > div {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .ls-grid .ls-col-head {
+    width: 22mm;
+  }
+
+  .ls-top {
+    flex-direction: column-reverse;
+    gap: 4px;
+  }
+
+  .ls-date {
+    align-self: flex-end;
+  }
+
+  .print-watermark span {
+    font-size: 30pt;
+  }
+}
+
+/* ===== 印刷 ===== */
+@media print {
+  html,
+  body {
+    background: #fff !important;
+  }
+
+  .print-shell {
+    min-height: 0;
+  }
+
+  .print-desk {
+    background: none;
+    padding: 0;
+  }
+
+  .sheet,
+  .sheet.sheet-a5,
+  .sheet.sheet-letter,
+  .sheet.sheet-rx {
+    box-shadow: none;
+    margin: 0;
+    padding: 0;
+    width: auto;
+  }
+
+  .print-watermark {
+    position: fixed;
+  }
+
+  .sheet h2,
+  .sheet .rx-sec,
+  .sheet .cs-eye-head {
+    break-after: avoid;
+  }
+
+  .sheet tr,
+  .sheet figure,
+  .sheet .cs-list > div,
+  .rx-sign {
+    break-inside: avoid;
+  }
+
+  .ls-grid tr.is-empty,
+  .ls-missing {
+    display: none;
+  }
+
+  .sheet * {
+    -webkit-print-color-adjust: economy;
+    print-color-adjust: economy;
+  }
+}

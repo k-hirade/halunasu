@@ -289,3 +289,5 @@ export function evaluateOpticalPrescription(optical = {}) {
   if (optical.type === "glasses" && !Number.isFinite(optical.pd)) push("optical_pd_missing", ".pd", "瞳孔間距離（PD）が未入力です。");
   return problems;
 }
+
+export * from "./document-text.js";

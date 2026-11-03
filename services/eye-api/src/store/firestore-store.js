@@ -182,6 +182,15 @@ export class FirestoreEyeStore {
     return docs(snapshot).sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)));
   }
 
+  // 院内の新しい文書から順に（紹介先の候補の集計用）。単一項目の並べ替えなので複合インデックスは要らない。
+  async listRecentDocuments(orgId, { limit = 300 } = {}) {
+    const snapshot = await this.orgCollection(orgId, collections.eyeDocuments)
+      .orderBy("createdAt", "desc")
+      .limit(limit)
+      .get();
+    return docs(snapshot);
+  }
+
   async replaceDocument(orgId, document, expectedRevision) {
     return this.db.runTransaction(async (transaction) => {
       const ref = this.doc(eyeDocumentPath(orgId, document.documentId));

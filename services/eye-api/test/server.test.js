@@ -331,13 +331,14 @@ function glaucomaContent({ iopOd }) {
   };
 }
 
-async function createPatient(stores, headers) {
+async function createPatient(stores, headers, overrides = {}) {
   const response = await request(stores, "POST", "/v1/eye/patients", {
     displayName: "眼科 太郎",
     displayNameKana: "ガンカ タロウ",
     birthDate: "1950-04-01",
     sex: "male",
-    primaryPatientNumber: "000123"
+    primaryPatientNumber: "000123",
+    ...overrides
   }, headers);
   assert.equal(response.statusCode, 201);
   return response.body.patient;
@@ -699,6 +700,63 @@ test("drafts a referral letter from the chart, finalizes it, and requires a copy
   assert.equal(copy.body.document.sourceDocumentId, document.documentId);
   const list = await request(stores, "GET", `/v1/eye/patients/${patient.patientId}/documents`, undefined, doctor);
   assert.equal(list.body.documents.length, 2);
+});
+
+test("discards a never-finalized document draft, hides it from the list, and keeps finalized ones", async () => {
+  const stores = createStores();
+  const doctor = await signedHeaders(stores.platformStore, "doctor");
+  const clerk = await signedHeaders(stores.platformStore, "clerk");
+  const patient = await createPatient(stores, doctor);
+  const draft = (await request(stores, "POST", "/v1/eye/documents", { patientId: patient.patientId, type: "certificate" }, clerk)).body.document;
+  const kept = (await request(stores, "POST", "/v1/eye/documents", { patientId: patient.patientId, type: "referral" }, doctor)).body.document;
+
+  assert.equal((await request(stores, "POST", `/v1/eye/documents/${draft.documentId}/discard`, {}, clerk)).statusCode, 400);
+  assert.equal((await request(stores, "POST", `/v1/eye/documents/${draft.documentId}/discard`, { expectedRevision: 9 }, clerk)).statusCode, 409);
+  const discarded = await request(stores, "POST", `/v1/eye/documents/${draft.documentId}/discard`, { expectedRevision: 1 }, clerk);
+  assert.equal(discarded.statusCode, 200);
+  assert.equal(discarded.body.document.status, "discarded");
+  assert.equal(discarded.body.document.discardedBy.memberId.length > 0, true);
+  // 破棄した下書きは一覧に出ず、編集・確定・複製・再破棄はできない。記録そのものは残る。
+  const list = await request(stores, "GET", `/v1/eye/patients/${patient.patientId}/documents`, undefined, doctor);
+  assert.deepEqual(list.body.documents.map((item) => item.documentId), [kept.documentId]);
+  assert.equal((await request(stores, "GET", `/v1/eye/documents/${draft.documentId}`, undefined, doctor)).body.document.status, "discarded");
+  assert.equal((await request(stores, "PATCH", `/v1/eye/documents/${draft.documentId}`, { expectedRevision: 2, body: "x" }, doctor)).statusCode, 409);
+  assert.equal((await request(stores, "POST", `/v1/eye/documents/${draft.documentId}/finalize`, { expectedRevision: 2 }, doctor)).statusCode, 409);
+  assert.equal((await request(stores, "POST", `/v1/eye/documents/${draft.documentId}/duplicate`, {}, doctor)).statusCode, 409);
+  assert.equal((await request(stores, "POST", `/v1/eye/documents/${draft.documentId}/discard`, { expectedRevision: 2 }, doctor)).statusCode, 409);
+
+  // 確定済みは破棄できない
+  await request(stores, "PATCH", `/v1/eye/documents/${kept.documentId}`, { expectedRevision: 1, recipient: { institution: "県立病院" }, body: "本文" }, doctor);
+  await request(stores, "POST", `/v1/eye/documents/${kept.documentId}/finalize`, { expectedRevision: 2 }, doctor);
+  assert.equal((await request(stores, "POST", `/v1/eye/documents/${kept.documentId}/discard`, { expectedRevision: 3 }, doctor)).statusCode, 409);
+
+  const logs = await request(stores, "GET", "/v1/eye/audit-logs", undefined, await signedHeaders(stores.platformStore, "director"));
+  assert.ok(logs.body.auditLogs.some((log) => log.eventType === "eye.document_discarded" && log.targetId === draft.documentId));
+});
+
+test("suggests recipients from finalized documents across the clinic", async () => {
+  const stores = createStores();
+  const doctor = await signedHeaders(stores.platformStore, "doctor");
+  const first = await createPatient(stores, doctor);
+  const second = await createPatient(stores, doctor, { displayName: "眼科 花子", displayNameKana: "ガンカ ハナコ", primaryPatientNumber: "000124" });
+  const write = async (patientId, recipient, finalize = true) => {
+    const document = (await request(stores, "POST", "/v1/eye/documents", { patientId, type: "referral" }, doctor)).body.document;
+    await request(stores, "PATCH", `/v1/eye/documents/${document.documentId}`, { expectedRevision: 1, recipient, body: "本文" }, doctor);
+    if (finalize) await request(stores, "POST", `/v1/eye/documents/${document.documentId}/finalize`, { expectedRevision: 2 }, doctor);
+  };
+  await write(first.patientId, { institution: "県立病院", department: "眼科", doctor: "山田" });
+  await write(second.patientId, { institution: "県立病院", department: "眼科", doctor: "山田" });
+  await write(second.patientId, { institution: "大学病院", department: "眼科", doctor: "" });
+  await write(second.patientId, { institution: "下書き病院", department: "", doctor: "" }, false);
+  await write(second.patientId, { institution: "", department: "", doctor: "" });
+
+  const response = await request(stores, "GET", "/v1/eye/documents/recipients", undefined, doctor);
+  assert.equal(response.statusCode, 200);
+  const byName = Object.fromEntries(response.body.recipients.map((item) => [item.institution, item]));
+  assert.deepEqual(Object.keys(byName).sort(), ["大学病院", "県立病院"]);
+  assert.equal(byName["県立病院"].count, 2);
+  assert.equal(byName["県立病院"].doctor, "山田");
+  assert.equal(JSON.stringify(response.body).includes(first.patientId), false, "recipient suggestions carry no patient data");
 });
 
 test("blocks finalizing an issued glasses prescription with inconsistent values", async () => {
