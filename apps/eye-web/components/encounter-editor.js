@@ -9,52 +9,50 @@ import {
   evaluateFinalizeReadiness
 } from "@halunasu/eye-core";
 import { AppointmentDialog } from "./appointment-dialog";
-import { AmendDialog, ConfirmDialog, FinalizeDialog, SaveIndicator } from "./encounter-dialogs";
-import { CandidatesPanel, ComparePanel, HistoryPane, ReadinessPanel, SetsAndPhrasesPanel, VersionsPanel } from "./encounter-panels";
+import { AmendDialog, ConfirmDialog, FinalizeDialog, RESOLVED_IN_DIALOG, SaveIndicator } from "./encounter-dialogs";
+import { CandidatesPanel, ChangesPanel, HistoryPane, SetsAndPhrasesPanel, VersionsPanel } from "./encounter-panels";
 import { DocumentsPanel } from "./documents-panel";
 import { DilationFlags, ExamTable, hasExamValues, NextVisit, OpticalSection, Orders, Prescriptions, Section, setIn, Sketches } from "./encounter-sections";
 import { StatusTag } from "./home-workspace";
 import { CommonDiagnosesList, PatientBanner } from "./patient-banner";
 import { useEncounterDraft } from "./use-encounter-draft";
 import { useMediaQuery } from "./use-media-query";
-import { addDays, EYE_LABELS, formatDate, formatDateTime } from "../lib/format";
+import { addDays, EYE_LABELS, formatDate, formatDateTime, formatShortDate, patientLine, VISIT_TYPE_LABELS } from "../lib/format";
 
 const SIDES = ["od", "os"];
 const SECTION_LINKS = [
-  ["subjective", "主訴"],
   ["exam", "検査"],
-  ["orders", "オーダー"],
+  ["subjective", "主訴"],
   ["findings", "所見"],
   ["sketches", "シェーマ"],
   ["diagnoses", "病名"],
   ["plan", "方針"],
   ["prescriptions", "処方"],
   ["next-visit", "次回"],
+  ["orders", "オーダー"],
   ["optical", "眼鏡"],
   ["staff-note", "メモ"]
 ];
-const SIDE_TABS = [
-  ["compare", "前回比較"],
-  ["candidates", "候補"],
-  ["booking", "次回予約"],
-  ["documents", "文書"],
-  ["versions", "確定履歴"]
-];
+const FINDING_PARTS = [["anterior", "前眼部"], ["lens", "中間透光体"], ["fundus", "眼底"]];
+// 空なら「+ 追加」のチップに畳む欄。値が 1 つでもあれば開いたまま、一度開いたらこの画面のあいだは閉じない。
+const OPTIONAL_LABELS = { history: "現病歴・経過", assessment: "評価", sketches: "シェーマ", orders: "オーダー", optical: "眼鏡・CL", "staff-note": "スタッフメモ" };
+const OPTIONAL_SECTION_OF = { history: "subjective", assessment: "plan" };
 
 export function EncounterEditor({ encounterId }) {
   const router = useRouter();
   const draft = useEncounterDraft(encounterId);
   const {
-    detail, setDetail, context, bootstrap, content, meta, encounter, editable, saveState, error, setError, conflict,
+    detail, setDetail, context, bootstrap, content, meta, encounter, editable, saveState, error, conflict,
     load, save, update, replaceContent, saveWith, updateMeta, runAction: runDraftAction, confirmExam
   } = draft;
   const [notice, setNotice] = useState("");
   const [dialog, setDialog] = useState(null);
   const [booking, setBooking] = useState({ open: false, saved: null });
-  const [sideTab, setSideTab] = useState("compare");
-  const [historyOpen, setHistoryOpen] = useState(true);
+  const [paneTab, setPaneTab] = useState("history");
   const [drawer, setDrawer] = useState(null);
+  const [opened, setOpened] = useState(() => new Set());
   const wide = useMediaQuery("(min-width: 1280px)", true);
+  const narrow = useMediaQuery("(max-width: 767px)", false);
   const pageRef = useRef(null);
   const barRef = useRef(null);
   const [now, setNow] = useState(Date.now());
@@ -65,7 +63,7 @@ export function EncounterEditor({ encounterId }) {
     return () => clearInterval(handle);
   }, []);
 
-  // 固定ヘッダーの高さを CSS に渡す（左右の列の追従位置と、項目へ移動したときの位置合わせに使う）。
+  // 固定ヘッダーの高さを CSS に渡す（左列の追従位置と、項目へ移動したときの位置合わせに使う）。
   useEffect(() => {
     const bar = barRef.current;
     const page = pageRef.current;
@@ -89,8 +87,23 @@ export function EncounterEditor({ encounterId }) {
   }, [context?.canFinalize, detail?.encounter?.status]);
 
   useEffect(() => {
-    if (wide) setDrawer((current) => (current === "history" || current === "side" ? null : current));
+    if (wide) setDrawer((current) => (current === "history" ? null : current));
   }, [wide]);
+
+  const optionalFilled = useMemo(() => (content ? {
+    history: Boolean(content.history),
+    assessment: Boolean(content.assessment),
+    sketches: content.sketches.length > 0,
+    orders: (content.orders || []).length > 0,
+    optical: Boolean(content.optical?.type),
+    "staff-note": Boolean(content.staffNote)
+  } : {}), [content]);
+
+  // 値が入った欄は「開いた」ことにして、あとで中身を消してもチップに戻らないようにする。
+  useEffect(() => {
+    const filled = Object.keys(optionalFilled).filter((key) => optionalFilled[key] && !opened.has(key));
+    if (filled.length) setOpened((current) => new Set([...current, ...filled]));
+  }, [optionalFilled, opened]);
 
   const previous = detail?.previous || null;
   const changes = useMemo(() => {
@@ -180,47 +193,108 @@ export function EncounterEditor({ encounterId }) {
   const patient = encounter.patientSnapshot;
   const nextDays = daysUntilNextVisit(meta.encounterDate, content.nextVisit);
   const profile = detail.profile;
-  const activeDiagnoses = (profile?.diagnoses || []).filter((item) => item.status !== "resolved");
-  const blockerCount = readiness.blockers.length;
-  const showHistory = wide ? historyOpen : true;
+  const activeDiagnoses = (profile?.diagnoses || []).filter((item) => item.status !== "resolved")
+    .sort((a, b) => Number(Boolean(b.primary)) - Number(Boolean(a.primary)));
+  // 確定ボタンの件数: 確定ダイアログで解消できるもの（検査値・引き継ぎ処方の確認）と注意は黄、それ以外の止まる理由は赤。
+  const pendingCount = readiness.blockers.length + readiness.warnings.length;
+  const realProblems = readiness.blockers.filter((item) => !RESOLVED_IN_DIALOG.has(item.code));
+  const pendingTitle = [...readiness.blockers, ...readiness.warnings].map((item) => item.message).join("\n");
+  const isOpen = (key) => opened.has(key) || optionalFilled[key];
 
-  function toggleHistory() {
-    if (wide) setHistoryOpen(!historyOpen);
-    else setDrawer(drawer === "history" ? null : "history");
+  function openOptional(key) {
+    setOpened((current) => new Set([...current, key]));
+    const sectionId = OPTIONAL_SECTION_OF[key] || key;
+    requestAnimationFrame(() => {
+      const target = key in OPTIONAL_SECTION_OF ? document.getElementById(`field-${key}`) : document.getElementById(`sec-${sectionId}`);
+      target?.querySelector("input, textarea, select")?.focus();
+    });
   }
 
   function fillNormalFindings(sides) {
     let next = content;
     for (const side of sides) {
-      for (const key of ["anterior", "lens", "fundus"]) {
+      for (const [key] of FINDING_PARTS) {
         if (!next.findings[side][key]) next = setIn(next, ["findings", side, key], "異常なし");
       }
     }
     replaceContent(next);
   }
 
+  function jumpTo(event, id) {
+    event.preventDefault();
+    event.currentTarget.closest("details")?.removeAttribute("open");
+    if (id in OPTIONAL_LABELS && !isOpen(id)) setOpened((current) => new Set([...current, id]));
+    requestAnimationFrame(() => {
+      const target = document.getElementById(`sec-${id}`);
+      if (!target) return;
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+      target.querySelector("input, textarea, select")?.focus({ preventScroll: true });
+    });
+  }
+
+  const addChips = (keys) => {
+    const closed = keys.filter((key) => !isOpen(key));
+    if (!editable || !closed.length) return null;
+    return (
+      <div className="add-chips">
+        {closed.map((key) => (
+          <button className="add-chip" key={key} onClick={() => openOptional(key)} type="button">＋ {OPTIONAL_LABELS[key]}</button>
+        ))}
+      </div>
+    );
+  };
+
+  const historyTabs = [
+    ["history", `過去 ${detail.history.length}`],
+    ["changes", `変更点${changes.length ? ` ${changes.length}` : ""}`],
+    ["sets", "セット"]
+  ];
+  const nonDraftTag = encounter.status !== "draft" || encounter.amendment
+    ? <StatusTag encounter={{ ...encounter, amending: Boolean(encounter.amendment) }} />
+    : null;
+
   return (
-    <main className="eye-page encounter-page" ref={pageRef}>
+    <main className="eye-page encounter-page chart-page" ref={pageRef}>
       <header className="encounter-bar" ref={barRef}>
         <PatientBanner
           actions={(
             <div className="encounter-actions">
+              {!wide ? (
+                <button aria-expanded={drawer === "history"} aria-label={`過去カルテ（${detail.history.length}件）`} className="btn btn-chip hide-narrow" onClick={() => setDrawer(drawer === "history" ? null : "history")} type="button">
+                  過去 {detail.history.length}
+                </button>
+              ) : null}
+              <details className="more-menu toc-menu">
+                <summary className="btn btn-chip">目次</summary>
+                <nav aria-label="項目へ移動" className="more-menu-list toc-list">
+                  <button className="toc-link" onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); setDrawer("history"); }} type="button">過去カルテ（{detail.history.length}件）・変更点・セット</button>
+                  {SECTION_LINKS.map(([id, label]) => (
+                    <a className="toc-link" href={`#sec-${id}`} key={id} onClick={(event) => jumpTo(event, id)}>{label}</a>
+                  ))}
+                </nav>
+              </details>
               {editable ? <SaveIndicator onRetry={save} state={saveState} /> : null}
-              <a className="btn btn-ghost" href={`/encounters/${encounterId}/print`} rel="noreferrer" target="_blank">印刷</a>
+              <a className="btn btn-ghost hide-narrow" href={`/encounters/${encounterId}/print`} rel="noreferrer" target="_blank">印刷</a>
               {encounter.status === "draft" && context?.canFinalize ? (
-                <button className="btn btn-primary" onClick={() => setDialog("finalize")} title="⌘/Ctrl + Enter" type="button">確定する</button>
+                <button className="btn btn-primary finalize-button" onClick={() => setDialog("finalize")} title={pendingTitle ? `${pendingTitle}\n（⌘/Ctrl + Enter）` : "⌘/Ctrl + Enter"} type="button">
+                  確定する
+                  {pendingCount ? <span className={`finalize-count${realProblems.length ? " is-alert" : ""}`}>要確認 {pendingCount}</span> : null}
+                </button>
               ) : null}
               {encounter.status === "finalized" && context?.canFinalize ? (
                 <button className="btn btn-ghost" onClick={() => setDialog("amend")} type="button">修正する</button>
               ) : null}
-              {encounter.status === "draft" && encounter.versionCount === 0 && context?.canWrite ? (
-                <details className="more-menu">
-                  <summary aria-label="その他の操作" className="btn btn-ghost">…</summary>
-                  <div className="more-menu-list">
-                    <button className="btn btn-ghost danger-text" onClick={() => setDialog("discard")} type="button">下書きを破棄</button>
-                  </div>
-                </details>
-              ) : null}
+              <details className="more-menu">
+                <summary aria-label="その他の操作" className="btn btn-ghost">…</summary>
+                <div className="more-menu-list">
+                  <a className="btn btn-ghost only-narrow" href={`/encounters/${encounterId}/print`} rel="noreferrer" target="_blank">印刷</a>
+                  <button className="btn btn-ghost" onClick={(event) => { event.currentTarget.closest("details").open = false; setDrawer("documents"); }} type="button">文書</button>
+                  <button className="btn btn-ghost" onClick={(event) => { event.currentTarget.closest("details").open = false; setDrawer("versions"); }} type="button">確定履歴{detail.versions.length ? `（v${detail.versions.length}）` : ""}</button>
+                  {encounter.status === "draft" && encounter.versionCount === 0 && context?.canWrite ? (
+                    <button className="btn btn-ghost danger-text" onClick={(event) => { event.currentTarget.closest("details").open = false; setDialog("discard"); }} type="button">下書きを破棄</button>
+                  ) : null}
+                </div>
+              </details>
             </div>
           )}
           compact
@@ -229,34 +303,21 @@ export function EncounterEditor({ encounterId }) {
           onProfileSaved={(saved) => setDetail((current) => ({ ...current, profile: saved }))}
           patient={patient}
           profile={profile}
-          sub={<StatusTag encounter={{ ...encounter, amending: Boolean(encounter.amendment) }} />}
+          sub={<>{narrow ? null : <VisitMeta editable={editable} meta={meta} updateMeta={updateMeta} />}{nonDraftTag}</>}
         />
-        <div className="encounter-toolbar">
-          <button aria-expanded={wide ? historyOpen : drawer === "history"} className="btn btn-chip" onClick={toggleHistory} type="button">
-            過去カルテ {detail.history.length}件
-          </button>
-          <nav aria-label="項目へ移動" className="section-jump">
-            {SECTION_LINKS.map(([id, label]) => (
-              <a className="section-jump-link" href={`#sec-${id}`} key={id} onClick={(event) => jumpTo(event, id)}>{label}</a>
-            ))}
-          </nav>
-          <label className="inline-field">
-            <span>診療日</span>
-            <input className="input input-date" disabled={!editable} onChange={(event) => updateMeta({ encounterDate: event.target.value })} type="date" value={meta.encounterDate} />
-          </label>
-          <label className="inline-field">
-            <span>区分</span>
-            <select className="input" disabled={!editable} onChange={(event) => updateMeta({ visitType: event.target.value })} value={meta.visitType}>
-              <option value="initial">初診</option>
-              <option value="revisit">再診</option>
-            </select>
-          </label>
-          <button aria-expanded={drawer === "side"} className={`btn btn-chip side-drawer-toggle${blockerCount ? " has-blockers" : ""}`} onClick={() => setDrawer(drawer === "side" ? null : "side")} type="button">
-            {encounter.status === "draft" ? `確認・比較${blockerCount ? `（要確認 ${blockerCount}）` : ""}` : "比較・履歴"}
-          </button>
-        </div>
+        <nav aria-label="項目へ移動" className="section-jump">
+          {SECTION_LINKS.map(([id, label]) => (
+            <a className="section-jump-link" href={`#sec-${id}`} key={id} onClick={(event) => jumpTo(event, id)}>{label}</a>
+          ))}
+        </nav>
       </header>
 
+      {narrow ? (
+        <div className="chart-meta-narrow">
+          <span className="muted">{patientLine(patient)}{patient.birthDate ? ` ・ ${formatDate(patient.birthDate)}生` : ""}</span>
+          <VisitMeta editable={editable} meta={meta} updateMeta={updateMeta} />
+        </div>
+      ) : null}
       {error ? (
         <p className="alert alert-danger" role="alert">
           {error}
@@ -271,137 +332,23 @@ export function EncounterEditor({ encounterId }) {
         <p className="alert alert-info">下書きとして保存されます。確定は医師が行います。</p>
       ) : null}
 
-      <div className={`encounter-3col${showHistory && wide ? "" : " is-history-hidden"}${drawer ? ` is-drawer-${drawer}` : ""}`}>
-        {showHistory ? (
-          <aside aria-label="過去カルテ" className="encounter-history">
-            <div className="pane-head">
-              <h2 className="pane-title">過去カルテ</h2>
-              <button className="btn btn-chip" onClick={() => (wide ? setHistoryOpen(false) : setDrawer(null))} type="button">閉じる</button>
-            </div>
-            <HistoryPane editable={editable} history={detail.history} onCopy={(kind, source) => { copyFrom(kind, source); if (!wide) setDrawer(null); }} />
-          </aside>
-        ) : null}
-
-        <fieldset className="encounter-form" disabled={!editable}>
-          <CommonDiagnosesList />
-          <Section id="subjective" title="主訴・経過">
-            <div className="subjective-grid">
-            <label className="field">
-              <span>主訴</span>
-              <textarea className="input" onChange={(event) => update(["chiefComplaint"], event.target.value)} rows={2} value={content.chiefComplaint} />
-            </label>
-            <label className="field">
-              <span>現病歴・経過</span>
-              <textarea className="input" onChange={(event) => update(["history"], event.target.value)} rows={2} value={content.history} />
-            </label>
-            </div>
-          </Section>
-
-          <Section id="exam" title="検査">
-            <ExamTable
-              canConfirm={editable}
-              confirmations={encounter.examConfirmations || { od: null, os: null }}
-              content={content}
-              onConfirm={(side, confirmed) => confirmExam(side, confirmed)}
-              previous={previous?.content}
-              update={update}
-            />
-            <DilationFlags content={content} editable={editable} now={now} update={update} />
-          </Section>
-
-          <Section id="orders" title="検査・処置オーダー">
-            <Orders catalog={bootstrap.orderCatalog} content={content} editable={editable} update={update} />
-          </Section>
-
-          <Section
-            actions={editable ? <button className="btn btn-chip" onClick={() => fillNormalFindings(SIDES)} type="button">空欄を「異常なし」に</button> : null}
-            id="findings"
-            title="所見"
-          >
-            <div className="eye-columns">
-              {SIDES.map((side) => (
-                <div className="eye-column" key={side}>
-                  <div className="eye-column-head">
-                    <h3 className={`eye-heading eye-${side}`}>{EYE_LABELS[side]}</h3>
-                    {editable ? <button className="btn btn-chip" onClick={() => fillNormalFindings([side])} type="button">{EYE_LABELS[side]} 異常なし</button> : null}
-                  </div>
-                  {[["anterior", "前眼部"], ["lens", "中間透光体"], ["fundus", "眼底"]].map(([key, label]) => (
-                    <label className="field" key={key}>
-                      <span>{label}</span>
-                      <textarea className="input" onChange={(event) => update(["findings", side, key], event.target.value)} rows={1} value={content.findings[side][key]} />
-                    </label>
-                  ))}
-                </div>
-              ))}
-            </div>
-          </Section>
-
-          <Section id="sketches" title="シェーマ">
-            <Sketches content={content} editable={editable} update={update} />
-          </Section>
-
-          <Section id="diagnoses" title="傷病名">
-            {activeDiagnoses.length === 0 ? <p className="empty">登録された傷病名はありません。上の「アレルギー・病名」から登録します。</p> : (
-              <ul className="plain dx-list">
-                {activeDiagnoses.map((item) => (
-                  <li key={item.diagnosisId || item.name}>
-                    {item.primary ? <span className="tag">主</span> : null} {EYE_LABELS[item.eye]} {item.name}
-                    {item.status === "suspected" ? <span className="tag tag-warn">疑い</span> : null}
-                    {item.startDate ? <span className="muted small"> {formatDate(item.startDate)}〜</span> : null}
-                  </li>
-                ))}
-              </ul>
-            )}
-            <p className="muted small">傷病名は患者ごとに管理し、確定時にこのカルテへ写し取ります。</p>
-          </Section>
-
-          <Section id="plan" title="評価・方針">
-            <label className="field">
-              <span>評価</span>
-              <textarea className="input" onChange={(event) => update(["assessment"], event.target.value)} rows={2} value={content.assessment} />
-            </label>
-            <label className="field">
-              <span>方針</span>
-              <textarea className="input" onChange={(event) => update(["plan"], event.target.value)} rows={2} value={content.plan} />
-            </label>
-          </Section>
-
-          <Section id="prescriptions" title="処方">
-            <Prescriptions content={content} drugPresets={drugPresets} editable={editable} nextDays={nextDays} update={update} />
-          </Section>
-
-          <Section id="next-visit" title="次回受診">
-            <NextVisit content={content} editable={editable} encounterDate={meta.encounterDate} suggestion={detail.nextVisitSuggestion} update={update} />
-          </Section>
-
-          <Section id="optical" title="眼鏡・コンタクトレンズ処方">
-            <OpticalSection content={content} editable={editable} encounterId={encounterId} update={update} />
-          </Section>
-
-          <Section id="staff-note" title="スタッフメモ">
-            <textarea aria-label="スタッフメモ" className="input" onChange={(event) => update(["staffNote"], event.target.value)} rows={2} value={content.staffNote} />
-          </Section>
-        </fieldset>
-
-        <aside aria-label="補助パネル" className="encounter-side">
+      <div className={`chart-layout${drawer ? ` is-drawer-${drawer}` : ""}`}>
+        <aside aria-label="過去カルテ" className="chart-pane">
           <div className="pane-head drawer-only">
-            <h2 className="pane-title">確認・比較</h2>
+            <h2 className="pane-title">過去カルテ</h2>
             <button className="btn btn-chip" onClick={() => setDrawer(null)} type="button">閉じる</button>
           </div>
-          {encounter.status === "draft" ? (
-            <section className="panel">
-              <h2>確定前の確認</h2>
-              <ReadinessPanel readiness={readiness} />
-            </section>
-          ) : null}
-          <div className="side-tabs" role="tablist">
-            {SIDE_TABS.map(([key, label]) => (
-              <button aria-selected={sideTab === key} className="side-tab" key={key} onClick={() => setSideTab(key)} role="tab" type="button">{label}</button>
+          <div className="pane-tabs" role="tablist">
+            {historyTabs.map(([key, label]) => (
+              <button aria-selected={paneTab === key} className="pane-tab" key={key} onClick={() => setPaneTab(key)} role="tab" type="button">{label}</button>
             ))}
           </div>
-          <div className="side-tab-body" role="tabpanel">
-            {sideTab === "compare" ? <ComparePanel changes={changes} previous={previous} /> : null}
-            {sideTab === "candidates" ? (
+          <div className="pane-body" role="tabpanel">
+            {paneTab === "history" ? (
+              <HistoryPane editable={editable} history={detail.history} onCopy={(kind, source) => { copyFrom(kind, source); if (!wide) setDrawer(null); }} />
+            ) : null}
+            {paneTab === "changes" ? <ChangesPanel changes={changes} previous={previous} /> : null}
+            {paneTab === "sets" ? (
               <>
                 <SetsAndPhrasesPanel
                   editable={editable}
@@ -416,29 +363,170 @@ export function EncounterEditor({ encounterId }) {
                 </section>
               </>
             ) : null}
-            {sideTab === "booking" ? (
-              <section className="panel next-booking">
-                <h2>次回予約</h2>
-                <p className="small muted">
-                  {content.nextVisit.intervalWeeks
-                    ? `指示: ${content.nextVisit.intervalWeeks}週後（目安 ${formatDate(addDays(meta.encounterDate, Math.round(content.nextVisit.intervalWeeks * 7)))}）`
-                    : "次回受診の指示はまだありません。"}
-                </p>
-                {booking.saved ? <p className="alert alert-ok small">予約しました: {formatDate(booking.saved.date)}{booking.saved.time ? ` ${booking.saved.time}` : ""}</p> : null}
-                {context?.canReceive ? (
-                  <button className="btn btn-ghost" onClick={() => setBooking({ open: true, saved: null })} type="button">次回予約を取る</button>
-                ) : <p className="muted small">予約の登録は受付の権限が必要です。</p>}
-              </section>
-            ) : null}
-            {sideTab === "documents" ? (
-              <DocumentsPanel canWrite={Boolean(context?.canWriteDocuments)} encounterId={encounter.status === "finalized" ? encounterId : ""} patientId={encounter.patientId} />
-            ) : null}
-            {sideTab === "versions" ? (
-              detail.versions.length
-                ? <VersionsPanel encounterId={encounterId} versions={detail.versions} />
-                : <section className="panel"><p className="empty">まだ確定していません。</p></section>
-            ) : null}
           </div>
+        </aside>
+
+        <fieldset className="encounter-form chart-sheet" disabled={!editable}>
+          <CommonDiagnosesList />
+          <Section
+            actions={<DilationFlags content={content} editable={editable} now={now} update={update} variant="chip" />}
+            className="sheet-exam"
+            id="exam"
+            title="検査"
+          >
+            <ExamTable
+              canConfirm={editable}
+              confirmations={encounter.examConfirmations || { od: null, os: null }}
+              content={content}
+              editable={editable}
+              layout="chart"
+              onConfirm={(side, confirmed) => confirmExam(side, confirmed)}
+              previous={previous?.content}
+              previousDate={previous?.encounterDate || ""}
+              update={update}
+            />
+          </Section>
+
+          <div className="sheet-spread">
+            <div className="sheet-left">
+              <Section id="subjective" title="主訴・経過">
+                <div className="field">
+                  <textarea aria-label="主訴" className="input auto-grow" onChange={(event) => update(["chiefComplaint"], event.target.value)} placeholder="主訴" rows={2} value={content.chiefComplaint} />
+                </div>
+                {isOpen("history") ? (
+                  <label className="field" id="field-history">
+                    <span>現病歴・経過</span>
+                    <textarea className="input auto-grow" onChange={(event) => update(["history"], event.target.value)} rows={2} value={content.history} />
+                  </label>
+                ) : addChips(["history"])}
+              </Section>
+
+              <Section
+                actions={editable ? <button className="btn btn-chip" onClick={() => fillNormalFindings(SIDES)} title="両眼の空欄を「異常なし」にします" type="button">空欄を異常なし</button> : null}
+                id="findings"
+                title="所見"
+              >
+                <div className="findings-grid">
+                  {SIDES.map((side, column) => (
+                    <div aria-label={EYE_LABELS[side]} className="findings-eye" key={side} role="group">
+                      <div className="findings-head" style={{ "--c": column + 2 }}>
+                        <h3 className={`eye-heading eye-${side}`}>{side === "od" ? "右眼 R" : "左眼 L"}</h3>
+                        {editable ? (
+                          <button aria-label={`${EYE_LABELS[side]}の空欄を異常なしに`} className="btn btn-chip findings-normal" onClick={() => fillNormalFindings([side])} title={`${EYE_LABELS[side]}の空欄を「異常なし」にします`} type="button">異常なし</button>
+                        ) : null}
+                      </div>
+                      {FINDING_PARTS.map(([key, label], row) => (
+                        <textarea
+                          aria-label={`${EYE_LABELS[side]} ${label}`}
+                          className="input auto-grow findings-input"
+                          key={key}
+                          onChange={(event) => update(["findings", side, key], event.target.value)}
+                          rows={1}
+                          style={{ "--c": column + 2, "--r": row + 2 }}
+                          value={content.findings[side][key]}
+                        />
+                      ))}
+                    </div>
+                  ))}
+                  {FINDING_PARTS.map(([key, label], row) => (
+                    <span aria-hidden="true" className="findings-label" key={key} style={{ "--r": row + 2 }}>{label}</span>
+                  ))}
+                </div>
+              </Section>
+
+              {isOpen("sketches") ? (
+                <Section id="sketches" title="シェーマ">
+                  <Sketches content={content} editable={editable} update={update} />
+                </Section>
+              ) : null}
+              {addChips(["sketches"])}
+            </div>
+
+            <div className="sheet-right">
+              <Section id="diagnoses" title="病名">
+                {activeDiagnoses.length === 0 ? (
+                  <p className="empty">登録された病名はありません（患者帯の「編集」から登録）。</p>
+                ) : (
+                  <p className="dx-list dx-line" title="傷病名は患者ごとに管理し、確定時にこのカルテへ写し取ります。変更は患者帯の「編集」から。">
+                    {activeDiagnoses.map((item, index) => (
+                      <span className="dx-item" key={item.diagnosisId || item.name}>
+                        {index ? <span className="dx-sep" aria-hidden="true"> / </span> : null}
+                        {item.primary ? <span className="dx-primary">主</span> : null}
+                        {EYE_LABELS[item.eye]} {item.name}
+                        {item.status === "suspected" ? <span className="tag tag-warn">疑い</span> : null}
+                        {item.startDate ? <span className="muted small"> {formatShortDate(item.startDate).replace(/\(.\)$/u, "")}〜</span> : null}
+                      </span>
+                    ))}
+                  </p>
+                )}
+              </Section>
+
+              <Section id="plan" title="評価・方針">
+                {isOpen("assessment") ? (
+                  <label className="field" id="field-assessment">
+                    <span>評価</span>
+                    <textarea className="input auto-grow" onChange={(event) => update(["assessment"], event.target.value)} rows={2} value={content.assessment} />
+                  </label>
+                ) : null}
+                <label className="field">
+                  <span>方針</span>
+                  <textarea className="input auto-grow" onChange={(event) => update(["plan"], event.target.value)} rows={2} value={content.plan} />
+                </label>
+                {addChips(["assessment"])}
+              </Section>
+
+              <Section id="prescriptions" title="処方">
+                <Prescriptions content={content} drugPresets={drugPresets} editable={editable} nextDays={nextDays} update={update} />
+              </Section>
+
+              <Section id="next-visit" title="次回">
+                <NextVisit
+                  action={context?.canReceive ? (
+                    <button className="btn btn-chip" onClick={() => setBooking({ open: true, saved: null })} type="button">予約を取る</button>
+                  ) : null}
+                  content={content}
+                  editable={editable}
+                  encounterDate={meta.encounterDate}
+                  suggestion={detail.nextVisitSuggestion}
+                  update={update}
+                />
+                {booking.saved ? <p className="alert alert-ok small">予約しました: {formatDate(booking.saved.date)}{booking.saved.time ? ` ${booking.saved.time}` : ""}</p> : null}
+              </Section>
+
+              {isOpen("orders") ? (
+                <Section id="orders" title="検査・処置オーダー">
+                  <Orders catalog={bootstrap.orderCatalog} content={content} editable={editable} update={update} />
+                </Section>
+              ) : null}
+              {isOpen("optical") ? (
+                <Section id="optical" title="眼鏡・コンタクトレンズ処方">
+                  <OpticalSection content={content} editable={editable} encounterId={encounterId} update={update} />
+                </Section>
+              ) : null}
+              {isOpen("staff-note") ? (
+                <Section id="staff-note" title="スタッフメモ">
+                  <textarea aria-label="スタッフメモ" className="input auto-grow" onChange={(event) => update(["staffNote"], event.target.value)} rows={2} value={content.staffNote} />
+                </Section>
+              ) : null}
+              {addChips(["orders", "optical", "staff-note"])}
+            </div>
+          </div>
+        </fieldset>
+
+        <aside aria-label={drawer === "versions" ? "確定履歴" : "文書"} className="chart-drawer">
+          {drawer === "documents" || drawer === "versions" ? (
+            <>
+              <div className="pane-head">
+                <h2 className="pane-title">{drawer === "versions" ? "確定履歴" : "文書"}</h2>
+                <button className="btn btn-chip" onClick={() => setDrawer(null)} type="button">閉じる</button>
+              </div>
+              {drawer === "documents" ? (
+                <DocumentsPanel canWrite={Boolean(context?.canWriteDocuments)} encounterId={encounter.status === "finalized" ? encounterId : ""} patientId={encounter.patientId} />
+              ) : detail.versions.length ? (
+                <VersionsPanel encounterId={encounterId} versions={detail.versions} />
+              ) : <p className="empty">まだ確定していません。</p>}
+            </>
+          ) : null}
         </aside>
         {drawer ? <button aria-label="閉じる" className="drawer-backdrop" onClick={() => setDrawer(null)} type="button" /> : null}
       </div>
@@ -502,14 +590,30 @@ export function EncounterEditor({ encounterId }) {
     }
     await runAction(`/v1/eye/encounters/${encounterId}/finalize`, {});
   }
+}
 
-  function jumpTo(event, id) {
-    const target = document.getElementById(`sec-${id}`);
-    if (!target) return;
-    event.preventDefault();
-    target.scrollIntoView({ behavior: "smooth", block: "start" });
-    target.querySelector("input, textarea, select")?.focus({ preventScroll: true });
-  }
+// 診療日・区分。めったに変えないため小さなボタンにまとめ、押すと入力欄を出す。確定済みでは表示だけ。
+function VisitMeta({ meta, updateMeta, editable }) {
+  const label = `${formatShortDate(meta.encounterDate)} ${VISIT_TYPE_LABELS[meta.visitType] || ""}`;
+  if (!editable) return <span className="visit-meta is-static">{label}</span>;
+  return (
+    <details className="more-menu visit-meta">
+      <summary aria-label={`診療日・区分（${label}）`} className="btn btn-chip">{label} ▾</summary>
+      <div className="more-menu-list visit-meta-list">
+        <label className="field">
+          <span>診療日</span>
+          <input className="input input-date" onChange={(event) => updateMeta({ encounterDate: event.target.value })} type="date" value={meta.encounterDate} />
+        </label>
+        <label className="field">
+          <span>区分</span>
+          <select className="input" onChange={(event) => updateMeta({ visitType: event.target.value })} value={meta.visitType}>
+            <option value="initial">初診</option>
+            <option value="revisit">再診</option>
+          </select>
+        </label>
+      </div>
+    </details>
+  );
 }
 
 // 過去カルテからの複写。今回すでに書いた内容は上書きしない。
@@ -521,7 +625,7 @@ function applyCopy(current, source, kind) {
     if (item === "findings") {
       let skipped = 0;
       for (const side of SIDES) {
-        for (const key of ["anterior", "lens", "fundus"]) {
+        for (const [key] of FINDING_PARTS) {
           const value = source.findings?.[side]?.[key];
           if (!value) continue;
           if (next.findings[side][key]) {

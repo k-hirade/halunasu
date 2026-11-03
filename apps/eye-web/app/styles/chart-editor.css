@@ -1,0 +1,747 @@
+/*
+ * カルテ入力（/encounters/[id]）。左に過去カルテ（タブ: 過去・変更点・セット）、中央は 2 号紙の見開き
+ * （上に検査の帯、左に主訴・所見・シェーマ、右に病名・方針・処方・次回）。右の補助パネルは常設しない。
+ * globals.css より先に読み込まれるため、既存の共通ルールを上書きするものは .chart-page で絞って優先させる。
+ */
+
+/* ---- ヘッダー（患者帯 1 行 + 操作） ---- */
+.chart-page .encounter-bar {
+  gap: 4px;
+  padding: 8px 20px 6px;
+}
+
+.chart-page .patient-banner-name {
+  row-gap: 4px;
+}
+
+.chart-page .encounter-actions {
+  gap: 6px;
+}
+
+.finalize-button {
+  gap: 8px;
+}
+
+/* 確定ボタンの件数。確認だけで済むもの・注意は黄、止まる理由は赤 */
+.finalize-count {
+  background: var(--surface);
+  border-radius: 999px;
+  color: var(--amber);
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  line-height: 1.6;
+  padding: 0 8px;
+}
+
+.finalize-count.is-alert {
+  color: var(--red);
+}
+
+.visit-meta.is-static {
+  color: var(--text-soft);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.visit-meta > summary {
+  font-size: var(--fs-sm);
+  min-height: 30px;
+}
+
+.chart-page .visit-meta-list {
+  display: grid;
+  gap: 4px;
+  left: 0;
+  min-width: 220px;
+  padding: 10px 12px 2px;
+  right: auto;
+}
+
+.toc-menu {
+  display: none;
+}
+
+.toc-list {
+  display: grid;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.toc-link {
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  padding: 10px 12px;
+  text-decoration: none;
+}
+
+.toc-link:hover {
+  background: var(--surface-muted);
+}
+
+.only-narrow {
+  display: none;
+}
+
+/* 項目ジャンプは iPad 縦（768〜1023px）だけ。広い画面はページが短く、スマホは下の「目次」から */
+.chart-page .section-jump {
+  display: none;
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .chart-page .section-jump {
+    display: flex;
+  }
+}
+
+/* ---- 列: 過去カルテ 300px + 2 号紙 ---- */
+.chart-layout {
+  align-items: start;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 300px minmax(0, 1fr);
+}
+
+.chart-pane {
+  max-height: calc(100vh - var(--nav-h) - var(--bar-h) - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  position: sticky;
+  top: calc(var(--nav-h) + var(--bar-h) + 12px);
+}
+
+.chart-page .drawer-only {
+  display: none;
+}
+
+.pane-tabs {
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+
+.pane-tab {
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--text-soft);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--fs-md);
+  font-weight: 700;
+  margin-bottom: -1px;
+  min-height: 40px;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
+.pane-tab[aria-selected="true"] {
+  border-bottom-color: var(--teal);
+  color: var(--teal-dark);
+}
+
+.chart-pane .panel {
+  padding: 12px;
+}
+
+.chart-pane .panel > h2 {
+  font-size: var(--fs-md);
+}
+
+/* 文書・確定履歴は右からの引き出し（どの幅でも） */
+.chart-drawer {
+  background: var(--page);
+  bottom: 0;
+  box-shadow: -8px 0 24px rgba(15, 23, 42, 0.18);
+  overflow-y: auto;
+  padding: 16px;
+  position: fixed;
+  right: 0;
+  top: var(--nav-h);
+  transform: translateX(105%);
+  transition: transform 0.18s ease, visibility 0.18s;
+  visibility: hidden;
+  width: min(440px, 94vw);
+  z-index: 45;
+}
+
+.chart-layout.is-drawer-documents .chart-drawer,
+.chart-layout.is-drawer-versions .chart-drawer {
+  transform: none;
+  visibility: visible;
+}
+
+.chart-page .drawer-backdrop {
+  background: rgba(15, 23, 42, 0.35);
+  border: 0;
+  display: block;
+  inset: var(--nav-h) 0 0 0;
+  position: fixed;
+  z-index: 44;
+}
+
+@media (max-width: 1279px) {
+  .chart-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .chart-pane {
+    background: var(--page);
+    bottom: 0;
+    box-shadow: 8px 0 24px rgba(15, 23, 42, 0.18);
+    left: 0;
+    max-height: none;
+    padding: 16px;
+    position: fixed;
+    top: var(--nav-h);
+    transform: translateX(-105%);
+    transition: transform 0.18s ease, visibility 0.18s;
+    visibility: hidden;
+    width: min(380px, 92vw);
+    z-index: 45;
+  }
+
+  .chart-layout.is-drawer-history .chart-pane {
+    transform: none;
+    visibility: visible;
+  }
+
+  .chart-page .drawer-only {
+    display: flex;
+  }
+}
+
+/* ---- 2 号紙: 1 枚のシートと区切り線 ---- */
+.chart-sheet {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.chart-sheet .form-section {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  margin: 0;
+  padding: 10px 16px 12px;
+}
+
+.chart-sheet .form-section + .form-section {
+  border-top: 1px solid var(--line);
+}
+
+.chart-sheet .form-section-head {
+  margin-bottom: 6px;
+  min-height: 32px;
+}
+
+.chart-sheet .form-section-head h2 {
+  color: var(--text-soft);
+  font-size: var(--fs-md);
+}
+
+.chart-sheet .field {
+  margin-bottom: 8px;
+}
+
+.chart-sheet .field:last-child {
+  margin-bottom: 0;
+}
+
+.chart-sheet .field > span {
+  font-size: var(--fs-sm);
+}
+
+.chart-sheet textarea.auto-grow {
+  field-sizing: content;
+  max-height: 320px;
+  min-height: 40px;
+}
+
+.sheet-exam {
+  border-bottom: 1px solid var(--line);
+}
+
+.sheet-spread {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.sheet-left {
+  border-right: 1px solid var(--line);
+  min-width: 0;
+}
+
+.sheet-right {
+  min-width: 0;
+}
+
+@media (max-width: 1023px) {
+  .sheet-spread {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sheet-left {
+    border-bottom: 1px solid var(--line);
+    border-right: 0;
+  }
+}
+
+/* 空の欄は「+ 追加」チップ */
+.add-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 16px 14px;
+}
+
+.chart-sheet .form-section .add-chips {
+  padding: 4px 0 0;
+}
+
+.add-chip {
+  background: none;
+  border: 1px dashed var(--line-strong);
+  border-radius: 999px;
+  color: var(--text-soft);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  min-height: 32px;
+  padding: 4px 12px;
+}
+
+.add-chip:hover {
+  border-color: var(--teal);
+  color: var(--teal-dark);
+}
+
+/* 所見: 部位のラベル | 右眼 | 左眼。DOM は右眼の全項目 → 左眼の全項目 */
+.findings-grid {
+  align-items: start;
+  display: grid;
+  gap: 6px 8px;
+  grid-template-columns: 72px minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.findings-eye {
+  display: contents;
+}
+
+.findings-head {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  grid-column: var(--c);
+  grid-row: 1;
+  justify-content: space-between;
+}
+
+.findings-head .eye-heading {
+  font-size: var(--fs-md);
+  margin: 0;
+}
+
+.btn.btn-chip.findings-normal {
+  font-size: var(--fs-sm);
+  min-height: 28px;
+  padding: 2px 8px;
+}
+
+.findings-input {
+  grid-column: var(--c);
+  grid-row: var(--r);
+}
+
+.findings-label {
+  color: var(--text-soft);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  grid-column: 1;
+  grid-row: var(--r);
+  padding-top: 9px;
+}
+
+@media (max-width: 639px) {
+  .findings-grid {
+    grid-template-columns: 52px minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+/* 病名は表示専用の 1 行 */
+.dx-line {
+  line-height: 1.8;
+  margin: 0;
+}
+
+.dx-primary {
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  margin-right: 4px;
+  padding: 0 4px;
+}
+
+.dx-sep {
+  color: var(--muted);
+}
+
+/* 処方: 1 剤 1 行。押すとその行だけ編集欄が開く */
+.rx-carried {
+  align-items: center;
+  color: var(--amber);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--fs-sm);
+  gap: 8px;
+  margin: 0 0 6px;
+}
+
+.rx-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.chart-page .rx-row {
+  border-bottom: 1px solid var(--line);
+  margin: 0;
+  padding: 0;
+}
+
+.chart-page .rx-row:first-child {
+  border-top: 1px solid var(--line);
+}
+
+.rx-line {
+  align-items: baseline;
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  flex-wrap: wrap;
+  font: inherit;
+  gap: 2px 8px;
+  min-height: 40px;
+  padding: 8px;
+  text-align: left;
+  width: 100%;
+}
+
+.rx-line:hover:not(:disabled) {
+  background: var(--surface-muted);
+}
+
+.rx-line:disabled {
+  cursor: default;
+}
+
+.rx-row.is-carried .rx-line {
+  box-shadow: inset 3px 0 0 var(--amber);
+}
+
+.rx-line-name {
+  font-weight: 700;
+}
+
+.rx-line-name.is-missing,
+.rx-line-missing {
+  color: var(--red);
+  font-weight: 700;
+}
+
+.rx-line-detail {
+  color: var(--text-soft);
+  font-size: var(--fs-sm);
+}
+
+.rx-off {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.rx-row.is-not-issued .rx-line-name {
+  color: var(--muted);
+}
+
+.rx-carried-tag {
+  margin-left: auto;
+}
+
+.rx-row.is-open {
+  background: var(--surface-muted);
+}
+
+.rx-edit {
+  padding: 2px 8px 10px;
+}
+
+.rx-add {
+  margin-top: 4px;
+}
+
+.chart-page .rx-main {
+  grid-template-columns: minmax(160px, 1.8fr) 84px auto minmax(100px, 1fr);
+}
+
+@media (max-width: 767px) {
+  .chart-page .rx-main {
+    grid-template-columns: minmax(0, 1fr) 84px;
+  }
+}
+
+/* リンク風の小さなボタン（「+ 処方を追加」「詳細」など） */
+.link-button {
+  background: none;
+  border: 0;
+  color: var(--teal-dark);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  min-height: 32px;
+  padding: 4px 0;
+}
+
+.link-button:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.link-button:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+.next-visit-line {
+  margin-bottom: 0;
+}
+
+/* 散瞳（検査欄の見出しのチップ） */
+.dilation-menu > summary {
+  font-size: var(--fs-sm);
+}
+
+.btn.btn-chip.dilation-chip.is-active,
+.dilation-chip.is-static.is-active {
+  border-color: var(--amber-line);
+  color: var(--amber);
+}
+
+.btn.btn-chip.dilation-chip.is-ready,
+.dilation-chip.is-static.is-ready {
+  border-color: var(--green-line);
+  color: var(--green);
+}
+
+.dilation-chip.is-static {
+  border: 1px solid;
+  border-radius: 999px;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  padding: 2px 10px;
+}
+
+/* ---- 過去カルテ: 最新だけ開き、他は 1 行 ---- */
+.chart-page .history-pane {
+  gap: 8px;
+}
+
+.chart-page .history-card {
+  padding: 0;
+}
+
+.chart-page .history-card-head {
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 4px;
+  margin: 0;
+  padding: 2px 6px 2px 2px;
+}
+
+.history-toggle {
+  align-items: baseline;
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  font: inherit;
+  gap: 0 6px;
+  min-height: 40px;
+  min-width: 0;
+  padding: 6px;
+  text-align: left;
+}
+
+.history-caret {
+  color: var(--muted);
+  width: 12px;
+}
+
+.history-summary {
+  color: var(--text-soft);
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  padding-left: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+}
+
+.history-dx {
+  color: var(--muted);
+}
+
+.btn.btn-chip.history-do {
+  font-size: var(--fs-sm);
+  min-height: 30px;
+  padding: 2px 10px;
+}
+
+.history-body {
+  border-top: 1px solid var(--line);
+  font-size: var(--fs-sm);
+  padding: 4px 12px 10px;
+}
+
+.history-group-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+}
+
+.history-copy-arrow {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--teal-dark);
+  cursor: pointer;
+  font-weight: 800;
+  min-height: 28px;
+  min-width: 32px;
+}
+
+.history-copy-arrow:hover {
+  border-color: var(--teal);
+}
+
+.history-finding {
+  display: grid;
+  gap: 2px 6px;
+  grid-template-columns: 64px minmax(0, 1fr);
+}
+
+.history-part {
+  color: var(--muted);
+}
+
+.history-eye-line {
+  display: block;
+}
+
+.history-rx {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+}
+
+.history-text {
+  margin: 2px 0 0;
+}
+
+.changes-panel .changes {
+  font-size: var(--fs-sm);
+}
+
+/* ---- スマホ: ヘッダーは患者 1 行だけ固定し、操作は下の固定バーへ ---- */
+@media (max-width: 767px) {
+  .chart-page {
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  }
+
+  .chart-page .encounter-bar {
+    position: sticky;
+  }
+
+  .chart-page .patient-banner-name .kana,
+  .chart-page .patient-banner-name .patient-banner-line,
+  .chart-page .patient-banner-flags .tag,
+  .chart-page .patient-banner-flags .muted {
+    display: none;
+  }
+
+  .chart-meta-narrow {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    font-size: var(--fs-sm);
+    gap: 6px 10px;
+    margin: -4px 0 10px;
+  }
+
+  .chart-page .patient-banner.is-compact h1 {
+    font-size: var(--fs-lg);
+  }
+
+  .chart-page .encounter-actions {
+    background: var(--surface);
+    border-top: 1px solid var(--line);
+    bottom: 0;
+    box-shadow: 0 -4px 16px rgba(15, 23, 42, 0.1);
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    left: 0;
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+    position: fixed;
+    right: 0;
+    z-index: 40;
+  }
+
+  .chart-page .encounter-actions .save-state {
+    margin-right: auto;
+  }
+
+  .chart-page .encounter-actions .more-menu-list {
+    bottom: calc(100% + 6px);
+    top: auto;
+  }
+
+  .chart-page .visit-meta .more-menu-list {
+    bottom: auto;
+    top: calc(100% + 4px);
+  }
+
+  .toc-menu {
+    display: block;
+    order: -1;
+  }
+
+  .chart-page .toc-menu .more-menu-list {
+    left: 0;
+    right: auto;
+  }
+
+  .chart-page .encounter-actions .hide-narrow {
+    display: none;
+  }
+
+  .chart-page .only-narrow {
+    display: inline-flex;
+  }
+
+  .chart-sheet .form-section {
+    padding: 10px 12px 12px;
+  }
+}

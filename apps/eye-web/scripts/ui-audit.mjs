@@ -67,7 +67,11 @@ try {
           await page.waitForTimeout(800);
         }
         if (name === "editor-history" && width < 1280) await page.getByRole("button", { name: /^過去カルテ/u }).click();
-        if (name === "editor-side" && width < 1024) await page.getByRole("button", { name: /^確認・比較/u }).click();
+        // 文書・確定履歴は「…」メニューから開く右の引き出し（どの幅でも）
+        if (name === "editor-side") {
+          await page.locator('.encounter-actions summary[aria-label="その他の操作"]').click();
+          await page.getByRole("button", { name: "文書", exact: true }).click();
+        }
         if (name.startsWith("editor-") && !name.endsWith("dark")) await page.waitForTimeout(400);
         const tag = `${name}-${width}x${height}`;
         await page.screenshot({ path: join(outDir, `${tag}.png`) });
@@ -124,7 +128,8 @@ async function prepare(browser) {
   await page.getByLabel("左眼 眼圧", { exact: true }).fill("23");
   await page.getByText("保存済み").waitFor({ timeout: 15_000 });
   const patientHref = await page.locator('a[href^="/patients/"]').first().getAttribute("href");
-  await page.getByRole("tab", { name: "文書", exact: true }).click();
+  await page.locator('.encounter-actions summary[aria-label="その他の操作"]').click();
+  await page.getByRole("button", { name: "文書", exact: true }).click();
   await page.getByRole("button", { name: "紹介状を作成" }).click();
   await page.waitForURL(/\/documents\//u);
   const documentPath = new URL(page.url()).pathname;

@@ -65,7 +65,10 @@ async function runDoctorFlow(browser) {
   await page.locator(".patient-row").filter({ hasText: "見本 花子" }).click();
   await page.getByRole("button", { name: "初診カルテを作成" }).click();
   await page.getByRole("heading", { name: "検査", exact: true }).waitFor();
-  await page.getByLabel("診療日").fill("2026-07-28");
+  // 診療日・区分は小さなボタンの中
+  await page.locator(".visit-meta > summary").click();
+  await page.getByLabel("診療日", { exact: true }).fill("2026-07-28");
+  await page.locator(".visit-meta > summary").click();
   await page.getByRole("textbox", { name: "主訴", exact: true }).fill("緑内障の定期検査");
   await page.getByLabel("右眼 矯正視力").fill("1.0");
   await page.getByLabel("左眼 矯正視力").fill("0.9");
@@ -88,22 +91,34 @@ async function runDoctorFlow(browser) {
   await page.getByLabel("1日の回数").fill("1");
   await page.getByRole("button", { name: "反映", exact: true }).click();
   assert.equal(await page.getByLabel("数量").inputValue(), "2");
+  // 空の欄は「＋」チップに畳まれている。開いたら、中身を消しても閉じない
+  await page.getByRole("button", { name: "＋ スタッフメモ" }).click();
+  await page.getByRole("textbox", { name: "スタッフメモ" }).fill("メモ");
+  await page.getByRole("textbox", { name: "スタッフメモ" }).fill("");
+  await page.locator("#sec-staff-note").waitFor();
+  await page.getByRole("button", { name: "＋ シェーマ" }).click();
   await page.getByRole("button", { name: "シェーマを追加" }).click();
   await drawStroke(page);
   await page.getByText("保存済み").waitFor({ timeout: 15_000 });
   await page.getByRole("button", { name: "右眼を確認" }).click();
   await page.getByRole("button", { name: "左眼を確認" }).click();
-  await page.getByText(/確認済み（/u).nth(1).waitFor();
+  await page.locator(".exam-confirmed").nth(1).waitFor();
   await page.getByRole("button", { name: "確定する" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "確定する" }).click();
   await page.getByText("確定 v1").first().waitFor();
 
   await page.getByRole("link", { name: /カルテ一覧/ }).click();
   await page.getByRole("button", { name: /本日のカルテを作成/ }).click();
-  await page.getByRole("heading", { name: "前回との比較" }).waitFor();
+  await page.getByRole("tab", { name: /^過去/u }).waitFor();
   await page.locator(".history-card").first().waitFor();
   assert.equal(await page.getByLabel("右眼 眼圧", { exact: true }).inputValue(), "", "measurements must not be copied");
+  // 処方は 1 剤 1 行で表示する。押すと編集欄が開くが、開いただけでは引き継ぎの確認状態は変わらない
+  assert.match(await page.locator(".rx-line").first().innerText(), /ラタノプロスト点眼液0\.005%/u);
+  await page.locator(".rx-row.is-carried .rx-line").first().click();
   assert.equal(await page.getByRole("combobox", { name: "薬剤名", exact: true }).inputValue(), "ラタノプロスト点眼液0.005%");
+  assert.equal(await page.locator(".rx-row.is-carried").count(), 1, "opening a carried-over prescription must not confirm it");
+  await page.locator(".rx-edit").getByRole("button", { name: "閉じる" }).click();
+  assert.equal(await page.locator(".rx-edit").count(), 0);
   // Enter で 右眼 矯正視力 → 右眼 眼圧 → 左眼 裸眼視力 と進む
   await page.getByLabel("右眼 矯正視力").fill("0.8");
   await page.getByLabel("右眼 矯正視力").press("Enter");
@@ -111,15 +126,30 @@ async function runDoctorFlow(browser) {
   await page.keyboard.type("23");
   await page.keyboard.press("Enter");
   assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "左眼 裸眼視力");
-  await page.getByText("21 mmHg を超えています").waitFor();
+  await page.locator('input[aria-label="右眼 眼圧"].is-high').waitFor();
+  // 他覚屈折は「詳細」の中。マイナスを打った途中の状態が消えず、表示は符号付き小数 2 桁になる
+  await page.getByRole("button", { name: /他覚屈折・矯正の種類・時刻/u }).click();
+  const sphere = page.getByLabel("右眼 屈折 球面");
+  await sphere.click();
+  await page.keyboard.type("-");
+  assert.equal(await sphere.inputValue(), "-", "a lone minus sign must stay while typing");
+  await page.keyboard.type("1.25");
+  await page.keyboard.press("Tab");
+  assert.equal(await sphere.inputValue(), "-1.25");
   await page.getByText("保存済み").waitFor({ timeout: 15_000 });
-  await page.getByText("右眼の検査値が未確認です。").first().waitFor();
+  // 値のある「詳細」は開き直しても畳まれない
+  await page.reload();
+  assert.equal(await page.getByLabel("右眼 屈折 球面").inputValue(), "-1.25");
+  // 確定前の確認は「確定する」ボタンの件数と説明にまとめる
+  await page.locator(".finalize-button .finalize-count").waitFor();
+  assert.match(await page.locator(".finalize-button").getAttribute("title"), /右眼の検査値が未確認です。/u);
   await page.getByRole("button", { name: "右眼を確認" }).click();
   assert.equal(await page.getByRole("button", { name: "左眼を確認" }).count(), 0, "an eye without values needs no confirmation");
-  await page.locator(".encounter-side .readiness").getByText("右眼の検査値が未確認です。").waitFor({ state: "detached" });
+  await page.waitForFunction(() => !document.querySelector(".finalize-button")?.title.includes("右眼の検査値が未確認です。"));
   // 前回から引き継いだ処方は、確定ダイアログで内容を見てから確定する
-  await page.locator(".rx-row.is-carried").getByText("前回から引き継ぎ").waitFor();
-  await page.locator(".encounter-side .readiness").getByText("前回から引き継いだ処方 1件が未確認です。").waitFor();
+  await page.locator(".rx-row.is-carried .rx-carried-tag").waitFor();
+  assert.match(await page.locator(".finalize-button").getAttribute("title"), /前回から引き継いだ処方 1件が未確認です。/u);
+  await page.getByRole("tab", { name: /^変更点/u }).click();
   const changes = await page.locator(".changes").innerText();
   assert.match(changes, /右眼 矯正視力[\s\S]*1\.0[\s\S]*0\.8/u);
   assert.match(changes, /右眼 眼圧[\s\S]*18[\s\S]*23/u);
@@ -201,13 +231,14 @@ async function runDoctorFlow(browser) {
   await page.locator(".patient-row").filter({ hasText: "見本 花子" }).click();
   await page.getByRole("heading", { name: "経過" }).waitFor();
   await page.getByRole("button", { name: /本日のカルテを作成/ }).click();
-  await page.getByRole("tab", { name: "候補" }).click();
+  await page.getByRole("tab", { name: "セット" }).click();
   await page.getByRole("button", { name: /緑内障 定期/ }).click();
   await page.getByText("セット「緑内障 定期」を追加しました。").waitFor();
   await page.locator(".order-row").first().waitFor();
   await page.locator(".phrase-row").getByRole("button", { name: "挿入" }).click();
   assert.match(await page.getByRole("textbox", { name: "方針", exact: true }).inputValue(), /点眼継続。次回同様。/u);
-  // 眼鏡処方
+  // 眼鏡処方（空の欄は「＋」チップから開く）
+  await page.getByRole("button", { name: "＋ 眼鏡・CL" }).click();
   await page.getByLabel("眼鏡・CL の種類").selectOption("glasses");
   await page.getByLabel("右眼 S", { exact: true }).fill("-2");
   await page.getByLabel("左眼 S", { exact: true }).fill("-1.5");
@@ -215,6 +246,7 @@ async function runDoctorFlow(browser) {
   await page.getByText("今回眼鏡処方箋を発行する").click();
   await page.getByRole("link", { name: "眼鏡処方箋を印刷" }).waitFor();
   assert.equal(await page.locator("#optical-heading ~ div .readiness .is-blocker").count(), 0);
+  await page.locator(".rx-line").first().click();
   await page.getByRole("button", { name: "左右に分ける" }).first().click();
   assert.deepEqual(await page.getByRole("combobox", { name: "処方の眼" }).evaluateAll((items) => items.map((item) => item.value)).then((values) => values.slice(0, 2)), ["od", "os"]);
   await page.getByText("保存済み").waitFor({ timeout: 15_000 });
@@ -225,7 +257,9 @@ async function runDoctorFlow(browser) {
   await opticalPage.close();
 
   // 紹介状を作成・確定・印刷
-  await page.getByRole("tab", { name: "文書" }).click();
+  // 文書・確定履歴は「…」メニューから右の引き出しで開く
+  await page.locator('.encounter-actions summary[aria-label="その他の操作"]').click();
+  await page.getByRole("button", { name: "文書", exact: true }).click();
   await page.getByRole("button", { name: "紹介状を作成" }).click();
   await page.getByRole("heading", { name: /診療情報提供書/ }).waitFor();
   assert.match(await page.locator("textarea.document-body").inputValue(), /アレルギー・副作用歴】\nペニシリン系（発疹）/u);
@@ -302,8 +336,10 @@ async function runReceptionFlow(browser) {
 }
 
 async function runOrthoptistFlow(browser) {
-  const context = await browser.newContext({ viewport: { width: 820, height: 1180 } });
+  const context = await browser.newContext({ viewport: { width: 1024, height: 768 } });
   const page = await context.newPage();
+  const pageErrors = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
   await login(page, "orthoptist");
   await page.getByLabel("患者検索").fill("試験");
   await page.locator(".patient-row").filter({ hasText: "試験 一郎" }).click();
@@ -311,21 +347,82 @@ async function runOrthoptistFlow(browser) {
   await page.getByRole("heading", { name: "検査", exact: true }).waitFor();
   assert.equal(await page.getByRole("button", { name: "確定する" }).count(), 0, "orthoptists cannot finalize");
   await page.getByText("確定は医師が行います").waitFor();
+  const encounterUrl = page.url();
 
-  // 検査員用の画面で値を入れて確認、散瞳を開始、オーダーを実施する
-  await page.goto(`${page.url()}/exam`);
+  // 当日受付（受付済）を 1 件作り、検査ページの「検査終了 → 診察待ちへ」で進める
+  await page.goto(`${baseUrl}/reception`);
+  await page.getByRole("button", { name: "当日受付" }).click();
+  await page.getByLabel("患者を検索").fill("試験");
+  await page.getByRole("dialog").getByRole("button", { name: /試験 一郎/u }).click();
+  await page.getByRole("button", { name: "受け付ける" }).click();
+  await page.locator(".flow-group.status-checked_in .flow-row").filter({ hasText: "試験 一郎" }).waitFor();
+
+  // 検査ページ: 検査の順の表、前回列、本日の検査、散瞳、申し送り、下の固定ボタン
+  await page.goto(`${encounterUrl}/exam`);
   await page.getByRole("heading", { name: "検査値" }).waitFor();
+  const labels = await page.locator(".xt-grid.is-workbench .xt-label").allInnerTexts();
+  assert.deepEqual(labels, ["他覚屈折", "裸眼視力", "矯正視力", "眼圧"], "rows follow the exam order");
+  // Enter は右眼の全項目 → 左眼の順（屈折 S → C → Ax も進む）
+  await page.getByLabel("右眼 屈折 球面").click();
+  await page.keyboard.type("-");
+  assert.equal(await page.getByLabel("右眼 屈折 球面").inputValue(), "-", "a lone minus sign must stay while typing");
+  await page.keyboard.type("2.5");
+  await page.keyboard.press("Enter");
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "右眼 屈折 円柱");
+  assert.equal(await page.getByLabel("右眼 屈折 球面").inputValue(), "-2.50");
+  await page.keyboard.type("-0.75");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("180");
+  await page.keyboard.press("Enter");
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "右眼 裸眼視力");
+  // 他覚屈折を矯正レンズの空欄へ写す
+  await page.getByRole("button", { name: "右眼 他覚屈折を矯正レンズへ写す" }).click();
+  assert.equal(await page.getByLabel("右眼 矯正 球面").inputValue(), "-2.50");
+  assert.equal(await page.getByLabel("右眼 矯正 軸").inputValue(), "180");
   await page.getByLabel("右眼 矯正視力").fill("0.7");
   await page.getByLabel("右眼 眼圧", { exact: true }).fill("14");
+  // 視力の候補に「矯正不能（n.c.）」がある
+  assert.equal(await page.locator('#va-values option[value="n.c."]').count(), 1);
+
+  // 本日の検査: 追加 → 押して実施（値を入れても自動では実施にしない）
+  await page.getByRole("button", { name: "＋ 検査を追加" }).click();
+  await page.locator(".checklist-choices").getByRole("button", { name: "視力検査" }).click();
+  await page.locator(".checklist-row").filter({ hasText: "視力検査" }).getByText("値あり").waitFor();
+  assert.equal(await page.locator(".checklist-row .order-status-performed").count(), 0, "entering values must not mark orders performed");
+  await page.getByRole("button", { name: "視力検査を実施済みにする" }).click();
+  await page.locator(".checklist-row .order-status-performed").waitFor();
+
+  // 散瞳: ボタン 1 つ + 眼の選択。散瞳オーダーは自動で実施にしない
+  await page.locator(".checklist-choices").getByRole("button", { name: "ほかの検査" }).click();
+  await page.locator(".checklist-choices").getByRole("button", { name: "散瞳", exact: true }).click();
+  await page.getByRole("button", { name: "散瞳開始" }).click();
+  await page.getByText(/散瞳中（両眼） 0分/u).waitFor();
+  assert.equal(await page.locator(".checklist-row").filter({ hasText: "散瞳" }).locator(".order-status-performed").count(), 0);
+  await page.getByRole("button", { name: "散瞳オーダーを実施にする" }).click();
+  await page.locator(".checklist-row").filter({ hasText: "散瞳" }).locator(".order-status-performed").waitFor();
+  // （受付の「散瞳中」の組に入らないよう、散瞳は取り消してから検査終了を確かめる）
+  await page.getByRole("button", { name: "散瞳を取り消す" }).click();
+  await page.getByRole("button", { name: "散瞳開始" }).waitFor();
+
+  // 申し送り: 定型チップは末尾に追記
+  await page.getByRole("textbox", { name: "スタッフメモ" }).fill("左眼は固視が不安定");
+  await page.getByRole("button", { name: "CL装用中" }).click();
+  assert.equal(await page.getByRole("textbox", { name: "スタッフメモ" }).inputValue(), "左眼は固視が不安定\nCL装用中");
   await page.getByText("保存済み").waitFor({ timeout: 15_000 });
-  await page.getByRole("button", { name: "両眼の検査値を確認済みにする" }).click();
-  await page.getByText(/確認済み（視能訓練士/u).first().waitFor();
-  await page.getByRole("button", { name: "両眼散瞳を開始" }).click();
-  await page.getByText(/散瞳（両眼） 0分経過/u).waitFor();
-  await page.getByRole("button", { name: "オーダーを追加" }).click();
-  await page.locator(".order-row").getByRole("button", { name: "実施" }).click();
-  await page.locator(".order-row .order-status-performed").waitFor();
-  await page.getByText("保存済み").waitFor({ timeout: 15_000 });
+
+  // 検査終了: 保存 → 値のある眼を確認 → 受付を「診察待ち」へ
+  const finish = page.getByRole("button", { name: "検査終了 → 診察待ちへ" });
+  await finish.waitFor();
+  await finish.click();
+  await page.waitForURL(/\/reception$/u);
+  await page.locator(".flow-group.status-waiting_doctor .flow-row").filter({ hasText: "試験 一郎" }).first().waitFor();
+  assert.equal(await page.locator(".flow-group.status-checked_in .flow-row").filter({ hasText: "試験 一郎" }).count(), 0);
+  await page.goto(`${encounterUrl}/exam`);
+  await page.locator(".exam-bar-eye.is-done").filter({ hasText: "R" }).waitFor();
+  assert.equal(await page.locator(".exam-bar-eye.is-empty").filter({ hasText: "L" }).count(), 1, "an eye without values is not confirmed");
+  // 該当する受付がなければ、確認だけにして受付は動かさない
+  await page.getByRole("button", { name: "検査値を確認する" }).waitFor();
+  assert.deepEqual(pageErrors, []);
   await context.close();
 }
 

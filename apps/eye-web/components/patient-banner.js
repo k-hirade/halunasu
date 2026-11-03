@@ -9,11 +9,12 @@ const SEVERITY_LABELS = { unknown: "程度不明", mild: "軽度", moderate: "�
 const STATUS_LABELS = { active: "確定", suspected: "疑い", resolved: "治癒・終了" };
 const OUTCOME_LABELS = { "": "—", cured: "治癒", discontinued: "中止", transferred: "転医", deceased: "死亡", other: "その他" };
 
-// 患者の帯。アレルギーはどの画面でも必ず見える位置に出す。compact はカルテ画面用の 1 行表示。
+// 患者の帯。アレルギーはどの画面でも必ず見える位置に出す。compact はカルテ・検査画面用の 1 行表示（病名は主病名 1 つ + 「ほか n件」）。
 export function PatientBanner({ patient, profile, context, onProfileSaved, actions = null, sub = null, compact = false, leading = null }) {
   const [editing, setEditing] = useState(false);
   const active = (profile?.diagnoses || []).filter((item) => item.status !== "resolved");
-  const shown = compact ? 2 : 4;
+  if (compact) active.sort((a, b) => Number(Boolean(b.primary)) - Number(Boolean(a.primary)));
+  const shown = compact ? 1 : 4;
   const flags = (
     <div className="patient-banner-flags">
       <AllergyBadge profile={profile} />
