@@ -248,7 +248,6 @@ async function runDoctorFlow(browser) {
   assert.deepEqual(await page.locator(".cmp-pane-rel").allInnerTexts(), ["前回", "最新"]);
   await page.getByRole("link", { name: "← 患者ページ" }).click();
   await page.locator(".trend-svg").waitFor();
-  await page.goto(`${baseUrl}/settings`);
 
   // 定型文とセットを登録して、新しいカルテで使う（定型文は複数行、作った後に表示名を直す）
   await page.goto(`${baseUrl}/settings#phrases`);
