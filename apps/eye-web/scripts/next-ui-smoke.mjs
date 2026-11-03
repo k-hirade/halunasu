@@ -141,15 +141,49 @@ async function runDoctorFlow(browser) {
   assert.equal(await printPage.locator(".print-sketches polyline").count() > 0, true, "copied sketch strokes are printed");
   await printPage.close();
 
+  // 設定: 薬剤を追加 → 1本で何日分の表示 → 既存の薬剤を編集 → 停止・再開
   await page.goto(`${baseUrl}/settings`);
-  await page.locator("form.add-row").getByLabel("薬剤名").fill("ヒアレイン点眼液0.1%");
-  await page.getByLabel("1本あたりの滴数").fill("120");
-  await page.locator("form.add-row").filter({ has: page.getByLabel("1本あたりの滴数") }).getByRole("button", { name: "追加" }).click();
-  await page.getByText("を保存しました").waitFor();
-  await page.getByRole("tab", { name: "操作記録" }).click();
+  await page.getByRole("button", { name: "＋ 薬剤を追加" }).click();
+  const drugPanel = page.getByRole("complementary", { name: "薬剤の編集" });
+  await drugPanel.getByLabel("薬剤名").fill("ヒアレイン点眼液0.1%");
+  await drugPanel.getByLabel("1日の回数").fill("6");
+  await drugPanel.getByLabel("1本あたりの滴数").fill("120");
+  await drugPanel.getByText("両眼 約10日分").waitFor();
+  await drugPanel.getByRole("button", { name: "保存", exact: true }).click();
+  await drugPanel.getByText("保存しました").waitFor();
+  const hyaleinRow = page.locator(".master-row").filter({ hasText: "ヒアレイン点眼液0.1%" });
+  await hyaleinRow.filter({ hasText: "1日6回" }).waitFor();
+  await drugPanel.getByRole("button", { name: "閉じる", exact: true }).click();
+  await hyaleinRow.click();
+  await drugPanel.getByLabel("1日の回数").fill("4");
+  await drugPanel.getByRole("button", { name: "保存", exact: true }).click();
+  await hyaleinRow.filter({ hasText: "1日4回" }).waitFor();
+  await drugPanel.getByRole("button", { name: "停止する" }).click();
+  await page.locator(".master-inactive").getByRole("button", { name: /停止中/ }).waitFor();
+  await drugPanel.getByRole("button", { name: "再開する" }).click();
+  await drugPanel.getByRole("button", { name: "停止する" }).waitFor();
+  assert.equal(await page.locator(".master-inactive").count(), 0, "a resumed drug leaves the stopped group");
+  // 保存していない変更があると、別の項目へ移る前に確認する
+  await drugPanel.getByLabel("既定の用法").fill("1日4回");
+  await page.locator(".settings-nav-item", { hasText: "操作記録" }).click();
+  await page.getByText("保存していない変更があります。", { exact: false }).first().waitFor();
+  await page.getByRole("button", { name: "変更を破棄して移動" }).click();
+  await page.waitForURL(/#audit$/u);
   await page.getByRole("cell", { name: "カルテを確定" }).first().waitFor();
-  await page.getByLabel("操作記録を絞り込む").fill("見本");
-  await page.getByRole("cell", { name: /見本 花子/ }).first().waitFor();
+  await page.getByRole("cell", { name: "ヒアレイン点眼液0.1%" }).first().waitFor();
+  assert.match(await page.locator(".audit-range-line").innerText(), /の記録/u);
+  await page.getByRole("group", { name: "種類で絞り込む" }).getByRole("button", { name: "設定", exact: true }).click();
+  await page.getByRole("cell", { name: "薬剤設定を保存" }).first().waitFor();
+  await page.waitForFunction(() => ![...document.querySelectorAll(".audit-event")].some((cell) => cell.textContent === "カルテを確定"));
+  await page.getByRole("group", { name: "種類で絞り込む" }).getByRole("button", { name: "すべて", exact: true }).click();
+  await page.getByLabel("患者で絞り込む").fill("見本");
+  await page.getByLabel("患者で絞り込む").press("Enter");
+  await page.locator(".audit-patient-chip, .audit-patient-choices").first().waitFor();
+  if (await page.locator(".audit-patient-choices").count()) await page.locator(".audit-patient-choices").getByRole("button", { name: /見本 花子/ }).click();
+  await page.locator(".audit-patient-chip").filter({ hasText: "見本 花子" }).waitFor();
+  await page.getByRole("link", { name: "見本 花子" }).first().waitFor();
+  await page.waitForFunction(() => !document.querySelector(".audit-range-line")?.textContent.includes("読み込み中"));
+  assert.equal(await page.getByRole("cell", { name: "薬剤設定を保存" }).count(), 0, "the patient filter hides settings changes");
 
   // 画像・紙カルテの取り込み（開発用のメモリ保管で同じ流れを通す）
   const fixtures = mkdtempSync(join(tmpdir(), "eye-smoke-"));
@@ -181,20 +215,31 @@ async function runDoctorFlow(browser) {
   await page.getByRole("link", { name: "比較表示" }).click();
   await page.getByRole("heading", { name: /画像の比較/ }).waitFor();
   await page.locator(".compare-grid img.file-preview").first().waitFor();
-  await page.goto(`${baseUrl}/settings`);
 
-  // 定型文とセットを登録して、新しいカルテで使う
-  await page.getByRole("tab", { name: "定型文" }).click();
-  await page.getByLabel("差し込む欄").selectOption("plan");
-  await page.getByLabel("定型文").fill("点眼継続。次回同様。");
-  await page.locator("form.add-row").filter({ has: page.getByLabel("定型文") }).getByRole("button", { name: "追加" }).click();
-  await page.getByRole("cell", { name: "点眼継続。次回同様。" }).waitFor();
-  await page.getByRole("tab", { name: "セット" }).click();
-  await page.getByRole("button", { name: "セットを追加" }).click();
-  await page.getByLabel("セット名").fill("緑内障 定期");
-  await page.locator(".set-editor").getByRole("button", { name: "検査を追加" }).click();
-  await page.locator(".set-editor").getByRole("button", { name: "セットを保存" }).click();
-  await page.getByText("緑内障 定期").first().waitFor();
+  // 定型文とセットを登録して、新しいカルテで使う（定型文は複数行、作った後に表示名を直す）
+  await page.goto(`${baseUrl}/settings#phrases`);
+  await page.getByRole("button", { name: "＋ 定型文を追加" }).click();
+  const phrasePanel = page.getByRole("complementary", { name: "定型文の編集" });
+  await phrasePanel.getByLabel("差し込む欄").selectOption("plan");
+  await phrasePanel.getByLabel("本文").fill("点眼継続。\n次回同様。");
+  await phrasePanel.getByRole("button", { name: "保存", exact: true }).click();
+  await phrasePanel.getByText("保存しました").waitFor();
+  await phrasePanel.getByLabel("表示名").fill("継続");
+  await phrasePanel.getByRole("button", { name: "保存", exact: true }).click();
+  await page.locator(".master-row").filter({ hasText: "継続" }).filter({ hasText: "次回同様。" }).waitFor();
+  await page.locator(".settings-nav-item", { hasText: "セット" }).click();
+  await page.waitForURL(/#sets$/u);
+  await page.getByRole("button", { name: "＋ セットを追加" }).click();
+  const setPanel = page.getByRole("complementary", { name: "セットの編集" });
+  await setPanel.getByLabel("セット名").fill("緑内障 定期");
+  await setPanel.getByRole("button", { name: "＋ 検査" }).click();
+  assert.equal(await setPanel.getByLabel("検査1", { exact: true }).inputValue(), "", "adding a test row does not pick a test by itself");
+  await setPanel.getByRole("button", { name: "保存", exact: true }).click();
+  await setPanel.getByText("検査が選ばれていない行があります").waitFor();
+  await setPanel.getByLabel("検査1", { exact: true }).selectOption({ index: 1 });
+  await setPanel.getByRole("button", { name: "保存", exact: true }).click();
+  await setPanel.getByText("保存しました").waitFor();
+  await page.locator(".master-row").filter({ hasText: "緑内障 定期" }).filter({ hasText: "検査1" }).waitFor();
 
   await page.goto(`${baseUrl}/`);
   await page.getByLabel("患者検索").fill("見本");
@@ -206,7 +251,7 @@ async function runDoctorFlow(browser) {
   await page.getByText("セット「緑内障 定期」を追加しました。").waitFor();
   await page.locator(".order-row").first().waitFor();
   await page.locator(".phrase-row").getByRole("button", { name: "挿入" }).click();
-  assert.match(await page.getByRole("textbox", { name: "方針", exact: true }).inputValue(), /点眼継続。次回同様。/u);
+  assert.match(await page.getByRole("textbox", { name: "方針", exact: true }).inputValue(), /点眼継続。\n次回同様。/u);
   // 眼鏡処方
   await page.getByLabel("眼鏡・CL の種類").selectOption("glasses");
   await page.getByLabel("右眼 S", { exact: true }).fill("-2");
@@ -388,6 +433,14 @@ async function runOrthoptistFlow(browser) {
   await page.locator(".order-row").getByRole("button", { name: "実施" }).click();
   await page.locator(".order-row .order-status-performed").waitFor();
   await page.getByText("保存済み").waitFor({ timeout: 15_000 });
+  // 管理者でない人は設定を見るだけ（追加・保存はできず、管理の項目は出ない）
+  await page.goto(`${baseUrl}/settings#audit`);
+  await page.getByRole("heading", { name: /よく使う薬剤/u }).waitFor();
+  assert.equal(await page.getByRole("button", { name: "＋ 薬剤を追加" }).count(), 0);
+  assert.equal(await page.locator(".settings-nav-item", { hasText: "操作記録" }).count(), 0);
+  await page.locator(".master-row").first().click();
+  await page.getByRole("complementary", { name: "薬剤の編集" }).getByText("変更は管理者が行います。").waitFor();
+  assert.equal(await page.getByRole("button", { name: "保存", exact: true }).count(), 0);
   await context.close();
 }
 

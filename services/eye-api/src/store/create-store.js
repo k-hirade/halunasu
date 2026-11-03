@@ -65,7 +65,8 @@ for (const methodName of [
   "listPatientAppointments",
   "replaceAppointment",
   "recordAudit",
-  "listAuditLogs"
+  "listAuditLogs",
+  "listAuditLogPage"
 ]) {
   LazyFirestoreEyeStore.prototype[methodName] = function lazyDelegate(...args) {
     return this.call(methodName, ...args);

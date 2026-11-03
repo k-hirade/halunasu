@@ -287,6 +287,20 @@ export class FirestoreEyeStore {
     return docs(snapshot);
   }
 
+  // 期間(createdAt の範囲)は単一項目のインデックスで足りる。種類・担当・患者の絞り込みは呼び出し側で行う
+  // (複合インデックスを増やさないため)。cursor は前のページの最後の記録 ID。
+  async listAuditLogPage(orgId, { fromIso = "", toIso = "", afterId = "", limit = 200 } = {}) {
+    let query = this.orgCollection(orgId, collections.eyeAuditLogs).orderBy("createdAt", "desc");
+    if (fromIso) query = query.where("createdAt", ">=", fromIso);
+    if (toIso) query = query.where("createdAt", "<", toIso);
+    if (afterId) {
+      const cursor = await this.doc(eyeAuditLogPath(orgId, afterId)).get();
+      if (!cursor.exists) return [];
+      query = query.startAfter(cursor);
+    }
+    return docs(await query.limit(limit).get());
+  }
+
   doc(path) {
     return this.db.doc(path);
   }

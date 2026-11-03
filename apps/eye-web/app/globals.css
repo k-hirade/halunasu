@@ -1,6 +1,7 @@
 /* 共通デザインの CSS はこのファイルの先頭で読み込む。同じファイル内なので必ず先に入り、以下の眼科側の指定が優先される。 */
 @import "@halunasu/web-ui/styles/halunasu-ui.css";
 @import "./styles/billing.css";
+@import "./styles/settings.css";
 
 /*
  * 眼科カルテのデザイントークン（唯一の定義元）。
@@ -2884,14 +2885,6 @@ fieldset:disabled .input::placeholder {
 
 .home-grid {
   align-items: start;
-}
-
-.settings-tabs {
-  margin-bottom: 16px;
-}
-
-.audit-filter {
-  max-width: 320px;
 }
 
 .nowrap {

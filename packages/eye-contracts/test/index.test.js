@@ -88,3 +88,19 @@ test("allows half-filled rows in drafts", () => {
   const content = validateEncounterContent({ prescriptions: [{ kind: "eye_drop", name: "" }] });
   assert.equal(content.prescriptions[0].name, "");
 });
+
+test("classifies audit events into the filter categories", async () => {
+  const { AUDIT_CATEGORIES, auditEventCategory } = await import("../src/index.js");
+  assert.equal(auditEventCategory("eye.chart_viewed"), "view");
+  assert.equal(auditEventCategory("eye.encounter_finalized"), "finalize");
+  assert.equal(auditEventCategory("eye.document_finalized"), "finalize");
+  assert.equal(auditEventCategory("eye.clinic_exported"), "export");
+  assert.equal(auditEventCategory("eye.billing_handed_off"), "export");
+  assert.equal(auditEventCategory("eye.drug_preset_saved"), "settings");
+  assert.equal(auditEventCategory("eye.phrase_saved"), "settings");
+  assert.equal(auditEventCategory("eye.encounter_updated"), "change");
+  assert.equal(auditEventCategory("eye.appointment_status_changed"), "change");
+  assert.equal(auditEventCategory("eye.something_new"), "other");
+  assert.equal(auditEventCategory(undefined), "other");
+  for (const category of ["view", "change", "finalize", "export", "settings"]) assert.ok(AUDIT_CATEGORIES.includes(category));
+});

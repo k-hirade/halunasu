@@ -8,6 +8,8 @@ import {
   requireProductContext
 } from "../../../packages/auth-client/src/index.js";
 import {
+  AUDIT_CATEGORIES,
+  auditEventCategory,
   DEFAULT_ORDER_CATALOG,
   EYE_DOCUMENT_ROLES,
   EYE_FINALIZE_ROLES,
@@ -805,17 +807,93 @@ async function routeEyeApiRequest(input = {}) {
 
   if (method === "GET" && matches(parts, ["v1", "eye", "audit-logs"])) {
     requireAccess(context, EYE_SETTINGS_ROLES, "Eye settings access is required");
-    const auditLogs = await eyeStore.listAuditLogs(orgId, 200);
+    const filters = auditLogFilters(url.searchParams);
+    const page = await listAuditLogsFiltered(eyeStore, orgId, filters);
+    const auditLogs = page.auditLogs;
     // 操作記録を人が読めるよう、対象患者の氏名と患者番号を添える（ID だけでは誰の記録か分からないため）。
     const patients = {};
     for (const patientId of new Set(auditLogs.map((log) => log.patientId).filter(Boolean))) {
       const patient = await Promise.resolve().then(() => platformStore.getPatient(orgId, patientId)).catch(() => null);
       if (patient) patients[patientId] = { displayName: patient.displayName, primaryPatientNumber: patient.primaryPatientNumber || "" };
     }
-    return ok({ auditLogs, patients });
+    // 担当はログイン ID だけでは誰か分かりにくいので、医院の職員の氏名を添える（担当の絞り込みの選択肢にも使う）。
+    const actors = {};
+    const members = await Promise.resolve().then(() => platformStore.listMembers(orgId)).catch(() => []);
+    for (const member of members || []) {
+      if (member?.memberId) actors[member.memberId] = { displayName: member.displayName || member.loginId || "", loginId: member.loginId || "" };
+    }
+    return ok({
+      auditLogs,
+      patients,
+      actors,
+      nextCursor: page.nextCursor,
+      range: { from: filters.from || null, to: filters.to || null }
+    });
   }
 
   return notFound("Route not found");
+}
+
+const AUDIT_PAGE_DEFAULT = 200;
+const AUDIT_PAGE_MAX = 500;
+const AUDIT_SCAN_BATCH = 300;
+const AUDIT_SCAN_MAX = 3000;
+
+// 期間は日本時間の日付(両端を含む)。種類・担当・患者は読み出した記録をこちらで絞る。
+function auditLogFilters(params) {
+  const from = params.get("from") || "";
+  const to = params.get("to") || "";
+  for (const [field, value] of [["from", from], ["to", to]]) {
+    if (value && (!DATE_PATTERN.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`)))) throw badRequest(`${field} must be YYYY-MM-DD`, field);
+  }
+  if (from && to && to < from) throw badRequest("to must be on or after from", "to");
+  const category = params.get("category") || "";
+  if (category && !AUDIT_CATEGORIES.includes(category)) throw badRequest("unknown audit category", "category");
+  const rawLimit = params.get("limit");
+  const limit = rawLimit === null ? AUDIT_PAGE_DEFAULT : Number(rawLimit);
+  if (!Number.isInteger(limit) || limit < 1 || limit > AUDIT_PAGE_MAX) throw badRequest(`limit must be 1-${AUDIT_PAGE_MAX}`, "limit");
+  return {
+    from,
+    to,
+    category,
+    actor: String(params.get("actor") || "").slice(0, 200),
+    patientId: String(params.get("patientId") || "").slice(0, 200),
+    cursor: String(params.get("cursor") || "").slice(0, 200),
+    limit
+  };
+}
+
+async function listAuditLogsFiltered(eyeStore, orgId, filters) {
+  const fromIso = filters.from ? new Date(`${filters.from}T00:00:00+09:00`).toISOString() : "";
+  const toIso = filters.to ? new Date(Date.parse(`${filters.to}T00:00:00+09:00`) + 86400000).toISOString() : "";
+  const matchesLog = (log) => (!filters.category || auditEventCategory(log.eventType) === filters.category)
+    && (!filters.actor || log.actorMemberId === filters.actor)
+    && (!filters.patientId || log.patientId === filters.patientId);
+  const narrowed = Boolean(filters.category || filters.actor || filters.patientId);
+  const batchSize = narrowed ? AUDIT_SCAN_BATCH : filters.limit;
+  const auditLogs = [];
+  let afterId = filters.cursor;
+  let scanned = 0;
+  let lastScannedId = "";
+  let exhausted = false;
+  while (auditLogs.length < filters.limit && scanned < AUDIT_SCAN_MAX) {
+    const batch = await eyeStore.listAuditLogPage(orgId, { fromIso, toIso, afterId, limit: batchSize });
+    scanned += batch.length;
+    for (const log of batch) {
+      lastScannedId = log.auditLogId;
+      if (!matchesLog(log)) continue;
+      auditLogs.push(log);
+      if (auditLogs.length >= filters.limit) break;
+    }
+    if (batch.length < batchSize) {
+      // 短い束 = 保存されている記録の終わり。束の途中でページが埋まったときだけ続きがある。
+      exhausted = batch.length === 0 || lastScannedId === batch.at(-1).auditLogId;
+      break;
+    }
+    afterId = lastScannedId;
+  }
+  // 最後に見た記録の次から続きを読む。読み切ったときは続きなし。
+  return { auditLogs, nextCursor: exhausted || !lastScannedId ? null : lastScannedId };
 }
 
 async function requireEyeContext(input, platformStore) {

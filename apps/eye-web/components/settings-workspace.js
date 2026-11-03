@@ -1,51 +1,38 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useEyeApi } from "./eye-api";
-import { downloadJson, EYE_LABELS, formatDateTime, PHRASE_TARGET_LABELS, PRESCRIPTION_KIND_LABELS, todayIso } from "../lib/format";
+import { AuditLogSection } from "./settings-audit";
+import { FilterChips, InactiveGroup, MasterEditorPanel, MasterRows, MasterToolbar, useMasterEditor } from "./settings-master";
+import { COMMON_USAGES, downloadJson, formatDateTime, PHRASE_TARGET_LABELS, PRESCRIPTION_KIND_LABELS, todayIso } from "../lib/format";
+import {
+  daysPerBottle,
+  drugBottleText,
+  drugDefaultText,
+  drugSearchValues,
+  matchesSearch,
+  normalizeSearch,
+  phraseSearchValues,
+  setContentText,
+  setSearchValues
+} from "../lib/settings";
 
-const EVENT_LABELS = {
-  "eye.chart_viewed": "患者カルテを閲覧",
-  "eye.encounter_viewed": "カルテを閲覧",
-  "eye.version_viewed": "確定版を閲覧",
-  "eye.encounter_created": "カルテを作成",
-  "eye.encounter_updated": "カルテを更新",
-  "eye.encounter_finalized": "カルテを確定",
-  "eye.encounter_amend_started": "確定版の修正を開始",
-  "eye.encounter_discarded": "下書きを破棄",
-  "eye.drug_preset_saved": "薬剤設定を保存",
-  "eye.order_set_saved": "セットを保存",
-  "eye.phrase_saved": "定型文を保存",
-  "eye.profile_updated": "アレルギー・病名を更新",
-  "eye.exam_confirmed": "検査値を確認",
-  "eye.exam_unconfirmed": "検査値の確認を取消",
-  "eye.appointment_created": "予約・受付を登録",
-  "eye.appointment_updated": "予約を変更",
-  "eye.appointment_status_changed": "受付の状態を変更",
-  "eye.patient_created": "患者を登録",
-  "eye.patient_updated": "患者情報を更新",
-  "eye.patient_exported": "患者データを出力",
-  "eye.clinic_exported": "医院データを出力",
-  "eye.document_created": "文書を作成",
-  "eye.document_updated": "文書を更新",
-  "eye.document_finalized": "文書を確定",
-  "eye.document_viewed": "文書を閲覧",
-  "eye.file_uploaded": "画像・書類を取り込み",
-  "eye.file_updated": "画像・書類の情報を更新",
-  "eye.file_archived": "画像・書類を保管済みに",
-  "eye.file_viewed": "画像・書類を閲覧",
-  "eye.paper_reviewed": "紙カルテの要約を確認",
-  "eye.billing_exported": "会計連携 CSV を出力",
-  "eye.billing_handed_off": "会計へ連携"
-};
-const SETTINGS_TABS = [
-  ["drugs", "よく使う薬剤", false],
-  ["sets", "セット", false],
-  ["phrases", "定型文", false],
-  ["export", "データ出力", true],
-  ["audit", "操作記録", true]
+const SECTIONS = [
+  { key: "drugs", label: "よく使う薬剤", group: "input" },
+  { key: "sets", label: "セット", group: "input" },
+  { key: "phrases", label: "定型文", group: "input" },
+  { key: "export", label: "データ出力", group: "admin" },
+  { key: "audit", label: "操作記録", group: "admin" }
 ];
-const EMPTY_PRESET = { name: "", kind: "eye_drop", defaultTimesPerDay: "", dropsPerBottle: "", bottleVolumeMl: "", defaultUsage: "", route: "outside" };
+const NAV_GROUPS = [["input", "カルテ入力の候補"], ["admin", "管理"]];
+
+function readHash() {
+  if (typeof window === "undefined") return "";
+  return decodeURIComponent(window.location.hash.replace(/^#/u, ""));
+}
+
+const byName = (key) => (left, right) => String(left[key] || "").localeCompare(String(right[key] || ""), "ja");
+const phraseSortKey = (item) => item.label || item.text || "";
 
 export function SettingsWorkspace() {
   const api = useEyeApi();
@@ -54,310 +41,695 @@ export function SettingsWorkspace() {
   const [orderSets, setOrderSets] = useState([]);
   const [phrases, setPhrases] = useState([]);
   const [orderCatalog, setOrderCatalog] = useState([]);
-  const [auditLogs, setAuditLogs] = useState([]);
-  const [auditPatients, setAuditPatients] = useState({});
-  const [auditQuery, setAuditQuery] = useState("");
-  const [tab, setTab] = useState("drugs");
-  const [draft, setDraft] = useState(EMPTY_PRESET);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-
-  async function load() {
-    const payload = await api("/v1/eye/bootstrap");
-    const nextContext = payload.context;
-    setContext(nextContext);
-    setPresets(payload.drugPresets);
-    setOrderSets(payload.orderSets || []);
-    setPhrases(payload.phrases || []);
-    setOrderCatalog(payload.orderCatalog || []);
-    if (nextContext.canManageSettings) {
-      const audit = await api("/v1/eye/audit-logs");
-      setAuditLogs(audit.auditLogs);
-      setAuditPatients(audit.patients || {});
-    }
-  }
+  const [hash, setHash] = useState("");
+  const [pendingSection, setPendingSection] = useState(null);
+  const dirtyRef = useRef(false);
+  const onDirtyChange = useCallback((dirty) => { dirtyRef.current = dirty; }, []);
 
   useEffect(() => {
-    load().catch((nextError) => setError(nextError.message));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    let cancelled = false;
+    api("/v1/eye/bootstrap").then((payload) => {
+      if (cancelled) return;
+      setContext(payload.context);
+      setPresets(payload.drugPresets || []);
+      setOrderSets(payload.orderSets || []);
+      setPhrases(payload.phrases || []);
+      setOrderCatalog(payload.orderCatalog || []);
+    }).catch((nextError) => { if (!cancelled) setError(nextError.message); });
+    return () => { cancelled = true; };
+  }, [api]);
+
+  useEffect(() => {
+    setHash(readHash());
+    const onHashChange = () => setHash(readHash());
+    // 保存していない変更があるときは、画面を離れる前にブラウザの確認を出す
+    const onBeforeUnload = (event) => {
+      if (!dirtyRef.current) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("hashchange", onHashChange);
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => {
+      window.removeEventListener("hashchange", onHashChange);
+      window.removeEventListener("beforeunload", onBeforeUnload);
+    };
   }, []);
 
-  async function savePreset(event, preset = draft) {
-    event?.preventDefault();
-    setError("");
-    try {
-      await api("/v1/eye/drug-presets", {
-        method: "POST",
-        body: {
-          ...preset,
-          defaultTimesPerDay: preset.defaultTimesPerDay === "" ? null : Number(preset.defaultTimesPerDay),
-          dropsPerBottle: preset.dropsPerBottle === "" ? null : Number(preset.dropsPerBottle),
-          bottleVolumeMl: preset.bottleVolumeMl === "" ? null : Number(preset.bottleVolumeMl)
-        }
-      });
-      setDraft(EMPTY_PRESET);
-      setNotice(`「${preset.name}」を保存しました。`);
-      await load();
-    } catch (nextError) {
-      setError(nextError.message);
-    }
+  const visibleSections = SECTIONS.filter((item) => item.group !== "admin" || context?.canManageSettings);
+  const section = visibleSections.some((item) => item.key === hash) ? hash : "drugs";
+  const counts = {
+    drugs: presets.filter((item) => item.active !== false).length,
+    sets: orderSets.filter((item) => item.active !== false).length,
+    phrases: phrases.filter((item) => item.active !== false).length
+  };
+
+  function go(key) {
+    setPendingSection(null);
+    dirtyRef.current = false;
+    if (key === section) return;
+    window.location.hash = key;
+    setHash(key);
   }
 
-  const query = auditQuery.trim();
-  const auditRows = auditLogs
-    .map((log) => ({ log, label: EVENT_LABELS[log.eventType] || "その他の操作", patient: log.patientId ? auditPatients[log.patientId] : null }))
-    .filter(({ log, label, patient }) => !query || [label, log.actorLoginId, patient?.displayName, patient?.primaryPatientNumber].some((value) => String(value || "").includes(query)));
+  function requestSection(event, key) {
+    if (dirtyRef.current && key !== section) {
+      event?.preventDefault();
+      setPendingSection(key);
+      return;
+    }
+    if (event) event.preventDefault();
+    go(key);
+  }
 
-  if (!context) return <main className="eye-page">{error ? <p className="alert alert-danger">{error}</p> : <p className="loading">読み込み中…</p>}</main>;
+  const upsert = (setter, idKey, sortKey) => (item) => setter((items) => {
+    const next = items.some((entry) => entry[idKey] === item[idKey])
+      ? items.map((entry) => (entry[idKey] === item[idKey] ? item : entry))
+      : [...items, item];
+    return next.sort((left, right) => String(sortKey(left)).localeCompare(String(sortKey(right)), "ja"));
+  });
 
+  if (!context) return <main className="eye-page">{error ? <p className="alert alert-danger" role="alert">{error}</p> : <p className="loading">読み込み中…</p>}</main>;
+
+  const current = SECTIONS.find((item) => item.key === section);
   return (
-    <main className="eye-page">
-      <header className="page-head"><h1>設定</h1></header>
-      <div className="status-tabs settings-tabs" role="tablist">
-        {SETTINGS_TABS.filter(([, , adminOnly]) => !adminOnly || context.canManageSettings).map(([key, label]) => (
-          <button aria-selected={tab === key} className="status-tab" key={key} onClick={() => { setTab(key); setNotice(""); }} role="tab" type="button">{label}</button>
-        ))}
-      </div>
-      {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
-      {notice ? <p className="alert alert-ok" role="status">{notice}</p> : null}
+    <main className="eye-page settings-page">
+      <div className="settings-layout">
+        <nav aria-label="設定の項目" className="settings-nav">
+          <h1 className="settings-title">設定</h1>
+          <label className="settings-nav-select">
+            <span className="sr-only">設定の項目</span>
+            <select aria-label="設定の項目を選ぶ" className="input" onChange={(event) => requestSection(null, event.target.value)} value={section}>
+              {visibleSections.map((item) => <option key={item.key} value={item.key}>{item.label}{counts[item.key] !== undefined ? `（${counts[item.key]}）` : ""}</option>)}
+            </select>
+          </label>
+          {NAV_GROUPS.map(([group, label]) => {
+            const items = visibleSections.filter((item) => item.group === group);
+            if (!items.length) return null;
+            return (
+              <div className="settings-nav-group" key={group}>
+                <p className="settings-nav-label">{label}</p>
+                <ul>
+                  {items.map((item) => (
+                    <li key={item.key}>
+                      <a aria-current={item.key === section ? "page" : undefined} className="settings-nav-item" href={`#${item.key}`} onClick={(event) => requestSection(event, item.key)}>
+                        <span>{item.label}</span>
+                        {counts[item.key] !== undefined ? <span className="settings-nav-count">{counts[item.key]}</span> : null}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
+        </nav>
 
-      {tab === "drugs" ? (
-      <section className="panel">
-        <h2>よく使う薬剤</h2>
-        <p className="muted small">処方入力の候補に出ます。「1本あたりの滴数」は点眼本数の計算に使います（未設定なら100滴で計算します）。</p>
-        <div className="table-scroll">
-        <table className="data-table">
-          <thead><tr><th>薬剤名</th><th>種類</th><th>1日の回数</th><th>用法</th><th>院内外</th><th>1本の滴数</th><th>容量(mL)</th><th>状態</th></tr></thead>
-          <tbody>
-            {presets.map((preset) => (
-              <tr key={preset.presetId}>
-                <td>{preset.name}</td>
-                <td>{PRESCRIPTION_KIND_LABELS[preset.kind]}</td>
-                <td>{preset.defaultTimesPerDay ?? "—"}</td>
-                <td>{preset.defaultUsage || "—"}</td>
-                <td>{preset.route === "inside" ? "院内" : "院外"}</td>
-                <td>{preset.dropsPerBottle ?? "—"}</td>
-                <td>{preset.bottleVolumeMl ?? "—"}</td>
-                <td>
-                  <span className="status-cell">
-                    <span className={`tag ${preset.active === false ? "" : "tag-ok"}`}>{preset.active === false ? "停止中" : "使用中"}</span>
-                    {context.canManageSettings ? (
-                      <button aria-label={`${preset.name}を${preset.active === false ? "再開" : "停止"}`} className="btn btn-chip" onClick={() => savePreset(null, { ...preset, active: preset.active === false })} type="button">
-                        {preset.active === false ? "再開" : "停止"}
-                      </button>
-                    ) : null}
-                  </span>
-                </td>
-              </tr>
-            ))}
-            {presets.length === 0 ? <tr><td className="empty" colSpan={8}>まだ登録されていません。</td></tr> : null}
-          </tbody>
-        </table>
+        <div className="settings-main">
+          {pendingSection ? (
+            <div className="master-guard settings-guard" role="alert">
+              <span>「{current.label}」に保存していない変更があります。</span>
+              <button className="btn btn-chip danger-text" onClick={() => go(pendingSection)} type="button">変更を破棄して移動</button>
+              <button className="btn btn-chip" onClick={() => setPendingSection(null)} type="button">編集に戻る</button>
+            </div>
+          ) : null}
+          {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
+          {section === "drugs" ? <DrugsSection canEdit={context.canManageSettings} onDirtyChange={onDirtyChange} onSaved={upsert(setPresets, "presetId", (item) => item.name)} presets={presets} /> : null}
+          {section === "sets" ? <OrderSetsSection canEdit={context.canManageSettings} catalog={orderCatalog} onDirtyChange={onDirtyChange} onSaved={upsert(setOrderSets, "setId", (item) => item.name)} orderSets={orderSets} presets={presets} /> : null}
+          {section === "phrases" ? <PhrasesSection canEdit={context.canManageSettings} onDirtyChange={onDirtyChange} onSaved={upsert(setPhrases, "phraseId", phraseSortKey)} phrases={phrases} /> : null}
+          {section === "export" ? <ExportSection context={context} /> : null}
+          {section === "audit" ? <AuditLogSection masters={{ drugPresets: presets, orderSets, phrases }} /> : null}
         </div>
-        {context.canManageSettings ? (
-          <form className="add-row" onSubmit={savePreset}>
-            <input aria-label="薬剤名" className="input grow" onChange={(event) => setDraft({ ...draft, name: event.target.value })} placeholder="薬剤名" required value={draft.name} />
-            <select aria-label="種類" className="input" onChange={(event) => setDraft({ ...draft, kind: event.target.value })} value={draft.kind}>
-              {Object.entries(PRESCRIPTION_KIND_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-            <input aria-label="1日の回数" className="input input-num" min="0" onChange={(event) => setDraft({ ...draft, defaultTimesPerDay: event.target.value })} placeholder="回/日" type="number" value={draft.defaultTimesPerDay} />
-            <input aria-label="既定の用法" className="input" onChange={(event) => setDraft({ ...draft, defaultUsage: event.target.value })} placeholder="用法" value={draft.defaultUsage} />
-            <select aria-label="院内・院外" className="input" onChange={(event) => setDraft({ ...draft, route: event.target.value })} value={draft.route}>
-              <option value="outside">院外</option>
-              <option value="inside">院内</option>
-            </select>
-            <input aria-label="1本あたりの滴数" className="input input-num" min="1" onChange={(event) => setDraft({ ...draft, dropsPerBottle: event.target.value })} placeholder="滴/本" type="number" value={draft.dropsPerBottle} />
-            <input aria-label="容量" className="input input-num" min="0" onChange={(event) => setDraft({ ...draft, bottleVolumeMl: event.target.value })} placeholder="mL" step="any" type="number" value={draft.bottleVolumeMl} />
-            <button className="btn btn-primary" type="submit">追加</button>
-          </form>
-        ) : <p className="muted small">薬剤の登録は管理者が行います。</p>}
-      </section>
-      ) : null}
-
-      {tab === "sets" ? <OrderSetsSection canEdit={context.canManageSettings} catalog={orderCatalog} onSaved={load} orderSets={orderSets} presets={presets} /> : null}
-      {tab === "phrases" ? <PhrasesSection canEdit={context.canManageSettings} onSaved={load} phrases={phrases} /> : null}
-
-      {tab === "export" && context.canManageSettings ? (
-        <section className="panel">
-          <h2>医院データの出力</h2>
-          <p className="muted small">全患者の記録と設定を JSON（halunasu-eye-export-v1）で保存します。システム移行・保管用です。ファイル本体は含まず、保管場所を載せます。</p>
-          <button className="btn btn-ghost" onClick={async () => {
-            try {
-              downloadJson(await api("/v1/eye/export"), `eye-clinic-export-${todayIso()}.json`);
-            } catch (nextError) {
-              setError(nextError.message);
-            }
-          }} type="button">医院データを出力</button>
-        </section>
-      ) : null}
-
-      {tab === "audit" && context.canManageSettings ? (
-        <section className="panel">
-          <div className="panel-head">
-            <h2>操作記録（直近200件）</h2>
-            <input aria-label="操作記録を絞り込む" className="input audit-filter" onChange={(event) => setAuditQuery(event.target.value)} placeholder="患者名・担当・操作で絞り込み" type="search" value={auditQuery} />
-          </div>
-          <div className="table-scroll">
-            <table className="data-table">
-              <thead><tr><th>日時</th><th>操作</th><th>担当</th><th>患者</th></tr></thead>
-              <tbody>
-                {auditRows.map(({ log, label, patient }) => (
-                  <tr key={log.auditLogId}>
-                    <td className="nowrap">{formatDateTime(log.createdAt)}</td>
-                    <td>{label}</td>
-                    <td>{log.actorLoginId}</td>
-                    <td>{patient ? <>{patient.displayName}{patient.primaryPatientNumber ? <span className="muted small"> No.{patient.primaryPatientNumber}</span> : null}</> : <span className="muted small">—</span>}</td>
-                  </tr>
-                ))}
-                {auditRows.length === 0 ? <tr><td className="empty" colSpan={4}>該当する記録はありません。</td></tr> : null}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      ) : null}
+      </div>
     </main>
   );
 }
 
-const EMPTY_SET = { name: "", description: "", plan: "", prescriptions: [], orders: [] };
-
-function OrderSetsSection({ orderSets, presets, catalog, canEdit, onSaved }) {
-  const api = useEyeApi();
-  const [draft, setDraft] = useState(null);
-  const [error, setError] = useState("");
-
-  async function save(event) {
-    event.preventDefault();
-    setError("");
-    try {
-      await api("/v1/eye/order-sets", { method: "POST", body: draft });
-      setDraft(null);
-      await onSaved();
-    } catch (nextError) {
-      setError(nextError.message);
-    }
-  }
-
+function SectionHead({ title, count, children }) {
   return (
-    <section className="panel">
-      <h2>セット（処方・検査・方針の組み合わせ）</h2>
-      <p className="muted small">カルテ画面の「候補」から一括で追加できます。例: 緑内障の定期受診、白内障術後1週。</p>
-      <ul className="plain">
-        {orderSets.map((item) => (
-          <li className="set-row" key={item.setId}>
-            <strong>{item.name}</strong>
-            <span className="muted small"> 処方 {item.prescriptions.map((row) => row.name).join("・") || "—"} ／ 検査 {item.orders.map((row) => row.name).join("・") || "—"}</span>
-            {item.active === false ? <span className="tag">停止中</span> : null}
-            {canEdit ? <button className="btn btn-chip" onClick={() => setDraft({ ...item })} type="button">編集</button> : null}
-          </li>
-        ))}
-        {orderSets.length === 0 ? <li className="empty">まだ登録されていません。</li> : null}
-      </ul>
-      {canEdit && !draft ? <button className="btn btn-ghost" onClick={() => setDraft({ ...EMPTY_SET })} type="button">セットを追加</button> : null}
-      {draft ? (
-        <form className="set-editor" onSubmit={save}>
-          {error ? <p className="alert alert-danger">{error}</p> : null}
-          <label className="field"><span>セット名</span><input className="input" onChange={(event) => setDraft({ ...draft, name: event.target.value })} required value={draft.name} /></label>
-          <h3>処方</h3>
-          {draft.prescriptions.map((row, index) => (
-            <div className="row-line" key={index}>
-              <input aria-label="薬剤名" className="input grow" list="settings-drugs" onChange={(event) => {
-                const preset = presets.find((item) => item.name === event.target.value);
-                const next = [...draft.prescriptions];
-                next[index] = { ...row, name: event.target.value, presetId: preset?.presetId || "", kind: preset?.kind || row.kind, timesPerDay: row.timesPerDay ?? preset?.defaultTimesPerDay ?? null, usage: row.usage || preset?.defaultUsage || "" };
-                setDraft({ ...draft, prescriptions: next });
-              }} placeholder="薬剤名" value={row.name} />
-              <select aria-label="眼" className="input" onChange={(event) => setDraft({ ...draft, prescriptions: draft.prescriptions.map((item, i) => (i === index ? { ...item, eye: event.target.value } : item)) })} value={row.eye || ""}>
-                <option value="">眼</option>
-                {Object.entries(EYE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-              </select>
-              <input aria-label="1日の回数" className="input input-num" min="0" onChange={(event) => setDraft({ ...draft, prescriptions: draft.prescriptions.map((item, i) => (i === index ? { ...item, timesPerDay: event.target.value === "" ? null : Number(event.target.value) } : item)) })} placeholder="回/日" type="number" value={row.timesPerDay ?? ""} />
-              <input aria-label="用法" className="input" onChange={(event) => setDraft({ ...draft, prescriptions: draft.prescriptions.map((item, i) => (i === index ? { ...item, usage: event.target.value } : item)) })} placeholder="用法" value={row.usage || ""} />
-              <button className="btn btn-chip danger-text" onClick={() => setDraft({ ...draft, prescriptions: draft.prescriptions.filter((_, i) => i !== index) })} type="button">削除</button>
-            </div>
-          ))}
-          <datalist id="settings-drugs">{presets.map((item) => <option key={item.presetId} value={item.name} />)}</datalist>
-          <button className="btn btn-chip" onClick={() => setDraft({ ...draft, prescriptions: [...draft.prescriptions, { kind: "eye_drop", name: "", eye: "ou", timesPerDay: null, usage: "", route: "outside" }] })} type="button">処方を追加</button>
-          <h3>検査・処置</h3>
-          {draft.orders.map((row, index) => (
-            <div className="row-line" key={index}>
-              <select aria-label="検査" className="input grow" onChange={(event) => {
-                const item = catalog.find((entry) => entry.code === event.target.value);
-                setDraft({ ...draft, orders: draft.orders.map((order, i) => (i === index ? { ...order, code: item.code, name: item.name, kind: item.kind } : order)) });
-              }} value={row.code}>
-                {catalog.map((item) => <option key={item.code} value={item.code}>{item.name}</option>)}
-              </select>
-              <select aria-label="眼" className="input" onChange={(event) => setDraft({ ...draft, orders: draft.orders.map((order, i) => (i === index ? { ...order, eye: event.target.value } : order)) })} value={row.eye || "ou"}>
-                {Object.entries(EYE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-              </select>
-              <button className="btn btn-chip danger-text" onClick={() => setDraft({ ...draft, orders: draft.orders.filter((_, i) => i !== index) })} type="button">削除</button>
-            </div>
-          ))}
-          <button className="btn btn-chip" onClick={() => setDraft({ ...draft, orders: [...draft.orders, { code: catalog[0]?.code, name: catalog[0]?.name, kind: catalog[0]?.kind, eye: "ou" }] })} type="button">検査を追加</button>
-          <label className="field"><span>方針に追加する文</span><textarea className="input" onChange={(event) => setDraft({ ...draft, plan: event.target.value })} rows={2} value={draft.plan} /></label>
-          <label className="check-line"><input checked={draft.active !== false} onChange={(event) => setDraft({ ...draft, active: event.target.checked })} type="checkbox" />使用中</label>
-          <div className="dialog-actions">
-            <button className="btn btn-ghost" onClick={() => setDraft(null)} type="button">キャンセル</button>
-            <button className="btn btn-primary" type="submit">セットを保存</button>
-          </div>
-        </form>
-      ) : null}
-    </section>
+    <header className="settings-section-head">
+      <h2>{title}{count !== undefined ? <span className="settings-head-count">{count}</span> : null}</h2>
+      {children ? <p className="muted">{children}</p> : null}
+    </header>
   );
 }
 
-function PhrasesSection({ phrases, canEdit, onSaved }) {
-  const api = useEyeApi();
-  const [draft, setDraft] = useState({ target: "plan", label: "", text: "" });
-  const [error, setError] = useState("");
+function EmptyList({ total, canEdit, addLabel, noun }) {
+  if (total === 0) return <p className="empty master-empty">まだ登録されていません。{canEdit ? `「＋ ${addLabel}」から登録します。` : ""}</p>;
+  return <p className="empty master-empty">該当する{noun}はありません。</p>;
+}
 
-  async function save(event, phrase = draft) {
-    event?.preventDefault();
-    setError("");
-    try {
-      await api("/v1/eye/phrases", { method: "POST", body: phrase });
-      setDraft({ target: draft.target, label: "", text: "" });
-      await onSaved();
-    } catch (nextError) {
-      setError(nextError.message);
+/* ───────── よく使う薬剤 ───────── */
+
+const EMPTY_PRESET = { name: "", kind: "eye_drop", defaultTimesPerDay: null, dropsPerBottle: null, bottleVolumeMl: null, defaultUsage: "", route: "outside", active: true };
+const numberText = (value) => (value === null || value === undefined ? "" : String(value));
+const textNumber = (value) => (String(value).trim() === "" ? null : Number(value));
+
+function presetToDraft(item) {
+  const source = item || EMPTY_PRESET;
+  return {
+    presetId: source.presetId || "",
+    name: source.name || "",
+    kind: source.kind || "eye_drop",
+    defaultTimesPerDay: numberText(source.defaultTimesPerDay),
+    dropsPerBottle: numberText(source.dropsPerBottle),
+    bottleVolumeMl: numberText(source.bottleVolumeMl),
+    defaultUsage: source.defaultUsage || "",
+    route: source.route || "outside",
+    active: source.active !== false
+  };
+}
+
+function presetBody(draft) {
+  return {
+    ...(draft.presetId ? { presetId: draft.presetId } : {}),
+    name: draft.name.trim(),
+    kind: draft.kind,
+    defaultTimesPerDay: textNumber(draft.defaultTimesPerDay),
+    dropsPerBottle: textNumber(draft.dropsPerBottle),
+    bottleVolumeMl: textNumber(draft.bottleVolumeMl),
+    defaultUsage: draft.defaultUsage.trim(),
+    route: draft.route,
+    active: draft.active
+  };
+}
+
+const PRESET_FIELDS = { name: "薬剤名", defaultTimesPerDay: "1日の回数", dropsPerBottle: "1本あたりの滴数", bottleVolumeMl: "容量", defaultUsage: "既定の用法" };
+
+function DrugsSection({ presets, canEdit, onSaved, onDirtyChange }) {
+  const api = useEyeApi();
+  const [query, setQuery] = useState("");
+  const [kind, setKind] = useState(null);
+  const editor = useMasterEditor({
+    idKey: "presetId",
+    toDraft: presetToDraft,
+    toBody: presetBody,
+    fieldLabels: PRESET_FIELDS,
+    onDirtyChange,
+    validate: (draft) => (draft.name.trim() ? "" : "薬剤名を入れてください。"),
+    save: async (body) => {
+      const { drugPreset } = await api("/v1/eye/drug-presets", { method: "POST", body });
+      onSaved(drugPreset);
+      return drugPreset;
     }
-  }
+  });
+  const searched = presets.filter((item) => matchesSearch(query, drugSearchValues(item)));
+  const shown = searched.filter((item) => !kind || item.kind === kind);
+  const active = shown.filter((item) => item.active !== false);
+  const inactive = shown.filter((item) => item.active === false);
+  const chipOptions = [
+    { value: null, label: "すべて", count: searched.length },
+    ...Object.entries(PRESCRIPTION_KIND_LABELS)
+      .map(([value, label]) => ({ value, label, count: searched.filter((item) => item.kind === value).length }))
+      .filter((option) => option.count > 0 || option.value === kind)
+  ];
+  const renderRow = (item) => (
+    <>
+      <span className="master-name">
+        <strong>{item.name}</strong>
+        {item.route === "inside" ? <span className="tag master-tag">院内</span> : null}
+      </span>
+      <span className="master-kind">{PRESCRIPTION_KIND_LABELS[item.kind] || ""}</span>
+      <span className="master-default">{drugDefaultText(item) || <span className="muted">—</span>}</span>
+      <span className="master-num">{drugBottleText(item)}</span>
+    </>
+  );
 
   return (
-    <section className="panel">
-      <h2>定型文</h2>
-      {error ? <p className="alert alert-danger">{error}</p> : null}
-      <div className="table-scroll">
-      <table className="data-table">
-        <thead><tr><th>差し込む欄</th><th>表示名</th><th>文</th><th>状態</th></tr></thead>
-        <tbody>
-          {phrases.map((item) => (
-            <tr key={item.phraseId}>
-              <td>{PHRASE_TARGET_LABELS[item.target]}</td>
-              <td>{item.label || "—"}</td>
-              <td className="small">{item.text}</td>
-              <td>
-                <span className="status-cell">
-                  <span className={`tag ${item.active === false ? "" : "tag-ok"}`}>{item.active === false ? "停止中" : "使用中"}</span>
-                  {canEdit ? <button className="btn btn-chip" onClick={() => save(null, { ...item, active: item.active === false })} type="button">{item.active === false ? "再開" : "停止"}</button> : null}
-                </span>
-              </td>
-            </tr>
-          ))}
-          {phrases.length === 0 ? <tr><td className="empty" colSpan={4}>まだ登録されていません。</td></tr> : null}
-        </tbody>
-      </table>
+    <section aria-label="よく使う薬剤" className="settings-section">
+      <SectionHead count={presets.filter((item) => item.active !== false).length} title="よく使う薬剤">
+        カルテの処方の候補に出ます。{canEdit ? "" : "登録・変更は管理者が行います。"}
+      </SectionHead>
+      <div className={`master-layout${editor.selection ? " has-panel" : ""}`}>
+        <div className="master-list">
+          <MasterToolbar addLabel="薬剤を追加" onAdd={canEdit ? editor.openNew : null} onQuery={setQuery} placeholder="薬剤名・用法で検索" query={query} searchLabel="薬剤を検索" />
+          {presets.length ? <FilterChips label="種類で絞り込む" onChange={setKind} options={chipOptions} value={kind} /> : null}
+          {active.length ? (
+            <div className="master-table">
+              <div aria-hidden="true" className="master-head drug-cols"><span>薬剤名</span><span>種類</span><span>既定</span><span className="master-num">1本</span></div>
+              <MasterRows className="drug-cols" idKey="presetId" items={active} onOpen={editor.open} renderRow={renderRow} selectedId={editor.selection?.id} />
+            </div>
+          ) : <EmptyList addLabel="薬剤を追加" canEdit={canEdit} noun="薬剤" total={presets.length} />}
+          <InactiveGroup forceOpen={Boolean(normalizeSearch(query))} items={inactive}>
+            <MasterRows className="drug-cols" idKey="presetId" items={inactive} onOpen={editor.open} renderRow={renderRow} selectedId={editor.selection?.id} />
+          </InactiveGroup>
+        </div>
+        <MasterEditorPanel canEdit={canEdit} editor={editor} label="薬剤の編集" title={editor.selection?.id ? editor.selection.original.name : "薬剤を追加"}>
+          {editor.selection ? <DrugPresetForm draft={editor.selection.draft} presets={presets} setDraft={editor.setDraft} /> : null}
+        </MasterEditorPanel>
       </div>
-      {canEdit ? (
-        <form className="add-row" onSubmit={save}>
-          <select aria-label="差し込む欄" className="input" onChange={(event) => setDraft({ ...draft, target: event.target.value })} value={draft.target}>
-            {Object.entries(PHRASE_TARGET_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select>
-          <input aria-label="表示名" className="input" onChange={(event) => setDraft({ ...draft, label: event.target.value })} placeholder="表示名（任意）" value={draft.label} />
-          <input aria-label="定型文" className="input grow" onChange={(event) => setDraft({ ...draft, text: event.target.value })} placeholder="差し込む文" required value={draft.text} />
-          <button className="btn btn-primary" type="submit">追加</button>
-        </form>
-      ) : null}
     </section>
   );
 }
+
+function DrugPresetForm({ draft, setDraft, presets }) {
+  const set = (key) => (event) => setDraft((current) => ({ ...current, [key]: event.target.value }));
+  const duplicate = draft.name.trim() && presets.some((item) => item.presetId !== draft.presetId && normalizeSearch(item.name) === normalizeSearch(draft.name));
+  const showTimes = draft.kind !== "injection";
+  const showBottle = draft.kind === "eye_drop";
+  const times = textNumber(draft.defaultTimesPerDay);
+  const drops = textNumber(draft.dropsPerBottle);
+  const both = showBottle && times > 0 ? daysPerBottle({ timesPerDay: times, eye: "ou", dropsPerBottle: drops }) : null;
+  const single = showBottle && times > 0 ? daysPerBottle({ timesPerDay: times, eye: "od", dropsPerBottle: drops }) : null;
+  const daysText = (result) => (result.capped ? `${result.days}日分以上` : `約${result.days}日分`);
+  return (
+    <>
+      <label className="field">
+        <span>薬剤名<em>必須</em></span>
+        <input autoComplete="off" className="input" maxLength={200} onChange={set("name")} required value={draft.name} />
+        {duplicate ? <small className="field-warn" role="status">同じ名前の薬剤があります（停止中を含む）。このまま保存もできます。</small> : null}
+      </label>
+      <div className="field-row">
+        <label className="field">
+          <span>種類</span>
+          <select className="input" onChange={set("kind")} value={draft.kind}>
+            {Object.entries(PRESCRIPTION_KIND_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+        </label>
+        <label className="field">
+          <span>院内・院外</span>
+          <select className="input" onChange={set("route")} value={draft.route}>
+            <option value="outside">院外</option>
+            <option value="inside">院内</option>
+          </select>
+        </label>
+      </div>
+      {showTimes ? (
+        <div className="field-row">
+          <label className="field">
+            <span>1日の回数</span>
+            <span className="input-with-unit"><input className="input input-num" inputMode="numeric" max={24} min={0} onChange={set("defaultTimesPerDay")} step={1} type="number" value={draft.defaultTimesPerDay} /><span>回</span></span>
+          </label>
+          <label className="field">
+            <span>既定の用法</span>
+            <input className="input" list="settings-usages" maxLength={200} onChange={set("defaultUsage")} value={draft.defaultUsage} />
+            <datalist id="settings-usages">{COMMON_USAGES.map((usage) => <option key={usage} value={usage} />)}</datalist>
+          </label>
+        </div>
+      ) : null}
+      {showBottle ? (
+        <div className="master-subsection">
+          <h3>点眼の本数計算</h3>
+          <div className="field-row">
+            <label className="field">
+              <span>容量</span>
+              <span className="input-with-unit"><input className="input input-num" inputMode="decimal" max={100} min={0.1} onChange={set("bottleVolumeMl")} step="any" type="number" value={draft.bottleVolumeMl} /><span>mL</span></span>
+            </label>
+            <label className="field">
+              <span>1本あたりの滴数</span>
+              <span className="input-with-unit"><input className="input input-num" inputMode="numeric" max={2000} min={1} onChange={set("dropsPerBottle")} step={1} type="number" value={draft.dropsPerBottle} /><span>滴</span></span>
+            </label>
+          </div>
+          <p className="muted small">滴数が空なら1本100滴で本数を計算します。</p>
+          <p className="bottle-example" role="status">
+            {both && single ? (
+              both.days === 0
+                ? "1日で1本を使い切る計算です。滴数を確認してください。"
+                : <>1日{times}回なら 1本で <strong>両眼 {daysText(both)}</strong> ・ 片眼 {daysText(single)}<span className="muted">（1本{both.dropsPerBottle}滴・1回1滴で計算）</span></>
+            ) : "1日の回数を入れると、1本で何日分になるかを表示します。"}
+          </p>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+/* ───────── セット ───────── */
+
+function setToDraft(item) {
+  return {
+    setId: item?.setId || "",
+    name: item?.name || "",
+    description: item?.description || "",
+    plan: item?.plan || "",
+    prescriptions: (item?.prescriptions || []).map((row) => ({ ...row })),
+    orders: (item?.orders || []).map((row) => ({ ...row })),
+    active: item ? item.active !== false : true
+  };
+}
+
+function setBody(draft) {
+  return {
+    ...(draft.setId ? { setId: draft.setId } : {}),
+    name: draft.name.trim(),
+    description: draft.description.trim(),
+    plan: draft.plan,
+    prescriptions: draft.prescriptions.map((row) => ({ ...row, name: String(row.name || "").trim() })),
+    orders: draft.orders,
+    active: draft.active
+  };
+}
+
+function validateSet(draft) {
+  if (!draft.name.trim()) return "セット名を入れてください。";
+  if (draft.prescriptions.some((row) => !String(row.name || "").trim())) return "薬剤名が空の処方があります。入れるか、行を削除してください。";
+  if (draft.orders.some((row) => !row.code)) return "検査が選ばれていない行があります。選ぶか、行を削除してください。";
+  return "";
+}
+
+function OrderSetsSection({ orderSets, presets, catalog, canEdit, onSaved, onDirtyChange }) {
+  const api = useEyeApi();
+  const [query, setQuery] = useState("");
+  const editor = useMasterEditor({
+    idKey: "setId",
+    toDraft: setToDraft,
+    toBody: setBody,
+    validate: validateSet,
+    fieldLabels: { name: "セット名", description: "説明", plan: "方針に追加する文" },
+    onDirtyChange,
+    save: async (body) => {
+      const { orderSet } = await api("/v1/eye/order-sets", { method: "POST", body });
+      onSaved(orderSet);
+      return orderSet;
+    }
+  });
+  const shown = orderSets.filter((item) => matchesSearch(query, setSearchValues(item)));
+  const active = shown.filter((item) => item.active !== false);
+  const inactive = shown.filter((item) => item.active === false);
+  const renderRow = (item) => (
+    <>
+      <span className="master-name">
+        <strong>{item.name}</strong>
+        {item.description ? <span className="master-desc">{item.description}</span> : null}
+      </span>
+      <span className="master-default">{setContentText(item) || <span className="muted">空</span>}</span>
+    </>
+  );
+  return (
+    <section aria-label="セット" className="settings-section">
+      <SectionHead count={orderSets.filter((item) => item.active !== false).length} title="セット">
+        処方・検査・方針の組み合わせ。カルテの「候補」から一括で追加できます。{canEdit ? "" : "登録・変更は管理者が行います。"}
+      </SectionHead>
+      <div className={`master-layout${editor.selection ? " has-panel" : ""}`}>
+        <div className="master-list">
+          <MasterToolbar addLabel="セットを追加" onAdd={canEdit ? editor.openNew : null} onQuery={setQuery} placeholder="セット名・薬剤・検査で検索" query={query} searchLabel="セットを検索" />
+          {active.length ? (
+            <div className="master-table">
+              <div aria-hidden="true" className="master-head set-cols"><span>セット名</span><span>中身</span></div>
+              <MasterRows className="set-cols" idKey="setId" items={active} onOpen={editor.open} renderRow={renderRow} selectedId={editor.selection?.id} />
+            </div>
+          ) : <EmptyList addLabel="セットを追加" canEdit={canEdit} noun="セット" total={orderSets.length} />}
+          <InactiveGroup forceOpen={Boolean(normalizeSearch(query))} items={inactive}>
+            <MasterRows className="set-cols" idKey="setId" items={inactive} onOpen={editor.open} renderRow={renderRow} selectedId={editor.selection?.id} />
+          </InactiveGroup>
+        </div>
+        <MasterEditorPanel canEdit={canEdit} editor={editor} label="セットの編集" title={editor.selection?.id ? editor.selection.original.name : "セットを追加"}>
+          {editor.selection ? <OrderSetForm catalog={catalog} draft={editor.selection.draft} presets={presets} setDraft={editor.setDraft} /> : null}
+        </MasterEditorPanel>
+      </div>
+    </section>
+  );
+}
+
+const EYE_OPTIONS = [["ou", "両眼"], ["od", "右眼"], ["os", "左眼"]];
+
+function EyeSelect({ value, onChange, label }) {
+  return (
+    <select aria-label={label} className="input set-eye" onChange={(event) => onChange(event.target.value)} value={value || ""}>
+      {!value ? <option disabled value="">（未設定）</option> : null}
+      {EYE_OPTIONS.map(([key, text]) => <option key={key} value={key}>{text}</option>)}
+    </select>
+  );
+}
+
+function OrderSetForm({ draft, setDraft, presets, catalog }) {
+  const activePresets = presets.filter((item) => item.active !== false);
+  const updateRow = (listKey, index, patch) => setDraft((current) => ({
+    ...current,
+    [listKey]: current[listKey].map((row, i) => (i === index ? { ...row, ...patch } : row))
+  }));
+  const removeRow = (listKey, index) => setDraft((current) => ({ ...current, [listKey]: current[listKey].filter((_, i) => i !== index) }));
+  return (
+    <>
+      <label className="field">
+        <span>セット名<em>必須</em></span>
+        <input autoComplete="off" className="input" maxLength={200} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} required value={draft.name} />
+      </label>
+      <label className="field">
+        <span>説明</span>
+        <input className="input" maxLength={200} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} placeholder="例: 眼圧安定例。3か月ごと" value={draft.description} />
+      </label>
+
+      <div className="master-subsection">
+        <div className="master-subhead">
+          <h3>処方 <span className="master-count">{draft.prescriptions.length}</span></h3>
+          <button className="btn btn-chip" onClick={() => setDraft((current) => ({ ...current, prescriptions: [...current.prescriptions, { kind: "eye_drop", name: "", eye: "ou", timesPerDay: null, usage: "", route: "outside" }] }))} type="button">＋ 処方</button>
+        </div>
+        {draft.prescriptions.map((row, index) => (
+          <div className="set-line" key={index}>
+            <div className="set-line-main">
+              <input
+                aria-label={`処方${index + 1} 薬剤名`}
+                className="input"
+                list="settings-drugs"
+                onChange={(event) => {
+                  const name = event.target.value;
+                  const preset = activePresets.find((item) => item.name === name);
+                  updateRow("prescriptions", index, preset
+                    ? { name, presetId: preset.presetId, kind: preset.kind, route: preset.route || "outside", timesPerDay: row.timesPerDay ?? preset.defaultTimesPerDay ?? null, usage: row.usage || preset.defaultUsage || "" }
+                    : { name, presetId: "" });
+                }}
+                placeholder="薬剤名（よく使う薬剤から選べます）"
+                value={row.name || ""}
+              />
+              <span className="muted small set-kind">{PRESCRIPTION_KIND_LABELS[row.kind] || "点眼"}・{row.route === "inside" ? "院内" : "院外"}</span>
+              <button aria-label={`処方${index + 1}を削除`} className="btn btn-chip danger-text" onClick={() => removeRow("prescriptions", index)} type="button">削除</button>
+            </div>
+            <div className="set-line-sub">
+              <EyeSelect label={`処方${index + 1} 眼`} onChange={(eye) => updateRow("prescriptions", index, { eye })} value={row.eye} />
+              <span className="input-with-unit">
+                <input aria-label={`処方${index + 1} 1日の回数`} className="input input-num" inputMode="numeric" max={24} min={0} onChange={(event) => updateRow("prescriptions", index, { timesPerDay: textNumber(event.target.value) })} step={1} type="number" value={numberText(row.timesPerDay)} />
+                <span>回/日</span>
+              </span>
+              <input aria-label={`処方${index + 1} 用法`} className="input set-usage" list="settings-usages-set" onChange={(event) => updateRow("prescriptions", index, { usage: event.target.value })} placeholder="用法" value={row.usage || ""} />
+            </div>
+          </div>
+        ))}
+        <datalist id="settings-drugs">{activePresets.map((item) => <option key={item.presetId} value={item.name} />)}</datalist>
+        <datalist id="settings-usages-set">{COMMON_USAGES.map((usage) => <option key={usage} value={usage} />)}</datalist>
+        {draft.prescriptions.length ? <p className="muted small">薬剤の既定値はセットに写して保存します。あとで薬剤の設定を変えても、このセットは変わりません。</p> : null}
+      </div>
+
+      <div className="master-subsection">
+        <div className="master-subhead">
+          <h3>検査・処置 <span className="master-count">{draft.orders.length}</span></h3>
+          <button className="btn btn-chip" onClick={() => setDraft((current) => ({ ...current, orders: [...current.orders, { code: "", name: "", kind: "exam", eye: "ou" }] }))} type="button">＋ 検査</button>
+        </div>
+        {draft.orders.map((row, index) => (
+          <div className="set-line set-line-order" key={index}>
+            <select
+              aria-label={`検査${index + 1}`}
+              className="input"
+              onChange={(event) => {
+                const item = catalog.find((entry) => entry.code === event.target.value);
+                if (item) updateRow("orders", index, { code: item.code, name: item.name, kind: item.kind });
+              }}
+              value={row.code || ""}
+            >
+              {!row.code ? <option disabled value="">検査を選ぶ</option> : null}
+              {row.code && !catalog.some((item) => item.code === row.code) ? <option value={row.code}>{row.name || row.code}</option> : null}
+              {catalog.map((item) => <option key={item.code} value={item.code}>{item.name}</option>)}
+            </select>
+            <EyeSelect label={`検査${index + 1} 眼`} onChange={(eye) => updateRow("orders", index, { eye })} value={row.eye} />
+            <button aria-label={`検査${index + 1}を削除`} className="btn btn-chip danger-text" onClick={() => removeRow("orders", index)} type="button">削除</button>
+          </div>
+        ))}
+      </div>
+
+      <label className="field">
+        <span>方針に追加する文</span>
+        <textarea className="input" maxLength={4000} onChange={(event) => setDraft((current) => ({ ...current, plan: event.target.value }))} rows={3} value={draft.plan} />
+      </label>
+    </>
+  );
+}
+
+/* ───────── 定型文 ───────── */
+
+const PHRASE_TARGETS = Object.keys(PHRASE_TARGET_LABELS);
+
+function phraseToDraft(item) {
+  return { phraseId: item?.phraseId || "", target: item?.target || "plan", label: item?.label || "", text: item?.text || "", active: item ? item.active !== false : true };
+}
+
+function phraseBody(draft) {
+  return { ...(draft.phraseId ? { phraseId: draft.phraseId } : {}), target: draft.target, label: draft.label.trim(), text: draft.text, active: draft.active };
+}
+
+function PhrasesSection({ phrases, canEdit, onSaved, onDirtyChange }) {
+  const api = useEyeApi();
+  const [query, setQuery] = useState("");
+  const [target, setTarget] = useState(null);
+  const lastTarget = useRef("plan");
+  const editor = useMasterEditor({
+    idKey: "phraseId",
+    toDraft: (item) => phraseToDraft(item || { target: target || lastTarget.current, active: true }),
+    toBody: phraseBody,
+    validate: (draft) => (draft.text.trim() ? "" : "本文を入れてください。"),
+    fieldLabels: { label: "表示名", text: "本文", target: "差し込む欄" },
+    onDirtyChange,
+    save: async (body) => {
+      const { phrase } = await api("/v1/eye/phrases", { method: "POST", body });
+      lastTarget.current = phrase.target;
+      onSaved(phrase);
+      return phrase;
+    }
+  });
+  const searched = phrases.filter((item) => matchesSearch(query, phraseSearchValues(item)));
+  const shown = searched.filter((item) => !target || item.target === target);
+  const active = shown.filter((item) => item.active !== false);
+  const inactive = shown.filter((item) => item.active === false);
+  const chipOptions = [
+    { value: null, label: "すべて", count: searched.length },
+    ...PHRASE_TARGETS
+      .map((value) => ({ value, label: PHRASE_TARGET_LABELS[value], count: searched.filter((item) => item.target === value).length }))
+      .filter((option) => option.count > 0 || option.value === target)
+  ];
+  const renderRow = (item) => (
+    <>
+      <span className="master-name"><strong>{item.label || <span className="muted">（表示名なし）</span>}</strong></span>
+      <span className="master-desc">{item.text}</span>
+      <span className="master-kind">{item.active === false ? PHRASE_TARGET_LABELS[item.target] : ""}</span>
+    </>
+  );
+  const groups = target
+    ? [[target, active]]
+    : PHRASE_TARGETS.map((key) => [key, active.filter((item) => item.target === key)]).filter(([, items]) => items.length);
+
+  return (
+    <section aria-label="定型文" className="settings-section">
+      <SectionHead count={phrases.filter((item) => item.active !== false).length} title="定型文">
+        カルテの「候補」に、表示名（空なら本文）で出ます。{canEdit ? "" : "登録・変更は管理者が行います。"}
+      </SectionHead>
+      <div className={`master-layout${editor.selection ? " has-panel" : ""}`}>
+        <div className="master-list">
+          <MasterToolbar addLabel="定型文を追加" onAdd={canEdit ? editor.openNew : null} onQuery={setQuery} placeholder="表示名・本文で検索" query={query} searchLabel="定型文を検索" />
+          {phrases.length ? <FilterChips label="差し込む欄で絞り込む" onChange={setTarget} options={chipOptions} value={target} /> : null}
+          {active.length ? groups.map(([key, items]) => (
+            <div className="master-group" key={key}>
+              {target ? null : (
+                <h3 className="master-group-head">
+                  {PHRASE_TARGET_LABELS[key]} <span className="master-count">{items.length}</span>
+                  {key.startsWith("findings.") ? <span className="muted small">カルテで右・左・両を選んで入れます</span> : null}
+                </h3>
+              )}
+              <MasterRows className="phrase-cols" idKey="phraseId" items={items} onOpen={editor.open} renderRow={renderRow} selectedId={editor.selection?.id} />
+            </div>
+          )) : <EmptyList addLabel="定型文を追加" canEdit={canEdit} noun="定型文" total={phrases.length} />}
+          <InactiveGroup forceOpen={Boolean(normalizeSearch(query))} items={inactive}>
+            <MasterRows className="phrase-cols" idKey="phraseId" items={inactive} onOpen={editor.open} renderRow={renderRow} selectedId={editor.selection?.id} />
+          </InactiveGroup>
+        </div>
+        <MasterEditorPanel canEdit={canEdit} editor={editor} label="定型文の編集" title={editor.selection?.id ? (editor.selection.original.label || "定型文") : "定型文を追加"}>
+          {editor.selection ? <PhraseForm draft={editor.selection.draft} setDraft={editor.setDraft} /> : null}
+        </MasterEditorPanel>
+      </div>
+    </section>
+  );
+}
+
+function PhraseForm({ draft, setDraft }) {
+  const set = (key) => (event) => setDraft((current) => ({ ...current, [key]: event.target.value }));
+  return (
+    <>
+      <div className="field-row">
+        <label className="field">
+          <span>差し込む欄</span>
+          <select className="input" onChange={set("target")} value={draft.target}>
+            {PHRASE_TARGETS.map((value) => <option key={value} value={value}>{PHRASE_TARGET_LABELS[value]}</option>)}
+          </select>
+        </label>
+        <label className="field">
+          <span>表示名（任意）</span>
+          <input autoComplete="off" className="input" maxLength={60} onChange={set("label")} value={draft.label} />
+        </label>
+      </div>
+      <label className="field">
+        <span>本文<em>必須</em></span>
+        <textarea className="input phrase-text-input" maxLength={4000} onChange={set("text")} required rows={5} value={draft.text} />
+      </label>
+      <p className="muted small">
+        {draft.target.startsWith("findings.") ? "カルテでは右・左・両を選んで、その眼の所見に入ります。" : `カルテの「${PHRASE_TARGET_LABELS[draft.target]}」に入ります。`}
+        改行もそのまま入ります。
+      </p>
+    </>
+  );
+}
+
+/* ───────── データ出力 ───────── */
+
+function ExportSection({ context }) {
+  const api = useEyeApi();
+  const [step, setStep] = useState("idle"); // idle | confirm | busy
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [lastExport, setLastExport] = useState(undefined);
+  const busyRef = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    api("/v1/eye/audit-logs?category=export&limit=100").then((payload) => {
+      if (cancelled) return;
+      const log = (payload.auditLogs || []).find((item) => item.eventType === "eye.clinic_exported");
+      setLastExport(log
+        ? { at: log.createdAt, by: payload.actors?.[log.actorMemberId]?.displayName || log.actorLoginId, patientCount: log.safePayload?.patientCount }
+        : { none: payload.nextCursor ? "直近の操作記録には見つかりません" : "まだ出力していません" });
+    }).catch(() => { if (!cancelled) setLastExport(null); });
+    return () => { cancelled = true; };
+  }, [api]);
+
+  async function runExport() {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setStep("busy");
+    setError("");
+    setNotice("");
+    try {
+      const payload = await api("/v1/eye/export");
+      downloadJson(payload, `eye-clinic-export-${todayIso()}.json`);
+      const count = payload.patients?.length ?? 0;
+      setLastExport({ at: payload.exportedAt || new Date().toISOString(), by: context.displayName, patientCount: count });
+      setNotice(`出力しました（患者 ${count}人）。`);
+    } catch (nextError) {
+      setError(nextError.message);
+    } finally {
+      busyRef.current = false;
+      setStep("idle");
+    }
+  }
+
+  return (
+    <section aria-label="データ出力" className="settings-section">
+      <SectionHead title="データ出力">システムの移行や院内での保管のために、医院のデータをまとめて JSON で保存します。</SectionHead>
+      <div className="panel export-card">
+        <h3>医院データの一括出力 <span className="muted small">JSON・halunasu-eye-export-v1</span></h3>
+        <dl className="export-facts">
+          <dt>含むもの</dt>
+          <dd>全患者の患者情報・アレルギー・病名・カルテ（確定版を含む）・文書・予約・画像と書類の情報と保管場所、よく使う薬剤・セット・定型文</dd>
+          <dt>含まないもの</dt>
+          <dd>画像・書類のファイル本体</dd>
+          <dt>最後の出力</dt>
+          <dd>{lastExport === undefined ? "確認中…" : !lastExport || lastExport.none ? (lastExport?.none || "確認できませんでした") : `${formatDateTime(lastExport.at)}　${lastExport.by}${Number.isFinite(lastExport.patientCount) ? `（患者 ${lastExport.patientCount}人）` : ""}`}</dd>
+        </dl>
+        <p className="export-warn">個人情報を含みます。出力したファイルは院内で決めた場所に保管してください。患者が多いと出力に時間がかかります。</p>
+        {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
+        {notice ? <p className="alert alert-ok" role="status">{notice}</p> : null}
+        <div className="export-actions">
+          {step === "confirm" ? (
+            <>
+              <span>全患者のデータを出力します。よろしいですか？</span>
+              <button className="btn btn-ghost" onClick={() => setStep("idle")} type="button">やめる</button>
+              <button className="btn btn-primary" onClick={runExport} type="button">出力する</button>
+            </>
+          ) : (
+            <button aria-busy={step === "busy"} className="btn btn-primary" disabled={step === "busy"} onClick={() => setStep("confirm")} type="button">
+              {step === "busy" ? "出力中…" : "医院データを出力"}
+            </button>
+          )}
+        </div>
+      </div>
+      <p className="muted small">患者1人分の出力は、患者のページから行えます。</p>
+    </section>
+  );
+}
+

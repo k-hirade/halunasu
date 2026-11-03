@@ -87,6 +87,11 @@ try {
           await page.waitForTimeout(800);
           await page.emulateMedia({ media: "print" });
         }
+        // 設定: 一覧の行を押して右の編集パネルを開いた状態も撮る
+        if (name.startsWith("settings-panel") || name === "settings-sets") {
+          await page.locator(".master-row").nth(name === "settings-sets" ? 0 : 1).click().catch(() => null);
+          await page.waitForTimeout(400);
+        }
         const tag = `${name}-${width}x${height}`;
         await page.screenshot({ path: join(outDir, `${tag}.png`) });
         await page.screenshot({ path: join(outDir, `${tag}-full.png`), fullPage: true });
@@ -166,6 +171,12 @@ async function prepare(browser) {
       "billing-diff": "/billing",
       "billing-print": "/billing",
       settings: "/settings",
+      "settings-panel": "/settings#drugs",
+      "settings-sets": "/settings#sets",
+      "settings-phrases": "/settings#phrases",
+      "settings-export": "/settings#export",
+      "settings-audit": "/settings#audit",
+      "settings-panel-dark": "/settings#drugs",
       "editor-dark": encounterPath,
       "reception-dark": "/reception",
       menu: "/reception",
