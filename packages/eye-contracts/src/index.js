@@ -12,8 +12,12 @@ export const PRESCRIPTION_KINDS = Object.freeze(["eye_drop", "eye_ointment", "or
 export const IOP_METHODS = Object.freeze(["nct", "goldmann", "icare", "other"]);
 export const PRESCRIPTION_ROUTES = Object.freeze(["outside", "inside"]);
 export const PHRASE_TARGETS = Object.freeze([
-  "chiefComplaint", "history", "assessment", "plan", "staffNote", "findings.anterior", "findings.lens", "findings.fundus"
+  "chiefComplaint", "history", "assessment", "plan", "staffNote", "findings.anterior", "findings.lens", "findings.fundus",
+  // 追加の差し込み先（2026-11）。findings.other は眼ごと、findings.general と counselling.note は 1 欄。
+  "findings.other", "findings.general", "counselling.note"
 ]);
+// 眼ごとに右・左・両を選んで差し込む定型文の欄
+export const PER_EYE_PHRASE_TARGETS = Object.freeze(["findings.anterior", "findings.lens", "findings.fundus", "findings.other"]);
 export const SKETCH_TEMPLATES = Object.freeze(["anterior", "fundus", "blank"]);
 export const DIAGNOSIS_STATUSES = Object.freeze(["active", "resolved", "suspected"]);
 export const VA_CORRECTION_TYPES = Object.freeze(["", "glasses", "contact", "pinhole", "trial"]);
@@ -22,8 +26,30 @@ export const ORDER_STATUSES = Object.freeze(["planned", "performed", "cancelled"
 // 受診カルテの項目。保存と衝突判定はこの単位で行う。
 export const ENCOUNTER_SECTIONS = Object.freeze([
   "chiefComplaint", "history", "exam", "findings", "sketches", "diagnoses", "assessment", "plan",
-  "prescriptions", "nextVisit", "staffNote", "orders", "flags", "optical"
+  "prescriptions", "nextVisit", "staffNote", "orders", "flags", "optical",
+  // 説明・同意の記録、点眼アドヒアランス。入力があるカルテだけが持つ（古いカルテには無い）。
+  "counselling", "adherence"
 ]);
+// 瞳孔・対光反射・RAPD・眼位・眼球運動（検査帯の追加項目）。値は exam.{od,os} と exam.binocular に入れる。
+export const PUPIL_REACTIONS = Object.freeze(["brisk", "sluggish", "absent"]);
+export const PUPIL_REACTION_LABELS = Object.freeze({ brisk: "迅速", sluggish: "緩慢", absent: "消失" });
+export const RAPD_VALUES = Object.freeze(["none", "od", "os", "unknown"]);
+export const RAPD_LABELS = Object.freeze({ none: "なし", od: "右眼", os: "左眼", unknown: "判定不能" });
+export const ALIGNMENT_VALUES = Object.freeze(["ortho", "exo", "eso", "vertical", "other"]);
+export const ALIGNMENT_LABELS = Object.freeze({ ortho: "正位", exo: "外斜位", eso: "内斜位", vertical: "上下斜位", other: "その他" });
+export const MOTILITY_VALUES = Object.freeze(["normal", "limited"]);
+export const MOTILITY_LABELS = Object.freeze({ normal: "正常", limited: "制限あり" });
+// 説明・同意
+export const COUNSELLING_TOPICS = Object.freeze(["condition", "treatment", "eye_drop", "dilation", "surgery", "ivi"]);
+export const COUNSELLING_TOPIC_LABELS = Object.freeze({
+  condition: "病状・検査結果", treatment: "治療方針", eye_drop: "点眼指導", dilation: "散瞳後の注意", surgery: "手術", ivi: "硝子体内注射"
+});
+export const COUNSELLING_RECIPIENTS = Object.freeze(["patient", "family", "both"]);
+export const COUNSELLING_RECIPIENT_LABELS = Object.freeze({ patient: "本人", family: "家族", both: "本人・家族" });
+export const CONSENT_VALUES = Object.freeze(["obtained", "not_obtained", "not_required"]);
+export const CONSENT_LABELS = Object.freeze({ obtained: "同意あり", not_obtained: "同意なし", not_required: "同意不要" });
+export const ADHERENCE_VALUES = Object.freeze(["good", "sometimes", "poor", "unknown"]);
+export const ADHERENCE_LABELS = Object.freeze({ good: "良好", sometimes: "時々忘れる", poor: "不良", unknown: "未確認" });
 export const OPTICAL_TYPES = Object.freeze(["", "glasses", "contact"]);
 export const OPTICAL_PURPOSES = Object.freeze(["far", "near", "middle", "progressive", "bifocal"]);
 // 処方箋の詳細（日本眼科医会の様式の項目）。どれも任意で、未入力の古いデータはそのまま通す。
@@ -228,8 +254,52 @@ export function validateEncounterContent(input = {}) {
     staffNote: optionalText(input.staffNote, "content.staffNote"),
     orders: validateOrders(input.orders),
     flags: validateFlags(input.flags || {}),
-    optical: validateOptical(input.optical || {})
+    optical: validateOptical(input.optical || {}),
+    // 追加の項目は、送られてきたときだけ持たせる（古いカルテの形・内容ハッシュを変えないため）。
+    ...(hasKey(input, "counselling") ? { counselling: validateCounselling(input.counselling) } : {}),
+    ...(hasKey(input, "adherence") ? { adherence: validateAdherence(input.adherence) } : {})
   };
+}
+
+function hasKey(input, key) {
+  return Object.hasOwn(input, key) && input[key] !== undefined;
+}
+
+// 説明・同意の記録。何を（topics）・誰に（recipient）・同意（consent）・メモ。
+function validateCounselling(value) {
+  const input = value === null ? {} : value;
+  if (!isPlainObject(input)) throw validationError("counselling must be an object", "content.counselling");
+  const topics = optionalList(input.topics, "content.counselling.topics", COUNSELLING_TOPICS.length).map((item, index) => (
+    requiredEnum(item, COUNSELLING_TOPICS, `content.counselling.topics.${index}`)
+  ));
+  return compactValues({
+    topics: [...new Set(topics)],
+    recipient: optionalEnum(input.recipient, COUNSELLING_RECIPIENTS, "content.counselling.recipient"),
+    consent: optionalEnum(input.consent, CONSENT_VALUES, "content.counselling.consent"),
+    note: optionalText(input.note, "content.counselling.note")
+  });
+}
+
+// 点眼アドヒアランス（処方の近くで聞き取る）。
+function validateAdherence(value) {
+  const input = value === null ? {} : value;
+  if (!isPlainObject(input)) throw validationError("adherence must be an object", "content.adherence");
+  return compactValues({
+    status: optionalEnum(input.status, ADHERENCE_VALUES, "content.adherence.status"),
+    note: optionalString(input.note, "content.adherence.note", MAX_SHORT_TEXT)
+  });
+}
+
+// 空の値（""・null・空配列・空オブジェクト）を落とす。
+function compactValues(values) {
+  return Object.fromEntries(Object.entries(values).filter(([, value]) => !isEmptyValue(value)));
+}
+
+function isEmptyValue(value) {
+  if (value === "" || value === null || value === undefined) return true;
+  if (Array.isArray(value)) return value.length === 0;
+  if (isPlainObject(value)) return Object.keys(value).length === 0;
+  return false;
 }
 
 // 眼鏡・コンタクトレンズの処方。発行するときの値の整合は確定前チェックで見る。
@@ -387,7 +457,22 @@ export function validateExamConfirmInput(input = {}) {
 
 function validateExam(input) {
   if (!isPlainObject(input)) throw validationError("exam must be an object", "content.exam");
-  return Object.fromEntries(EYE_SIDES.map((side) => [side, validateEyeExam(input[side] || {}, `content.exam.${side}`)]));
+  const exam = Object.fromEntries(EYE_SIDES.map((side) => [side, validateEyeExam(input[side] || {}, `content.exam.${side}`)]));
+  // 両眼で 1 つの値（RAPD・眼位・眼球運動）は od/os の外に置く。眼ごとの確認・前回値の写しの対象にしないため。
+  const binocular = validateBinocular(input.binocular, "content.exam.binocular");
+  return Object.keys(binocular).length ? { ...exam, binocular } : exam;
+}
+
+function validateBinocular(value, field) {
+  if (value === undefined || value === null) return {};
+  if (!isPlainObject(value)) throw validationError(`${field} must be an object`, field);
+  return compactValues({
+    rapd: optionalEnum(value.rapd, RAPD_VALUES, `${field}.rapd`),
+    alignment: optionalEnum(value.alignment, ALIGNMENT_VALUES, `${field}.alignment`),
+    alignmentNote: optionalString(value.alignmentNote, `${field}.alignmentNote`, MAX_SHORT_TEXT),
+    motility: optionalEnum(value.motility, MOTILITY_VALUES, `${field}.motility`),
+    motilityNote: optionalString(value.motilityNote, `${field}.motilityNote`, MAX_SHORT_TEXT)
+  });
 }
 
 function validateEyeExam(input, field) {
@@ -400,8 +485,35 @@ function validateEyeExam(input, field) {
     iop: optionalNumber(input.iop, `${field}.iop`, { min: 0, max: 90 }),
     iopMethod: optionalEnum(input.iopMethod, IOP_METHODS, `${field}.iopMethod`),
     vaCorrectionType: optionalEnum(input.vaCorrectionType, VA_CORRECTION_TYPES, `${field}.vaCorrectionType`),
-    measuredAt: optionalTime(input.measuredAt, `${field}.measuredAt`)
+    measuredAt: optionalTime(input.measuredAt, `${field}.measuredAt`),
+    // 追加の検査値（近見視力・瞳孔・角膜曲率）。入力があるときだけ持たせる。
+    ...compactValues({
+      vaNear: optionalString(input.vaNear, `${field}.vaNear`, 40),
+      pupil: validatePupil(input.pupil, `${field}.pupil`),
+      keratometry: validateKeratometry(input.keratometry, `${field}.keratometry`)
+    })
   };
+}
+
+// 瞳孔径（mm）と対光反射。散瞳の前に測る。
+function validatePupil(value, field) {
+  if (value === undefined || value === null) return {};
+  if (!isPlainObject(value)) throw validationError(`${field} must be an object`, field);
+  return compactValues({
+    sizeMm: optionalNumber(value.sizeMm, `${field}.sizeMm`, { min: 0.5, max: 12 }),
+    reaction: optionalEnum(value.reaction, PUPIL_REACTIONS, `${field}.reaction`)
+  });
+}
+
+// 角膜曲率。K1（弱主経線）・K2（強主経線）を屈折力（D）で、axis は K1 の軸（度）。
+function validateKeratometry(value, field) {
+  if (value === undefined || value === null) return {};
+  if (!isPlainObject(value)) throw validationError(`${field} must be an object`, field);
+  return compactValues({
+    k1: optionalNumber(value.k1, `${field}.k1`, { min: 30, max: 70 }),
+    k2: optionalNumber(value.k2, `${field}.k2`, { min: 30, max: 70 }),
+    axis: optionalNumber(value.axis, `${field}.axis`, { min: 0, max: 180, integer: true })
+  });
 }
 
 function validateRefraction(input, field) {
@@ -415,15 +527,26 @@ function validateRefraction(input, field) {
 
 function validateFindings(input) {
   if (!isPlainObject(input)) throw validationError("findings must be an object", "content.findings");
-  return Object.fromEntries(EYE_SIDES.map((side) => {
+  const findings = Object.fromEntries(EYE_SIDES.map((side) => {
     const value = input[side] || {};
     if (!isPlainObject(value)) throw validationError(`findings.${side} must be an object`, `content.findings.${side}`);
+    const field = `content.findings.${side}`;
     return [side, {
-      anterior: optionalText(value.anterior, `content.findings.${side}.anterior`),
-      lens: optionalText(value.lens, `content.findings.${side}.lens`),
-      fundus: optionalText(value.fundus, `content.findings.${side}.fundus`)
+      anterior: optionalText(value.anterior, `${field}.anterior`),
+      lens: optionalText(value.lens, `${field}.lens`),
+      fundus: optionalText(value.fundus, `${field}.fundus`),
+      // 追加の所見（その他・C/D 比・隅角）。入力があるときだけ持たせる。
+      ...compactValues({
+        other: optionalText(value.other, `${field}.other`),
+        cdRatio: optionalNumber(value.cdRatio, `${field}.cdRatio`, { min: 0, max: 1 }),
+        angle: optionalString(value.angle, `${field}.angle`, 20),
+        angleNote: optionalString(value.angleNote, `${field}.angleNote`, MAX_SHORT_TEXT)
+      })
     }];
   }));
+  // 両眼・全体（眼瞼・全身状態など）
+  const general = optionalText(input.general, "content.findings.general");
+  return general ? { ...findings, general } : findings;
 }
 
 function validateSketches(value) {

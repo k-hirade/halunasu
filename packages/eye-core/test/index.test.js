@@ -188,3 +188,56 @@ test("derives the printable staff name from the print name or the display name",
   assert.equal(printableStaffName("佐藤（旧姓 鈴木）花子"), "佐藤（旧姓 鈴木）花子");
   assert.equal(printableStaffName(""), "");
 });
+
+test("revisit copy follows the no-measurement policy for the added fields", () => {
+  const copied = copyContentForRevisit({
+    exam: {
+      od: { vaNear: "0.8", pupil: { sizeMm: 3, reaction: "brisk" }, keratometry: { k1: 43, k2: 44, axis: 90 } },
+      binocular: { rapd: "none", alignment: "ortho" }
+    },
+    findings: { od: { fundus: "異常なし", other: "眼瞼正常", cdRatio: 0.6, angle: "3", angleNote: "開放" }, general: "全身状態良好" },
+    counselling: { topics: ["dilation"], consent: "obtained" },
+    adherence: { status: "good" }
+  });
+  assert.deepEqual(Object.keys(copied.exam), ["od", "os"], "binocular values are not copied");
+  assert.equal("pupil" in copied.exam.od, false);
+  assert.equal("vaNear" in copied.exam.od, false);
+  assert.equal("keratometry" in copied.exam.od, false);
+  assert.deepEqual(copied.findings.od, { anterior: "", lens: "", fundus: "異常なし", other: "眼瞼正常" }, "C/D and angle are re-measured, free text is copied");
+  assert.equal(copied.findings.general, "全身状態良好");
+  assert.equal("counselling" in copied, false);
+  assert.equal("adherence" in copied, false);
+});
+
+test("labels changes in the added fields", () => {
+  const changes = diffEncounterContent(
+    { findings: { od: { other: "眼瞼浮腫" }, os: { cdRatio: 0.5 } } },
+    {
+      exam: { od: { pupil: { sizeMm: 3, reaction: "sluggish" } }, binocular: { rapd: "od", alignment: "exo", alignmentNote: "10Δ" } },
+      findings: { od: { other: "眼瞼浮腫軽快" }, os: { cdRatio: 0.6 }, general: "血圧高め" },
+      adherence: { status: "poor" },
+      counselling: { topics: ["eye_drop"], recipient: "patient", consent: "not_required" }
+    }
+  );
+  const byPath = Object.fromEntries(changes.map((change) => [change.path, change]));
+  assert.equal(byPath["findings.od.other"].label, "右眼 所見その他");
+  assert.equal(byPath["findings.general"].after, "血圧高め");
+  assert.equal(byPath["findings.os.cdRatio"].label, "左眼 C/D 比");
+  assert.equal(byPath["findings.os.cdRatio"].after, "0.6");
+  assert.equal(byPath["exam.od.pupil"].after, "3mm 対光反射 緩慢");
+  assert.equal(byPath["exam.binocular.rapd"].after, "右眼");
+  assert.equal(byPath["exam.binocular.alignment"].after, "外斜位 10Δ");
+  assert.equal(byPath.adherence.after, "不良");
+  assert.equal(byPath.counselling.after, "点眼指導（本人） 同意不要");
+  // 毎回測る値は今回まだ空なら数えない
+  assert.deepEqual(diffEncounterContent({ findings: { od: { cdRatio: 0.5 } }, adherence: { status: "good" } }, {}), []);
+});
+
+test("finalize readiness adds no blockers for the added fields", () => {
+  const { blockers } = evaluateFinalizeReadiness({
+    exam: { od: { pupil: { sizeMm: 3 } }, binocular: { rapd: "none" } },
+    counselling: { note: "説明" },
+    adherence: { status: "unknown" }
+  }, { examConfirmations: { od: null, os: null } });
+  assert.deepEqual(blockers, []);
+});

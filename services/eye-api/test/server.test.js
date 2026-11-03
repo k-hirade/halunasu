@@ -1201,3 +1201,108 @@ test("manages print names for eye staff and uses them on paper", async () => {
   const logs = await request(stores, "GET", "/v1/eye/audit-logs?category=settings", undefined, director);
   assert.ok(logs.body.auditLogs.some((log) => log.eventType === "eye.staff_profile_saved" && log.targetId === doctorMember.memberId));
 });
+
+test("saves the added exam, findings, counselling and adherence fields by section and keeps old charts unchanged", async () => {
+  const stores = createStores();
+  const doctor = await signedHeaders(stores.platformStore, "doctor");
+  const orthoptist = await signedHeaders(stores.platformStore, "orthoptist");
+  const patient = await createPatient(stores, doctor);
+  const draft = await request(stores, "POST", "/v1/eye/encounters", {
+    patientId: patient.patientId, encounterDate: "2026-10-27", visitType: "initial", content: glaucomaContent({ iopOd: 15 })
+  }, doctor);
+  assert.equal(draft.statusCode, 201);
+  const legacy = draft.body.encounter.content;
+  assert.deepEqual(Object.keys(legacy.exam), ["od", "os"]);
+  assert.deepEqual(Object.keys(legacy.findings.od), ["anterior", "lens", "fundus"]);
+  assert.equal("counselling" in legacy, false);
+  assert.equal("adherence" in legacy, false);
+  const id = draft.body.encounter.encounterId;
+
+  // 検査員: 両眼を確認したあと、両眼の値（RAPD・眼位）だけを足しても眼ごとの確認は外れない
+  const confirmed = await request(stores, "POST", `/v1/eye/encounters/${id}/exam-confirm`, { expectedRevision: 1, eye: "both" }, orthoptist);
+  assert.equal(confirmed.statusCode, 200);
+  const binocular = await request(stores, "PATCH", `/v1/eye/encounters/${id}`, {
+    expectedRevision: 2,
+    sections: { exam: { ...legacy.exam, binocular: { rapd: "none", alignment: "exo", alignmentNote: "10Δ", motility: "normal" } } }
+  }, orthoptist);
+  assert.equal(binocular.statusCode, 200);
+  assert.deepEqual(binocular.body.encounter.content.exam.binocular, { rapd: "none", alignment: "exo", alignmentNote: "10Δ", motility: "normal" });
+  assert.ok(binocular.body.encounter.examConfirmations.od && binocular.body.encounter.examConfirmations.os);
+
+  // 眼ごとの値（瞳孔）を変えると、その眼の確認だけが外れる（既存の検査値と同じ扱い）
+  const pupil = await request(stores, "PATCH", `/v1/eye/encounters/${id}`, {
+    expectedRevision: 3,
+    sections: {
+      exam: {
+        ...binocular.body.encounter.content.exam,
+        od: { ...legacy.exam.od, vaNear: "0.7", pupil: { sizeMm: 3, reaction: "brisk" }, keratometry: { k1: 43.25, k2: 44, axis: 175 } }
+      }
+    }
+  }, orthoptist);
+  assert.equal(pupil.statusCode, 200);
+  assert.deepEqual(pupil.body.encounter.content.exam.od.pupil, { sizeMm: 3, reaction: "brisk" });
+  assert.equal(pupil.body.encounter.content.exam.od.vaNear, "0.7");
+  assert.deepEqual(pupil.body.encounter.content.exam.od.keratometry, { k1: 43.25, k2: 44, axis: 175 });
+  assert.equal(pupil.body.encounter.examConfirmations.od, null);
+  assert.ok(pupil.body.encounter.examConfirmations.os);
+
+  // 医師: 所見・説明・アドヒアランス（同じ revision を見ていても別の項目なので通る）
+  const doctorSave = await request(stores, "PATCH", `/v1/eye/encounters/${id}`, {
+    expectedRevision: 3,
+    sections: {
+      findings: { od: { fundus: "C/D 拡大", other: "眼瞼正常", cdRatio: 0.7, angle: "3", angleNote: "開放" }, os: { cdRatio: 0.5 }, general: "全身状態良好" },
+      counselling: { topics: ["eye_drop", "dilation"], recipient: "patient", consent: "not_required", note: "散瞳後は運転しない" },
+      adherence: { status: "sometimes", note: "夜を忘れる" }
+    }
+  }, doctor);
+  assert.equal(doctorSave.statusCode, 200);
+  const saved = doctorSave.body.encounter.content;
+  assert.equal(saved.findings.od.other, "眼瞼正常");
+  assert.equal(saved.findings.od.cdRatio, 0.7);
+  assert.equal(saved.findings.general, "全身状態良好");
+  assert.deepEqual(saved.counselling.topics, ["eye_drop", "dilation"]);
+  assert.equal(saved.adherence.status, "sometimes");
+  assert.equal(saved.exam.od.pupil.reaction, "brisk", "the orthoptist's exam values are kept");
+
+  // 新しい項目も項目ごとの版で衝突を判定する
+  const stale = await request(stores, "PATCH", `/v1/eye/encounters/${id}`, { expectedRevision: 3, sections: { counselling: { consent: "obtained" } } }, orthoptist);
+  assert.equal(stale.statusCode, 409);
+  assert.deepEqual(stale.body.details.sections, ["counselling"]);
+  const invalid = await request(stores, "PATCH", `/v1/eye/encounters/${id}`, { expectedRevision: 5, sections: { adherence: { status: "always" } } }, doctor);
+  assert.equal(invalid.statusCode, 400);
+  assert.equal(invalid.body.field, "content.adherence.status");
+
+  // 確定（新しい項目で止まらない）と版の内容
+  await request(stores, "POST", `/v1/eye/encounters/${id}/exam-confirm`, { expectedRevision: 5, eye: "od" }, doctor);
+  const finalized = await request(stores, "POST", `/v1/eye/encounters/${id}/finalize`, { expectedRevision: 6 }, doctor);
+  assert.equal(finalized.statusCode, 200, JSON.stringify(finalized.body));
+  const version = await request(stores, "GET", `/v1/eye/encounters/${id}/versions/1`, undefined, doctor);
+  assert.equal(version.body.version.content.counselling.note, "散瞳後は運転しない");
+  assert.equal(version.body.version.content.exam.binocular.alignment, "exo");
+  assertFirestoreCompatible(finalized.body.encounter);
+  assertFirestoreCompatible(version.body.version);
+
+  // 再診の前回コピー: 所見の自由記載は写し、測定値・説明・アドヒアランスは写さない
+  const revisit = await request(stores, "POST", "/v1/eye/encounters", { patientId: patient.patientId, encounterDate: "2026-11-24" }, doctor);
+  const copied = revisit.body.encounter.content;
+  assert.equal(copied.findings.od.other, "眼瞼正常");
+  assert.equal(copied.findings.general, "全身状態良好");
+  assert.equal("cdRatio" in copied.findings.od, false);
+  assert.equal("angle" in copied.findings.od, false);
+  assert.equal("pupil" in copied.exam.od, false);
+  assert.equal("binocular" in copied.exam, false);
+  assert.equal("counselling" in copied, false);
+  assert.equal("adherence" in copied, false);
+  const detail = await request(stores, "GET", `/v1/eye/encounters/${revisit.body.encounter.encounterId}`, undefined, doctor);
+  assert.equal(detail.body.previous.content.findings.od.cdRatio, 0.7, "the previous C/D is available as a hint");
+});
+
+test("accepts phrases for the added free-text fields", async () => {
+  const stores = createStores();
+  const director = await signedHeaders(stores.platformStore, "director");
+  for (const target of ["findings.other", "findings.general", "counselling.note"]) {
+    const response = await request(stores, "POST", "/v1/eye/phrases", { target, label: target, text: "定型文" }, director);
+    assert.equal(response.statusCode, 200, JSON.stringify(response.body));
+    assert.equal(response.body.phrase.target, target);
+  }
+});

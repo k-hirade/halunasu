@@ -1,4 +1,14 @@
-import { EYE_SIDES, validateEncounterContent } from "../../eye-contracts/src/index.js";
+import {
+  ADHERENCE_LABELS,
+  ALIGNMENT_LABELS,
+  CONSENT_LABELS,
+  COUNSELLING_TOPIC_LABELS,
+  EYE_SIDES,
+  MOTILITY_LABELS,
+  PUPIL_REACTION_LABELS,
+  RAPD_LABELS,
+  validateEncounterContent
+} from "../../eye-contracts/src/index.js";
 
 // 5mL 点眼瓶はおよそ 100〜150 滴。足りなくならないよう少ない側を既定にし、薬剤ごとに上書きできる。
 export const DEFAULT_DROPS_PER_BOTTLE = 100;
@@ -90,18 +100,29 @@ export function suggestNextVisit(previousEncounters = [], encounterDate) {
   };
 }
 
+// 再診で写す所見の欄。C/D 比・隅角は測り直す値なので写さない（画面に前回値として出す）。
+export const COPYABLE_FINDING_KEYS = Object.freeze(["anterior", "lens", "fundus", "other"]);
+
 // 再診の「前回コピー」。視力・眼圧などの測定値は毎回測り直すためコピーしない。
+// 追加の項目も同じ方針: 近見・瞳孔・ケラト・眼位（検査）、C/D 比・隅角、説明・同意、点眼アドヒアランスは写さない。
 export function copyContentForRevisit(previousContent = {}) {
   const source = validateEncounterContent(previousContent);
   return {
     ...emptyEncounterContent(),
-    findings: source.findings,
+    findings: copyableFindings(source.findings),
     sketches: source.sketches,
     assessment: source.assessment,
     plan: source.plan,
     prescriptions: source.prescriptions.map((item) => ({ ...item, carriedOver: true })),
     nextVisit: { intervalWeeks: source.nextVisit.intervalWeeks, date: "", note: "" }
   };
+}
+
+function copyableFindings(findings) {
+  const copied = Object.fromEntries(EYE_SIDES.map((side) => [side, Object.fromEntries(
+    Object.entries(findings[side]).filter(([key]) => COPYABLE_FINDING_KEYS.includes(key))
+  )]));
+  return findings.general ? { ...copied, general: findings.general } : copied;
 }
 
 const FIELD_LABELS = Object.freeze({
@@ -117,6 +138,10 @@ const FIELD_LABELS = Object.freeze({
   anterior: "前眼部",
   lens: "中間透光体",
   fundus: "眼底",
+  other: "所見その他",
+  cdRatio: "C/D 比",
+  angle: "隅角",
+  vaNear: "近見視力",
   intervalWeeks: "次回（週後）",
   date: "次回日付"
 });
@@ -145,10 +170,25 @@ export function diffEncounterContent(previousContent = {}, currentContent = {}) 
     for (const key of ["vaUncorrected", "vaCorrected", "iop"]) {
       push(`exam.${side}.${key}`, `${SIDE_LABELS[side]} ${FIELD_LABELS[key]}`, before.exam[side][key], after.exam[side][key], { perVisit: true });
     }
-    for (const key of ["anterior", "lens", "fundus"]) {
-      push(`findings.${side}.${key}`, `${SIDE_LABELS[side]} ${FIELD_LABELS[key]}`, before.findings[side][key], after.findings[side][key]);
+    for (const key of ["anterior", "lens", "fundus", "other"]) {
+      push(`findings.${side}.${key}`, `${SIDE_LABELS[side]} ${FIELD_LABELS[key]}`, before.findings[side][key] ?? "", after.findings[side][key] ?? "");
     }
   }
+  // 追加の項目（毎回測る・聞く値は、今回まだ空なら数えない）
+  push("findings.general", "所見（両眼・全体）", before.findings.general ?? "", after.findings.general ?? "");
+  for (const side of EYE_SIDES) {
+    push(`exam.${side}.vaNear`, `${SIDE_LABELS[side]} ${FIELD_LABELS.vaNear}`, before.exam[side].vaNear ?? "", after.exam[side].vaNear ?? "", { perVisit: true });
+    push(`exam.${side}.pupil`, `${SIDE_LABELS[side]} 瞳孔`, pupilLabel(before.exam[side].pupil), pupilLabel(after.exam[side].pupil), { perVisit: true });
+    push(`findings.${side}.cdRatio`, `${SIDE_LABELS[side]} ${FIELD_LABELS.cdRatio}`, before.findings[side].cdRatio ?? null, after.findings[side].cdRatio ?? null, { perVisit: true });
+    push(`findings.${side}.angle`, `${SIDE_LABELS[side]} ${FIELD_LABELS.angle}`, before.findings[side].angle ?? "", after.findings[side].angle ?? "", { perVisit: true });
+  }
+  const binocularBefore = before.exam.binocular || {};
+  const binocularAfter = after.exam.binocular || {};
+  push("exam.binocular.rapd", "RAPD", RAPD_LABELS[binocularBefore.rapd] || "", RAPD_LABELS[binocularAfter.rapd] || "", { perVisit: true });
+  push("exam.binocular.alignment", "眼位", withNote(ALIGNMENT_LABELS[binocularBefore.alignment], binocularBefore.alignmentNote), withNote(ALIGNMENT_LABELS[binocularAfter.alignment], binocularAfter.alignmentNote), { perVisit: true });
+  push("exam.binocular.motility", "眼球運動", withNote(MOTILITY_LABELS[binocularBefore.motility], binocularBefore.motilityNote), withNote(MOTILITY_LABELS[binocularAfter.motility], binocularAfter.motilityNote), { perVisit: true });
+  push("adherence", "点眼アドヒアランス", adherenceLabel(before.adherence), adherenceLabel(after.adherence), { perVisit: true });
+  push("counselling", "説明・同意", counsellingLabel(before.counselling), counsellingLabel(after.counselling), { perVisit: true });
   push("diagnoses", "病名", before.diagnoses.map(diagnosisLabel), after.diagnoses.map(diagnosisLabel), { perVisit: after.diagnoses.length === 0 });
   push("prescriptions", "処方", before.prescriptions.map(prescriptionLabel), after.prescriptions.map(prescriptionLabel));
   push("nextVisit.intervalWeeks", FIELD_LABELS.intervalWeeks, before.nextVisit.intervalWeeks, after.nextVisit.intervalWeeks);
@@ -207,6 +247,28 @@ export function prescriptionLabel(item = {}) {
     item.issued === false ? "今回処方なし" : item.quantity ? `${item.quantity}${item.unit || ""}` : ""
   ].filter(Boolean);
   return details.length > 0 ? `${item.name}（${details.join(" ")}）` : String(item.name || "");
+}
+
+function withNote(label = "", note = "") {
+  return [label || "", note || ""].filter(Boolean).join(" ");
+}
+
+export function pupilLabel(pupil = {}) {
+  if (!pupil) return "";
+  return [Number.isFinite(pupil.sizeMm) ? `${pupil.sizeMm}mm` : "", pupil.reaction ? `対光反射 ${PUPIL_REACTION_LABELS[pupil.reaction]}` : ""].filter(Boolean).join(" ");
+}
+
+export function adherenceLabel(adherence = {}) {
+  if (!adherence) return "";
+  return withNote(ADHERENCE_LABELS[adherence.status], adherence.note);
+}
+
+// 「点眼指導・散瞳後の注意（本人）同意あり メモ」の形。
+export function counsellingLabel(counselling = {}) {
+  if (!counselling) return "";
+  const topics = (counselling.topics || []).map((topic) => COUNSELLING_TOPIC_LABELS[topic]).filter(Boolean).join("・");
+  const head = `${topics}${counselling.recipient ? `（${{ patient: "本人", family: "家族", both: "本人・家族" }[counselling.recipient]}）` : ""}`;
+  return [head, CONSENT_LABELS[counselling.consent] || "", counselling.note || ""].filter(Boolean).join(" ");
 }
 
 function diagnosisLabel(diagnosis = {}) {

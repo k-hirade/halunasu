@@ -3,7 +3,7 @@
 
 const EYE_NAMES = Object.freeze({ od: "右眼", os: "左眼", ou: "両眼" });
 const ALLERGY_SEVERITY = Object.freeze({ unknown: "", mild: "軽度", moderate: "中等度", severe: "重篤" });
-const FINDING_LABELS = Object.freeze([["anterior", "前眼部"], ["lens", "中間透光体"], ["fundus", "眼底"]]);
+const FINDING_LABELS = Object.freeze([["anterior", "前眼部"], ["lens", "中間透光体"], ["fundus", "眼底"], ["other", "その他"]]);
 
 // 「異常なし」などの正常を表す所見。「異常のみ」で差し込むときに除く（文全体がこれだけのときに限る）。
 const NORMAL_FINDING = /^(?:異常(?:所見)?なし|正常(?:範囲)?|特記(?:事項|すべき(?:所見|事項)?)?なし|所見なし|著変なし|著明な変化なし|変化なし|清明|透明|n\.?p\.?|wnl|nad)[。．.]?$/iu;

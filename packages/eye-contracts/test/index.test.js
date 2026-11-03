@@ -143,3 +143,91 @@ test("validates the print name length", () => {
   assert.deepEqual(validateStaffProfileInput({}), { printName: "" });
   assert.throws(() => validateStaffProfileInput({ printName: "x".repeat(41) }), /printName/u);
 });
+
+// ---- 追加項目（2026-11: SOAP の目印と所見・検査の追加） ----
+
+const OLD_CONTENT = {
+  chiefComplaint: "見えにくい",
+  exam: { od: { vaCorrected: "1.0", iop: 15, iopMethod: "nct" }, os: { vaUncorrected: "0.3" } },
+  findings: { od: { anterior: "異常なし" }, os: { fundus: "C/D 0.6" } },
+  plan: "経過観察"
+};
+
+test("old content without the new fields validates to exactly the same shape", () => {
+  const content = validateEncounterContent(OLD_CONTENT);
+  assert.deepEqual(Object.keys(content.exam), ["od", "os"]);
+  assert.deepEqual(Object.keys(content.exam.od), ["vaUncorrected", "vaCorrected", "correction", "refraction", "iop", "iopMethod", "vaCorrectionType", "measuredAt"]);
+  assert.deepEqual(Object.keys(content.findings), ["od", "os"]);
+  assert.deepEqual(Object.keys(content.findings.od), ["anterior", "lens", "fundus"]);
+  assert.equal("counselling" in content, false);
+  assert.equal("adherence" in content, false);
+  // 2 回通しても変わらない（確定時の内容ハッシュが変わらない）
+  assert.deepEqual(validateEncounterContent(content), content);
+});
+
+test("round-trips the new exam fields (near VA, pupil, keratometry, binocular)", () => {
+  const content = validateEncounterContent({
+    exam: {
+      od: { vaNear: "0.8", pupil: { sizeMm: "3.5", reaction: "brisk" }, keratometry: { k1: "43.25", k2: 44.5, axis: "180" } },
+      os: { pupil: { sizeMm: 4, reaction: "sluggish" }, keratometry: {} },
+      binocular: { rapd: "os", alignment: "exo", alignmentNote: "15Δ", motility: "limited", motilityNote: "外転制限" }
+    }
+  });
+  assert.equal(content.exam.od.vaNear, "0.8");
+  assert.deepEqual(content.exam.od.pupil, { sizeMm: 3.5, reaction: "brisk" });
+  assert.deepEqual(content.exam.od.keratometry, { k1: 43.25, k2: 44.5, axis: 180 });
+  assert.deepEqual(content.exam.os.pupil, { sizeMm: 4, reaction: "sluggish" });
+  assert.equal("keratometry" in content.exam.os, false, "empty objects are not kept");
+  assert.deepEqual(content.exam.binocular, { rapd: "os", alignment: "exo", alignmentNote: "15Δ", motility: "limited", motilityNote: "外転制限" });
+  assert.deepEqual(validateEncounterContent(content), content);
+
+  const cleared = validateEncounterContent({ exam: { od: { pupil: { sizeMm: null, reaction: "" } }, binocular: { rapd: "" } } });
+  assert.equal("pupil" in cleared.exam.od, false);
+  assert.equal("binocular" in cleared.exam, false);
+
+  assert.throws(() => validateEncounterContent({ exam: { od: { pupil: { reaction: "fast" } } } }), (error) => error.field === "content.exam.od.pupil.reaction");
+  assert.throws(() => validateEncounterContent({ exam: { binocular: { rapd: "ou" } } }), (error) => error.field === "content.exam.binocular.rapd");
+  assert.throws(() => validateEncounterContent({ exam: { os: { keratometry: { k1: 90 } } } }), (error) => error.field === "content.exam.os.keratometry.k1");
+});
+
+test("round-trips the new findings fields (other, C/D, angle, general)", () => {
+  const content = validateEncounterContent({
+    findings: {
+      od: { anterior: "清明", other: "眼瞼腫脹なし", cdRatio: "0.7", angle: "3", angleNote: "van Herick 1/2" },
+      os: { cdRatio: 0, other: "" },
+      general: "全身状態良好"
+    }
+  });
+  assert.deepEqual(content.findings.od, { anterior: "清明", lens: "", fundus: "", other: "眼瞼腫脹なし", cdRatio: 0.7, angle: "3", angleNote: "van Herick 1/2" });
+  assert.deepEqual(content.findings.os, { anterior: "", lens: "", fundus: "", cdRatio: 0 });
+  assert.equal(content.findings.general, "全身状態良好");
+  assert.deepEqual(validateEncounterContent(content), content);
+  assert.throws(() => validateEncounterContent({ findings: { od: { cdRatio: 1.2 } } }), (error) => error.field === "content.findings.od.cdRatio");
+});
+
+test("round-trips counselling and adherence as optional top-level sections", () => {
+  const content = validateEncounterContent({
+    counselling: { topics: ["dilation", "eye_drop", "dilation"], recipient: "both", consent: "obtained", note: "運転しないよう説明" },
+    adherence: { status: "sometimes", note: "夜を忘れる" }
+  });
+  assert.deepEqual(content.counselling, { topics: ["dilation", "eye_drop"], recipient: "both", consent: "obtained", note: "運転しないよう説明" });
+  assert.deepEqual(content.adherence, { status: "sometimes", note: "夜を忘れる" });
+  assert.deepEqual(validateEncounterContent(content), content);
+  assert.deepEqual(validateEncounterContent({ counselling: null }).counselling, {});
+  assert.throws(() => validateEncounterContent({ counselling: { topics: ["x"] } }), (error) => error.field === "content.counselling.topics.0");
+  assert.throws(() => validateEncounterContent({ adherence: { status: "perfect" } }), (error) => error.field === "content.adherence.status");
+
+  // 項目ごとの保存（sections）で新しい項目を送れる。消すときは空のオブジェクトになる。
+  const update = validateUpdateEncounterInput({ expectedRevision: 1, sections: { counselling: { consent: "not_required" }, adherence: {} } });
+  assert.deepEqual(update.sections, { counselling: { consent: "not_required" }, adherence: {} });
+});
+
+test("accepts the new phrase targets", async () => {
+  const { validatePhraseInput, PHRASE_TARGETS, PER_EYE_PHRASE_TARGETS } = await import("../src/index.js");
+  for (const target of ["findings.other", "findings.general", "counselling.note"]) {
+    assert.equal(validatePhraseInput({ target, text: "x" }).target, target);
+    assert.ok(PHRASE_TARGETS.includes(target));
+  }
+  assert.ok(PER_EYE_PHRASE_TARGETS.includes("findings.other"));
+  assert.ok(!PER_EYE_PHRASE_TARGETS.includes("findings.general"));
+});
