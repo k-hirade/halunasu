@@ -1,5 +1,7 @@
 // 眼科カルテの入力検証と列挙値。計算や版管理は eye-core に置く。
 
+export * from "./patient-search.js";
+
 export const EYE_PRODUCT_ID = "eye";
 export const EYE_SIDES = Object.freeze(["od", "os"]);
 export const EYE_TARGETS = Object.freeze(["od", "os", "ou"]);

@@ -42,6 +42,23 @@ export class FirestoreEyeStore {
     return sortByDate(docs(snapshot));
   }
 
+  // 診察画面の「要対応」用。いずれも単一フィールドの等価条件なので、複合索引は不要。
+  async listDraftEncounters(orgId, limit = 200) {
+    const snapshot = await this.orgCollection(orgId, collections.eyeEncounters).where("status", "==", "draft").limit(limit).get();
+    return docs(snapshot);
+  }
+
+  async listUnreviewedPaperFiles(orgId, limit = 200) {
+    // 紙カルテの要約欄（paper）を持つファイルだけが paper.reviewedAt を持つ。未確認は ""。
+    const snapshot = await this.orgCollection(orgId, collections.eyeFiles).where("paper.reviewedAt", "==", "").limit(limit).get();
+    return docs(snapshot);
+  }
+
+  async listDraftDocuments(orgId, limit = 200) {
+    const snapshot = await this.orgCollection(orgId, collections.eyeDocuments).where("status", "==", "draft").limit(limit).get();
+    return docs(snapshot);
+  }
+
   async listEncountersByDate(orgId, encounterDate) {
     const snapshot = await this.orgCollection(orgId, collections.eyeEncounters)
       .where("encounterDate", "==", encounterDate)

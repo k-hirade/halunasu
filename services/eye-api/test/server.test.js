@@ -803,3 +803,76 @@ test("dates follow Japan time, so early-morning documents are not dated the prev
   assert.equal(japanDate("2026-11-01T14:59:59.000Z"), "2026-11-01");
   assert.equal(japanDate("2026-11-01T15:00:00.000Z"), "2026-11-02");
 });
+
+test("searches patients by hiragana, katakana, given name, and birth date", async () => {
+  const stores = createStores();
+  const doctor = await signedHeaders(stores.platformStore, "doctor");
+  const patient = await createPatient(stores, doctor);
+  const hiraganaKana = await request(stores, "POST", "/v1/eye/patients", { displayName: "見本 花子", displayNameKana: "みほん はなこ", birthDate: "1953-01-09", sex: "female" }, doctor);
+  const search = async (body) => (await request(stores, "POST", "/v1/eye/patients/search", body, doctor)).body.patients.map((item) => item.patientId);
+
+  assert.deepEqual(await search({ q: "がんか" }), [patient.patientId], "hiragana finds a katakana name");
+  assert.deepEqual(await search({ q: "ミホン" }), [hiraganaKana.body.patient.patientId], "katakana finds a name registered in hiragana");
+  assert.deepEqual(await search({ q: "タロウ" }), [patient.patientId], "given name only");
+  assert.deepEqual(await search({ q: "", birthDate: "1950-04-01" }), [patient.patientId]);
+  assert.deepEqual(await search({ q: "", birthDate: "1950-04-02" }), []);
+  assert.equal((await request(stores, "POST", "/v1/eye/patients/search", { birthDate: "S25.4.1" }, doctor)).statusCode, 400);
+});
+
+test("lists unfinished work across patients for clinical staff only", async () => {
+  const stores = createStores();
+  const doctor = await signedHeaders(stores.platformStore, "doctor");
+  const orthoptist = await signedHeaders(stores.platformStore, "orthoptist");
+  const clerk = await signedHeaders(stores.platformStore, "clerk");
+  const patient = await createPatient(stores, doctor);
+
+  // 前日の下書き、確定済み（出ない）、文書の下書き、要約未確認の紙カルテ
+  const older = await request(stores, "POST", "/v1/eye/encounters", { patientId: patient.patientId, encounterDate: "2026-10-20", visitType: "initial" }, doctor);
+  await finalizedEncounter(stores, doctor, patient.patientId, "2026-10-13", glaucomaContent({ iopOd: 15 }));
+  const document = await request(stores, "POST", "/v1/eye/documents", { patientId: patient.patientId, type: "referral" }, doctor);
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46, 0x49, 0x46]);
+  const started = await request(stores, "POST", "/v1/eye/files/uploads", {
+    patientId: patient.patientId, kind: "paper_chart", takenOn: "2019-04-01", title: "紙カルテ 2019", contentType: "image/jpeg", size: jpeg.length
+  }, clerk);
+  await request(stores, "PUT", `/${started.body.upload.url}`, undefined, { ...clerk, "content-type": "image/jpeg" }, jpeg);
+  await request(stores, "POST", `/v1/eye/files/${started.body.file.fileId}/complete`, {}, clerk);
+  // 取り込み途中（pending）のファイルは出さない
+  await request(stores, "POST", "/v1/eye/files/uploads", {
+    patientId: patient.patientId, kind: "paper_chart", takenOn: "2018-04-01", title: "途中", contentType: "image/jpeg", size: jpeg.length
+  }, clerk);
+
+  assert.equal((await request(stores, "GET", "/v1/eye/worklist", undefined, clerk)).statusCode, 403);
+  const response = await request(stores, "GET", "/v1/eye/worklist", undefined, orthoptist);
+  assert.equal(response.statusCode, 200);
+  const worklist = response.body;
+  assert.deepEqual(worklist.counts, { draftEncounters: 1, unreviewedPaperCharts: 1, draftDocuments: 1 });
+  assert.equal(worklist.truncated, false);
+  assert.deepEqual(worklist.draftEncounters[0], {
+    encounterId: older.body.encounter.encounterId,
+    patientId: patient.patientId,
+    patientName: "眼科 太郎",
+    patientNameKana: "ガンカ タロウ",
+    encounterDate: "2026-10-20",
+    amending: false,
+    updatedAt: older.body.encounter.updatedAt,
+    updatedBy: older.body.encounter.updatedBy.displayName
+  });
+  assert.equal(worklist.unreviewedPaperCharts[0].fileId, started.body.file.fileId);
+  assert.equal(worklist.unreviewedPaperCharts[0].patientName, "眼科 太郎");
+  assert.equal(worklist.unreviewedPaperCharts[0].hasSummary, false);
+  assert.equal(worklist.draftDocuments[0].documentId, document.body.document.documentId);
+  // 本文・要約・題名は返さない
+  const serialized = JSON.stringify(worklist);
+  for (const leaked of ["紙カルテ 2019", "body", "summary", "content", "chiefComplaint"]) assert.equal(serialized.includes(leaked), false, `${leaked} is not exposed`);
+
+  // 要約を確認すると一覧から消える。修正中のカルテは「修正中」として出る
+  const fileId = started.body.file.fileId;
+  await request(stores, "PATCH", `/v1/eye/files/${fileId}`, { expectedRevision: 2, summary: "要約" }, clerk);
+  await request(stores, "POST", `/v1/eye/files/${fileId}/review`, { expectedRevision: 3 }, doctor);
+  const finalized = (await request(stores, "GET", `/v1/eye/patients/${patient.patientId}/chart`, undefined, doctor)).body.latestFinalized;
+  await request(stores, "POST", `/v1/eye/encounters/${finalized.encounterId}/amend`, { expectedRevision: finalized.revision, reason: "記載漏れ" }, doctor);
+  const after = (await request(stores, "GET", "/v1/eye/worklist", undefined, doctor)).body;
+  assert.equal(after.counts.unreviewedPaperCharts, 0);
+  assert.equal(after.counts.draftEncounters, 2);
+  assert.equal(after.draftEncounters.find((item) => item.encounterId === finalized.encounterId).amending, true);
+});

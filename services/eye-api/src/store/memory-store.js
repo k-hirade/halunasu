@@ -143,6 +143,28 @@ export class MemoryEyeStore {
       .map(clone);
   }
 
+  // 診察画面の「要対応」用。患者をまたいで未確定のものを集める（件数に上限を付ける）
+  listDraftEncounters(orgId, limit = 200) {
+    return [...this.forOrg(this.encounters, orgId).values()]
+      .filter((encounter) => encounter.status === "draft")
+      .slice(0, limit)
+      .map(clone);
+  }
+
+  listUnreviewedPaperFiles(orgId, limit = 200) {
+    return [...this.forOrg(this.files, orgId).values()]
+      .filter((file) => file.paper && file.paper.reviewedAt === "")
+      .slice(0, limit)
+      .map(clone);
+  }
+
+  listDraftDocuments(orgId, limit = 200) {
+    return [...this.forOrg(this.documents, orgId).values()]
+      .filter((document) => document.status === "draft")
+      .slice(0, limit)
+      .map(clone);
+  }
+
   listEncountersByDate(orgId, encounterDate) {
     return [...this.forOrg(this.encounters, orgId).values()]
       .filter((encounter) => encounter.encounterDate === encounterDate)
