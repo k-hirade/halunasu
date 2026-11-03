@@ -178,3 +178,13 @@ test("document text helpers format chart data the same way the letter templates 
   assert.equal(documentAllergyText({ noKnownAllergies: true }), "なし");
   assert.equal(documentAllergyText(null), "未確認");
 });
+
+test("derives the printable staff name from the print name or the display name", async () => {
+  const { printableStaffName } = await import("../src/index.js");
+  assert.equal(printableStaffName("院長（管理者・医師）"), "院長");
+  assert.equal(printableStaffName("山田 太郎 (医師)"), "山田 太郎");
+  assert.equal(printableStaffName("院長（管理者・医師）", "  山田 一郎 "), "山田 一郎");
+  assert.equal(printableStaffName("（医師）"), "（医師）");
+  assert.equal(printableStaffName("佐藤（旧姓 鈴木）花子"), "佐藤（旧姓 鈴木）花子");
+  assert.equal(printableStaffName(""), "");
+});

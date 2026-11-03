@@ -26,6 +26,20 @@ export const ENCOUNTER_SECTIONS = Object.freeze([
 ]);
 export const OPTICAL_TYPES = Object.freeze(["", "glasses", "contact"]);
 export const OPTICAL_PURPOSES = Object.freeze(["far", "near", "middle", "progressive", "bifocal"]);
+// 処方箋の詳細（日本眼科医会の様式の項目）。どれも任意で、未入力の古いデータはそのまま通す。
+export const OPTICAL_LENS_MATERIALS = Object.freeze(["organic", "inorganic", "polycarbonate", "other"]);
+export const OPTICAL_LENS_MATERIAL_LABELS = Object.freeze({ organic: "有機（プラスチック）", inorganic: "無機（ガラス）", polycarbonate: "ポリカーボネート", other: "その他" });
+export const OPTICAL_WEAR_MODES = Object.freeze(["always", "as_needed"]);
+export const OPTICAL_WEAR_MODE_LABELS = Object.freeze({ always: "常時", as_needed: "必要時" });
+export const CL_WEAR_SCHEDULES = Object.freeze(["daily_wear", "extended_wear"]);
+export const CL_WEAR_SCHEDULE_LABELS = Object.freeze({ daily_wear: "終日装用", extended_wear: "連続装用" });
+export const CL_REPLACEMENTS = Object.freeze(["one_day", "two_weeks", "one_month", "three_months", "conventional", "other"]);
+export const CL_REPLACEMENT_LABELS = Object.freeze({
+  one_day: "1日", two_weeks: "2週間", one_month: "1か月", three_months: "3か月", conventional: "従来型", other: "その他"
+});
+// 文書の宛名の敬称。未設定の文書は従来どおり「先生 御侍史」で出す（画面側の既定）。
+export const DOCUMENT_HONORIFICS = Object.freeze(["御侍史", "御机下", "先生", "殿", "御中"]);
+export const MAX_PRINT_NAME = 40;
 export const DOCUMENT_TYPES = Object.freeze(["referral", "reply", "certificate", "other"]);
 export const FILE_KINDS = Object.freeze(["oct", "vf", "fundus_photo", "anterior_photo", "topography", "paper_chart", "referral_in", "other"]);
 export const EYE_DOCUMENT_ROLES = Object.freeze(["admin", "doctor", "orthoptist", "nurse", "medical_clerk"]);
@@ -81,7 +95,7 @@ export const APPOINTMENT_TRANSITIONS = Object.freeze({
 
 // 操作記録の種類。画面の絞り込みチップと API の category 絞り込みで同じ分け方を使う。
 export const AUDIT_CATEGORIES = Object.freeze(["view", "change", "finalize", "export", "settings", "other"]);
-const AUDIT_SETTINGS_EVENTS = new Set(["eye.drug_preset_saved", "eye.order_set_saved", "eye.phrase_saved"]);
+const AUDIT_SETTINGS_EVENTS = new Set(["eye.drug_preset_saved", "eye.order_set_saved", "eye.phrase_saved", "eye.staff_profile_saved"]);
 const AUDIT_CHANGE_SUFFIX = /_(created|updated|saved|discarded|amend_started|confirmed|unconfirmed|status_changed|uploaded|archived|reviewed)$/u;
 
 export function auditEventCategory(eventType) {
@@ -244,8 +258,27 @@ function validateOptical(input) {
     pd: optionalNumber(input.pd, "content.optical.pd", { min: 40, max: 85 }),
     validDays: optionalNumber(input.validDays, "content.optical.validDays", { min: 1, max: 365, integer: true }),
     note: optionalString(input.note, "content.optical.note", MAX_SHORT_TEXT),
-    issue: Boolean(input.issue)
+    issue: Boolean(input.issue),
+    // 詳細は入力があるときだけ持たせる（未入力の古いデータの形を変えないため）。
+    ...compactStrings({
+      material: optionalEnum(input.material, OPTICAL_LENS_MATERIALS, "content.optical.material"),
+      coating: optionalString(input.coating, "content.optical.coating", 40),
+      tint: optionalString(input.tint, "content.optical.tint", 40),
+      wearMode: optionalEnum(input.wearMode, OPTICAL_WEAR_MODES, "content.optical.wearMode"),
+      wearSchedule: optionalEnum(input.wearSchedule, CL_WEAR_SCHEDULES, "content.optical.wearSchedule"),
+      replacement: optionalEnum(input.replacement, CL_REPLACEMENTS, "content.optical.replacement")
+    })
   };
+}
+
+function compactStrings(values) {
+  return Object.fromEntries(Object.entries(values).filter(([, value]) => value !== ""));
+}
+
+// 印刷用の氏名（職員ごと）。空にすると表示名から役割の括弧を除いた名前を使う。
+export function validateStaffProfileInput(input = {}) {
+  if (!isPlainObject(input)) throw validationError("body must be an object", "body");
+  return { printName: optionalString(input.printName, "printName", MAX_PRINT_NAME) };
 }
 
 export function validateCreateFileInput(input = {}) {
@@ -299,7 +332,8 @@ export function validateUpdateDocumentInput(input = {}) {
     recipient: {
       institution: optionalString(recipient.institution, "recipient.institution", MAX_SHORT_TEXT),
       department: optionalString(recipient.department, "recipient.department", MAX_SHORT_TEXT),
-      doctor: optionalString(recipient.doctor, "recipient.doctor", MAX_SHORT_TEXT)
+      doctor: optionalString(recipient.doctor, "recipient.doctor", MAX_SHORT_TEXT),
+      ...compactStrings({ honorific: optionalEnum(recipient.honorific, DOCUMENT_HONORIFICS, "recipient.honorific") })
     },
     body: optionalText(input.body, "body"),
     issueDate: optionalDate(input.issueDate, "issueDate")

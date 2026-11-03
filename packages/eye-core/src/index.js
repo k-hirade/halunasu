@@ -290,4 +290,14 @@ export function evaluateOpticalPrescription(optical = {}) {
   return problems;
 }
 
+// 紙に載せる職員の氏名。設定の「印刷用の氏名」があればそれを、なければ表示名の末尾の
+// 役割の括弧（「院長（管理者・医師）」の「（管理者・医師）」）を除いた名前を使う。
+export function printableStaffName(displayName = "", printName = "") {
+  const explicit = String(printName || "").trim();
+  if (explicit) return explicit;
+  const name = String(displayName || "").trim();
+  const stripped = name.replace(/\s*[（(][^（）()]*[）)]\s*$/u, "").trim();
+  return stripped || name;
+}
+
 export * from "./document-text.js";

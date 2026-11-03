@@ -12,6 +12,7 @@ import {
   eyeOrderSetPath,
   eyePatientProfilePath,
   eyePhrasePath,
+  eyeStaffProfilePath,
   organizationPath
 } from "../../../../packages/firestore-schema/src/index.js";
 import { sortByDate } from "../../../../packages/eye-core/src/index.js";
@@ -216,6 +217,22 @@ export class FirestoreEyeStore {
 
   async listPhrases(orgId) {
     return this.listNamed(orgId, collections.eyePhrases);
+  }
+
+  async listStaffProfiles(orgId) {
+    return docs(await this.orgCollection(orgId, collections.eyeStaffProfiles).get());
+  }
+
+  async getStaffProfile(orgId, memberId) {
+    return dataOrNull(await this.doc(eyeStaffProfilePath(orgId, memberId)).get());
+  }
+
+  async saveStaffProfile(orgId, profile) {
+    const ref = this.doc(eyeStaffProfilePath(orgId, profile.memberId));
+    const current = dataOrNull(await ref.get());
+    const saved = { ...current, ...profile, orgId, createdAt: current?.createdAt || this.timestamp(), updatedAt: this.timestamp() };
+    await ref.set(saved);
+    return saved;
   }
 
   async upsertNamed(path, orgId, item) {

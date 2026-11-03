@@ -32,6 +32,7 @@ import {
   validateOrderSetInput,
   validatePhraseInput,
   validatePatientProfileInput,
+  validateStaffProfileInput,
   validateUpdateAppointmentInput,
   validateUpdateDocumentInput,
   validateUpdateFileInput,
@@ -41,6 +42,7 @@ import {
   buildTrend,
   diffEncounterContent,
   evaluateFinalizeReadiness,
+  printableStaffName,
   suggestNextVisit
 } from "../../../packages/eye-core/src/index.js";
 import { patientSnapshot } from "../../../packages/platform-contracts/src/index.js";
@@ -187,13 +189,16 @@ async function routeEyeApiRequest(input = {}) {
   }
 
   if (method === "GET" && matches(parts, ["v1", "eye", "bootstrap"])) {
-    const [facilities, drugPresets, orderSets, phrases] = await Promise.all([
+    const [facilities, drugPresets, orderSets, phrases, staff] = await Promise.all([
       platformStore.listFacilities(orgId),
       eyeStore.listDrugPresets(orgId),
       eyeStore.listOrderSets(orgId),
-      eyeStore.listPhrases(orgId)
+      eyeStore.listPhrases(orgId),
+      // 紙に載せる氏名（memberId → 氏名）。読めなくても起動は止めない（画面側は表示名から括弧を除いて出す）。
+      loadEyeStaff(platformStore, eyeStore, orgId).catch(() => [])
     ]);
-    return ok({ context: contextView(context), facilities, drugPresets, orderSets, phrases, orderCatalog: DEFAULT_ORDER_CATALOG });
+    const printNames = Object.fromEntries(staff.map((item) => [item.memberId, item.resolvedName]));
+    return ok({ context: contextView(context), facilities, drugPresets, orderSets, phrases, orderCatalog: DEFAULT_ORDER_CATALOG, printNames });
   }
 
   // 患者検索の語は氏名などの個人情報なので、アクセスログに残る URL ではなく本文で受け取る。
@@ -556,9 +561,10 @@ async function routeEyeApiRequest(input = {}) {
       ? history.find((item) => item.encounterId === validated.encounterId)
       : history.filter((item) => item.status === "finalized").at(-1) || null;
     if (validated.encounterId && !encounter) throw notFoundError("encounter not found");
-    const [profile, facilities] = await Promise.all([
+    const [profile, facilities, staffProfile] = await Promise.all([
       loadProfile(eyeStore, orgId, patient.patientId, history),
-      platformStore.listFacilities(orgId)
+      platformStore.listFacilities(orgId),
+      Promise.resolve().then(() => eyeStore.getStaffProfile(orgId, actor.memberId)).catch(() => null)
     ]);
     const document = buildDocumentDraft({
       documentId: createId("edoc"),
@@ -569,6 +575,7 @@ async function routeEyeApiRequest(input = {}) {
       facility: facilities.find((item) => item.status === "active") || facilities[0] || null,
       type: validated.type,
       actor,
+      senderName: printableStaffName(actor.displayName, staffProfile?.printName),
       now
     });
     await eyeStore.createDocument(orgId, document);
@@ -835,6 +842,24 @@ async function routeEyeApiRequest(input = {}) {
     return ok({ phrase });
   }
 
+  // 印刷用の氏名。眼科の役割を持つ職員の一覧と、紙に載せる氏名（未設定なら空）を返す。
+  if (method === "GET" && matches(parts, ["v1", "eye", "staff-profiles"])) {
+    requireAccess(context, EYE_SETTINGS_ROLES, "Eye settings access is required");
+    return ok({ staff: await loadEyeStaff(platformStore, eyeStore, orgId) });
+  }
+
+  if (method === "PUT" && parts.length === 4 && matches(parts.slice(0, 3), ["v1", "eye", "staff-profiles"])) {
+    requireAccess(context, EYE_SETTINGS_ROLES, "Eye settings access is required");
+    requirePlatformCsrf(input.headers || {}, context.session);
+    const memberId = parts[3];
+    const validated = validateStaffProfileInput(input.body || {});
+    const member = (await loadEyeStaff(platformStore, eyeStore, orgId)).find((item) => item.memberId === memberId);
+    if (!member) throw notFoundError("staff member not found");
+    await eyeStore.saveStaffProfile(orgId, { memberId, printName: validated.printName, updatedBy: actor });
+    await audit({ eventType: "eye.staff_profile_saved", targetType: "staff_profile", targetId: memberId });
+    return ok({ staffProfile: { ...member, printName: validated.printName, resolvedName: printableStaffName(member.displayName, validated.printName) } });
+  }
+
   if (method === "GET" && matches(parts, ["v1", "eye", "audit-logs"])) {
     requireAccess(context, EYE_SETTINGS_ROLES, "Eye settings access is required");
     const filters = auditLogFilters(url.searchParams);
@@ -998,6 +1023,30 @@ async function buildWorklist(eyeStore, platformStore, orgId) {
     // 取得の上限に達したとき（件数は「以上」の意味になる）
     truncated: encounters.length >= WORKLIST_SCAN_LIMIT || files.length >= WORKLIST_SCAN_LIMIT || documents.length >= WORKLIST_SCAN_LIMIT
   };
+}
+
+// 眼科の役割を持つ職員と、その印刷用の氏名。
+async function loadEyeStaff(platformStore, eyeStore, orgId) {
+  const [members, profiles] = await Promise.all([
+    Promise.resolve().then(() => platformStore.listMembers(orgId)),
+    Promise.resolve().then(() => eyeStore.listStaffProfiles(orgId))
+  ]);
+  const byMember = new Map((profiles || []).map((item) => [item.memberId, item]));
+  return (members || [])
+    .filter((member) => member?.memberId && (member.productRoles?.[EYE_PRODUCT_ID] || []).length > 0)
+    .map((member) => {
+      const displayName = member.displayName || member.loginId || "";
+      const printName = byMember.get(member.memberId)?.printName || "";
+      return {
+        memberId: member.memberId,
+        loginId: member.loginId || "",
+        displayName,
+        eyeRoles: [...(member.productRoles?.[EYE_PRODUCT_ID] || [])],
+        status: member.status || "active",
+        printName,
+        resolvedName: printableStaffName(displayName, printName)
+      };
+    });
 }
 
 async function requireEyeContext(input, platformStore) {

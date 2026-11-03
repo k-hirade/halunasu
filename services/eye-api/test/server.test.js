@@ -1103,3 +1103,101 @@ test("lists unfinished work across patients for clinical staff only", async () =
   assert.equal(after.counts.draftEncounters, 2);
   assert.equal(after.draftEncounters.find((item) => item.encounterId === finalized.encounterId).amending, true);
 });
+
+test("stores optical prescription details and keeps old optical data without them", async () => {
+  const stores = createStores();
+  const doctor = await signedHeaders(stores.platformStore, "doctor");
+  const patient = await createPatient(stores, doctor);
+  const legacy = await request(stores, "POST", "/v1/eye/encounters", {
+    patientId: patient.patientId, encounterDate: "2026-10-27", content: { optical: { type: "glasses", od: { sphere: -2 }, os: { sphere: -1.5 }, pd: 62 } }
+  }, doctor);
+  assert.equal(legacy.statusCode, 201);
+  assert.equal("material" in legacy.body.encounter.content.optical, false);
+  assert.equal("wearMode" in legacy.body.encounter.content.optical, false);
+
+  const encounterId = legacy.body.encounter.encounterId;
+  const optical = {
+    type: "glasses", issue: true, od: { sphere: -2 }, os: { sphere: -1.5 }, pd: 62,
+    material: "organic", coating: "UVカット", tint: "ブラウン", wearMode: "always"
+  };
+  const saved = await request(stores, "PATCH", `/v1/eye/encounters/${encounterId}`, { expectedRevision: 1, sections: { optical } }, doctor);
+  assert.equal(saved.statusCode, 200);
+  assert.equal(saved.body.encounter.content.optical.material, "organic");
+  assert.equal(saved.body.encounter.content.optical.coating, "UVカット");
+  assert.equal(saved.body.encounter.content.optical.tint, "ブラウン");
+  assert.equal(saved.body.encounter.content.optical.wearMode, "always");
+
+  const contact = await request(stores, "PATCH", `/v1/eye/encounters/${encounterId}`, {
+    expectedRevision: 2, sections: { optical: { type: "contact", od: { sphere: -2, bc: 8.6, dia: 14.2 }, os: { sphere: -2, bc: 8.6, dia: 14.2 }, wearSchedule: "daily_wear", replacement: "one_month" } }
+  }, doctor);
+  assert.equal(contact.body.encounter.content.optical.wearSchedule, "daily_wear");
+  assert.equal(contact.body.encounter.content.optical.replacement, "one_month");
+
+  const invalid = await request(stores, "PATCH", `/v1/eye/encounters/${encounterId}`, { expectedRevision: 3, sections: { optical: { replacement: "weekly" } } }, doctor);
+  assert.equal(invalid.statusCode, 400);
+  assert.equal(invalid.body.field, "content.optical.replacement");
+});
+
+test("saves the recipient honorific and keeps it when a document is duplicated", async () => {
+  const stores = createStores();
+  const doctor = await signedHeaders(stores.platformStore, "doctor");
+  const patient = await createPatient(stores, doctor);
+  const document = (await request(stores, "POST", "/v1/eye/documents", { patientId: patient.patientId, type: "referral" }, doctor)).body.document;
+  assert.equal("honorific" in document.recipient, false);
+
+  const invalid = await request(stores, "PATCH", `/v1/eye/documents/${document.documentId}`, { expectedRevision: 1, recipient: { institution: "県立病院", honorific: "様" }, body: "本文" }, doctor);
+  assert.equal(invalid.statusCode, 400);
+  const edited = await request(stores, "PATCH", `/v1/eye/documents/${document.documentId}`, { expectedRevision: 1, recipient: { institution: "県立病院", department: "眼科", honorific: "御中" }, body: "本文" }, doctor);
+  assert.equal(edited.body.document.recipient.honorific, "御中");
+  const finalized = await request(stores, "POST", `/v1/eye/documents/${document.documentId}/finalize`, { expectedRevision: 2 }, doctor);
+  assert.equal(finalized.statusCode, 200);
+  const copy = await request(stores, "POST", `/v1/eye/documents/${document.documentId}/duplicate`, {}, doctor);
+  assert.equal(copy.body.document.recipient.honorific, "御中");
+});
+
+test("manages print names for eye staff and uses them on paper", async () => {
+  const stores = createStores();
+  const director = await signedHeaders(stores.platformStore, "director");
+  const doctor = await signedHeaders(stores.platformStore, "doctor");
+  const orgId = (await request(stores, "GET", "/v1/eye/context", undefined, director)).body.context.orgId;
+  const doctorMember = stores.platformStore.listMembers(orgId).find((member) => member.loginId === "eye-doctor");
+  stores.platformStore.updateMember(orgId, doctorMember.memberId, { displayName: "眼科医（医師）" });
+
+  // 印刷用の氏名が未設定なら、表示名から役割の括弧を除いた名前を使う
+  const fallback = await request(stores, "GET", "/v1/eye/bootstrap", undefined, doctor);
+  assert.equal(fallback.body.printNames[doctorMember.memberId], "眼科医");
+
+  assert.equal((await request(stores, "GET", "/v1/eye/staff-profiles", undefined, doctor)).statusCode, 403);
+  const list = await request(stores, "GET", "/v1/eye/staff-profiles", undefined, director);
+  assert.equal(list.statusCode, 200);
+  const doctorRow = list.body.staff.find((item) => item.memberId === doctorMember.memberId);
+  assert.equal(doctorRow.loginId, "eye-doctor");
+  assert.equal(doctorRow.displayName, "眼科医（医師）");
+  assert.deepEqual(doctorRow.eyeRoles, ["doctor"]);
+  assert.equal(doctorRow.printName, "");
+  assert.ok(list.body.staff.every((item) => item.eyeRoles.length > 0));
+
+  const path = `/v1/eye/staff-profiles/${doctorMember.memberId}`;
+  assert.equal((await request(stores, "PUT", path, { printName: "山田 太郎" }, doctor)).statusCode, 403);
+  assert.equal((await request(stores, "PUT", path, { printName: "x".repeat(41) }, director)).statusCode, 400);
+  assert.equal((await request(stores, "PUT", "/v1/eye/staff-profiles/mem_unknown", { printName: "山田" }, director)).statusCode, 404);
+  const { "x-csrf-token": _csrf, ...withoutCsrf } = director;
+  assert.equal((await request(stores, "PUT", path, { printName: "山田" }, withoutCsrf)).statusCode, 403);
+  const saved = await request(stores, "PUT", path, { printName: " 山田 太郎 " }, director);
+  assert.equal(saved.statusCode, 200);
+  assert.equal(saved.body.staffProfile.printName, "山田 太郎");
+
+  const bootstrap = await request(stores, "GET", "/v1/eye/bootstrap", undefined, doctor);
+  assert.equal(bootstrap.body.printNames[doctorMember.memberId], "山田 太郎");
+  const patient = await createPatient(stores, doctor);
+  const document = (await request(stores, "POST", "/v1/eye/documents", { patientId: patient.patientId, type: "referral" }, doctor)).body.document;
+  assert.equal(document.sender.doctorName, "山田 太郎");
+  assert.equal(document.sender.memberId, doctorMember.memberId);
+
+  await request(stores, "PUT", path, { printName: "" }, director);
+  const reset = await request(stores, "GET", "/v1/eye/bootstrap", undefined, doctor);
+  assert.equal(reset.body.printNames[doctorMember.memberId], "眼科医");
+
+  const logs = await request(stores, "GET", "/v1/eye/audit-logs?category=settings", undefined, director);
+  assert.ok(logs.body.auditLogs.some((log) => log.eventType === "eye.staff_profile_saved" && log.targetId === doctorMember.memberId));
+});

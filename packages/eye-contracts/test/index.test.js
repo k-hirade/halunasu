@@ -4,6 +4,8 @@ import {
   validateCreateEncounterInput,
   validateDrugPresetInput,
   validateEncounterContent,
+  validateStaffProfileInput,
+  validateUpdateDocumentInput,
   validateUpdateEncounterInput
 } from "../src/index.js";
 
@@ -103,4 +105,41 @@ test("classifies audit events into the filter categories", async () => {
   assert.equal(auditEventCategory("eye.something_new"), "other");
   assert.equal(auditEventCategory(undefined), "other");
   for (const category of ["view", "change", "finalize", "export", "settings"]) assert.ok(AUDIT_CATEGORIES.includes(category));
+});
+
+test("keeps old optical data unchanged and accepts the prescription details", () => {
+  const legacy = validateEncounterContent({ optical: { type: "glasses", od: { sphere: -1 }, os: { sphere: -1.5 }, pd: 62 } }).optical;
+  for (const key of ["material", "coating", "tint", "wearMode", "wearSchedule", "replacement"]) {
+    assert.equal(key in legacy, false, `${key} is absent on old data`);
+  }
+  const detailed = validateEncounterContent({
+    optical: { type: "glasses", material: "polycarbonate", coating: " UVカット ", tint: "グレー", wearMode: "as_needed", wearSchedule: "", replacement: null }
+  }).optical;
+  assert.equal(detailed.material, "polycarbonate");
+  assert.equal(detailed.coating, "UVカット");
+  assert.equal(detailed.tint, "グレー");
+  assert.equal(detailed.wearMode, "as_needed");
+  assert.equal("wearSchedule" in detailed, false);
+  assert.equal("replacement" in detailed, false);
+  const contact = validateEncounterContent({ optical: { type: "contact", wearSchedule: "daily_wear", replacement: "two_weeks" } }).optical;
+  assert.equal(contact.wearSchedule, "daily_wear");
+  assert.equal(contact.replacement, "two_weeks");
+  assert.throws(() => validateEncounterContent({ optical: { material: "glass" } }), /content.optical.material/u);
+  assert.throws(() => validateEncounterContent({ optical: { wearMode: "sometimes" } }), /content.optical.wearMode/u);
+  assert.throws(() => validateEncounterContent({ optical: { replacement: "weekly" } }), /content.optical.replacement/u);
+  assert.throws(() => validateEncounterContent({ optical: { coating: "x".repeat(41) } }), /content.optical.coating/u);
+});
+
+test("accepts a recipient honorific and keeps old recipients without one", () => {
+  const legacy = validateUpdateDocumentInput({ expectedRevision: 1, recipient: { institution: "県立病院" } });
+  assert.deepEqual(legacy.recipient, { institution: "県立病院", department: "", doctor: "" });
+  const withHonorific = validateUpdateDocumentInput({ expectedRevision: 1, recipient: { institution: "県立病院", honorific: "御中" } });
+  assert.equal(withHonorific.recipient.honorific, "御中");
+  assert.throws(() => validateUpdateDocumentInput({ expectedRevision: 1, recipient: { honorific: "様" } }), /recipient.honorific/u);
+});
+
+test("validates the print name length", () => {
+  assert.deepEqual(validateStaffProfileInput({ printName: " 山田 太郎 " }), { printName: "山田 太郎" });
+  assert.deepEqual(validateStaffProfileInput({}), { printName: "" });
+  assert.throws(() => validateStaffProfileInput({ printName: "x".repeat(41) }), /printName/u);
 });

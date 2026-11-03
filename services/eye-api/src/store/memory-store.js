@@ -14,6 +14,7 @@ export class MemoryEyeStore {
     this.patientProfiles = new Map();
     this.orderSets = new Map();
     this.phrases = new Map();
+    this.staffProfiles = new Map();
     this.documents = new Map();
     this.files = new Map();
     this.billingHandoffs = new Map();
@@ -107,6 +108,22 @@ export class MemoryEyeStore {
 
   listPhrases(orgId) {
     return this.listNamed(this.phrases, orgId);
+  }
+
+  listStaffProfiles(orgId) {
+    return [...this.forOrg(this.staffProfiles, orgId).values()].map(clone);
+  }
+
+  getStaffProfile(orgId, memberId) {
+    return cloneOrNull(this.forOrg(this.staffProfiles, orgId).get(memberId));
+  }
+
+  saveStaffProfile(orgId, profile) {
+    const records = this.forOrg(this.staffProfiles, orgId);
+    const current = records.get(profile.memberId);
+    const saved = { ...current, ...profile, orgId, createdAt: current?.createdAt || this.timestamp(), updatedAt: this.timestamp() };
+    records.set(profile.memberId, clone(saved));
+    return clone(saved);
   }
 
   upsertNamed(map, orgId, item, idKey) {

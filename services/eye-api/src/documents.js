@@ -20,7 +20,7 @@ export const DOCUMENT_TITLES = Object.freeze({
   other: "文書"
 });
 
-export function buildDocumentDraft({ documentId, orgId, patientSnapshot, encounter, profile, facility, type, actor, now }) {
+export function buildDocumentDraft({ documentId, orgId, patientSnapshot, encounter, profile, facility, type, actor, senderName, now }) {
   return {
     documentId,
     orgId,
@@ -31,7 +31,7 @@ export function buildDocumentDraft({ documentId, orgId, patientSnapshot, encount
     type,
     title: DOCUMENT_TITLES[type],
     recipient: { institution: "", department: "", doctor: "" },
-    sender: senderFromFacility(facility, actor),
+    sender: senderFromFacility(facility, actor, senderName),
     body: renderTemplate(type, { encounter, profile }),
     issueDate: japanDate(now),
     status: "draft",
@@ -160,7 +160,7 @@ export function summarizeRecipients(documents, { limit = 30 } = {}) {
     .slice(0, limit);
 }
 
-function senderFromFacility(facility, actor) {
+function senderFromFacility(facility, actor, senderName) {
   const address = facility?.address || {};
   return {
     facilityName: facility?.legalName || facility?.displayName || "",
@@ -168,7 +168,9 @@ function senderFromFacility(facility, actor) {
       .filter(Boolean)
       .join(" "),
     phone: facility?.phone || "",
-    doctorName: actor.displayName || ""
+    // 紙の署名に使う氏名（印刷用の氏名、なければ表示名から役割の括弧を除いたもの）。memberId は後で印刷用の氏名を引き直すため。
+    doctorName: senderName || actor.displayName || "",
+    memberId: actor.memberId || ""
   };
 }
 
