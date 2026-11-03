@@ -131,9 +131,20 @@ async function runDoctorFlow(browser) {
   const encounterUrl = page.url();
 
   await page.getByRole("link", { name: /カルテ一覧/ }).click();
-  await page.getByRole("img", { name: "眼圧の推移" }).waitFor();
+  // 患者ページ: 前回の要点（前回差つき）→ 経過（グラフ + 1 受診 1 行の表）
+  await page.locator(".trend-svg").waitFor();
   await page.getByText("アレルギー: ペニシリン系（発疹）").first().waitFor();
-  assert.equal(await page.locator(".history-row").count(), 2);
+  assert.equal(await page.locator(".visit-rows .visit-row").count(), 2);
+  assert.equal((await page.locator(".pt-eye-od .pt-delta").last().innerText()).trim(), "↑5", "IOP change against the previous finalized visit");
+  assert.match(await page.locator(".visit-rows .visit-row").first().innerText(), /0\.8[\s\S]*23/u);
+  assert.equal(await page.locator(".trend-svg .mark-started").count() > 0, true, "drop start is marked on the time axis");
+  await page.locator('summary[aria-label="その他の操作"]').click();
+  await page.getByRole("button", { name: /この患者のデータを出力/u }).waitFor();
+  await page.locator('summary[aria-label="その他の操作"]').click();
+  await page.locator(".visit-rows .visit-row").last().click();
+  await page.waitForURL(/\/encounters\//u);
+  await page.goBack();
+  await page.locator(".trend-svg").waitFor();
 
   const printPage = await context.newPage();
   await printPage.goto(`${encounterUrl}/print`);
@@ -194,27 +205,50 @@ async function runDoctorFlow(browser) {
   await page.goto(`${baseUrl}/`);
   await page.getByLabel("患者検索").fill("見本");
   await page.locator(".patient-row").filter({ hasText: "見本 花子" }).click();
-  await page.getByRole("heading", { name: "画像・ファイル" }).waitFor();
-  await page.getByLabel("ファイル", { exact: true }).setInputFiles(pngPath);
-  await page.getByLabel("ファイルの種類").selectOption("oct");
-  await page.getByLabel("ファイルの題名").fill("OCT 黄斑");
-  await page.getByRole("button", { name: "取り込む" }).click();
+  await page.getByRole("heading", { name: /^画像/u }).waitFor();
+  // 取り込みは「＋取込」からダイアログで行う
+  async function uploadFile(path, fields) {
+    await page.getByRole("button", { name: "＋取込" }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByLabel("ファイル", { exact: true }).setInputFiles(path);
+    await dialog.getByLabel("ファイルの種類").selectOption(fields.kind);
+    if (fields.eye !== undefined) await dialog.getByLabel("ファイルの眼").selectOption(fields.eye);
+    if (fields.takenOn) await dialog.getByLabel("検査日").fill(fields.takenOn);
+    await dialog.getByLabel("ファイルの題名").fill(fields.title);
+    await dialog.getByRole("button", { name: "取り込む", exact: true }).click();
+    await dialog.waitFor({ state: "detached" });
+  }
+  await uploadFile(pngPath, { kind: "oct", title: "OCT 黄斑" });
   await page.getByRole("button", { name: "OCT 黄斑" }).click();
   await page.locator(".dialog-viewer img.file-preview").waitFor();
   await page.getByRole("button", { name: "閉じる" }).click();
-  await page.getByLabel("ファイル", { exact: true }).setInputFiles(jpegPath);
-  await page.getByLabel("ファイルの種類").selectOption("paper_chart");
-  await page.getByLabel("ファイルの題名").fill("紙カルテ 2019");
-  await page.getByRole("button", { name: "取り込む" }).click();
+  await uploadFile(pngPath, { kind: "oct", eye: "od", takenOn: "2026-05-01", title: "OCT 前回" });
+  await uploadFile(jpegPath, { kind: "paper_chart", title: "紙カルテ 2019" });
+  // 右列は種類ごとの最新 1 枚だけをサムネイルで出す
+  await page.getByRole("button", { name: "紙カルテ 2019" }).waitFor();
+  assert.equal(await page.locator(".thumb-grid .thumb").count(), 2);
+  await page.locator(".thumb-grid img.thumb-img").first().waitFor();
   await page.getByRole("button", { name: "紙カルテ 2019" }).click();
   await page.locator(".paper-summary textarea").fill("2019年 緑内障と診断。ラタノプロスト開始。");
   await page.getByRole("button", { name: "要約を保存" }).click();
   await page.getByRole("button", { name: "要約を確認済みにする" }).click();
   await page.getByText(/医師確認済み（/u).first().waitFor();
   await page.getByRole("button", { name: "閉じる" }).click();
-  await page.getByRole("link", { name: "比較表示" }).click();
-  await page.getByRole("heading", { name: /画像の比較/ }).waitFor();
-  await page.locator(".compare-grid img.file-preview").first().waitFor();
+  await page.getByRole("link", { name: "比較 ›" }).click();
+  await page.getByRole("heading", { name: "画像の比較" }).waitFor();
+  // 患者帯（アレルギー）・件数つきの種類チップ・既定は「前回 vs 最新」・片側だけ送る
+  await page.getByText("アレルギー: ペニシリン系（発疹）").first().waitFor();
+  await page.locator(".cmp-grid img.file-preview").nth(1).waitFor();
+  assert.match(await page.locator(".cmp-chip").first().innerText(), /OCT\s*2/u);
+  assert.equal(await page.locator(".cmp-chip").filter({ hasText: "紙カルテ" }).count(), 0, "paper charts are not compared");
+  assert.deepEqual(await page.locator(".cmp-pane-rel").allInnerTexts(), ["前回", "最新"]);
+  await page.getByRole("button", { name: "左の面を次の日付へ" }).click();
+  assert.deepEqual(await page.locator(".cmp-pane-rel").allInnerTexts(), ["最新", "最新"]);
+  await page.getByRole("button", { name: "左の面を前の日付へ" }).click();
+  assert.deepEqual(await page.locator(".cmp-pane-rel").allInnerTexts(), ["前回", "最新"]);
+  await page.getByRole("link", { name: "← 患者ページ" }).click();
+  await page.locator(".trend-svg").waitFor();
+  await page.goto(`${baseUrl}/settings`);
 
   // 定型文とセットを登録して、新しいカルテで使う（定型文は複数行、作った後に表示名を直す）
   await page.goto(`${baseUrl}/settings#phrases`);

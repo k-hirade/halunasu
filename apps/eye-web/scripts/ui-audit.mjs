@@ -6,6 +6,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
+import { deflateSync } from "node:zlib";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
@@ -132,7 +133,11 @@ async function prepare(browser) {
   const row = page.locator(".flow-row", { hasText: "模擬 和子" });
   await page.locator(".flow-list").waitFor();
   await page.locator(".flow-more").click().catch(() => null);
-  if (await row.getByRole("button", { name: "受付する" }).count()) await row.getByRole("button", { name: "受付する" }).click();
+  if (await row.getByRole("button", { name: "受付する" }).count()) {
+    await row.getByRole("button", { name: "受付する" }).click();
+    // 受付の反映を待ってからメニューを開く（反映前に開くと「カルテ作成」がまだない）
+    await row.getByRole("button", { name: "受付する" }).waitFor({ state: "detached" });
+  }
   await row.locator("summary").click();
   await row.getByRole("button", { name: /カルテを開く|カルテ作成/u }).click();
   await page.waitForURL(/\/encounters\//u);
@@ -154,6 +159,7 @@ async function prepare(browser) {
   await page.getByLabel("宛先 医療機関").fill("県立中央病院");
   await page.waitForTimeout(2500);
   if (!onlyPages || [...onlyPages].some((name) => name.startsWith("billing"))) await seedBilling(page);
+  if (!onlyPages || onlyPages.has("patient") || onlyPages.has("images")) await uploadSampleImages(page, patientHref);
   const storageState = await context.storageState();
   await context.close();
   return {
@@ -163,6 +169,8 @@ async function prepare(browser) {
       home: "/",
       reception: "/reception",
       patient: patientHref,
+      images: `${patientHref}/images`,
+      "patient-dark": patientHref,
       editor: encounterPath,
       exam: `${encounterPath}/exam`,
       optical: `${encounterPath}/optical`,
@@ -235,6 +243,76 @@ async function seedBilling(page) {
     return ids.length;
   });
   if (result !== 5) throw new Error("billing seed failed");
+}
+
+// デモ患者にはファイルがないので、画像の比較を撮るために OCT 2 件と眼底写真 1 件を取り込む。
+async function uploadSampleImages(page, patientHref) {
+  const dir = join(outDir, "fixtures");
+  mkdirSync(dir, { recursive: true });
+  const samples = [
+    { name: "oct-old.png", hue: 0, kind: "oct", eye: "od", daysAgo: 120, title: "OCT 黄斑 右" },
+    { name: "oct-new.png", hue: 1, kind: "oct", eye: "od", daysAgo: 21, title: "OCT 黄斑 右" },
+    { name: "fundus.png", hue: 2, kind: "fundus_photo", eye: "ou", daysAgo: 21, title: "眼底写真" }
+  ];
+  await page.goto(baseUrl + patientHref);
+  for (const sample of samples) {
+    const path = join(dir, sample.name);
+    writeFileSync(path, samplePng(320, 240, sample.hue));
+    await page.getByRole("button", { name: "＋取込" }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByLabel("ファイル", { exact: true }).setInputFiles(path);
+    await dialog.getByLabel("ファイルの種類").selectOption(sample.kind);
+    await dialog.getByLabel("ファイルの眼").selectOption(sample.eye);
+    await dialog.getByLabel("検査日").fill(new Date(Date.now() + 9 * 3600000 - sample.daysAgo * 86400000).toISOString().slice(0, 10));
+    await dialog.getByLabel("ファイルの題名").fill(sample.title);
+    await dialog.getByRole("button", { name: "取り込む", exact: true }).click();
+    await dialog.waitFor({ state: "detached" });
+  }
+}
+
+// 撮影用のダミー画像（同心円の縞模様の PNG）を作る。
+function samplePng(width, height, variant) {
+  const rows = [];
+  for (let y = 0; y < height; y += 1) {
+    const row = Buffer.alloc(1 + width * 3);
+    for (let x = 0; x < width; x += 1) {
+      const distance = Math.hypot(x - width / 2, y - height / 2);
+      const ring = Math.round(distance / (12 + variant * 4)) % 2;
+      const base = ring ? 60 : 150;
+      row[1 + x * 3] = base + variant * 30;
+      row[2 + x * 3] = base;
+      row[3 + x * 3] = Math.max(0, base - variant * 30);
+    }
+    rows.push(row);
+  }
+  const chunk = (type, data) => {
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type), data]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(body));
+    return Buffer.concat([length, body, crc]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header[8] = 8;
+  header[9] = 2;
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk("IHDR", header),
+    chunk("IDAT", deflateSync(Buffer.concat(rows))),
+    chunk("IEND", Buffer.alloc(0))
+  ]);
+}
+
+function crc32(buffer) {
+  let crc = 0xffffffff;
+  for (const byte of buffer) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+  }
+  return (crc ^ 0xffffffff) >>> 0;
 }
 
 function printSummary(all) {
