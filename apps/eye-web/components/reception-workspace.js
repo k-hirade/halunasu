@@ -17,6 +17,8 @@ import {
 } from "../lib/format";
 
 const REFRESH_MS = 15000;
+const LIST_TABS = [["booked", "未来院"], ["finished", "終了・キャンセル"], ["all", "すべて"]];
+const LIST_EMPTY = { booked: "未来院の予約はありません。", finished: "終了・キャンセルはまだありません。", all: "この日の予約・受付はありません。" };
 const BOARD_COLUMNS = ["checked_in", "in_exam", "waiting_doctor", "in_consult", "checkout"];
 // 次へ進める操作。受付から会計までを1つずつ進める。
 const NEXT_ACTIONS = {
@@ -39,6 +41,7 @@ export function ReceptionWorkspace() {
   const [error, setError] = useState("");
   const [now, setNow] = useState(Date.now());
   const [filter, setFilter] = useState("active");
+  const [listTab, setListTab] = useState("booked");
   const wide = useMediaQuery("(min-width: 1024px)", true);
 
   const load = useCallback(async () => {
@@ -101,6 +104,37 @@ export function ReceptionWorkspace() {
   const isToday = date === todayIso();
   const inHouse = appointments.filter((item) => BOARD_COLUMNS.includes(item.status));
   const filtered = filter === "active" ? inHouse : appointments.filter((item) => item.status === filter);
+
+  function listItems(key) {
+    if (key === "booked") return booked;
+    if (key === "finished") return finished;
+    return [...appointments].sort((left, right) => String(left.time || "99").localeCompare(String(right.time || "99")));
+  }
+
+  function rowActions(item) {
+    if (!canReceive) return null;
+    if (item.status === "booked") {
+      return (
+        <>
+          {isToday ? <button className="btn btn-primary btn-sm" onClick={() => move(item, "checked_in")} type="button">受付する</button> : null}
+          <details className="more-menu">
+            <summary aria-label={`${item.patientName} のその他の操作`} className="btn btn-chip">…</summary>
+            <div className="more-menu-list">
+              <button className="btn btn-ghost" onClick={() => move(item, "cancelled")} type="button">キャンセル</button>
+              {isToday ? <button className="btn btn-ghost" onClick={() => move(item, "no_show")} type="button">来院なし</button> : null}
+            </div>
+          </details>
+        </>
+      );
+    }
+    if (item.status === "cancelled" || item.status === "no_show") {
+      return <button className="btn btn-chip" onClick={() => move(item, "booked")} type="button">予約に戻す</button>;
+    }
+    if (BOARD_COLUMNS.includes(item.status) && item.patientId) {
+      return <button className="btn btn-chip" onClick={() => openChart(item)} type="button">{data.encountersByPatient[item.patientId] ? "カルテを開く" : "カルテ作成"}</button>;
+    }
+    return null;
+  }
 
   function renderCard(item, showStatus = false) {
     return (
@@ -170,54 +204,33 @@ export function ReceptionWorkspace() {
         </section>
       )}
 
-      <div className="reception-lists">
-        <section className="panel" aria-labelledby="booked-heading">
-          <h2 id="booked-heading">未来院の予約 <span className="count">{booked.length}</span></h2>
-          {booked.length === 0 ? <p className="empty">未来院の予約はありません。</p> : (
-            <ul className="upcoming-list">
-              {booked.map((item) => (
-                <li className="upcoming-row" key={item.appointmentId}>
-                  <span className="upcoming-time mono">{item.time || "—"}</span>
-                  <span className="upcoming-patient">
-                    {item.patientId ? <Link href={`/patients/${item.patientId}`}>{item.patientName}</Link> : <>{item.patientName} <span className="tag tag-warn">未登録</span></>}
-                    <span className="tag">{APPOINTMENT_PURPOSE_LABELS[item.purpose]}</span>
-                  </span>
-                  <span className="upcoming-note small muted">{item.note}</span>
-                  {canReceive ? (
-                    <span className="row-actions">
-                      {isToday ? <button className="btn btn-primary btn-sm" onClick={() => move(item, "checked_in")} type="button">受付する</button> : null}
-                      <details className="more-menu">
-                        <summary aria-label={`${item.patientName} のその他の操作`} className="btn btn-chip">…</summary>
-                        <div className="more-menu-list">
-                          <button className="btn btn-ghost" onClick={() => move(item, "cancelled")} type="button">キャンセル</button>
-                          {isToday ? <button className="btn btn-ghost" onClick={() => move(item, "no_show")} type="button">来院なし</button> : null}
-                        </div>
-                      </details>
-                    </span>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-        <section className="panel" aria-labelledby="finished-heading">
-          <h2 id="finished-heading">終了・キャンセル <span className="count">{finished.length}</span></h2>
-          {finished.length === 0 ? <p className="empty">まだありません。</p> : (
-            <ul className="finished-list">
-              {finished.map((item) => (
-                <li key={item.appointmentId}>
-                  <span className="mono small">{item.queueNumber ? `#${item.queueNumber}` : item.time || "—"}</span>
-                  <span>{item.patientName}</span>
-                  <span className={`tag ${item.status === "done" ? "tag-ok" : ""}`}>{APPOINTMENT_STATUS_LABELS[item.status]}</span>
-                  {canReceive && item.status !== "done" ? (
-                    <button className="btn btn-chip" onClick={() => move(item, "booked")} type="button">予約に戻す</button>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      </div>
+      <section aria-label="予約・受付の一覧" className="panel list-panel">
+        <div className="status-tabs" role="tablist">
+          {LIST_TABS.map(([key, label]) => (
+            <button aria-selected={listTab === key} className="status-tab" key={key} onClick={() => setListTab(key)} role="tab" type="button">
+              {label} <span className="count">{listItems(key).length}</span>
+            </button>
+          ))}
+        </div>
+        {listItems(listTab).length === 0 ? (
+          <p className="empty">{LIST_EMPTY[listTab]}</p>
+        ) : (
+          <ul className="upcoming-list">
+            {listItems(listTab).map((item) => (
+              <li className={`upcoming-row is-${item.status}`} key={item.appointmentId}>
+                <span className="upcoming-time mono">{item.queueNumber && item.status !== "booked" ? `#${item.queueNumber}` : item.time || "—"}</span>
+                <span className="upcoming-patient">
+                  {item.patientId ? <Link href={`/patients/${item.patientId}`}>{item.patientName}</Link> : <>{item.patientName} <span className="tag tag-warn">未登録</span></>}
+                  <span className="tag">{APPOINTMENT_PURPOSE_LABELS[item.purpose]}</span>
+                  {item.status !== "booked" ? <span className={`tag appointment-${item.status}`}>{APPOINTMENT_STATUS_LABELS[item.status]}</span> : null}
+                </span>
+                <span className="upcoming-note small muted">{item.note}</span>
+                <span className="row-actions">{rowActions(item)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       {dialog ? (
         <AppointmentDialog

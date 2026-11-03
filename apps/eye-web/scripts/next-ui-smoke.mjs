@@ -59,8 +59,9 @@ async function runDoctorFlow(browser) {
   const pageErrors = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
   await login(page, "director");
-  await page.getByRole("heading", { name: "受診一覧" }).waitFor();
+  await page.getByRole("heading", { name: /本日の患者/u }).waitFor();
 
+  await page.getByLabel("患者検索").fill("見本");
   await page.locator(".patient-row").filter({ hasText: "見本 花子" }).click();
   await page.getByRole("button", { name: "初診カルテを作成" }).click();
   await page.getByRole("heading", { name: "検査", exact: true }).waitFor();
@@ -299,6 +300,7 @@ async function runOrthoptistFlow(browser) {
   const context = await browser.newContext({ viewport: { width: 820, height: 1180 } });
   const page = await context.newPage();
   await login(page, "orthoptist");
+  await page.getByLabel("患者検索").fill("試験");
   await page.locator(".patient-row").filter({ hasText: "試験 一郎" }).click();
   await page.getByRole("button", { name: "初診カルテを作成" }).click();
   await page.getByRole("heading", { name: "検査", exact: true }).waitFor();

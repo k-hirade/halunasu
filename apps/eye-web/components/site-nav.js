@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { BRAND_NAME, PRODUCT_NAME } from "../lib/brand";
 import { THEME_STORAGE_KEY } from "../lib/theme";
+import { PatientSearch } from "./patient-search";
 import { usePlatformAuth } from "./platform-auth";
 
 const LINKS = [
@@ -64,6 +65,7 @@ export function SiteNav() {
               <Link aria-current={current === link ? "page" : undefined} className="eye-nav-link" href={link.href} key={link.href}>{link.label}</Link>
             ))}
           </div>
+          <PatientSearch onNavigate={() => setMenuOpen(false)} />
           <div className="site-nav-actions">
             <button aria-pressed={dark} className="nav-command" onClick={toggleDark} type="button">{dark ? "通常表示" : "暗室表示"}</button>
             <span className="site-nav-user">{session?.loginId || ""}</span>

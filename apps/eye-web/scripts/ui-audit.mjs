@@ -61,6 +61,11 @@ try {
         await page.waitForTimeout(name === "login" ? 1500 : 2500);
         await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
         if (name === "menu" && width < 768) await page.getByRole("button", { name: "メニュー" }).click();
+        if (name === "search") {
+          if (width < 768) await page.getByRole("button", { name: "メニュー" }).click();
+          await page.getByLabel("患者検索").fill("模");
+          await page.waitForTimeout(800);
+        }
         if (name === "editor-history" && width < 1280) await page.getByRole("button", { name: /^過去カルテ/u }).click();
         if (name === "editor-side" && width < 1024) await page.getByRole("button", { name: /^確認・比較/u }).click();
         if (name.startsWith("editor-") && !name.endsWith("dark")) await page.waitForTimeout(400);
@@ -143,6 +148,7 @@ async function prepare(browser) {
       "editor-dark": encounterPath,
       "reception-dark": "/reception",
       menu: "/reception",
+      search: "/",
       "editor-history": encounterPath,
       "editor-side": encounterPath
     }

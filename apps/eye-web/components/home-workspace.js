@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useEyeApi } from "./eye-api";
-import { addDays, APPOINTMENT_PURPOSE_LABELS, APPOINTMENT_STATUS_LABELS, diagnosisText, formatDate, patientLine, todayIso, VISIT_TYPE_LABELS } from "../lib/format";
+import { addDays, APPOINTMENT_PURPOSE_LABELS, APPOINTMENT_STATUS_LABELS, diagnosisText, formatDate, todayIso, VISIT_TYPE_LABELS } from "../lib/format";
 
 const EMPTY_PATIENT = { displayName: "", displayNameKana: "", birthDate: "", sex: "unknown", primaryPatientNumber: "" };
 
@@ -14,8 +14,6 @@ export function HomeWorkspace() {
   const [date, setDate] = useState(todayIso());
   const [encounters, setEncounters] = useState([]);
   const [appointments, setAppointments] = useState([]);
-  const [query, setQuery] = useState("");
-  const [patients, setPatients] = useState([]);
   const [context, setContext] = useState(null);
   const [registering, setRegistering] = useState(false);
   const [draft, setDraft] = useState(EMPTY_PATIENT);
@@ -37,16 +35,6 @@ export function HomeWorkspace() {
       .catch((nextError) => { if (!cancelled) setError(nextError.message); });
     return () => { cancelled = true; };
   }, [api, date]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const handle = setTimeout(() => {
-      api("/v1/eye/patients/search", { method: "POST", body: { q: query.trim() } })
-        .then((payload) => { if (!cancelled) setPatients(payload.patients); })
-        .catch((nextError) => { if (!cancelled) setError(nextError.message); });
-    }, 250);
-    return () => { cancelled = true; clearTimeout(handle); };
-  }, [api, query]);
 
   // 受付（予約・来院）とカルテを 1 つの一覧にする。予約のない患者のカルテも末尾に出す。
   const encounterByPatient = new Map(encounters.map((encounter) => [encounter.patientId, encounter]));
@@ -97,77 +85,50 @@ export function HomeWorkspace() {
     <main className="eye-page">
       <header className="page-head">
         <div>
-          <h1>受診一覧</h1>
-          <p className="page-sub">{context ? userLine(context) : " "}</p>
+          <h1>{date === todayIso() ? "本日の患者" : `${formatDate(date)} の患者`} <span className="count">{rows.length}</span></h1>
+          <p className="page-sub">{context ? userLine(context) : " "}</p>
+        </div>
+        <div className="head-actions">
+          <div className="date-nav">
+            <button className="btn btn-ghost" onClick={() => setDate(addDays(date, -1))} type="button" aria-label="前日">‹</button>
+            <input aria-label="受診日" className="input input-date" onChange={(event) => setDate(event.target.value || todayIso())} type="date" value={date} />
+            <button className="btn btn-ghost" onClick={() => setDate(addDays(date, 1))} type="button" aria-label="翌日">›</button>
+            {date !== todayIso() ? <button className="btn btn-ghost" onClick={() => setDate(todayIso())} type="button">今日</button> : null}
+          </div>
+          {context?.canRegisterPatients ? (
+            <button className="btn btn-primary" onClick={() => { setDraft(EMPTY_PATIENT); setRegistering(true); }} type="button">新規患者を登録</button>
+          ) : null}
         </div>
       </header>
       {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
 
-      <div className="home-grid">
-        <section className="panel" aria-labelledby="today-heading">
-          <div className="panel-head">
-            <h2 id="today-heading">{date === todayIso() ? "本日の患者" : `${formatDate(date)} の患者`} <span className="count">{rows.length}</span></h2>
-            <div className="date-nav">
-              <button className="btn btn-ghost" onClick={() => setDate(addDays(date, -1))} type="button" aria-label="前日">‹</button>
-              <input aria-label="受診日" className="input input-date" onChange={(event) => setDate(event.target.value || todayIso())} type="date" value={date} />
-              <button className="btn btn-ghost" onClick={() => setDate(addDays(date, 1))} type="button" aria-label="翌日">›</button>
-              {date !== todayIso() ? <button className="btn btn-ghost" onClick={() => setDate(todayIso())} type="button">今日</button> : null}
-            </div>
+      <section className="panel list-panel" aria-label="本日の患者">
+        {rows.length === 0 ? (
+          <div className="empty-state">
+            <p><strong>この日の予約・カルテはまだありません。</strong></p>
+            <p className="muted small">受付で当日受付するか、画面上部の検索（<kbd>/</kbd> キー）から患者を開いてカルテを作成します。</p>
           </div>
-          {rows.length === 0 ? (
-            <p className="empty">この日の予約・カルテはまだありません。受付で当日受付するか、右の患者検索から患者を開いてください。</p>
-          ) : (
-            <ul className="encounter-list">
-              {rows.map((row) => (
-                <li key={row.key}>
-                  <Link className="encounter-row" href={row.href}>
-                    <span className="encounter-name">
-                      <span className="encounter-slot mono">{row.slot}</span>
-                      <strong>{row.name}</strong>
-                      <span className="muted">{row.kana}</span>
-                    </span>
-                    <span className="encounter-meta">
-                      {row.appointmentStatus ? <span className={`tag appointment-${row.appointmentStatus}`}>{APPOINTMENT_STATUS_LABELS[row.appointmentStatus]}</span> : null}
-                      {row.encounter ? <StatusTag encounter={row.encounter} /> : <span className="tag">カルテ未作成</span>}
-                    </span>
-                    <span className="encounter-dx muted">{row.detail}</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <section className="panel" aria-labelledby="patients-heading">
-          <div className="panel-head">
-            <h2 id="patients-heading">患者</h2>
-            {context?.canRegisterPatients ? (
-              <button className="btn btn-primary" onClick={() => { setDraft(EMPTY_PATIENT); setRegistering(true); }} type="button">新規患者を登録</button>
-            ) : null}
-          </div>
-          <input
-            aria-label="患者検索"
-            autoFocus
-            className="input input-search"
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="氏名・カナ・患者番号で検索"
-            type="search"
-            value={query}
-          />
-          <ul className="patient-list">
-            {patients.map((patient) => (
-              <li key={patient.patientId}>
-                <Link className="patient-row" href={`/patients/${patient.patientId}`}>
-                  <strong>{patient.displayName}</strong>
-                  <span className="muted">{patient.displayNameKana}</span>
-                  <span className="muted small">{patientLine(patient)}</span>
+        ) : (
+          <ul className="encounter-list">
+            {rows.map((row) => (
+              <li key={row.key}>
+                <Link className="encounter-row" href={row.href}>
+                  <span className="encounter-name">
+                    <span className="encounter-slot mono">{row.slot}</span>
+                    <strong>{row.name}</strong>
+                    <span className="muted">{row.kana}</span>
+                  </span>
+                  <span className="encounter-meta">
+                    {row.appointmentStatus ? <span className={`tag appointment-${row.appointmentStatus}`}>{APPOINTMENT_STATUS_LABELS[row.appointmentStatus]}</span> : null}
+                    {row.encounter ? <StatusTag encounter={row.encounter} /> : <span className="tag">カルテ未作成</span>}
+                  </span>
+                  <span className="encounter-dx muted">{row.detail}</span>
                 </Link>
               </li>
             ))}
-            {patients.length === 0 ? <li className="empty">該当する患者がいません。</li> : null}
           </ul>
-        </section>
-      </div>
+        )}
+      </section>
 
       {registering ? (
         <div className="dialog-backdrop" role="presentation">

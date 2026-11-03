@@ -3015,3 +3015,155 @@ fieldset:disabled .input::placeholder {
 .document-page {
   max-width: 948px;
 }
+
+/* ヘッダーの患者検索 */
+.nav-search {
+  flex: 0 1 340px;
+  min-width: 200px;
+  position: relative;
+}
+
+.input.nav-search-input {
+  background: var(--surface-muted);
+  min-height: 38px;
+  padding-right: 32px;
+}
+
+.nav-search-key {
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  line-height: 1;
+  padding: 3px 6px;
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.nav-search-input:focus + .nav-search-key {
+  display: none;
+}
+
+.nav-search-results {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
+  left: 0;
+  list-style: none;
+  margin: 0;
+  max-height: 420px;
+  overflow-y: auto;
+  padding: 4px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 40;
+}
+
+.nav-search-results .patient-row {
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+}
+
+.nav-search-results .patient-row.is-active {
+  background: var(--teal-soft);
+}
+
+.nav-search-empty {
+  padding: 10px;
+}
+
+@media (max-width: 1023px) {
+  .nav-search {
+    flex-basis: 240px;
+    min-width: 160px;
+  }
+}
+
+@media (max-width: 767px) {
+  .nav-search {
+    flex-basis: auto;
+    min-width: 0;
+  }
+
+  .input.nav-search-input {
+    min-height: 44px;
+  }
+
+  .nav-search-key {
+    display: none;
+  }
+}
+
+/* 1 枚の全幅リスト（受付の予約一覧・本日の患者） */
+.list-panel {
+  padding-top: 12px;
+}
+
+.list-panel .status-tabs {
+  border-bottom: 1px solid var(--line);
+  margin: 0 -18px 4px;
+  padding: 0 18px 10px;
+}
+
+.upcoming-row.is-cancelled,
+.upcoming-row.is-no_show {
+  opacity: 0.7;
+}
+
+.upcoming-row.is-cancelled .upcoming-patient a,
+.upcoming-row.is-no_show .upcoming-patient a {
+  text-decoration: line-through;
+}
+
+.tag.appointment-cancelled,
+.tag.appointment-no_show {
+  color: var(--muted);
+}
+
+.list-panel .encounter-row {
+  padding: 12px 8px;
+}
+
+.list-panel .encounter-name strong {
+  font-size: var(--fs-lg);
+}
+
+kbd {
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  padding: 1px 5px;
+}
+
+.upcoming-row {
+  grid-template-columns: 64px minmax(220px, max-content) minmax(0, 1fr) auto;
+}
+
+@media (max-width: 767px) {
+  .upcoming-row {
+    grid-template-columns: 56px minmax(0, 1fr) auto;
+  }
+
+  .encounter-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .encounter-name {
+    flex-wrap: wrap;
+  }
+
+  .encounter-name strong,
+  .encounter-name .muted {
+    white-space: nowrap;
+  }
+}
