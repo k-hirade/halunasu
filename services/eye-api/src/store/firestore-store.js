@@ -118,6 +118,10 @@ export class FirestoreEyeStore {
     return handoff;
   }
 
+  async getBillingHandoff(orgId, handoffId) {
+    return dataOrNull(await this.doc(eyeBillingHandoffPath(orgId, handoffId)).get());
+  }
+
   async listBillingHandoffsByDate(orgId, date) {
     return docs(await this.orgCollection(orgId, collections.eyeBillingHandoffs).where("date", "==", date).get());
   }

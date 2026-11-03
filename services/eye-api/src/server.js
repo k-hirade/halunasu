@@ -58,7 +58,7 @@ import {
   buildAppointment,
   isActiveAppointment
 } from "./appointments.js";
-import { billingCsv, buildBillingEncounter, handoffStatus } from "./billing.js";
+import { billingCsv, buildBillingEncounter, handoffListItem, handoffSnapshotOf, handoffStatus } from "./billing.js";
 import {
   applyDocumentUpdate,
   buildDocumentDraft,
@@ -746,7 +746,7 @@ async function routeEyeApiRequest(input = {}) {
       handoffId: createId("ebh"),
       orgId,
       date,
-      encounters: selected.map((item) => ({ encounterId: item.encounterId, version: item.version, fingerprint: item.fingerprint })),
+      encounters: selected.map(handoffSnapshotOf),
       csvSha256: createHashHex(csv),
       createdBy: actor,
       createdAt: now
@@ -754,6 +754,19 @@ async function routeEyeApiRequest(input = {}) {
     await eyeStore.createBillingHandoff(orgId, handoff);
     await audit({ eventType: "eye.billing_handed_off", targetType: "billing_handoff", targetId: handoff.handoffId, safePayload: { date, encounterCount: selected.length } });
     return created({ handoff, csv });
+  }
+
+  // 連携した回の CSV を取り直す。保存した品目の写しから作り直し、そのとき渡した CSV と一致するときだけ返す。
+  if (method === "GET" && parts.length === 5 && matches(parts.slice(0, 4), ["v1", "eye", "billing", "handoffs"]) && parts[4].endsWith(".csv")) {
+    requireAccess(context, EYE_RECEPTION_ROLES, "Billing access is required");
+    const handoffId = parts[4].slice(0, -4);
+    const handoff = await eyeStore.getBillingHandoff(orgId, handoffId);
+    if (!handoff) throw notFoundError("連携の記録が見つかりません。");
+    if (!handoffListItem(handoff).hasSnapshot) throw conflictError("この連携は品目の記録を保存する前のものなので、CSV を作り直せません。");
+    const csv = billingCsv(handoff.encounters);
+    if (createHashHex(csv) !== handoff.csvSha256) throw conflictError("記録から作り直した CSV が、連携したときのものと一致しません。");
+    await audit({ eventType: "eye.billing_handoff_redownloaded", targetType: "billing_handoff", targetId: handoffId, safePayload: { date: handoff.date, encounterCount: handoff.encounters.length } });
+    return { statusCode: 200, raw: Buffer.from(csv, "utf8"), headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="eye-billing-${handoff.date}-${handoffId.slice(-6)}.csv"` } };
   }
 
   if (method === "GET" && matches(parts, ["v1", "eye", "drug-presets"])) {
@@ -882,12 +895,33 @@ async function billingDay(eyeStore, platformStore, orgId, date) {
     }, documents);
     return { ...built, handoff: handoffStatus(built, handoffs) };
   });
+  // 再連携が必要なものには、修正の理由（その版を確定したときの理由）を添える。
+  for (const item of billing) {
+    if (item.handoff.state !== "changed" || !(item.version > 1)) continue;
+    const version = await eyeStore.getVersion(orgId, `${item.encounterId}_v${item.version}`);
+    item.amendmentReason = version?.amendmentReason || "";
+  }
   return {
     date,
     encounters: billing,
-    drafts: encounters.filter((item) => item.status === "draft").map(encounterSummary),
-    handoffs: handoffs.sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)))
+    // 未確定のカルテ。修正中（連携済みのあとで医師が開いた）かどうかが分かるよう、最後の連携と修正の理由を付ける。
+    drafts: encounters.filter((item) => item.status === "draft").map((item) => ({
+      ...encounterSummary(item),
+      amendmentReason: item.amendment?.reason || "",
+      amendmentRequestedAt: item.amendment?.requestedAt || null,
+      handoff: lastHandoffOf(item.encounterId, handoffs)
+    })),
+    handoffs: handoffs.sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt))).map(handoffListItem)
   };
+}
+
+function lastHandoffOf(encounterId, handoffs) {
+  const latest = handoffs
+    .filter((handoff) => handoff.encounters.some((item) => item.encounterId === encounterId))
+    .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)))[0];
+  if (!latest) return { state: "pending" };
+  const entry = latest.encounters.find((item) => item.encounterId === encounterId);
+  return { state: "handed_off", handoffId: latest.handoffId, version: entry.version, at: latest.createdAt, by: latest.createdBy };
 }
 
 function createHashHex(text) {
@@ -1067,6 +1101,13 @@ function notFoundError(message) {
   const error = new Error(message);
   error.name = "NotFoundError";
   error.statusCode = 404;
+  return error;
+}
+
+function conflictError(message) {
+  const error = new Error(message);
+  error.name = "ConflictError";
+  error.statusCode = 409;
   return error;
 }
 

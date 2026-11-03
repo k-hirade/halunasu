@@ -40,7 +40,33 @@ export function buildBillingEncounter(encounter, documents = []) {
     patient: encounter.patientSnapshot,
     diagnoses: content.diagnoses || [],
     items,
-    fingerprint: fingerprintOf(encounter, items)
+    fingerprint: fingerprintOf(encounter, items),
+    itemsFingerprint: itemsFingerprintOf(encounter, items),
+    finalizedAt: encounter.finalizedAt || null,
+    finalizedBy: encounter.finalizedBy ? { displayName: encounter.finalizedBy.displayName || "" } : null
+  };
+}
+
+// 連携した回に何を渡したかの写し。差分の表示と、その回の CSV の取り直しに使う。
+// Firestore に保存するため undefined は null にそろえ、配列の中に配列を入れない。
+export function handoffSnapshotOf(encounter) {
+  const patient = encounter.patient || {};
+  return {
+    encounterId: encounter.encounterId,
+    version: encounter.version,
+    fingerprint: encounter.fingerprint,
+    itemsFingerprint: encounter.itemsFingerprint,
+    encounterDate: encounter.encounterDate,
+    visitType: encounter.visitType || "",
+    patient: {
+      primaryPatientNumber: patient.primaryPatientNumber || "",
+      displayName: patient.displayName || "",
+      displayNameKana: patient.displayNameKana || "",
+      birthDate: patient.birthDate || "",
+      sex: patient.sex || ""
+    },
+    items: normalizedItems(encounter.items),
+    diagnoses: (encounter.diagnoses || []).map((item) => ({ name: item.name || "", eye: item.eye || "", status: item.status || "" }))
   };
 }
 
@@ -63,18 +89,48 @@ export function handoffStatus(encounter, handoffs) {
     .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)))[0];
   if (!latest) return { state: "pending" };
   const entry = latest.encounters.find((item) => item.encounterId === encounter.encounterId);
-  return {
-    state: entry.fingerprint === encounter.fingerprint ? "handed_off" : "changed",
+  // 品目だけの指紋を持つ記録はそれで比べる（所見だけの修正では再連携にしない）。持たない古い記録は版を含む指紋のまま比べる。
+  const same = entry.itemsFingerprint
+    ? entry.itemsFingerprint === encounter.itemsFingerprint
+    : entry.fingerprint === encounter.fingerprint;
+  const status = {
+    state: same ? "handed_off" : "changed",
     handoffId: latest.handoffId,
     version: entry.version,
     at: latest.createdAt,
     by: latest.createdBy
+  };
+  if (!same) {
+    // 前回の品目の写しがない（この機能より前の連携）ときは null。画面はその旨を出す。
+    status.previousItems = Array.isArray(entry.items) ? entry.items : null;
+    status.previousDiagnoses = Array.isArray(entry.diagnoses) ? entry.diagnoses : null;
+  }
+  return status;
+}
+
+// 連携の記録を一覧に返すときの形。品目の写しは重いので外し、誰の分かだけを残す。
+export function handoffListItem(handoff) {
+  return {
+    ...handoff,
+    encounters: handoff.encounters.map(({ items, diagnoses, ...entry }) => entry),
+    hasSnapshot: handoff.encounters.every((entry) => Array.isArray(entry.items) && entry.patient)
   };
 }
 
 // 連携した内容の指紋。カルテが修正されて実施内容が変わったら「再連携が必要」と分かるようにする。
 function fingerprintOf(encounter, items) {
   return createHash("sha256").update(JSON.stringify([encounter.encounterId, encounter.versionCount, encounter.visitType, items])).digest("hex").slice(0, 32);
+}
+
+// 実施内容だけの指紋（版は含めない）。品目の正規化は連携時の写しと同じにする。
+function itemsFingerprintOf(encounter, items) {
+  return createHash("sha256").update(JSON.stringify([encounter.encounterId, encounter.visitType || "", normalizedItems(items)])).digest("hex").slice(0, 32);
+}
+
+const ITEM_FIELDS = ["category", "code", "name", "eye", "quantity", "unit", "days", "route", "usage", "note"];
+
+function normalizedItems(items = []) {
+  return items.map((item) => Object.fromEntries(ITEM_FIELDS.map((key) => [key, item[key] ?? null])));
 }
 
 function csvCell(value) {
