@@ -69,6 +69,24 @@ try {
         if (name === "editor-history" && width < 1280) await page.getByRole("button", { name: /^過去カルテ/u }).click();
         if (name === "editor-side" && width < 1024) await page.getByRole("button", { name: /^確認・比較/u }).click();
         if (name.startsWith("editor-") && !name.endsWith("dark")) await page.waitForTimeout(400);
+        if (name === "billing-diff") {
+          await page.getByRole("button", { name: "差分を見る" }).first().click();
+          await page.locator(".bill-status-pending .flow-row-open").first().click();
+          await page.waitForTimeout(300);
+        }
+        if (name === "billing-print") {
+          // 印刷ダイアログは開かず、印刷する連絡票の写しを残してから印刷の表示で撮る
+          await page.evaluate(() => {
+            window.print = () => {
+              const copy = document.querySelector(".bill-slips")?.cloneNode(true);
+              if (copy) document.body.appendChild(copy);
+            };
+          });
+          await page.locator("summary[aria-label='会計連携のその他の操作']").click();
+          await page.getByRole("button", { name: "この日の全員の連絡票を印刷" }).click();
+          await page.waitForTimeout(800);
+          await page.emulateMedia({ media: "print" });
+        }
         const tag = `${name}-${width}x${height}`;
         await page.screenshot({ path: join(outDir, `${tag}.png`) });
         await page.screenshot({ path: join(outDir, `${tag}-full.png`), fullPage: true });
@@ -130,6 +148,7 @@ async function prepare(browser) {
   const documentPath = new URL(page.url()).pathname;
   await page.getByLabel("宛先 医療機関").fill("県立中央病院");
   await page.waitForTimeout(2500);
+  if (!onlyPages || [...onlyPages].some((name) => name.startsWith("billing"))) await seedBilling(page);
   const storageState = await context.storageState();
   await context.close();
   return {
@@ -144,6 +163,8 @@ async function prepare(browser) {
       optical: `${encounterPath}/optical`,
       document: documentPath,
       billing: "/billing",
+      "billing-diff": "/billing",
+      "billing-print": "/billing",
       settings: "/settings",
       "editor-dark": encounterPath,
       "reception-dark": "/reception",
@@ -156,6 +177,53 @@ async function prepare(browser) {
       "editor-side": encounterPath
     }
   };
+}
+
+// 会計連携の撮影用に、本日の確定カルテを状態ごとに用意する（未連携 2・連携済み 1・要再連携 1・修正中 1）。
+async function seedBilling(page) {
+  const result = await page.evaluate(async () => {
+    const csrf = decodeURIComponent((document.cookie.match(/(?:^|; )halunasu_csrf=([^;]*)/u) || [])[1] || "");
+    const call = async (method, path, body) => {
+      const response = await fetch(`/api/eye${path}`, { method, credentials: "include", headers: { "content-type": "application/json", "x-csrf-token": csrf }, body: body ? JSON.stringify(body) : undefined });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(`${method} ${path} ${response.status} ${JSON.stringify(payload).slice(0, 200)}`);
+      return payload;
+    };
+    const today = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+    const order = (code, name) => ({ orderId: code, code, name, kind: "exam", eye: "ou", status: "performed" });
+    const drop = (name, timesPerDay, quantity = 1) => ({ kind: "eye_drop", name, eye: "ou", timesPerDay, quantity, unit: "本", route: "outside" });
+    const people = [
+      { displayName: "会計 一郎", displayNameKana: "カイケイ イチロウ", birthDate: "1952-05-01", sex: "male", primaryPatientNumber: "D021",
+        content: { diagnoses: [{ name: "原発開放隅角緑内障", eye: "ou" }], orders: [order("va", "視力検査"), order("iop", "眼圧検査"), order("oct_disc", "OCT（視神経乳頭）")], prescriptions: [drop("ラタノプロスト点眼液0.005%", 1, 2), drop("チモロールマレイン酸塩点眼液0.5%", 2)] } },
+      { displayName: "連携 花子", displayNameKana: "レンケイ ハナコ", birthDate: "1990-08-12", sex: "female", primaryPatientNumber: "D022",
+        content: { diagnoses: [{ name: "アレルギー性結膜炎", eye: "ou" }], orders: [order("va", "視力検査"), order("slit", "細隙灯顕微鏡検査")], prescriptions: [drop("オロパタジン点眼液0.1%", 4)] } },
+      { displayName: "済 次郎", displayNameKana: "スミ ジロウ", birthDate: "1968-01-20", sex: "male", primaryPatientNumber: "D023",
+        content: { orders: [order("va", "視力検査")], prescriptions: [] } },
+      { displayName: "再送 恵子", displayNameKana: "サイソウ ケイコ", birthDate: "1949-11-03", sex: "female", primaryPatientNumber: "D014",
+        content: { diagnoses: [{ name: "原発開放隅角緑内障", eye: "ou" }], orders: [order("iop", "眼圧検査"), order("va", "視力検査")], prescriptions: [drop("ラタノプロスト点眼液0.005%", 1, 2)] } },
+      { displayName: "修正 健", displayNameKana: "シュウセイ ケン", birthDate: "1946-04-10", sex: "male", primaryPatientNumber: "D030",
+        content: { orders: [order("iop", "眼圧検査")], prescriptions: [drop("ブリモニジン点眼液0.1%", 2)] } }
+    ];
+    const ids = [];
+    for (const person of people) {
+      const { content, ...patientInput } = person;
+      const { patient } = await call("POST", "/v1/eye/patients", patientInput);
+      const created = await call("POST", "/v1/eye/encounters", { patientId: patient.patientId, encounterDate: today, visitType: "revisit", content });
+      const id = created.encounter.encounterId;
+      const confirmed = await call("POST", `/v1/eye/encounters/${id}/exam-confirm`, { expectedRevision: created.encounter.revision, eye: "both" });
+      const finalized = await call("POST", `/v1/eye/encounters/${id}/finalize`, { expectedRevision: confirmed.encounter.revision });
+      ids.push(finalized.encounter);
+    }
+    const [, , done, resend, amending] = ids;
+    await call("POST", "/v1/eye/billing/handoffs", { date: today, encounterIds: [done.encounterId, resend.encounterId, amending.encounterId] });
+    const amended = await call("POST", `/v1/eye/encounters/${resend.encounterId}/amend`, { expectedRevision: resend.revision, reason: "点眼薬の変更" });
+    const content = { ...amended.encounter.content, prescriptions: [drop("チモロールマレイン酸塩点眼液0.5%", 2, 2)] };
+    const patched = await call("PATCH", `/v1/eye/encounters/${resend.encounterId}`, { expectedRevision: amended.encounter.revision, content });
+    await call("POST", `/v1/eye/encounters/${resend.encounterId}/finalize`, { expectedRevision: patched.encounter.revision });
+    await call("POST", `/v1/eye/encounters/${amending.encounterId}/amend`, { expectedRevision: amending.revision, reason: "処方日数の訂正" });
+    return ids.length;
+  });
+  if (result !== 5) throw new Error("billing seed failed");
 }
 
 function printSummary(all) {

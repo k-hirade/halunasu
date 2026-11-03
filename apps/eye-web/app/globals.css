@@ -1,5 +1,6 @@
 /* 共通デザインの CSS はこのファイルの先頭で読み込む。同じファイル内なので必ず先に入り、以下の眼科側の指定が優先される。 */
 @import "@halunasu/web-ui/styles/halunasu-ui.css";
+@import "./styles/billing.css";
 
 /*
  * 眼科カルテのデザイントークン（唯一の定義元）。
@@ -2126,55 +2127,6 @@ fieldset:disabled .input::placeholder {
   }
 }
 
-/* 会計連携 */
-.billing-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.billing-list {
-  display: grid;
-  gap: 10px;
-}
-
-.billing-card {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 12px 14px;
-}
-
-.billing-card.is-changed {
-  border-color: var(--amber);
-  box-shadow: inset 3px 0 0 var(--amber);
-}
-
-.billing-card-head {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-  margin-bottom: 6px;
-}
-
-.billing-card-head .check-line {
-  margin: 0;
-}
-
-.tag.billing-state-handed_off {
-  background: var(--green-soft);
-  border-color: var(--green-line);
-  color: var(--green);
-}
-
-.tag.billing-state-changed {
-  background: var(--amber-soft);
-  border-color: var(--amber-line);
-  color: var(--amber);
-}
-
 .sr-only {
   clip: rect(0 0 0 0);
   height: 1px;
@@ -2190,11 +2142,6 @@ fieldset:disabled .input::placeholder {
 @media print {
   .print-only {
     display: block;
-  }
-
-  .billing-card {
-    break-inside: avoid;
-    margin-bottom: 8px;
   }
 }
 

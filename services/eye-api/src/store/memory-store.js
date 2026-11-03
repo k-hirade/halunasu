@@ -24,6 +24,10 @@ export class MemoryEyeStore {
     return clone(handoff);
   }
 
+  getBillingHandoff(orgId, handoffId) {
+    return cloneOrNull(this.forOrg(this.billingHandoffs, orgId).get(handoffId));
+  }
+
   listBillingHandoffsByDate(orgId, date) {
     return [...this.forOrg(this.billingHandoffs, orgId).values()].filter((item) => item.date === date).map(clone);
   }

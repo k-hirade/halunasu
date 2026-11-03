@@ -768,15 +768,125 @@ test("builds the billing handoff from finalized charts and flags charts amended 
   assert.equal((await request(stores, "GET", "/v1/eye/billing/day?date=2026-10-27", undefined, clerk)).body.encounters[0].handoff.state, "handed_off");
 
   await request(stores, "POST", `/v1/eye/encounters/${id}/amend`, { expectedRevision: 3, reason: "検査の追記" }, doctor);
-  await request(stores, "POST", `/v1/eye/encounters/${id}/finalize`, { expectedRevision: 4 }, doctor);
+  const amending = await request(stores, "GET", "/v1/eye/billing/day?date=2026-10-27", undefined, clerk);
+  assert.equal(amending.body.encounters.length, 0);
+  const amendingDraft = amending.body.drafts.find((item) => item.encounterId === id);
+  assert.equal(amendingDraft.amending, true, "a chart reopened after the handoff stays visible as amending");
+  assert.equal(amendingDraft.amendmentReason, "検査の追記");
+  assert.equal(amendingDraft.handoff.state, "handed_off");
+  assert.equal(amendingDraft.handoff.version, 1);
+  assert.equal(amendingDraft.patientSnapshot.primaryPatientNumber, "000123", "drafts carry the current patient number too");
+  assert.equal(amending.body.drafts.find((item) => item.encounterId !== id).handoff.state, "pending");
+  const current = (await request(stores, "GET", `/v1/eye/encounters/${id}`, undefined, doctor)).body.encounter;
+  const patched = await request(stores, "PATCH", `/v1/eye/encounters/${id}`, {
+    expectedRevision: current.revision,
+    content: { ...current.content, orders: [...current.content.orders, { orderId: "o3", code: "iop", name: "眼圧検査", kind: "exam", eye: "ou", status: "performed" }] }
+  }, doctor);
+  assert.equal(patched.statusCode, 200);
+  const refinalized = await request(stores, "POST", `/v1/eye/encounters/${id}/finalize`, { expectedRevision: patched.body.encounter.revision }, doctor);
+  assert.equal(refinalized.statusCode, 200, JSON.stringify(refinalized.body));
   const after = await request(stores, "GET", "/v1/eye/billing/day?date=2026-10-27", undefined, clerk);
-  assert.equal(after.body.encounters[0].handoff.state, "changed", "a re-finalized chart needs another handoff");
+  const changed = after.body.encounters[0];
+  assert.equal(changed.handoff.state, "changed", "a re-finalized chart with different items needs another handoff");
+  assert.deepEqual(changed.handoff.previousItems.map((item) => item.name), ["静的視野検査", "ラタノプロスト点眼液", "眼鏡処方箋"]);
+  assert.equal(changed.handoff.version, 1);
+  assert.equal(changed.version, 2);
+  assert.equal(changed.amendmentReason, "検査の追記");
+  assert.equal(changed.finalizedBy.displayName, "eye-doctor");
+  assert.ok(changed.finalizedAt);
+  assert.equal(after.body.handoffs[0].encounters[0].items, undefined, "the day listing leaves the item snapshot out");
+  assert.equal(after.body.handoffs[0].hasSnapshot, true);
 
   const csv = await request(stores, "GET", "/v1/eye/billing/day.csv?date=2026-10-27", undefined, clerk);
   assert.equal(csv.headers["content-type"], "text/csv; charset=utf-8");
   assert.equal((await request(stores, "GET", "/v1/eye/billing/day?date=2026-10-27", undefined, await signedHeaders(stores.platformStore, "viewer"))).statusCode, 403);
   assert.equal((await request(stores, "POST", "/v1/eye/billing/handoffs", { date: "2026-10-27", encounterIds: ["eenc_missing"] }, clerk)).statusCode, 400);
 });
+
+test("a re-finalized chart with the same items stays handed off; old handoff records keep the old comparison", async () => {
+  const stores = createStores();
+  const doctor = await signedHeaders(stores.platformStore, "doctor");
+  const clerk = await signedHeaders(stores.platformStore, "clerk");
+  const patient = await createPatient(stores, doctor);
+  const content = {
+    ...glaucomaContent({ iopOd: 15 }),
+    orders: [{ orderId: "o1", code: "vf_static", name: "静的視野検査", kind: "exam", eye: "ou", status: "performed" }],
+    prescriptions: [{ kind: "eye_drop", name: "ラタノプロスト点眼液", eye: "ou", timesPerDay: 1, quantity: 3, unit: "本" }]
+  };
+  const first = await finalizedEncounter(stores, doctor, patient.patientId, "2026-10-27", content);
+  const second = await finalizedEncounter(stores, doctor, patient.patientId, "2026-10-27", content);
+  const day = (await request(stores, "GET", "/v1/eye/billing/day?date=2026-10-27", undefined, clerk)).body;
+  const legacy = day.encounters.find((item) => item.encounterId === second.encounterId);
+  // この機能より前の連携記録: 版を含む指紋だけで、品目の写しがない。
+  const orgId = first.orgId;
+  stores.eyeStore.createBillingHandoff(orgId, {
+    handoffId: "ebh_legacy", orgId, date: "2026-10-27",
+    encounters: [{ encounterId: legacy.encounterId, version: legacy.version, fingerprint: legacy.fingerprint }],
+    csvSha256: "0".repeat(64), createdBy: { displayName: "受付" }, createdAt: "2026-10-27T01:00:00.000Z"
+  });
+  const handed = await request(stores, "POST", "/v1/eye/billing/handoffs", { date: "2026-10-27", encounterIds: [first.encounterId] }, clerk);
+  assert.equal(handed.statusCode, 201);
+  assertFirestoreSafe(handed.body.handoff);
+  const stored = await stores.eyeStore.getBillingHandoff(orgId, handed.body.handoff.handoffId);
+  assertFirestoreSafe(stored);
+  assert.ok(stored.encounters[0].itemsFingerprint);
+  assert.equal(stored.encounters[0].patient.primaryPatientNumber, "000123");
+
+  const before = (await request(stores, "GET", "/v1/eye/billing/day?date=2026-10-27", undefined, clerk)).body;
+  assert.equal(before.encounters.find((item) => item.encounterId === second.encounterId).handoff.state, "handed_off", "an old record still matches while nothing changed");
+
+  for (const encounter of [first, second]) {
+    const amended = await request(stores, "POST", `/v1/eye/encounters/${encounter.encounterId}/amend`, { expectedRevision: encounter.revision, reason: "所見の誤字" }, doctor);
+    const finalized = await request(stores, "POST", `/v1/eye/encounters/${encounter.encounterId}/finalize`, { expectedRevision: amended.body.encounter.revision }, doctor);
+    assert.equal(finalized.statusCode, 200, JSON.stringify(finalized.body));
+  }
+  const after = (await request(stores, "GET", "/v1/eye/billing/day?date=2026-10-27", undefined, clerk)).body;
+  const kept = after.encounters.find((item) => item.encounterId === first.encounterId);
+  assert.equal(kept.version, 2);
+  assert.equal(kept.handoff.state, "handed_off", "same items, new version: no re-handoff needed");
+  assert.equal(kept.handoff.previousItems, undefined);
+  const old = after.encounters.find((item) => item.encounterId === second.encounterId);
+  assert.equal(old.handoff.state, "changed", "an old record keeps the version-based comparison");
+  assert.equal(old.handoff.previousItems, null, "an old record has no item snapshot to diff against");
+  assert.equal(after.handoffs.find((item) => item.handoffId === "ebh_legacy").hasSnapshot, false);
+});
+
+test("re-downloads the CSV of a past handoff from its snapshot", async () => {
+  const stores = createStores();
+  const doctor = await signedHeaders(stores.platformStore, "doctor");
+  const clerk = await signedHeaders(stores.platformStore, "clerk");
+  const patient = await createPatient(stores, doctor);
+  const encounter = await finalizedEncounter(stores, doctor, patient.patientId, "2026-10-27", {
+    ...glaucomaContent({ iopOd: 15 }),
+    orders: [{ orderId: "o1", code: "vf_static", name: "静的視野検査", kind: "exam", eye: "ou", status: "performed" }],
+    prescriptions: [{ kind: "eye_drop", name: "ラタノプロスト点眼液", eye: "ou", timesPerDay: 1, quantity: 3, unit: "本", usage: "=就寝前, \"必ず\"" }]
+  });
+  const handed = await request(stores, "POST", "/v1/eye/billing/handoffs", { date: "2026-10-27", encounterIds: [encounter.encounterId] }, clerk);
+  const handoffId = handed.body.handoff.handoffId;
+  const again = await request(stores, "GET", `/v1/eye/billing/handoffs/${handoffId}.csv`, undefined, clerk);
+  assert.equal(again.statusCode, 200);
+  assert.equal(again.headers["content-type"], "text/csv; charset=utf-8");
+  assert.equal(again.raw.toString("utf8"), handed.body.csv, "the re-downloaded CSV is byte-identical to the one handed off");
+  assert.equal((await request(stores, "GET", `/v1/eye/billing/handoffs/${handoffId}.csv`, undefined, await signedHeaders(stores.platformStore, "viewer"))).statusCode, 403);
+  assert.equal((await request(stores, "GET", "/v1/eye/billing/handoffs/ebh_missing.csv", undefined, clerk)).statusCode, 404);
+  stores.eyeStore.createBillingHandoff(encounter.orgId, {
+    handoffId: "ebh_legacy", orgId: encounter.orgId, date: "2026-10-27",
+    encounters: [{ encounterId: encounter.encounterId, version: 1, fingerprint: "x" }],
+    csvSha256: "0".repeat(64), createdBy: { displayName: "受付" }, createdAt: "2026-10-27T01:00:00.000Z"
+  });
+  assert.equal((await request(stores, "GET", "/v1/eye/billing/handoffs/ebh_legacy.csv", undefined, clerk)).statusCode, 409);
+});
+
+// Firestore は undefined の値と、配列の中の配列を保存できない。
+function assertFirestoreSafe(value, path = "handoff", parentIsArray = false) {
+  assert.notEqual(value, undefined, `${path} is undefined`);
+  if (Array.isArray(value)) {
+    assert.equal(parentIsArray, false, `${path} is an array inside an array`);
+    value.forEach((item, index) => assertFirestoreSafe(item, `${path}[${index}]`, true));
+  } else if (value && typeof value === "object") {
+    for (const [key, item] of Object.entries(value)) assertFirestoreSafe(item, `${path}.${key}`, false);
+  }
+}
 
 test("exports a patient bundle and the clinic for migration", async () => {
   const stores = createStores();

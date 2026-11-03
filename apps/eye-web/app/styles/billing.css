@@ -1,0 +1,698 @@
+/*
+ * 会計連携（/billing）。受付の一覧（.flow-chips / .flow-group / .flow-rows）と同じ文法で、行だけを会計用に組む。
+ * 色は状態にだけ使う: 要再連携 = red、未連携 = teal、修正中・未確定 = amber、連携済み = green（行の左の帯とチップの点）。
+ */
+.bill-status-changed { --st: var(--red); }
+.bill-status-pending { --st: var(--teal); }
+.bill-status-drafts { --st: var(--amber); }
+.bill-status-handed_off { --st: var(--green); }
+
+.billing-page.has-selbar {
+  padding-bottom: 0;
+}
+
+.bill-head {
+  align-items: center;
+}
+
+.bill-title {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.bill-help {
+  position: relative;
+}
+
+.bill-help > summary {
+  list-style: none;
+}
+
+.bill-help > summary::-webkit-details-marker {
+  display: none;
+}
+
+.bill-help > p {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
+  color: var(--text-soft);
+  font-size: var(--fs-sm);
+  left: 0;
+  margin: 0;
+  padding: 10px 12px;
+  position: absolute;
+  top: calc(100% + 4px);
+  width: min(420px, calc(100vw - 32px));
+  z-index: 25;
+}
+
+.bill-menu {
+  min-width: 240px;
+}
+
+.bill-menu .btn {
+  justify-content: flex-start;
+}
+
+.bill-menu-note {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  margin: 4px 6px 2px;
+}
+
+.bill-date-note {
+  color: var(--amber);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  margin: -8px 0 10px;
+}
+
+.bill-notice {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+
+.bill-notice > button:last-child {
+  margin-left: auto;
+}
+
+.bill-chips-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.bill-chips-row > .flow-chips {
+  margin-bottom: 0;
+}
+
+.bill-group-note {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 400;
+}
+
+.bill-select-all {
+  align-items: center;
+  color: var(--text-soft);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  gap: 6px;
+  margin-left: auto;
+  min-height: 36px;
+}
+
+.bill-select-all input,
+.bill-check-hit input {
+  height: 18px;
+  margin: 0;
+  width: 18px;
+}
+
+/* 1 患者 1 行。左から チェック・患者番号・氏名とカナ・年齢と初再診と確定・品目の要約・差分や病名・版・操作 */
+.bill-row {
+  align-items: center;
+  border-top: 1px solid var(--line);
+  box-shadow: inset 4px 0 0 var(--st);
+  display: grid;
+  gap: 2px 12px;
+  grid-template-areas: "check num name meta summary extra version actions";
+  grid-template-columns: 28px 64px minmax(170px, 1.1fr) minmax(170px, 1fr) 112px minmax(0, 1.4fr) 64px 104px;
+  min-height: 44px;
+  padding: 4px 18px 4px 16px;
+  position: relative;
+}
+
+.bill-row-wrap:first-child > .bill-row {
+  border-top: 0;
+}
+
+.bill-row:hover {
+  background: var(--surface-muted);
+}
+
+.bill-row-wrap.is-open > .bill-row {
+  background: var(--surface-muted);
+}
+
+.bill-row.is-draft {
+  grid-template-areas: "check num name meta state state state actions";
+}
+
+.bill-check { grid-area: check; }
+.bill-number { grid-area: num; font-size: var(--fs-md); font-weight: 700; }
+.bill-name { grid-area: name; }
+.bill-meta { grid-area: meta; }
+.bill-summary { grid-area: summary; }
+.bill-extra { grid-area: extra; }
+.bill-version { grid-area: version; }
+.bill-actions { grid-area: actions; }
+.bill-draft-state { grid-area: state; }
+
+.bill-check,
+.bill-actions {
+  position: relative;
+  z-index: 1;
+}
+
+.bill-check-hit {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  height: 40px;
+  justify-content: center;
+  margin: -4px;
+  width: 36px;
+}
+
+.bill-name {
+  align-items: baseline;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.bill-name strong {
+  font-size: var(--fs-lg);
+  white-space: nowrap;
+}
+
+.bill-meta {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  font-size: var(--fs-sm);
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.bill-visit {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+}
+
+.bill-final {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bill-summary {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.bill-summary.is-empty {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.bill-extra {
+  align-items: center;
+  display: flex;
+  font-size: var(--fs-sm);
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.bill-dx-first {
+  color: var(--text-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bill-chip {
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  color: var(--text-soft);
+  flex: 0 1 auto;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  max-width: 14em;
+  overflow: hidden;
+  padding: 0 6px;
+  text-overflow: ellipsis;
+}
+
+.bill-chip.is-added { background: var(--green-soft); border-color: var(--green-line); color: var(--green); }
+.bill-chip.is-removed { background: var(--red-soft); border-color: var(--red-line); color: var(--red); }
+.bill-chip.is-changed { background: var(--amber-soft); border-color: var(--amber-line); color: var(--amber); }
+
+.bill-version {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  text-align: right;
+}
+
+.bill-actions {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.bill-row:has(details[open]) .bill-actions {
+  z-index: 20;
+}
+
+.bill-draft-state {
+  align-items: baseline;
+  color: var(--text-soft);
+  display: flex;
+  font-size: var(--fs-md);
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.bill-draft-state strong {
+  color: var(--amber);
+}
+
+.bill-reason {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bill-status-handed_off .bill-row {
+  opacity: 0.8;
+}
+
+/* 行を開いたとき: 区分ごとの品目、または前回との並べ比べ */
+.bill-detail {
+  background: var(--surface-muted);
+  border-top: 1px dashed var(--line);
+  box-shadow: inset 4px 0 0 var(--st);
+  display: grid;
+  gap: 10px;
+  padding: 10px 18px 12px 128px;
+}
+
+.bill-dx,
+.bill-items {
+  display: grid;
+  gap: 4px 12px;
+  grid-template-columns: 40px minmax(0, 1fr);
+  margin: 0;
+}
+
+.bill-items dd {
+  margin: 0;
+}
+
+.bill-items ul {
+  display: grid;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.bill-cat {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  padding-top: 1px;
+}
+
+.bill-dx-list {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  font-weight: 700;
+  gap: 4px 14px;
+}
+
+.bill-item {
+  align-items: baseline;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+}
+
+.bill-item-cat {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  min-width: 2.5em;
+}
+
+.bill-item-name {
+  font-weight: 700;
+}
+
+.bill-item-detail {
+  color: var(--text-soft);
+  font-size: var(--fs-sm);
+}
+
+.bill-eye {
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  padding: 0 4px;
+}
+
+.bill-eye.eye-od { border-color: var(--od); color: var(--od); }
+.bill-eye.eye-os { border-color: var(--os); color: var(--os); }
+
+.bill-diff-head {
+  color: var(--text-soft);
+  display: grid;
+  font-size: var(--fs-sm);
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 72px;
+}
+
+.bill-diff {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.bill-diff-row {
+  align-items: baseline;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 72px;
+  padding: 6px 10px;
+}
+
+.bill-diff-row.bill-diff-labels {
+  border-top: 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  padding-bottom: 2px;
+}
+
+.bill-diff-kind {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  text-align: right;
+}
+
+.bill-diff-row.is-same { color: var(--muted); }
+.bill-diff-row.is-same .bill-item-name { font-weight: 400; }
+.bill-diff-row.is-added .bill-diff-kind { color: var(--green); }
+.bill-diff-row.is-changed .bill-diff-kind { color: var(--amber); }
+.bill-diff-row.is-removed .bill-diff-kind { color: var(--red); }
+.bill-diff-row.is-removed > span:first-child .bill-item { color: var(--red); text-decoration: line-through; }
+.bill-diff-row.is-added > span:nth-child(2) .bill-item-name { color: var(--green); }
+
+.bill-note {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  margin: 0;
+}
+
+.bill-warning {
+  border-left: 3px solid var(--amber);
+  color: var(--amber);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  margin: 0;
+  padding-left: 8px;
+}
+
+.bill-detail-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.bill-detail-actions > .muted {
+  margin-right: auto;
+}
+
+/* 連携の記録 */
+.bill-log {
+  margin-top: 12px;
+  padding: 10px 18px;
+}
+
+.bill-log h2 {
+  align-items: center;
+  display: flex;
+  font-size: var(--fs-md);
+  gap: 8px;
+  margin: 0;
+}
+
+.bill-log-list {
+  display: grid;
+  gap: 4px;
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.bill-log-list li {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 52px minmax(80px, 140px) minmax(0, 1fr) auto;
+  min-height: 36px;
+}
+
+.bill-log-names {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 下に固定の選択バー（未連携を選んでいるときだけ） */
+.bill-selbar {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  bottom: 12px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.16);
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 10px 14px;
+  position: sticky;
+  z-index: 30;
+}
+
+.bill-selbar-count {
+  margin-right: auto;
+}
+
+.bill-selbar-count strong {
+  font-size: var(--fs-lg);
+}
+
+/* タブレット: 2 段（1 段目 番号・氏名・要約・版・操作 / 2 段目 年齢と確定・差分や病名） */
+@media (max-width: 1100px) {
+  .bill-row {
+    grid-template-areas:
+      "check num name summary version actions"
+      ". . meta extra extra extra";
+    grid-template-columns: 28px 64px minmax(0, 1fr) minmax(0, 1fr) 64px 104px;
+    min-height: 56px;
+  }
+
+  .bill-row.is-draft {
+    grid-template-areas:
+      "check num name name name actions"
+      ". . meta state state state";
+  }
+
+  .bill-detail {
+    padding-left: 30px;
+  }
+}
+
+@media (max-width: 767px) {
+  .bill-row {
+    gap: 2px 8px;
+    grid-template-areas:
+      "check num name actions"
+      "check meta meta meta"
+      ". summary summary summary"
+      ". extra extra extra";
+    grid-template-columns: 32px 52px minmax(0, 1fr) auto;
+    padding: 8px 12px 8px 12px;
+  }
+
+  .bill-row.is-draft {
+    grid-template-areas:
+      "check num name actions"
+      ". meta meta meta"
+      ". state state state";
+  }
+
+  .bill-row > .bill-version {
+    display: none;
+  }
+
+  .bill-detail {
+    padding: 10px 12px 12px 16px;
+  }
+
+  /* 狭い画面の差分は 1 品目ずつ縦に（変更の種類 → 前回 → 今回） */
+  .bill-diff-head,
+  .bill-diff-row {
+    gap: 2px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bill-diff-row.bill-diff-labels {
+    display: none;
+  }
+
+  .bill-diff-row:nth-child(2) {
+    border-top: 0;
+  }
+
+  .bill-diff-kind {
+    order: -1;
+    text-align: left;
+  }
+
+  .bill-diff-row > [data-label]:empty {
+    display: none;
+  }
+
+  .bill-diff-row > [data-label]::before {
+    color: var(--muted);
+    content: attr(data-label);
+    font-size: var(--fs-xs);
+    margin-right: 8px;
+  }
+
+  .bill-diff-row.is-same > [data-label="前回"] {
+    display: none;
+  }
+
+  .bill-chips-row > .flow-chips {
+    max-width: 100%;
+  }
+
+  .bill-group-note {
+    display: none;
+  }
+
+  .bill-log-list li {
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+  }
+
+  .bill-log-list li > span:nth-child(2) {
+    display: none;
+  }
+
+  .bill-selbar {
+    bottom: 8px;
+    flex-wrap: wrap;
+  }
+
+  .bill-selbar-count {
+    flex-basis: 100%;
+  }
+
+  .bill-selbar > .btn-primary {
+    flex: 1;
+  }
+}
+
+/* 会計連絡票（1 人 1 枚） */
+@media print {
+  .bill-slips {
+    display: block;
+  }
+
+  .bill-slip {
+    break-after: page;
+    color: #000;
+    font-size: 12pt;
+    page-break-after: always;
+  }
+
+  .bill-slip:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+}
+
+.bill-slip-head {
+  align-items: flex-end;
+  border-bottom: 2px solid var(--text);
+  display: flex;
+  justify-content: space-between;
+  padding-bottom: 6px;
+}
+
+.bill-slip-head h2 {
+  font-size: 18pt;
+  margin: 0;
+}
+
+.bill-slip-head p,
+.bill-slip-patient p,
+.bill-slip-foot p {
+  margin: 2px 0;
+}
+
+.bill-slip-meta {
+  text-align: right;
+}
+
+.bill-slip-patient {
+  border-bottom: 1px solid var(--line-strong);
+  padding: 8px 0;
+}
+
+.bill-slip-name {
+  font-size: 15pt;
+}
+
+.bill-slip-body {
+  border-bottom: 1px solid var(--line-strong);
+  display: grid;
+  gap: 6px;
+  padding: 8px 0;
+}
+
+.bill-slip-line {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 4em minmax(0, 1fr);
+}
+
+.bill-slip-label {
+  color: var(--text-soft);
+  font-weight: 700;
+}
+
+.bill-slip-item {
+  display: block;
+}
+
+.bill-slip-foot {
+  padding-top: 8px;
+}

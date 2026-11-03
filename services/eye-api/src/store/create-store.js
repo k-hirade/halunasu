@@ -43,6 +43,7 @@ for (const methodName of [
   "upsertDrugPreset",
   "listDrugPresets",
   "createBillingHandoff",
+  "getBillingHandoff",
   "listBillingHandoffsByDate",
   "createFile",
   "getFile",
