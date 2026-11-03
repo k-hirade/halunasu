@@ -59,7 +59,28 @@ async function runDoctorFlow(browser) {
   const pageErrors = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
   await login(page, "director");
-  await page.getByRole("heading", { name: /本日の患者/u }).waitFor();
+  await page.getByRole("heading", { name: "診察", exact: true }).waitFor();
+  assert.equal(await page.locator(".eye-nav-link[aria-current=page]").innerText(), "診察");
+  await assertNavFits(page);
+
+  // 患者検索: ひらがな・名だけ・生年月日（和暦）で当たり、結果に生年月日が出る
+  for (const query of ["みほん", "ハナコ", "S31.3.12", "1956/3/12"]) {
+    await page.getByLabel("患者検索").fill(query);
+    await page.locator(".patient-row").filter({ hasText: "見本 花子" }).filter({ hasText: "S31.3.12" }).waitFor();
+  }
+  // 日本語入力の変換確定の Enter では患者を開かない
+  await page.getByLabel("患者検索").dispatchEvent("keydown", { key: "Enter", keyCode: 229, isComposing: true, bubbles: true });
+  await page.waitForTimeout(300);
+  assert.equal(new URL(page.url()).pathname, "/", "an IME Enter must not open a patient");
+
+  // 暗室表示は利用者メニューの中。切り替えは端末に保存される
+  await page.locator(".nav-user-button").click();
+  await page.getByRole("button", { name: /暗室表示/u }).click();
+  assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), "dark");
+  assert.equal(await page.evaluate(() => window.localStorage.getItem("halunasu-eye-dark")), "1");
+  await page.getByRole("button", { name: /暗室表示/u }).click();
+  assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), "light");
+  await page.locator(".nav-user-button").click();
 
   await page.getByLabel("患者検索").fill("見本");
   await page.locator(".patient-row").filter({ hasText: "見本 花子" }).click();
@@ -272,8 +293,26 @@ async function runReceptionFlow(browser) {
   assert.equal((await walkIn.locator(".flow-slot").innerText()).trim(), "#2");
   await walkIn.locator("summary").click();
   await walkIn.getByRole("button", { name: "患者登録" }).click();
-  await page.getByRole("button", { name: "登録して受付に紐づける" }).click();
+  // 共通の登録ダイアログ: フリガナは必須で、ひらがなはカタカナにそろえる
+  const registerDialog = page.getByRole("dialog", { name: /患者登録/u });
+  assert.equal(await registerDialog.getByRole("button", { name: "登録して受付に紐づける" }).isDisabled(), true, "kana is required");
+  await registerDialog.getByLabel("フリガナ").fill("とびこみ はなこ");
+  await registerDialog.getByLabel("フリガナ").blur();
+  assert.equal(await registerDialog.getByLabel("フリガナ").inputValue(), "トビコミ ハナコ");
+  await registerDialog.getByText("保険証・資格確認はレセコンで登録します。").waitFor();
+  await registerDialog.getByRole("button", { name: "登録して受付に紐づける" }).click();
   await walkIn.getByText("未登録").waitFor({ state: "detached" });
+
+  // ヘッダー検索から新規登録: 入力した語が登録欄に入り、似た患者があれば警告が出る
+  await page.getByLabel("患者検索").fill("しけん");
+  await page.locator(".patient-row").filter({ hasText: "試験 一郎" }).waitFor();
+  await page.getByRole("button", { name: /「しけん」で新規患者を登録/u }).click();
+  const headerDialog = page.getByRole("dialog", { name: "新規患者を登録" });
+  assert.equal(await headerDialog.getByLabel("フリガナ").inputValue(), "シケン");
+  await headerDialog.getByText("似た患者がいます").waitFor();
+  await headerDialog.locator(".register-similar").getByText("試験 一郎").waitFor();
+  await page.keyboard.press("Escape");
+  await headerDialog.waitFor({ state: "detached" });
 
   // 段階を進める（行の右端のボタンは 1 つだけ）。人数チップで絞り込める
   await row.getByRole("button", { name: "検査開始" }).click();
@@ -297,6 +336,14 @@ async function runReceptionFlow(browser) {
   await page.getByText(/件を連携済みにし、CSV を保存しました。/u).waitFor();
   await page.locator(".billing-card .billing-state-handed_off").first().waitFor();
 
+  // ログアウトは利用者メニューの中。病院コードは端末に覚え、次回は入力を省く
+  await page.locator(".nav-user-button").click();
+  await page.getByRole("button", { name: "ログアウト" }).click();
+  await page.locator(".operator-gate-remembered").getByText(LOCAL_ORGANIZATION_CODE).waitFor();
+  assert.equal(await page.getByLabel("病院コード").count(), 0);
+  await page.getByRole("button", { name: "変更" }).click();
+  await page.getByLabel("病院コード").waitFor();
+
   assert.deepEqual(pageErrors, []);
   await context.close();
 }
@@ -305,6 +352,15 @@ async function runOrthoptistFlow(browser) {
   const context = await browser.newContext({ viewport: { width: 820, height: 1180 } });
   const page = await context.newPage();
   await login(page, "orthoptist");
+  // 診察: 受付で検査を終えた患者が「診察待ち」に出て、ナビに人数が出る。要対応のチップで一覧を切り替える
+  await page.getByRole("heading", { name: "診察", exact: true }).waitFor();
+  const waitingRow = page.locator(".flow-group.status-waiting_doctor .flow-row").filter({ hasText: "試験 一郎" });
+  await waitingRow.waitFor();
+  await waitingRow.getByRole("button", { name: "診察開始" }).waitFor();
+  assert.equal((await page.locator(".nav-menu-button .nav-badge").innerText()).trim(), "1");
+  await page.getByRole("button", { name: /^未確定カルテ/u }).click();
+  await page.getByRole("region", { name: "未確定カルテ" }).waitFor();
+  await page.getByRole("button", { name: /^すべて/u }).click();
   await page.getByLabel("患者検索").fill("試験");
   await page.locator(".patient-row").filter({ hasText: "試験 一郎" }).click();
   await page.getByRole("button", { name: "初診カルテを作成" }).click();
@@ -337,6 +393,20 @@ async function login(page, loginId) {
   await page.getByRole("button", { name: "ログイン", exact: true }).click();
   await page.getByLabel("6桁コード").fill(currentLocalTotp());
   await page.getByRole("button", { name: "確認" }).click();
+}
+
+// 768〜1180px でヘッダーの項目が検索欄の下に隠れないこと（各リンクが検索欄と重ならない）
+async function assertNavFits(page) {
+  const original = page.viewportSize();
+  for (const width of [900, 1024, 1180, 1280]) {
+    await page.setViewportSize({ width, height: original.height });
+    const search = await page.locator(".nav-search").boundingBox();
+    for (const link of await page.locator(".eye-nav-link").all()) {
+      const box = await link.boundingBox();
+      assert.ok(box && box.x + box.width <= search.x, `nav link overlaps the search at ${width}px`);
+    }
+  }
+  await page.setViewportSize(original);
 }
 
 async function drawStroke(page) {

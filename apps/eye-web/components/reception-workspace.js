@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { APPOINTMENT_TRANSITIONS } from "@halunasu/eye-contracts";
 import { useEyeApi } from "./eye-api";
 import { AppointmentDialog } from "./appointment-dialog";
+import { linkAppointmentToPatient, PatientRegisterDialog } from "./patient-register-dialog";
 import {
   addDays,
   ageOn,
@@ -110,6 +111,14 @@ export function ReceptionWorkspace() {
     } catch (nextError) {
       setError(nextError.message);
     }
+  }
+
+  // 登録した（または選んだ）患者を受付に紐づける。再試行でも最新の版を使う
+  async function linkRegistering(patient) {
+    const current = data.appointments.find((item) => item.appointmentId === registering.appointmentId) || registering;
+    await linkAppointmentToPatient(api, current, patient);
+    setRegistering(null);
+    await load();
   }
 
   // 行を押したとき: 来院中でカルテがあれば開く。なければ患者のページへ（押しただけでカルテは作らない）
@@ -282,10 +291,14 @@ export function ReceptionWorkspace() {
         />
       ) : null}
       {registering ? (
-        <RegisterDialog
-          appointment={registering}
+        <PatientRegisterDialog
+          initial={{ displayName: registering.patientName }}
           onCancel={() => setRegistering(null)}
-          onSaved={async () => { setRegistering(null); await load(); }}
+          onCreated={linkRegistering}
+          onPickExisting={linkRegistering}
+          pickExistingLabel="この患者で受付"
+          submitLabel="登録して受付に紐づける"
+          title={`患者登録（受付 #${registering.queueNumber ?? "—"}）`}
         />
       ) : null}
     </main>
@@ -293,7 +306,7 @@ export function ReceptionWorkspace() {
 }
 
 // 検査の進み具合（視力・眼圧・オーダー）と散瞳。値そのものは出さず、済んだかどうかだけを出す
-function progressOf(appointment, encounter, now) {
+export function progressOf(appointment, encounter, now) {
   if (!IN_CLINIC.includes(appointment.status) || !encounter) return null;
   const chips = [
     ["視", encounter.exam?.va ? "done" : "todo"],
@@ -325,55 +338,7 @@ function toMinutes(time) {
   return hours * 60 + (minutes || 0);
 }
 
-function formatClock(iso) {
+export function formatClock(iso) {
   if (!iso) return "";
   return new Date(iso).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Tokyo" });
-}
-
-function RegisterDialog({ appointment, onCancel, onSaved }) {
-  const api = useEyeApi();
-  const [draft, setDraft] = useState({ displayName: appointment.patientName, displayNameKana: "", birthDate: "", sex: "unknown", primaryPatientNumber: "" });
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-
-  async function submit(event) {
-    event.preventDefault();
-    setBusy(true);
-    try {
-      const { patient } = await api("/v1/eye/patients", { method: "POST", body: draft });
-      await api(`/v1/eye/appointments/${appointment.appointmentId}`, {
-        method: "PATCH",
-        body: { expectedRevision: appointment.revision, patientId: patient.patientId }
-      });
-      onSaved();
-    } catch (nextError) {
-      setError(nextError.message);
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="dialog-backdrop" role="presentation">
-      <form aria-labelledby="register-heading" className="dialog" onSubmit={submit} role="dialog">
-        <h2 id="register-heading">患者登録（受付 #{appointment.queueNumber ?? "—"}）</h2>
-        {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
-        <label className="field"><span>氏名 <em>必須</em></span><input autoFocus className="input" onChange={(event) => setDraft({ ...draft, displayName: event.target.value })} required value={draft.displayName} /></label>
-        <label className="field"><span>フリガナ</span><input className="input" onChange={(event) => setDraft({ ...draft, displayNameKana: event.target.value })} value={draft.displayNameKana} /></label>
-        <div className="field-row">
-          <label className="field"><span>生年月日</span><input className="input" onChange={(event) => setDraft({ ...draft, birthDate: event.target.value })} type="date" value={draft.birthDate} /></label>
-          <label className="field">
-            <span>性別</span>
-            <select className="input" onChange={(event) => setDraft({ ...draft, sex: event.target.value })} value={draft.sex}>
-              <option value="unknown">未設定</option><option value="male">男</option><option value="female">女</option><option value="other">その他</option>
-            </select>
-          </label>
-        </div>
-        <label className="field"><span>患者番号（カルテ番号）</span><input className="input" onChange={(event) => setDraft({ ...draft, primaryPatientNumber: event.target.value })} value={draft.primaryPatientNumber} /></label>
-        <div className="dialog-actions">
-          <button className="btn btn-ghost" onClick={onCancel} type="button">キャンセル</button>
-          <button className="btn btn-primary" disabled={busy || !draft.displayName.trim()} type="submit">登録して受付に紐づける</button>
-        </div>
-      </form>
-    </div>
-  );
 }

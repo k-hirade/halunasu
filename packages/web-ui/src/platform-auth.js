@@ -31,7 +31,10 @@ function normalizeBrand(brand) {
     login: {
       title: login.title || DEFAULT_BRAND.login.title,
       copy: login.copy || "",
-      features: Array.isArray(login.features) ? login.features : []
+      features: Array.isArray(login.features) ? login.features : [],
+      // 任意: 病院コードを端末に覚えるときの localStorage のキーと、ログイン画面の案内文
+      organizationStorageKey: typeof login.organizationStorageKey === "string" ? login.organizationStorageKey : "",
+      helpText: typeof login.helpText === "string" ? login.helpText : ""
     }
   };
 }
@@ -437,6 +440,8 @@ function LoginGate() {
       errorMessage={errorMessage}
       busy={busy}
       onSubmit={handleSubmit}
+      organizationStorageKey={brand.login.organizationStorageKey}
+      helpText={brand.login.helpText}
     />
   );
 }

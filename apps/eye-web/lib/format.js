@@ -1,3 +1,5 @@
+import { formatBirthDateJp } from "@halunasu/eye-contracts";
+
 export const EYE_LABELS = { od: "右眼", os: "左眼", ou: "両眼" };
 export const EYE_SHORT = { od: "R", os: "L", ou: "両" };
 export const SEX_LABELS = { male: "男", female: "女", other: "他", unknown: "不明" };
@@ -58,6 +60,16 @@ export function patientLine(patient = {}) {
     age === null ? "" : `${age}歳`,
     SEX_LABELS[patient.sex] || ""
   ].filter(Boolean).join(" ・ ");
+}
+
+// 本人確認用の 1 行: 生年月日（和暦）・年齢・性別。例「S25.3.4 76歳 女」
+export function patientBirthLine(patient = {}) {
+  const age = ageOn(patient.birthDate);
+  return [
+    patient.birthDate ? formatBirthDateJp(patient.birthDate) || formatDate(patient.birthDate) : "生年月日なし",
+    age === null ? "" : `${age}歳`,
+    patient.sex && patient.sex !== "unknown" ? SEX_LABELS[patient.sex] || "" : ""
+  ].filter(Boolean).join(" ");
 }
 
 export function diagnosisText(diagnosis = {}) {

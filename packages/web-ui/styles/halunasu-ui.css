@@ -876,6 +876,34 @@ textarea {
   position: relative;
 }
 
+/* ログイン: Caps Lock の注意・端末に覚えた病院コード・案内文（該当する props を渡したときだけ表示） */
+.caps-lock-hint {
+  color: var(--warning-ink);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.operator-gate-remembered {
+  align-items: center;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  column-gap: 12px;
+}
+
+.operator-gate-remembered-label {
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.operator-gate-remembered-value {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.operator-gate-help {
+  font-size: 0.86rem;
+}
+
 .field-password input {
   padding-right: 44px;
 }

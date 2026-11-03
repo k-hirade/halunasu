@@ -4,7 +4,7 @@
 // platform-api系(platform-auth)も charting(charting-gateway認証)も同じ見た目を使う。
 // 認証の差し替えは onSubmit / props で吸収する。
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export function AuthBrandPanel({ brandName, productName, title, copy, features = [] }) {
   return (
@@ -53,6 +53,10 @@ export function PasswordToggleIcon({ visible }) {
 
 // ログインフォーム(病院コード/個人ID/パスワード)。入力は uncontrolled(FormData)。
 // onSubmit({ organizationCode, loginId, password }) を呼ぶ。
+// 任意の props(渡さなければ従来どおり):
+//   organizationStorageKey: 端末に覚えた病院コードを localStorage のこのキーから読み、入力欄の代わりに表示する
+//                           (保存はログイン後にアプリ側で行う。秘密ではない値だけを保存する)
+//   helpText: ログインボタンの下に出す案内(パスワードを忘れたとき など)
 export function LoginFormView({
   brandName,
   productName,
@@ -61,9 +65,28 @@ export function LoginFormView({
   description = "病院コード、個人ID、ログイン用パスワードでログインしてください。",
   errorMessage,
   busy,
-  onSubmit
+  onSubmit,
+  organizationStorageKey = "",
+  helpText = ""
 }) {
   const [passwordVisible, setPasswordVisible] = useState(false);
+  const [capsLock, setCapsLock] = useState(false);
+  const [rememberedCode, setRememberedCode] = useState("");
+  const loginIdRef = useRef(null);
+
+  useEffect(() => {
+    if (!organizationStorageKey) return;
+    let stored = "";
+    try {
+      stored = window.localStorage.getItem(organizationStorageKey) || "";
+    } catch {
+      stored = "";
+    }
+    if (stored) {
+      setRememberedCode(stored);
+      loginIdRef.current?.focus();
+    }
+  }, [organizationStorageKey]);
 
   function handleSubmit(event) {
     event.preventDefault();
@@ -73,6 +96,10 @@ export function LoginFormView({
       loginId: form.get("loginId"),
       password: form.get("password")
     });
+  }
+
+  function watchCapsLock(event) {
+    if (typeof event.getModifierState === "function") setCapsLock(event.getModifierState("CapsLock"));
   }
 
   return (
@@ -91,13 +118,39 @@ export function LoginFormView({
               <h1>{heading}</h1>
               <p>{description}</p>
             </div>
-            <div className="field">
-              <label htmlFor="organizationCode">病院コード</label>
-              <input id="organizationCode" name="organizationCode" autoComplete="organization" required />
-            </div>
+            {rememberedCode ? (
+              <div className="field operator-gate-remembered">
+                <span className="operator-gate-remembered-label">病院コード</span>
+                <span className="operator-gate-remembered-value">{rememberedCode}</span>
+                <input name="organizationCode" type="hidden" value={rememberedCode} />
+                <button className="btn btn--ghost btn--sm" onClick={() => setRememberedCode("")} type="button">変更</button>
+              </div>
+            ) : (
+              <div className="field">
+                <label htmlFor="organizationCode">病院コード</label>
+                <input
+                  id="organizationCode"
+                  name="organizationCode"
+                  autoCapitalize="none"
+                  autoComplete={organizationStorageKey ? "off" : "organization"}
+                  autoCorrect="off"
+                  spellCheck={false}
+                  required
+                />
+              </div>
+            )}
             <div className="field">
               <label htmlFor="loginId">個人ID</label>
-              <input id="loginId" name="loginId" autoComplete="username" required />
+              <input
+                id="loginId"
+                name="loginId"
+                autoCapitalize="none"
+                autoComplete="username"
+                autoCorrect="off"
+                ref={loginIdRef}
+                spellCheck={false}
+                required
+              />
             </div>
             <div className="field">
               <label htmlFor="password">ログイン用パスワード</label>
@@ -107,6 +160,10 @@ export function LoginFormView({
                   name="password"
                   type={passwordVisible ? "text" : "password"}
                   autoComplete="current-password"
+                  aria-describedby={capsLock ? "password-caps-lock" : undefined}
+                  onBlur={() => setCapsLock(false)}
+                  onKeyDown={watchCapsLock}
+                  onKeyUp={watchCapsLock}
                   required
                 />
                 <button
@@ -118,11 +175,13 @@ export function LoginFormView({
                   <PasswordToggleIcon visible={passwordVisible} />
                 </button>
               </div>
+              {capsLock ? <span className="caps-lock-hint" id="password-caps-lock">Caps Lock がオンです</span> : null}
             </div>
-            {errorMessage ? <div className="inline-error" role="status">{errorMessage}</div> : null}
+            {errorMessage ? <div className="inline-error" role="alert">{errorMessage}</div> : null}
             <div className="operator-gate-actions">
-              <button className="btn btn--primary btn--lg" disabled={busy} type="submit">ログイン</button>
+              <button className="btn btn--primary btn--lg" disabled={busy} type="submit">{busy ? "ログイン中…" : "ログイン"}</button>
             </div>
+            {helpText ? <p className="operator-gate-help">{helpText}</p> : null}
           </form>
         </section>
       </div>
@@ -191,7 +250,7 @@ export function MfaFormView({
                 onChange={(event) => onCodeChange(event.target.value.replace(/\D+/g, "").slice(0, 6))}
               />
             </div>
-            {errorMessage ? <div className="inline-error" role="status">{errorMessage}</div> : null}
+            {errorMessage ? <div className="inline-error" role="alert">{errorMessage}</div> : null}
             <div className="operator-gate-actions">
               <button className="btn btn--primary btn--lg" disabled={busy || code.length !== 6} type="submit">確認</button>
               {onBack ? <button className="btn btn--ghost btn--lg" disabled={busy} onClick={onBack} type="button">戻る</button> : null}
