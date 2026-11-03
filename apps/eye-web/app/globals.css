@@ -2218,43 +2218,58 @@ kbd {
 .status-checkout { --st: var(--st-checkout); }
 .status-finished { --st: var(--st-finished); }
 
+/* 段階の切り替え: 下線のタブ。選んでいるタブだけ下線と文字色で示す */
 .flow-chips {
+  border-bottom: 1px solid var(--line);
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  flex-wrap: nowrap;
+  gap: 4px;
   margin-bottom: 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
 .flow-chip {
-  align-items: center;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 999px;
+  align-items: baseline;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
   color: var(--text-soft);
   display: inline-flex;
+  flex: 0 0 auto;
   font-size: var(--fs-md);
-  font-weight: 700;
+  font-weight: 600;
   gap: 6px;
-  min-height: 36px;
-  padding: 4px 12px;
+  margin-bottom: -1px;
+  min-height: 40px;
+  padding: 10px 12px 8px;
+  white-space: nowrap;
+}
+
+.flow-chip:hover {
+  color: var(--text);
 }
 
 .flow-chip strong {
-  color: var(--text);
-  font-size: var(--fs-lg);
+  color: var(--muted);
+  font-size: var(--fs-sm);
   font-variant-numeric: tabular-nums;
+  font-weight: 700;
 }
 
 .flow-chip[aria-pressed="true"] {
-  background: var(--teal-soft);
-  border-color: var(--teal);
+  border-bottom-color: var(--teal);
+  color: var(--teal-dark);
+  font-weight: 700;
+}
+
+.flow-chip[aria-pressed="true"] strong {
+  color: var(--teal-dark);
 }
 
 .flow-dot {
-  background: var(--st);
-  border-radius: 50%;
-  height: 8px;
-  width: 8px;
+  display: none;
 }
 
 .flow-list {
@@ -2296,7 +2311,6 @@ kbd {
 .flow-row {
   align-items: center;
   border-top: 1px solid var(--line);
-  box-shadow: inset 4px 0 0 var(--st);
   display: grid;
   gap: 4px 12px;
   grid-template-areas: "slot time name age purpose progress wait actions";
