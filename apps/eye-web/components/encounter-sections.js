@@ -259,7 +259,7 @@ export function ExamTable({
                 const room = entries.some(([eye, path, value]) => !isBlank(value) && isBlank(getIn(exam[eye], path)));
                 return (
                   <button
-                    aria-label={`前回の${EYE_LABELS[side]} ${row.label}（${text}）を空欄に写す`}
+                    aria-label={`前回値を空欄に写す: ${EYE_LABELS[side]}の${row.label} ${text}`}
                     className="xt-prev-value"
                     disabled={!editable || !room}
                     key={side}

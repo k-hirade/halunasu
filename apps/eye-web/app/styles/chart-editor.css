@@ -88,15 +88,34 @@
   display: none;
 }
 
-/* 項目ジャンプは iPad 縦（768〜1023px）だけ。広い画面はページが短く、スマホは下の「目次」から */
-.chart-page .section-jump {
-  display: none;
+/* 項目への移動は 1024px 未満だけ「目次」メニューから（広い画面はページが短いので出さない） */
+@media (max-width: 1023px) {
+  .toc-menu {
+    display: block;
+  }
+
+  .chart-page .patient-banner {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .chart-page .encounter-actions {
+    justify-content: flex-end;
+  }
 }
 
-@media (min-width: 768px) and (max-width: 1023px) {
-  .chart-page .section-jump {
-    display: flex;
-  }
+.chart-page .patient-banner.is-compact .back-link {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+  min-height: 36px;
+  min-width: 36px;
+}
+
+/* 引き出しの見出しと文書パネルの見出しが重ならないように */
+.chart-drawer .panel > h2 {
+  display: none;
 }
 
 /* ---- 列: 過去カルテ 300px + 2 号紙 ---- */
@@ -640,7 +659,7 @@
 .history-finding {
   display: grid;
   gap: 2px 6px;
-  grid-template-columns: 64px minmax(0, 1fr);
+  grid-template-columns: 76px minmax(0, 1fr);
 }
 
 .history-part {
@@ -724,7 +743,6 @@
   }
 
   .toc-menu {
-    display: block;
     order: -1;
   }
 
@@ -744,4 +762,11 @@
   .chart-sheet .form-section {
     padding: 10px 12px 12px;
   }
+}
+
+/* 共通 CSS の input { width: 100% } でチェックボックスが伸びて文言が折り返さないように */
+.chart-page input[type="checkbox"],
+.exam-page input[type="checkbox"] {
+  flex: 0 0 auto;
+  width: auto;
 }

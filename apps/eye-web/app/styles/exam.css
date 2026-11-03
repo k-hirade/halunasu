@@ -470,8 +470,8 @@
   z-index: 36;
 }
 
-.xt-eye-os .num-pad,
-.xt-eye-os .va-picker {
+.xt-grid.is-workbench .xt-eye-os .num-pad,
+.xt-grid.is-workbench .xt-eye-os .va-picker {
   left: auto;
   right: 0;
 }
@@ -507,6 +507,10 @@
 }
 
 .va-picker .num-key.is-special {
+  font-size: var(--fs-sm);
+}
+
+.va-picker .num-key.is-action {
   font-size: var(--fs-sm);
   grid-column: span 5;
 }
@@ -950,4 +954,62 @@
     padding: 10px 10px 4px;
     position: static;
   }
+}
+
+.num-pad-head {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  grid-column: 1 / -1;
+  justify-content: space-between;
+  margin: -4px -4px -2px 2px;
+}
+
+.num-pad-close {
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text-soft);
+  cursor: pointer;
+  font-size: var(--fs-xl);
+  line-height: 1;
+  min-height: 36px;
+  min-width: 40px;
+}
+
+/* スマホ: テンキー・視力の選択は画面下のシートにする（欄は上へスクロールして見えるようにする） */
+@media (max-width: 639px) {
+  .num-pad,
+  .va-picker,
+  .xt-grid.is-workbench .xt-eye-os .num-pad,
+  .xt-grid.is-workbench .xt-eye-os .va-picker {
+    bottom: calc(8px + env(safe-area-inset-bottom));
+    left: 8px;
+    position: fixed;
+    right: 8px;
+    top: auto;
+    z-index: 60;
+  }
+
+  .num-pad {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .num-pad.is-axis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .va-picker {
+    grid-template-columns: repeat(10, minmax(0, 1fr));
+  }
+
+  .xt-grid .input {
+    scroll-margin-top: calc(var(--nav-h) + 16px);
+  }
+}
+
+.num-key.is-text {
+  font-size: var(--fs-sm);
 }

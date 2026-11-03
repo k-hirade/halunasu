@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { acceptNumber, normalizeNumberText, readNumber } from "../lib/exam-number";
 import { formatDiopter } from "../lib/format";
 
 // 検査値の入力部品。
@@ -13,27 +14,7 @@ export const VA_VALUES = [
   "2.0", "1.5", "1.2", "1.0", "0.9", "0.8", "0.7", "0.6", "0.5", "0.4", "0.3", "0.2", "0.15", "0.1",
   "0.09", "0.08", "0.07", "0.06", "0.05", "0.04", "0.03", "0.02", "0.01", "n.d.", "m.m.", "s.l.(+)", "s.l.(-)", "n.c."
 ];
-const VA_SPECIAL_LABELS = { "n.d.": "指数弁 n.d.", "m.m.": "手動弁 m.m.", "s.l.(+)": "光覚弁+", "s.l.(-)": "光覚弁−", "n.c.": "矯正不能 n.c." };
-
-// 入力値の正規化（全角数字・全角や長音のマイナスを半角に）。
-export function normalizeNumberText(text) {
-  return String(text ?? "")
-    .replace(/[０-９]/gu, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
-    .replace(/[−ー－‐–—]/gu, "-")
-    .replace(/＋/gu, "+")
-    .replace(/[．。]/gu, ".")
-    .trim();
-}
-
-// 文字列を数値に。空なら empty、数値として読めなければ invalid。途中の入力（「-」「1.」）は partial。
-export function readNumber(text) {
-  const value = normalizeNumberText(text);
-  if (value === "") return { empty: true, value: null };
-  if (/^[+-]?\.?$/u.test(value) || /^[+-]?\d*\.$/u.test(value)) return { partial: true, value: null };
-  if (!/^[+-]?(\d+(\.\d*)?|\.\d+)$/u.test(value)) return { invalid: true, value: null };
-  const number = Number(value);
-  return Number.isFinite(number) ? { value: number } : { invalid: true, value: null };
-}
+const VA_SPECIAL_LABELS = { "n.d.": "指数弁", "m.m.": "手動弁", "s.l.(+)": "光覚+", "s.l.(-)": "光覚−", "n.c.": "矯正不能" };
 
 // Enter・「次へ」で次の入力欄へ。対象は data-enter-root の中の、data-enter-skip の付いていない入力欄。
 // includeSkipped はテンキーの「次へ」用（屈折の S → C → Ax も順にたどる）。
@@ -61,6 +42,12 @@ export function moveToNextOnEnter(event) {
   if (target.hasAttribute("data-enter-skip")) return;
   event.preventDefault();
   focusNextField(target);
+}
+
+// スマホではテンキーが画面下のシートになるため、入力欄を画面の上の方へ送る。
+function revealAboveSheet(input) {
+  if (!input || typeof window === "undefined" || !window.matchMedia("(max-width: 639px)").matches) return;
+  requestAnimationFrame(() => input.scrollIntoView({ block: "start", behavior: "smooth" }));
 }
 
 // 数値の入力欄。value は保存値（数値または null）、onCommit で保存値を更新する。
@@ -101,10 +88,7 @@ export function NumberField({
       setInvalid(false);
       return;
     }
-    const ok = !parsed.invalid
-      && (min === undefined || parsed.value >= min)
-      && (max === undefined || parsed.value <= max)
-      && (!integer || Number.isInteger(parsed.value));
+    const ok = acceptNumber(parsed, { min, max, integer });
     setInvalid(!ok);
     if (ok && parsed.value !== committed) onCommit(parsed.value);
   }
@@ -138,7 +122,10 @@ export function NumberField({
           setText(event.target.value);
           setFresh(true);
           event.target.select();
-          if (usePad) setPadOpen(true);
+          if (usePad) {
+            setPadOpen(true);
+            revealAboveSheet(event.target);
+          }
         }}
         ref={inputRef}
         type="text"
@@ -159,6 +146,10 @@ export function NumberField({
             const input = inputRef.current;
             input?.blur();
             setTimeout(() => input?.focus(), 0);
+          }}
+          onClose={() => {
+            close();
+            inputRef.current?.blur();
           }}
           onNext={() => {
             close();
@@ -205,7 +196,16 @@ export function AxisField({ value, onCommit, previous = null, touch = false, ...
   );
 }
 
-function NumberPad({ kind, text: current, fresh, committed, previous, onKey, onNext, onKeyboard }) {
+function PadHead({ title, onClose, press, closeLabel = "テンキーを閉じる" }) {
+  return (
+    <div className="num-pad-head">
+      <span>{title}</span>
+      <button aria-label={closeLabel} className="num-pad-close" {...press(onClose)}>×</button>
+    </div>
+  );
+}
+
+function NumberPad({ kind, text: current, fresh, committed, previous, onKey, onNext, onKeyboard, onClose }) {
   const keep = (event) => event.preventDefault();
   const press = (handler) => ({ onClick: handler, onMouseDown: keep, onPointerDown: keep, type: "button" });
   // 数字と符号は、フォーカス直後なら新しい入力として始める。小数部のキー・⌫ は今の値に効かせる。
@@ -225,19 +225,21 @@ function NumberPad({ kind, text: current, fresh, committed, previous, onKey, onN
   if (kind === "axis") {
     return (
       <div aria-label="軸のテンキー" className="num-pad is-axis" role="group">
-        {["180", "90", "0"].map((value) => <button className="num-key is-quick" key={value} {...press(() => onKey(value))}>{value}</button>)}
+        <PadHead onClose={onClose} press={press} title="軸（0〜180）" />
+        {["180", "90", "0"].map((value) => <button className="num-key is-quick" key={value} {...press(() => { onKey(value); onNext(); })}>{value}</button>)}
         {digitKeys.map((value) => <button className="num-key" key={value} {...press(() => onKey(`${base}${value}`))}>{value}</button>)}
         <button className="num-key" {...press(() => onKey(`${base}0`))}>0</button>
         <button aria-label="1文字消す" className="num-key" {...press(() => onKey(current.slice(0, -1)))}>⌫</button>
-        <button className="num-key" {...press(() => onKey(""))}>クリア</button>
+        <button className="num-key is-text" {...press(() => onKey(""))}>クリア</button>
         <button className="num-key is-wide" disabled={!Number.isFinite(previous)} {...press(() => onKey(String(previous)))}>前回 {Number.isFinite(previous) ? previous : "—"}</button>
-        <button className="num-key" {...press(onKeyboard)}>キーボード</button>
+        <button className="num-key is-text" title="端末のキーボードで入力" {...press(onKeyboard)}>キー入力</button>
         <button className="num-key is-next" {...press(onNext)}>次へ</button>
       </div>
     );
   }
   return (
     <div aria-label="度数のテンキー" className="num-pad" role="group">
+      <PadHead onClose={onClose} press={press} title="度数（D）" />
       <button aria-pressed={!fresh && sign === "-"} className="num-key is-sign" {...press(() => onKey(fresh ? "-" : `-${unsigned}`))}>−</button>
       <button aria-pressed={!fresh && sign === "+"} className="num-key is-sign" {...press(() => onKey(fresh ? "+" : `+${unsigned}`))}>+</button>
       <button className="num-key" {...press(() => onKey(step(-0.25)))}>−0.25</button>
@@ -250,10 +252,10 @@ function NumberPad({ kind, text: current, fresh, committed, previous, onKey, onN
       <button className="num-key is-fraction" {...press(() => onKey(withFraction(".50")))}>.50</button>
       <button className="num-key" {...press(() => onKey(digit("0")))}>0</button>
       <button aria-label="1文字消す" className="num-key" {...press(() => onKey(current.slice(0, -1)))}>⌫</button>
-      <button className="num-key" {...press(() => onKey(""))}>クリア</button>
+      <button className="num-key is-text" {...press(() => onKey(""))}>クリア</button>
       <button className="num-key is-fraction" {...press(() => onKey(withFraction(".75")))}>.75</button>
       <button className="num-key is-wide" disabled={!Number.isFinite(previous)} {...press(() => onKey(formatDiopter(previous)))}>前回 {Number.isFinite(previous) ? formatDiopter(previous) : "—"}</button>
-      <button className="num-key" {...press(onKeyboard)}>キーボード</button>
+      <button className="num-key is-text" title="端末のキーボードで入力" {...press(onKeyboard)}>キー入力</button>
       <button className="num-key is-next" {...press(onNext)}>次へ</button>
     </div>
   );
@@ -302,26 +304,30 @@ export function VaField({ value, onChange, previous = "", touch = false, classNa
             keepRef.current = false;
             return;
           }
-          if (usePicker) setOpen(true);
+          if (usePicker) {
+            setOpen(true);
+            revealAboveSheet(inputRef.current);
+          }
         }}
         ref={inputRef}
         value={value || ""}
       />
       {open && usePicker ? (
         <div aria-label="視力を選ぶ" className="va-picker" role="group">
+          <PadHead closeLabel="視力の選択を閉じる" onClose={() => { close(); inputRef.current?.blur(); }} press={press} title="視力" />
           {VA_VALUES.map((item) => (
             <button
               aria-pressed={item === value}
               className={`num-key${VA_SPECIAL_LABELS[item] ? " is-special" : ""}${item === previous ? " is-previous" : ""}`}
               key={item}
-              title={item === previous ? "前回の値" : undefined}
+              title={`${item}${item === previous ? "（前回の値）" : ""}`}
               {...press(() => choose(item))}
             >
               {VA_SPECIAL_LABELS[item] || item}
             </button>
           ))}
           <button
-            className="num-key is-special"
+            className="num-key is-action"
             {...press(() => {
               onChange("");
               if (document.activeElement !== inputRef.current) inputRef.current?.focus({ preventScroll: true });
@@ -330,7 +336,7 @@ export function VaField({ value, onChange, previous = "", touch = false, classNa
             クリア
           </button>
           <button
-            className="num-key is-special"
+            className="num-key is-action"
             {...press(() => {
               close();
               setKeyboard(true);

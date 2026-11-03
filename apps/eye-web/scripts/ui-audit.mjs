@@ -66,7 +66,11 @@ try {
           await page.getByLabel("患者検索").fill("模");
           await page.waitForTimeout(800);
         }
-        if (name === "editor-history" && width < 1280) await page.getByRole("button", { name: /^過去カルテ/u }).click();
+        // 過去カルテは 1280px 未満で左からの引き出し。スマホは下のバーの「目次」から開く
+        if (name === "editor-history" && width < 1280) {
+          if (width < 768) await page.locator(".toc-menu > summary").click();
+          await page.getByRole("button", { name: /^過去カルテ/u }).first().click();
+        }
         // 文書・確定履歴は「…」メニューから開く右の引き出し（どの幅でも）
         if (name === "editor-side") {
           await page.locator('.encounter-actions summary[aria-label="その他の操作"]').click();

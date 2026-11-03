@@ -305,11 +305,6 @@ export function EncounterEditor({ encounterId }) {
           profile={profile}
           sub={<>{narrow ? null : <VisitMeta editable={editable} meta={meta} updateMeta={updateMeta} />}{nonDraftTag}</>}
         />
-        <nav aria-label="項目へ移動" className="section-jump">
-          {SECTION_LINKS.map(([id, label]) => (
-            <a className="section-jump-link" href={`#sec-${id}`} key={id} onClick={(event) => jumpTo(event, id)}>{label}</a>
-          ))}
-        </nav>
       </header>
 
       {narrow ? (

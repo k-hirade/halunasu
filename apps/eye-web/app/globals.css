@@ -2172,30 +2172,6 @@ fieldset:disabled .input::placeholder {
   flex-wrap: nowrap;
 }
 
-.section-jump {
-  display: flex;
-  flex: 1;
-  gap: 2px;
-  min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.section-jump-link {
-  border-radius: 6px;
-  color: var(--text-soft);
-  font-size: var(--fs-md);
-  font-weight: 700;
-  padding: 6px 8px;
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.section-jump-link:hover {
-  background: var(--surface);
-  color: var(--teal-dark);
-}
-
 .save-state {
   border-radius: 999px;
   font-size: var(--fs-sm);
@@ -2283,8 +2259,6 @@ fieldset:disabled .input::placeholder {
   margin: 0;
 }
 
-/* iPad 横など: 過去カルテは左から引き出す */
-/* iPad 縦・スマホ: 1 列。確認・比較パネルも右から引き出す */
 @media (max-width: 767px) {
   .encounter-bar {
     margin: 0 -12px 12px;
@@ -2300,11 +2274,6 @@ fieldset:disabled .input::placeholder {
 
   .encounter-actions {
     flex-wrap: wrap;
-  }
-
-  .section-jump {
-    flex-basis: 100%;
-    order: 5;
   }
 }
 
@@ -2394,8 +2363,7 @@ fieldset:disabled .input::placeholder {
   }
 
   .btn.btn-chip,
-  .btn.btn-sm,
-  .section-jump-link {
+  .btn.btn-sm {
     min-height: 40px;
   }
 
