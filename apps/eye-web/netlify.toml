@@ -8,9 +8,20 @@ NODE_VERSION = "20"
 [[plugins]]
 package = "@netlify/plugin-nextjs"
 
+# 静的ファイル（ハッシュ付きの JS/CSS・ロゴ）は公開情報のため、IP 制限の関数を通さず CDN から直接返す
 [[edge_functions]]
 path = "/*"
+excludedPath = ["/_next/static/*", "/brand/*"]
 function = "stg-gate"
+
+# API の中継はエッジで行う（サーバー関数は米国リージョンにあり、往復のたびに約 1 秒かかっていたため）。IP 制限の後に動く
+[[edge_functions]]
+path = "/api/eye/*"
+function = "api-proxy"
+
+[[edge_functions]]
+path = "/api/platform/*"
+function = "api-proxy"
 
 [[headers]]
 for = "/*"
@@ -22,3 +33,10 @@ Referrer-Policy = "strict-origin-when-cross-origin"
 X-Frame-Options = "DENY"
 Permissions-Policy = "camera=(), microphone=(), geolocation=()"
 Strict-Transport-Security = "max-age=31536000; includeSubDomains"
+
+# ファイル名にハッシュが付いた静的ファイルは中身が変わらないので、ブラウザに長期保存させる（再読み込みのたびの再確認をなくす）
+[[headers]]
+for = "/_next/static/*"
+
+[headers.values]
+Cache-Control = "public, max-age=31536000, immutable"

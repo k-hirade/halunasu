@@ -186,6 +186,7 @@ deploy_service() {
   local service_concurrency="${CONCURRENCY}"
   local build_ignore_file=".gcloudignore"
   local build_config="cloudbuild.node-service.yaml"
+  local -a service_extra_flags=()
   if [[ "${service}" == fee-api-* ]]; then
     build_ignore_file=".gcloudignore.fee-api"
     build_config="cloudbuild.fee-api.yaml"
@@ -198,6 +199,8 @@ deploy_service() {
     service_memory="512Mi"
     service_timeout="60"
     service_max_instances="${MAX_INSTANCES}"
+    # min=0 のため、待機明けの最初の要求で起動を速める（起動中だけ CPU を増やす。常時の課金は増えない）
+    service_extra_flags+=(--cpu-boost)
   fi
   if [[ "${service}" == care-fee-api-* ]]; then
     build_ignore_file=".gcloudignore.care-fee-api"
@@ -340,6 +343,9 @@ deploy_service() {
     --set-secrets "${secret_vars}"
     --quiet
   )
+  if (( ${#service_extra_flags[@]} )); then
+    deploy_cmd+=("${service_extra_flags[@]}")
+  fi
 
   if [[ "${public}" == "public" ]]; then
     deploy_cmd+=(--no-invoker-iam-check)
