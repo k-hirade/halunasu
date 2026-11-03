@@ -108,6 +108,20 @@ export function formatVisualAcuityLine(value = {}) {
   return `${value.vaUncorrected || "—"}${inner}${inner ? type : ""}`;
 }
 
+// 屈折値（S・C）の表示。機器の印字と同じく符号付き・小数2桁（-1 → -1.00、0.5 → +0.50）。保存値は数値のまま。
+export function formatDiopter(value) {
+  if (!Number.isFinite(value)) return "";
+  return value === 0 ? "0.00" : signed(value);
+}
+
+// 日付を「11/03(火)」の形で出す。
+export function formatShortDate(iso) {
+  if (!iso) return "";
+  const [, month, day] = iso.slice(0, 10).split("-");
+  const weekday = "日月火水木金土"[new Date(`${iso.slice(0, 10)}T00:00:00Z`).getUTCDay()];
+  return `${month}/${day}(${weekday})`;
+}
+
 function signed(value) {
   const fixed = Number(value).toFixed(2);
   return value > 0 ? `+${fixed}` : fixed;

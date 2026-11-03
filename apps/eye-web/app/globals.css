@@ -7,6 +7,8 @@
 @import "./styles/consult.css";
 @import "./styles/print.css";
 @import "./styles/documents.css";
+@import "./styles/exam.css";
+@import "./styles/chart-editor.css";
 
 /*
  * 眼科カルテのデザイントークン（唯一の定義元）。
@@ -763,42 +765,6 @@ fieldset:disabled .input::placeholder {
   background: var(--os-soft);
 }
 
-.triple,
-.pair {
-  display: inline-flex;
-  gap: 6px;
-}
-
-.triple .input-num {
-  width: 64px;
-}
-
-.prev-hint {
-  color: var(--muted);
-  display: block;
-  font-size: var(--fs-xs);
-  margin-top: 2px;
-}
-
-.eye-columns {
-  display: grid;
-  gap: 16px;
-  grid-template-columns: 1fr 1fr;
-}
-
-.eye-column {
-  border-radius: 8px;
-  padding: 10px 12px 2px;
-}
-
-.eye-column:first-child {
-  background: var(--od-soft);
-}
-
-.eye-column:last-child {
-  background: var(--os-soft);
-}
-
 .eye-heading {
   font-size: var(--fs-md);
   margin: 0 0 8px;
@@ -907,14 +873,6 @@ fieldset:disabled .input::placeholder {
 .change-values ins {
   background: var(--highlight);
   text-decoration: none;
-}
-
-.prev-list {
-  display: grid;
-  font-size: var(--fs-md);
-  gap: 4px 10px;
-  grid-template-columns: auto 1fr;
-  margin: 0 0 8px;
 }
 
 .prev-list dt {
@@ -1380,28 +1338,6 @@ fieldset:disabled .input::placeholder {
   margin-top: 6px;
 }
 
-.side-tabs {
-  display: grid;
-  gap: 4px;
-  grid-template-columns: repeat(4, 1fr);
-  margin: 12px 0 8px;
-}
-
-.side-tab {
-  background: var(--surface-muted);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  font-size: var(--fs-md);
-  font-weight: 700;
-  padding: 6px 4px;
-}
-
-.side-tab[aria-selected="true"] {
-  background: var(--teal-soft);
-  border-color: var(--teal);
-  color: var(--teal-dark);
-}
-
 .readiness {
   list-style: none;
   margin: 0;
@@ -1460,10 +1396,6 @@ fieldset:disabled .input::placeholder {
   width: 110px;
 }
 
-.confirm-row td {
-  vertical-align: middle;
-}
-
 .confirm-ok {
   color: var(--green);
   font-size: var(--fs-md);
@@ -1518,42 +1450,6 @@ fieldset:disabled .input::placeholder {
   color: var(--green);
 }
 
-.flags-row {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-  margin-top: 12px;
-}
-
-.dilation-timer {
-  background: var(--amber-soft);
-  border-radius: 6px;
-  color: var(--amber);
-  font-weight: 800;
-  padding: 2px 8px;
-}
-
-.dilation-timer.is-ready {
-  background: var(--green-soft);
-  color: var(--green);
-}
-
-.exam-workbench .workbench-form {
-  margin: 0 auto;
-  max-width: 1100px;
-}
-
-.exam-workbench .input.input-va {
-  font-size: 20px;
-  min-height: 48px;
-  width: 140px;
-}
-
-.exam-workbench .input.input-num {
-  min-height: 48px;
-}
-
 /* 処方・セット・定型文 */
 .rx-row.is-not-issued .input {
   background: var(--surface-muted);
@@ -1604,11 +1500,6 @@ fieldset:disabled .input::placeholder {
   border-radius: 8px;
   margin-top: 12px;
   padding: 12px;
-}
-
-.flags-row .check-line {
-  margin: 0;
-  white-space: nowrap;
 }
 
 .exam-table select.input {
@@ -1734,54 +1625,6 @@ fieldset:disabled .input::placeholder {
   grid-template-columns: 128px minmax(0, 1fr) minmax(0, 1fr);
 }
 
-.exam-eye {
-  display: contents;
-}
-
-.exam-label,
-.exam-cell,
-.exam-eye-head {
-  border-bottom: 1px solid var(--line);
-  grid-column: var(--col, 1);
-  grid-row: var(--row);
-  min-width: 0;
-  padding: 8px 10px;
-}
-
-.exam-label {
-  color: var(--text-soft);
-  font-size: var(--fs-md);
-  font-weight: 700;
-  padding-top: 16px;
-}
-
-.exam-eye-head {
-  font-size: var(--fs-lg);
-  grid-row: 1;
-  margin: 0;
-}
-
-.exam-eye-od > * {
-  background: var(--od-soft);
-}
-
-.exam-eye-os > * {
-  background: var(--os-soft);
-}
-
-.exam-cell-label {
-  display: none;
-}
-
-.exam-cell .pair,
-.exam-cell .triple {
-  flex-wrap: wrap;
-}
-
-.exam-cell .pair select.input {
-  width: auto;
-}
-
 .input.input-iop {
   font-size: var(--fs-lg);
   font-weight: 700;
@@ -1792,51 +1635,7 @@ fieldset:disabled .input::placeholder {
   width: 104px;
 }
 
-.exam-cell-confirm {
-  align-content: center;
-  display: grid;
-}
-
 /* 狭い画面では右眼・左眼を縦に積み、各欄にラベルを出す */
-@media (max-width: 639px) {
-  .exam-grid {
-    display: block;
-  }
-
-  .exam-label {
-    display: none;
-  }
-
-  .exam-eye {
-    border-radius: 8px;
-    display: block;
-    margin-bottom: 12px;
-    padding: 4px 10px 8px;
-  }
-
-  .exam-eye-od {
-    background: var(--od-soft);
-  }
-
-  .exam-eye-os {
-    background: var(--os-soft);
-  }
-
-  .exam-eye > * {
-    background: none;
-    border-bottom: 0;
-    padding: 6px 0;
-  }
-
-  .exam-cell-label {
-    color: var(--text-soft);
-    display: block;
-    font-size: var(--fs-sm);
-    font-weight: 700;
-    margin-bottom: 2px;
-  }
-}
-
 /* カルテ画面: 固定ヘッダー（患者 1 行 + 項目移動）と 3 列。--bar-h はヘッダーの実際の高さ（JS が設定） */
 .encounter-page {
   --bar-h: 104px;
@@ -1887,51 +1686,6 @@ fieldset:disabled .input::placeholder {
 
 .encounter-actions {
   flex-wrap: nowrap;
-}
-
-.encounter-toolbar {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 12px;
-}
-
-.encounter-toolbar .inline-field .input {
-  min-height: 34px;
-  padding: 3px 8px;
-}
-
-.section-jump {
-  display: flex;
-  flex: 1;
-  gap: 2px;
-  min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.section-jump-link {
-  border-radius: 6px;
-  color: var(--text-soft);
-  font-size: var(--fs-md);
-  font-weight: 700;
-  padding: 6px 8px;
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.section-jump-link:hover {
-  background: var(--surface);
-  color: var(--teal-dark);
-}
-
-.btn.side-drawer-toggle {
-  display: none;
-}
-
-.btn.btn-chip.side-drawer-toggle.has-blockers {
-  border-color: var(--red-line);
-  color: var(--red);
 }
 
 .save-state {
@@ -2010,26 +1764,6 @@ fieldset:disabled .input::placeholder {
   margin: 0;
 }
 
-.encounter-3col {
-  align-items: start;
-  display: grid;
-  gap: 14px;
-  grid-template-columns: 280px minmax(0, 1fr) 320px;
-}
-
-.encounter-3col.is-history-hidden {
-  grid-template-columns: minmax(0, 1fr) 320px;
-}
-
-.encounter-history,
-.encounter-side {
-  max-height: calc(100vh - var(--nav-h) - var(--bar-h) - 24px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  position: sticky;
-  top: calc(var(--nav-h) + var(--bar-h) + 12px);
-}
-
 .pane-head {
   align-items: center;
   display: flex;
@@ -2039,90 +1773,6 @@ fieldset:disabled .input::placeholder {
 
 .pane-head .pane-title {
   margin: 0;
-}
-
-.drawer-only,
-.drawer-backdrop {
-  display: none;
-}
-
-/* iPad 横など: 過去カルテは左から引き出す */
-@media (max-width: 1279px) {
-  .encounter-3col,
-  .encounter-3col.is-history-hidden {
-    grid-template-columns: minmax(0, 1fr) 300px;
-  }
-
-  .encounter-history {
-    background: var(--page);
-    bottom: 0;
-    box-shadow: 8px 0 24px rgba(15, 23, 42, 0.18);
-    left: 0;
-    max-height: none;
-    padding: 16px;
-    position: fixed;
-    top: var(--nav-h);
-    transform: translateX(-105%);
-    transition: transform 0.18s ease, visibility 0.18s;
-    visibility: hidden;
-    width: min(380px, 92vw);
-    z-index: 45;
-  }
-
-  .encounter-3col.is-drawer-history .encounter-history {
-    transform: none;
-    visibility: visible;
-  }
-
-  .encounter-history .pane-head {
-    display: flex;
-  }
-
-  .drawer-backdrop {
-    background: rgba(15, 23, 42, 0.35);
-    border: 0;
-    display: block;
-    inset: var(--nav-h) 0 0 0;
-    position: fixed;
-    z-index: 44;
-  }
-}
-
-/* iPad 縦・スマホ: 1 列。確認・比較パネルも右から引き出す */
-@media (max-width: 1023px) {
-  .encounter-3col,
-  .encounter-3col.is-history-hidden {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .encounter-side {
-    background: var(--page);
-    bottom: 0;
-    box-shadow: -8px 0 24px rgba(15, 23, 42, 0.18);
-    max-height: none;
-    padding: 16px;
-    position: fixed;
-    right: 0;
-    top: var(--nav-h);
-    transform: translateX(105%);
-    transition: transform 0.18s ease, visibility 0.18s;
-    visibility: hidden;
-    width: min(380px, 92vw);
-    z-index: 45;
-  }
-
-  .encounter-3col.is-drawer-side .encounter-side {
-    transform: none;
-    visibility: visible;
-  }
-
-  .btn.side-drawer-toggle {
-    display: inline-flex;
-  }
-
-  .drawer-only {
-    display: flex;
-  }
 }
 
 @media (max-width: 767px) {
@@ -2141,11 +1791,6 @@ fieldset:disabled .input::placeholder {
   .encounter-actions {
     flex-wrap: wrap;
   }
-
-  .section-jump {
-    flex-basis: 100%;
-    order: 5;
-  }
 }
 
 /* 処方: 1 行目に薬剤・眼・回数・用法、2 行目に種類・院内外・数量・日数 */
@@ -2153,13 +1798,6 @@ fieldset:disabled .input::placeholder {
   border-bottom: 1px solid var(--line);
   margin: 0;
   padding: 8px 0;
-}
-
-.rx-row.is-carried {
-  background: var(--amber-soft);
-  border-radius: 8px;
-  box-shadow: inset 3px 0 0 var(--amber);
-  padding: 8px 10px;
 }
 
 .rx-main {
@@ -2223,20 +1861,6 @@ fieldset:disabled .input::placeholder {
   margin: 4px 0 0;
 }
 
-.rx-carried-note {
-  align-items: center;
-  background: var(--amber-soft);
-  border: 1px solid var(--amber-line);
-  border-radius: 8px;
-  color: var(--amber);
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-  justify-content: space-between;
-  margin-bottom: 8px;
-  padding: 8px 12px;
-}
-
 @media (max-width: 767px) {
   .rx-main {
     grid-template-columns: minmax(0, 1fr) 88px;
@@ -2248,26 +1872,6 @@ fieldset:disabled .input::placeholder {
   width: 72px;
 }
 
-.subjective-grid {
-  display: grid;
-  gap: 0 14px;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-}
-
-.subjective-grid .field {
-  margin-bottom: 0;
-}
-
-@media (max-width: 767px) {
-  .subjective-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .subjective-grid .field {
-    margin-bottom: 10px;
-  }
-}
-
 /* タッチ端末は押しやすい大きさにする */
 @media (pointer: coarse) {
   .btn.btn {
@@ -2275,9 +1879,7 @@ fieldset:disabled .input::placeholder {
   }
 
   .btn.btn-chip,
-  .btn.btn-sm,
-  .side-tab,
-  .section-jump-link {
+  .btn.btn-sm {
     min-height: 40px;
   }
 

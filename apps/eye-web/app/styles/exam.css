@@ -1,0 +1,1015 @@
+/*
+ * 検査値の表（カルテ・検査ページ共通の ExamTable）、テンキー、検査ページ（/encounters/[id]/exam）。
+ * 表の DOM は「右眼の全項目 → 左眼の全項目」の順で、位置は --r/--c（狭い画面は --rs/--cs）で決める。
+ * globals.css より先に読み込まれるため、既存の .input 系の幅などは .xt-grid で絞って上書きする。
+ */
+
+.xt-grid {
+  align-items: center;
+  column-gap: 6px;
+  display: grid;
+}
+
+.xt-eye {
+  display: contents;
+}
+
+.xt-cell {
+  grid-column: var(--c);
+  grid-row: var(--r);
+  margin: 0;
+  min-width: 0;
+}
+
+.xt-grid .input {
+  min-height: 40px;
+  padding: 6px 8px;
+}
+
+.xt-grid .input.input-num,
+.xt-grid .input.input-va,
+.xt-grid .input.input-iop {
+  width: 100%;
+}
+
+.xt-grid .input.xt-va,
+.xt-grid .input.input-iop {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+}
+
+.xt-grid .input.input-iop.is-high {
+  border-color: var(--red);
+  color: var(--red);
+  font-weight: 800;
+}
+
+.xt-grid .input.xt-axis.is-dim {
+  color: var(--muted);
+}
+
+.xt-grid .input.is-invalid,
+.input.is-invalid {
+  border-color: var(--red);
+}
+
+.xt-grid select.xt-select {
+  min-width: 0;
+  padding-right: 4px;
+  width: 100%;
+}
+
+.xt-triple {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: 4fr 4fr 3fr;
+  min-width: 0;
+}
+
+.xt-slot {
+  display: block;
+  min-width: 0;
+}
+
+.xt-time {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+}
+
+.xt-mlabel {
+  display: none;
+}
+
+/* ---- カルテ用（1 眼 1 行） ---- */
+.xt-grid.is-chart {
+  grid-template-columns: 28px 72px 72px 80px 80px 60px 68px 92px minmax(96px, 1fr);
+  row-gap: 0;
+}
+
+.xt-grid.is-chart .xt-cell {
+  padding: 3px 0;
+}
+
+.xt-grid.is-chart .num-field {
+  display: block;
+}
+
+.xt-colhead {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.xt-colhead-confirm {
+  text-align: right;
+}
+
+.xt-eye-label {
+  font-size: var(--fs-lg);
+  font-weight: 800;
+  text-align: center;
+}
+
+.xt-confirm-cell {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.xt-confirmed {
+  align-items: center;
+  color: var(--green);
+  display: inline-flex;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.xt-unconfirm {
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: var(--fs-md);
+  min-height: 28px;
+  min-width: 28px;
+}
+
+.xt-unconfirm:hover {
+  background: var(--surface-muted);
+}
+
+.btn.btn-chip.xt-confirm,
+.btn.btn-chip.xt-confirm-both {
+  font-size: var(--fs-sm);
+  min-height: 32px;
+}
+
+.xt-grid.is-chart .xt-cell.xt-prev-line {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  padding: 0 0 6px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.xt-grid.is-chart .xt-cell.xt-detail {
+  align-items: center;
+  border-top: 1px dashed var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  padding: 6px 0;
+}
+
+.xt-detail-eye {
+  font-weight: 800;
+  text-align: center;
+  width: 28px;
+}
+
+.xt-detail-item {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.xt-detail-label {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.xt-detail .xt-triple {
+  width: 236px;
+}
+
+.xt-grid .xt-detail select.xt-select {
+  width: auto;
+}
+
+.xt-detail-toggle {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+
+.xt-detail-toggle .check-line {
+  margin: 0;
+}
+
+/* スマホ: 1 眼 2 行（裸眼・矯正・眼圧・方法 / レンズ・確認）。各欄に小さなラベル */
+@media (max-width: 639px) {
+  .xt-grid.is-chart {
+    grid-template-columns: 22px repeat(4, minmax(0, 1fr));
+  }
+
+  .xt-grid .xt-cell {
+    grid-column: var(--cs);
+    grid-row: var(--rs);
+  }
+
+  .xt-grid.is-chart .xt-colhead {
+    display: none;
+  }
+
+  .xt-grid.is-chart .xt-mlabel {
+    color: var(--muted);
+    display: block;
+    font-size: var(--fs-xs);
+    font-weight: 700;
+  }
+
+  .xt-grid.is-chart .xt-confirm-cell {
+    align-self: end;
+  }
+
+  .xt-detail .xt-triple {
+    width: 100%;
+  }
+}
+
+/* ---- 検査ページ用（検査の順に 4 行、右端に前回） ---- */
+.xt-grid.is-workbench {
+  align-items: stretch;
+  column-gap: 0;
+  grid-template-columns: 88px minmax(0, 1fr) minmax(0, 1fr) 132px;
+}
+
+.xt-grid.is-workbench .xt-cell {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-height: 56px;
+  padding: 6px 8px;
+}
+
+.xt-grid.is-workbench .xt-head {
+  font-size: var(--fs-md);
+  min-height: 44px;
+}
+
+.xt-grid.is-workbench .xt-eye-os > .xt-cell {
+  border-left: 2px solid var(--line-strong);
+}
+
+.xt-grid.is-workbench .xt-label {
+  color: var(--text-soft);
+  font-size: var(--fs-md);
+  font-weight: 700;
+}
+
+.xt-grid.is-workbench .xt-prev,
+.xt-grid.is-workbench .xt-prev-head {
+  border-left: 1px solid var(--line);
+}
+
+.xt-grid.is-workbench .xt-prev {
+  align-items: stretch;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: 0;
+  justify-content: center;
+  padding: 4px 6px;
+}
+
+.xt-grid.is-workbench .xt-prev-head {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.xt-grid.is-workbench .xt-triple {
+  display: inline-grid;
+  grid-template-columns: 66px 66px 52px;
+  gap: 4px;
+}
+
+.xt-grid.is-workbench .input.xt-va {
+  width: 64px;
+}
+
+.xt-grid.is-workbench .input.input-iop {
+  width: 60px;
+}
+
+.xt-grid.is-workbench .input {
+  min-height: 44px;
+}
+
+.xt-grid.is-workbench select.xt-select {
+  max-width: 88px;
+  width: auto;
+}
+
+/* 矯正視力の右に添える矯正レンズ（「1.2 (S C Ax)」の括弧の代わりに薄い枠でまとめる） */
+.xt-lens-group {
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  display: inline-flex;
+  padding: 2px;
+}
+
+.xt-alert {
+  border: 1px solid var(--red-line);
+  border-radius: 4px;
+  color: var(--red);
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
+.btn.btn-chip.xt-mini {
+  font-size: var(--fs-sm);
+  min-height: 32px;
+  padding: 2px 8px;
+}
+
+.xt-prev-value {
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text-soft);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  min-height: 22px;
+  overflow: hidden;
+  padding: 1px 6px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.xt-prev-value:hover:not(:disabled) {
+  background: var(--teal-soft);
+  color: var(--teal-dark);
+}
+
+.xt-prev-value:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+.xt-prev-empty {
+  color: var(--placeholder);
+  font-size: var(--fs-sm);
+  padding: 1px 6px;
+}
+
+.xt-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 10px 0;
+}
+
+.xt-toast {
+  align-items: center;
+  color: var(--green);
+  display: inline-flex;
+  flex-wrap: wrap;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  gap: 6px;
+}
+
+@media (pointer: coarse) {
+  .xt-prev-value {
+    min-height: 32px;
+  }
+}
+
+/* iPad 縦: 前回の列を細く */
+@media (max-width: 1023px) {
+  .xt-grid.is-workbench {
+    grid-template-columns: 76px minmax(0, 1fr) minmax(0, 1fr) 112px;
+  }
+
+  .xt-grid.is-workbench .xt-cell {
+    padding: 6px 8px;
+  }
+}
+
+/* スマホ: 項目名の行 → 右 | 左 → 前回 */
+@media (max-width: 639px) {
+  .xt-grid.is-workbench {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .xt-grid.is-workbench .xt-label {
+    border-bottom: 0;
+    font-size: var(--fs-sm);
+    min-height: 0;
+    padding: 8px 8px 0;
+  }
+
+  .xt-grid.is-workbench .xt-cell.xt-value {
+    border-bottom: 0;
+    padding: 4px 6px;
+  }
+
+  .xt-grid.is-workbench .xt-eye-os > .xt-cell {
+    border-left: 1px solid var(--line);
+  }
+
+  .xt-grid.is-workbench .xt-prev {
+    border-left: 0;
+    flex-direction: row;
+    min-height: 0;
+    padding: 0 4px 6px;
+  }
+
+  .xt-grid.is-workbench .xt-prev-head {
+    display: none;
+  }
+
+  .xt-grid.is-workbench .xt-triple,
+  .xt-grid.is-workbench .xt-lens-group {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+}
+
+/* ---- テンキー・視力の選択（タッチ端末だけ） ---- */
+.num-field {
+  display: inline-block;
+  min-width: 0;
+  position: relative;
+}
+
+.num-field.is-pad-open {
+  z-index: 36;
+}
+
+.num-pad,
+.va-picker {
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.22);
+  display: grid;
+  gap: 6px;
+  left: 0;
+  padding: 8px;
+  position: absolute;
+  top: calc(100% + 4px);
+  z-index: 36;
+}
+
+.xt-grid.is-workbench .xt-eye-os .num-pad,
+.xt-grid.is-workbench .xt-eye-os .va-picker {
+  left: auto;
+  right: 0;
+}
+
+.num-pad {
+  grid-template-columns: repeat(4, 56px);
+}
+
+.num-pad.is-axis {
+  grid-template-columns: repeat(3, 64px);
+}
+
+.va-picker {
+  grid-template-columns: repeat(10, 30px);
+}
+
+.num-key {
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--fs-lg);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  min-height: 44px;
+  padding: 0 4px;
+}
+
+.va-picker .num-key {
+  grid-column: span 2;
+}
+
+.va-picker .num-key.is-special {
+  font-size: var(--fs-sm);
+}
+
+.va-picker .num-key.is-action {
+  font-size: var(--fs-sm);
+  grid-column: span 5;
+}
+
+.num-key.is-wide {
+  font-size: var(--fs-sm);
+  grid-column: span 2;
+}
+
+.num-pad.is-axis .num-key.is-wide {
+  grid-column: span 3;
+}
+
+.num-key.is-fraction,
+.num-key.is-quick {
+  color: var(--teal-dark);
+}
+
+.num-key[aria-pressed="true"] {
+  background: var(--teal-soft);
+  border-color: var(--teal);
+  color: var(--teal-dark);
+}
+
+.num-key.is-previous {
+  border-color: var(--teal);
+  box-shadow: inset 0 0 0 1px var(--teal);
+}
+
+.num-key.is-next {
+  background: var(--teal);
+  border-color: var(--teal);
+  color: var(--on-accent);
+}
+
+.num-key:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* ---- 小見出し・切り替えボタン（検査ページ・本日の検査・散瞳） ---- */
+.mini-head {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.mini-head h2 {
+  color: var(--text-soft);
+  font-size: var(--fs-md);
+  margin: 0;
+}
+
+.segmented {
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  display: inline-flex;
+  overflow: hidden;
+}
+
+.segmented button {
+  background: var(--surface);
+  border: 0;
+  border-left: 1px solid var(--line);
+  color: var(--text-soft);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  min-height: 40px;
+  min-width: 44px;
+  padding: 4px 12px;
+}
+
+.segmented button:first-child {
+  border-left: 0;
+}
+
+.segmented button[aria-pressed="true"] {
+  background: var(--teal-soft);
+  color: var(--teal-dark);
+}
+
+/* 本日の検査（オーダーの消し込み） */
+.checklist-count {
+  color: var(--amber);
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+}
+
+.checklist-count.is-done {
+  color: var(--green);
+}
+
+.order-row.checklist-row {
+  flex-wrap: nowrap;
+  min-height: 48px;
+  padding: 4px 0;
+}
+
+.check-toggle {
+  align-items: center;
+  background: var(--surface);
+  border: 2px solid var(--amber);
+  border-radius: 50%;
+  color: var(--on-accent);
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-weight: 800;
+  height: 32px;
+  justify-content: center;
+  width: 32px;
+}
+
+.check-toggle[aria-pressed="true"] {
+  background: var(--green);
+  border-color: var(--green);
+}
+
+.checklist-row.is-cancelled .check-toggle {
+  border-color: var(--line-strong);
+}
+
+.check-toggle:disabled {
+  cursor: default;
+}
+
+.checklist-row .order-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.checklist-row.is-performed .order-name {
+  color: var(--text-soft);
+  font-weight: 600;
+}
+
+.checklist-hint {
+  border: 1px solid var(--amber-line);
+  border-radius: 4px;
+  color: var(--amber);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
+.checklist-meta {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.checklist-add {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  margin-top: 8px;
+}
+
+.checklist-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.checklist-add-open {
+  margin-top: 4px;
+}
+
+/* 散瞳（検査ページ） */
+.dilation-status {
+  color: var(--amber);
+  font-weight: 700;
+  margin: 0 0 6px;
+}
+
+.dilation-status strong {
+  font-size: var(--fs-xl);
+}
+
+.dilation-status.is-ready {
+  color: var(--green);
+}
+
+.dilation-bar {
+  background: var(--line);
+  border-radius: 999px;
+  display: block;
+  height: 6px;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.dilation-bar > span {
+  background: var(--amber);
+  display: block;
+  height: 100%;
+}
+
+.dilation-status.is-ready + .dilation-bar > span {
+  background: var(--green);
+}
+
+.dilation-order-hint {
+  align-items: center;
+  color: var(--text-soft);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--fs-sm);
+  gap: 6px;
+  margin: 0 0 6px;
+}
+
+.dilation-start {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ---- 検査ページの骨格 ---- */
+.exam-page {
+  padding-bottom: calc(120px + env(safe-area-inset-bottom));
+}
+
+.exam-page .exam-banner {
+  padding: 8px 20px;
+  position: static;
+}
+
+.exam-layout {
+  align-items: start;
+  border: 0;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.exam-main {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  min-width: 0;
+  padding-bottom: 10px;
+  position: relative;
+}
+
+.exam-title {
+  font-size: var(--fs-md);
+  left: 10px;
+  margin: 0;
+  position: absolute;
+  top: 12px;
+}
+
+.exam-side {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.exam-block {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  min-width: 0;
+  padding: 12px 14px;
+}
+
+.handoff-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.exam-bar {
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  bottom: 0;
+  box-shadow: 0 -4px 16px rgba(15, 23, 42, 0.08);
+  left: 0;
+  padding: 8px 20px calc(8px + env(safe-area-inset-bottom));
+  position: fixed;
+  right: 0;
+  z-index: 30;
+}
+
+.exam-bar-row,
+.exam-bar-message {
+  margin: 0 auto;
+  max-width: 1440px;
+}
+
+.exam-bar-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.exam-bar-message {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.exam-bar-message.is-ok {
+  color: var(--green);
+}
+
+.exam-bar-message.is-warn {
+  color: var(--amber);
+}
+
+.exam-bar-message.is-danger {
+  color: var(--red);
+}
+
+.exam-bar-eyes {
+  display: inline-flex;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  gap: 10px;
+  white-space: nowrap;
+}
+
+.exam-bar-eye.is-done {
+  color: var(--green);
+}
+
+.exam-bar-eye.is-pending {
+  color: var(--amber);
+}
+
+.exam-bar-eye.is-empty {
+  color: var(--muted);
+}
+
+.exam-bar-dilation {
+  color: var(--amber);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.exam-bar-dilation.is-ready {
+  color: var(--green);
+}
+
+.exam-bar-spacer {
+  flex: 1;
+}
+
+.exam-bar-main {
+  align-items: center;
+  display: inline-flex;
+  gap: 10px;
+}
+
+.exam-bar-hint {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.exam-bar .btn.btn-primary {
+  font-size: var(--fs-lg);
+  min-height: 48px;
+  padding: 8px 20px;
+}
+
+.exam-bar .btn.exam-menu-narrow {
+  display: none;
+}
+
+.more-menu.is-up .more-menu-list {
+  bottom: calc(100% + 6px);
+  top: auto;
+}
+
+@media (max-width: 1279px) {
+  .exam-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .exam-side {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .exam-side {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 767px) {
+  .exam-page .exam-banner {
+    padding: 8px 12px;
+  }
+
+  .exam-bar {
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+  }
+
+  .exam-bar-hint,
+  .exam-bar-spacer,
+  .exam-bar .btn.exam-bar-link.is-in-menu {
+    display: none;
+  }
+
+  .exam-bar .more-menu {
+    margin-left: auto;
+  }
+
+  .exam-bar .btn.exam-menu-narrow {
+    display: inline-flex;
+  }
+
+  .exam-bar-main {
+    flex: 1 1 100%;
+  }
+
+  .exam-bar-main .btn.btn-primary {
+    flex: 1;
+  }
+}
+
+@media (max-width: 639px) {
+  .exam-title {
+    padding: 10px 10px 4px;
+    position: static;
+  }
+}
+
+.num-pad-head {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  grid-column: 1 / -1;
+  justify-content: space-between;
+  margin: -4px -4px -2px 2px;
+}
+
+.num-pad-close {
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text-soft);
+  cursor: pointer;
+  font-size: var(--fs-xl);
+  line-height: 1;
+  min-height: 36px;
+  min-width: 40px;
+}
+
+/* スマホ: テンキー・視力の選択は画面下のシートにする（欄は上へスクロールして見えるようにする） */
+@media (max-width: 639px) {
+  .num-pad,
+  .va-picker,
+  .xt-grid.is-workbench .xt-eye-os .num-pad,
+  .xt-grid.is-workbench .xt-eye-os .va-picker {
+    bottom: calc(8px + env(safe-area-inset-bottom));
+    left: 8px;
+    position: fixed;
+    right: 8px;
+    top: auto;
+    z-index: 60;
+  }
+
+  .num-pad {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .num-pad.is-axis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .va-picker {
+    grid-template-columns: repeat(10, minmax(0, 1fr));
+  }
+
+  .xt-grid .input {
+    scroll-margin-top: calc(var(--nav-h) + 16px);
+  }
+}
+
+.num-key.is-text {
+  font-size: var(--fs-sm);
+}

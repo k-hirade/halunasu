@@ -12,7 +12,7 @@ export function SaveIndicator({ state, onRetry }) {
 }
 
 // このダイアログの中で解消できる確認（検査値の確認・引き継ぎ処方の確認）。それ以外の止まる理由があると確定できない。
-const RESOLVED_IN_DIALOG = new Set(["exam_unconfirmed", "prescription_carried_over"]);
+export const RESOLVED_IN_DIALOG = new Set(["exam_unconfirmed", "prescription_carried_over"]);
 
 export function FinalizeDialog({ content, changes, confirmations, readiness, version, error = "", onConfirm, onCancel }) {
   const [busy, setBusy] = useState(false);

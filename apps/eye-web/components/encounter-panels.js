@@ -1,23 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { diagnosisText, formatDate, formatDateTime, PHRASE_TARGET_LABELS, prescriptionText } from "../lib/format";
+import { useState } from "react";
+import { diagnosisText, formatDate, formatShortDate, PHRASE_TARGET_LABELS, prescriptionText, VISIT_TYPE_LABELS } from "../lib/format";
 
-export function ComparePanel({ changes, previous }) {
-  if (!previous) {
-    return (
-      <section className="panel">
-        <h2>前回との比較</h2>
-        <p className="empty">確定済みの前回カルテはありません。</p>
-      </section>
-    );
-  }
-  const exam = previous.content.exam;
+// 左列「変更点」: 前回の確定カルテから今回変わった所。
+export function ChangesPanel({ changes, previous }) {
+  if (!previous) return <p className="empty">確定済みの前回カルテはありません。</p>;
   return (
-    <section className="panel">
-      <h2>前回との比較</h2>
-      <p className="muted small">前回 {formatDate(previous.encounterDate)}（v{previous.versionCount}）</p>
-      <h3>今回変わった所</h3>
+    <div className="changes-panel">
+      <p className="muted small">
+        前回 {formatDate(previous.encounterDate)}（v{previous.versionCount}）との違い ・ <Link href={`/encounters/${previous.encounterId}`}>前回を開く</Link>
+      </p>
       {changes.length === 0 ? <p className="muted small">変更はまだありません。</p> : (
         <ul className="changes">
           {changes.map((change) => (
@@ -28,21 +22,7 @@ export function ComparePanel({ changes, previous }) {
           ))}
         </ul>
       )}
-      <h3>前回の記録</h3>
-      <dl className="prev-list">
-        <dt>視力</dt>
-        <dd>R {exam.od.vaCorrected || exam.od.vaUncorrected || "—"} / L {exam.os.vaCorrected || exam.os.vaUncorrected || "—"}</dd>
-        <dt>眼圧</dt>
-        <dd>R {exam.od.iop ?? "—"} / L {exam.os.iop ?? "—"}</dd>
-        <dt>病名</dt>
-        <dd>{previous.content.diagnoses.map(diagnosisText).join("、") || "—"}</dd>
-        <dt>処方</dt>
-        <dd>{previous.content.prescriptions.map(prescriptionText).join("、") || "—"}</dd>
-        <dt>方針</dt>
-        <dd>{previous.content.plan || "—"}</dd>
-      </dl>
-      <Link className="small" href={`/encounters/${previous.encounterId}`}>前回カルテを開く</Link>
-    </section>
+    </div>
   );
 }
 
@@ -65,51 +45,89 @@ export function VersionsPanel({ encounterId, versions }) {
 }
 
 
-const COPY_ACTIONS = [
-  ["findings", "所見"],
-  ["prescriptions", "処方"],
-  ["plan", "方針"],
-  ["sketches", "シェーマ"]
-];
+const FINDING_PARTS = [["anterior", "前眼部"], ["lens", "中間透光体"], ["fundus", "眼底"]];
 
-// 左列: 過去の確定カルテ。項目ごとに今回のカルテへ複写できる（Do）。
+const examLine = (values = {}) => `${values.vaCorrected || values.vaUncorrected || "—"} / ${values.iop ?? "—"}`;
+
+// 左列「過去」: 過去の確定カルテ。最新の 1 回だけ開き、他は 1 行に畳む（日付を押して開閉）。
+// 複写は、カードの見出しの「Do」（すべて）と、各グループの「→」の 2 種類。複写の処理そのものは onCopy（今回の入力は上書きしない）。
 export function HistoryPane({ history, editable, onCopy }) {
+  const [openIds, setOpenIds] = useState(() => new Set(history[0] ? [history[0].encounterId] : []));
   if (!history.length) {
     return <p className="empty">確定済みの過去カルテはありません。</p>;
   }
+  const toggle = (id) => {
+    const next = new Set(openIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setOpenIds(next);
+  };
   return (
     <ol className="history-pane">
       {history.map((encounter) => {
         const { content } = encounter;
-        const findings = ["od", "os"].flatMap((side) => (
-          [["anterior", "前眼部"], ["lens", "中間透光体"], ["fundus", "眼底"]]
-            .filter(([key]) => content.findings?.[side]?.[key])
-            .map(([key, label]) => `${side === "od" ? "R" : "L"} ${label}: ${content.findings[side][key]}`)
-        ));
-        return (
-          <li className="history-card" key={encounter.encounterId}>
-            <div className="history-card-head">
-              <strong>{formatDate(encounter.encounterDate)}</strong>
-              <span className="muted small">v{encounter.versionCount} {encounter.finalizedBy?.displayName || ""}</span>
-              {editable ? <button className="btn btn-chip" onClick={() => onCopy("all", encounter)} type="button">すべて複写</button> : null}
+        const open = openIds.has(encounter.encounterId);
+        const primary = (content.diagnoses || []).find((item) => item.primary) || content.diagnoses?.[0];
+        const copyButton = (kind, label) => (editable && hasContent(content, kind) ? (
+          <button aria-label={`${label}を今回へ複写`} className="history-copy-arrow" onClick={() => onCopy(kind, encounter)} title={`${label}を今回へ複写（入力済みの欄はそのまま）`} type="button">→</button>
+        ) : null);
+        const group = (kind, label, body) => (
+          <div className="history-group">
+            <div className="history-group-head">
+              <span className="history-label">{label}</span>
+              {copyButton(kind, label)}
             </div>
-            <p className="history-line">
-              <span className="eye-od">R</span> {content.exam.od.vaCorrected || content.exam.od.vaUncorrected || "—"} / {content.exam.od.iop ?? "—"}
-              {"　"}
-              <span className="eye-os">L</span> {content.exam.os.vaCorrected || content.exam.os.vaUncorrected || "—"} / {content.exam.os.iop ?? "—"}
-              <span className="muted small">（視力 / 眼圧）</span>
-            </p>
-            {content.chiefComplaint ? <p className="history-line"><span className="history-label">主訴</span>{content.chiefComplaint}</p> : null}
-            {findings.length ? <p className="history-line pre"><span className="history-label">所見</span>{findings.join("\n")}</p> : null}
-            {content.diagnoses?.length ? <p className="history-line"><span className="history-label">病名</span>{content.diagnoses.map(diagnosisText).join("、")}</p> : null}
-            {content.prescriptions?.length ? <p className="history-line"><span className="history-label">処方</span>{content.prescriptions.map(prescriptionText).join("、")}</p> : null}
-            {content.plan ? <p className="history-line pre"><span className="history-label">方針</span>{content.plan}</p> : null}
-            {content.sketches?.length ? <p className="history-line muted small">シェーマ {content.sketches.length}枚</p> : null}
-            {editable ? (
-              <div className="history-copy">
-                {COPY_ACTIONS.filter(([kind]) => hasContent(content, kind)).map(([kind, label]) => (
-                  <button className="btn btn-chip" key={kind} onClick={() => onCopy(kind, encounter)} type="button">{label}を複写</button>
-                ))}
+            {body}
+          </div>
+        );
+        const findings = FINDING_PARTS.map(([key, label]) => {
+          const right = content.findings?.od?.[key];
+          const left = content.findings?.os?.[key];
+          if (!right && !left) return null;
+          return (
+            <div className="history-finding" key={key}>
+              <span className="history-part">{label}</span>
+              <span>
+                {right ? <span className="history-eye-line"><span className="eye-od">R</span> {right}</span> : null}
+                {left ? <span className="history-eye-line"><span className="eye-os">L</span> {left}</span> : null}
+              </span>
+            </div>
+          );
+        }).filter(Boolean);
+        return (
+          <li className={`history-card${open ? " is-open" : ""}`} key={encounter.encounterId}>
+            <div className="history-card-head">
+              <button aria-expanded={open} className="history-toggle" onClick={() => toggle(encounter.encounterId)} type="button">
+                <span className="history-caret" aria-hidden="true">{open ? "▾" : "▸"}</span>
+                <strong>{formatShortDate(encounter.encounterDate)}</strong>
+                <span className="muted small">{VISIT_TYPE_LABELS[encounter.visitType] || ""}</span>
+                {open ? <span className="muted small">{encounter.finalizedBy?.displayName || ""}</span> : (
+                  <span className="history-summary">
+                    <span className="eye-od">R</span> {examLine(content.exam?.od)} <span className="eye-os">L</span> {examLine(content.exam?.os)}
+                    {primary ? <span className="history-dx"> {primary.name}</span> : null}
+                  </span>
+                )}
+              </button>
+              {editable ? (
+                <button aria-label={`${formatDate(encounter.encounterDate)} の所見・処方・方針・シェーマを今回へ複写`} className="btn btn-chip history-do" onClick={() => onCopy("all", encounter)} title="所見・処方・方針・シェーマをまとめて複写（入力済みの欄はそのまま）" type="button">Do</button>
+              ) : null}
+            </div>
+            {open ? (
+              <div className="history-body">
+                <p className="history-line">
+                  <span className="eye-od">R</span> {examLine(content.exam?.od)}
+                  {"　"}
+                  <span className="eye-os">L</span> {examLine(content.exam?.os)}
+                  <span className="muted small">（視力 / 眼圧）</span>
+                </p>
+                {content.chiefComplaint ? <p className="history-line"><span className="history-label">主訴</span>{content.chiefComplaint}</p> : null}
+                {findings.length ? group("findings", "所見", <div className="history-findings">{findings}</div>) : null}
+                {content.diagnoses?.length ? <p className="history-line"><span className="history-label">病名</span>{content.diagnoses.map(diagnosisText).join("、")}</p> : null}
+                {content.prescriptions?.length ? group("prescriptions", "処方", (
+                  <ul className="history-rx">{content.prescriptions.map((item, index) => <li key={index}>{prescriptionText(item)}</li>)}</ul>
+                )) : null}
+                {content.plan || content.assessment ? group("plan", "方針", <p className="history-text pre">{[content.assessment, content.plan].filter(Boolean).join("\n")}</p>) : null}
+                {content.sketches?.length ? group("sketches", "シェーマ", <p className="history-text muted small">{content.sketches.length}枚</p>) : null}
               </div>
             ) : null}
           </li>
@@ -125,19 +143,6 @@ function hasContent(content, kind) {
   if (kind === "plan") return Boolean(content.plan || content.assessment);
   if (kind === "sketches") return (content.sketches || []).length > 0;
   return false;
-}
-
-// 確定前のチェック。止まる理由（赤）と、確認を促す注意（黄）を並べる。
-export function ReadinessPanel({ readiness }) {
-  if (!readiness.blockers.length && !readiness.warnings.length) {
-    return <p className="readiness is-ok">確定できる状態です。</p>;
-  }
-  return (
-    <ul className="readiness">
-      {readiness.blockers.map((item, index) => <li className="is-blocker" key={`b${index}`}>{item.message}</li>)}
-      {readiness.warnings.map((item, index) => <li className="is-warning" key={`w${index}`}>{item.message}</li>)}
-    </ul>
-  );
 }
 
 // 右列の「候補」: よく使う薬剤を1クリックで処方に追加する。
