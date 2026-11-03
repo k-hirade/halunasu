@@ -2,7 +2,7 @@
 // ログイン → 初診作成・確定 → 再診（前回引き継ぎ・差分）→ 経過 → 印刷 → 設定 → 権限 を通しで確認する。
 import { strict as assert } from "node:assert";
 import { spawn } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -285,17 +285,79 @@ async function runReceptionFlow(browser) {
   await page.getByRole("button", { name: /^すべて/u }).click();
   assert.equal(await page.getByRole("button", { name: /^すべて/u }).getAttribute("aria-pressed"), "true");
 
-  // 会計連携: 医師が確定した本日のカルテを CSV にして連携済みにする
+  // 会計連携: 状態ごとの一覧。未連携だけを下のバーから一括で CSV にして連携済みにする
   await page.getByRole("link", { name: "会計連携" }).click();
-  await page.locator(".billing-card").filter({ hasText: "見本 花子" }).first().waitFor();
-  await page.getByText(/未確定のカルテが/u).waitFor();
+  const pendingRow = page.locator(".bill-status-pending .bill-row").filter({ hasText: "見本 花子" }).first();
+  await pendingRow.waitFor();
+  await page.locator(".bill-status-drafts .bill-row").first().waitFor();
+  assert.match(await pendingRow.locator(".bill-summary").innerText(), /処方\d/u);
+  assert.equal(await page.getByRole("button", { name: /全件 CSV/u }).isVisible(), false, "the all-day CSV is tucked away in the menu");
+  // 行を開くと区分ごとの品目。連絡票は 1 人 1 枚で、その人だけを印刷する
+  await pendingRow.locator(".flow-row-open").click();
+  const detail = page.locator(".bill-detail").first();
+  await detail.locator(".bill-items").waitFor();
+  await page.evaluate(() => {
+    window.__printed = [];
+    window.print = () => window.__printed.push(document.querySelectorAll(".bill-slip").length);
+  });
+  await detail.getByRole("button", { name: "この人の連絡票を印刷" }).click();
+  await page.waitForFunction(() => window.__printed.length === 1);
+  assert.deepEqual(await page.evaluate(() => window.__printed), [1]);
+  // 全件 CSV は「…」から、確認してから
+  await page.locator("summary[aria-label=\"会計連携のその他の操作\"]").click();
+  await page.getByRole("button", { name: /全件 CSV/u }).click();
+  await page.getByRole("dialog").getByText(/取込には使わないでください/u).waitFor();
+  const [allDay] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "確認用に保存する" }).click()]);
+  assert.match(allDay.suggestedFilename(), /-all\.csv$/u);
+  const selbar = page.locator(".bill-selbar");
+  assert.match(await selbar.innerText(), /人を選択中/u);
   const [download] = await Promise.all([
     page.waitForEvent("download"),
-    page.getByRole("button", { name: /CSV 出力して連携済みにする/u }).click()
+    selbar.getByRole("button", { name: "CSV を出力して連携済みにする" }).click()
   ]);
   assert.match(download.suggestedFilename(), /^eye-billing-\d{4}-\d{2}-\d{2}-/u);
-  await page.getByText(/件を連携済みにし、CSV を保存しました。/u).waitFor();
-  await page.locator(".billing-card .billing-state-handed_off").first().waitFor();
+  await page.getByText(/人を連携済みにしました。/u).waitFor();
+  await selbar.waitFor({ state: "detached" });
+  await page.getByRole("button", { name: /^▶ 連携済み/u }).click();
+  await page.locator(".bill-status-handed_off .bill-row").filter({ hasText: "見本 花子" }).first().waitFor();
+  // その回の CSV を取り直せる（連携したときと同じ中身）
+  await page.getByRole("button", { name: /連携の記録/u }).click();
+  const [again] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "この回の CSV" }).first().click()]);
+  assert.equal(readFileSync(await again.path(), "utf8"), readFileSync(await download.path(), "utf8"));
+  // 日付を変えると通知は消え、今日でないことを示す
+  await page.getByRole("button", { name: "前日" }).click();
+  await page.getByText(/今日ではありません/u).waitFor();
+  assert.equal(await page.getByText(/人を連携済みにしました。/u).count(), 0);
+  await page.getByRole("button", { name: "今日", exact: true }).click();
+
+  // 要再連携: 前回の品目と違う行は差分チップを出し、差分を見てから 1 人ずつ再連携する（前回の品目は応答を差し替えて作る）
+  const dayRoute = /\/v1\/eye\/billing\/day\?/u;
+  await page.route(dayRoute, async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    const target = body.encounters.find((item) => item.handoff.state === "handed_off" && item.items.length > 0);
+    if (target) {
+      target.handoff = {
+        ...target.handoff,
+        state: "changed",
+        previousItems: [...target.items.slice(1), { category: "処方", code: "", name: "旧点眼薬", eye: "ou", quantity: 1, unit: "本", days: null, route: "院外", usage: "", note: "" }],
+        previousDiagnoses: []
+      };
+    }
+    await route.fulfill({ response, json: body });
+  });
+  await page.reload();
+  const changedRow = page.locator(".bill-status-changed .bill-row").first();
+  await changedRow.locator(".bill-chip.is-removed").filter({ hasText: "旧点眼薬" }).waitFor();
+  assert.equal(await page.locator(".bill-status-changed input[type=checkbox]").count(), 0, "rows that need another handoff are never bulk-selected");
+  await changedRow.getByRole("button", { name: "差分を見る" }).click();
+  await page.locator(".bill-diff-row.is-removed").filter({ hasText: "旧点眼薬" }).waitFor();
+  await page.locator(".bill-diff-row.is-added").first().waitFor();
+  await page.getByText(/前回分（v\d+）を取り消すか直してから/u).waitFor();
+  const [redo] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "この人だけ CSV を出力して再連携" }).click()]);
+  assert.match(redo.suggestedFilename(), /^eye-billing-/u);
+  await page.getByText(/再連携しました。/u).waitFor();
+  await page.unrouteAll({ behavior: "wait" });
 
   assert.deepEqual(pageErrors, []);
   await context.close();

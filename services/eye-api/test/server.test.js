@@ -775,6 +775,7 @@ test("builds the billing handoff from finalized charts and flags charts amended 
   assert.equal(amendingDraft.amendmentReason, "検査の追記");
   assert.equal(amendingDraft.handoff.state, "handed_off");
   assert.equal(amendingDraft.handoff.version, 1);
+  assert.equal(amendingDraft.patientSnapshot.primaryPatientNumber, "000123", "drafts carry the current patient number too");
   assert.equal(amending.body.drafts.find((item) => item.encounterId !== id).handoff.state, "pending");
   const current = (await request(stores, "GET", `/v1/eye/encounters/${id}`, undefined, doctor)).body.encounter;
   const patched = await request(stores, "PATCH", `/v1/eye/encounters/${id}`, {

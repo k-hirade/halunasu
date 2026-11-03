@@ -883,7 +883,12 @@ async function billingDay(eyeStore, platformStore, orgId, date) {
   }
   // レセコンとの突き合わせに使う患者番号は、カルテの写しではなく最新の患者情報から取る。
   const patients = new Map();
+  const drafts = encounters.filter((item) => item.status === "draft");
   for (const patientId of documentsByPatient.keys()) patients.set(patientId, await platformStore.getPatient(orgId, patientId));
+  // 未確定のカルテの患者番号は表示用なので、取れなくても一覧は出す
+  for (const patientId of new Set(drafts.map((item) => item.patientId))) {
+    if (!patients.has(patientId)) patients.set(patientId, await Promise.resolve().then(() => platformStore.getPatient(orgId, patientId)).catch(() => null));
+  }
   const usedDocuments = new Set();
   const billing = finalized.map((encounter) => {
     const documents = (documentsByPatient.get(encounter.patientId) || []).filter((item) => !usedDocuments.has(item.documentId));
@@ -905,8 +910,9 @@ async function billingDay(eyeStore, platformStore, orgId, date) {
     date,
     encounters: billing,
     // 未確定のカルテ。修正中（連携済みのあとで医師が開いた）かどうかが分かるよう、最後の連携と修正の理由を付ける。
-    drafts: encounters.filter((item) => item.status === "draft").map((item) => ({
+    drafts: drafts.map((item) => ({
       ...encounterSummary(item),
+      patientSnapshot: { ...item.patientSnapshot, primaryPatientNumber: patients.get(item.patientId)?.primaryPatientNumber || item.patientSnapshot?.primaryPatientNumber || "" },
       amendmentReason: item.amendment?.reason || "",
       amendmentRequestedAt: item.amendment?.requestedAt || null,
       handoff: lastHandoffOf(item.encounterId, handoffs)
