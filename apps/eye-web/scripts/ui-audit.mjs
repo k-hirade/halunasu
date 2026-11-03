@@ -148,6 +148,9 @@ async function prepare(browser) {
       "editor-dark": encounterPath,
       "reception-dark": "/reception",
       menu: "/reception",
+      images: `${patientHref}/images`,
+      "encounter-print": `${encounterPath}/print`,
+      "document-print": `${documentPath}/print`,
       search: "/",
       "editor-history": encounterPath,
       "editor-side": encounterPath
