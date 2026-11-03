@@ -109,7 +109,10 @@ async function prepare(browser) {
   const row = page.locator(".flow-row", { hasText: "模擬 和子" });
   await page.locator(".flow-list").waitFor();
   await page.locator(".flow-more").click().catch(() => null);
-  if (await row.getByRole("button", { name: "受付する" }).count()) await row.getByRole("button", { name: "受付する" }).click();
+  if (await row.getByRole("button", { name: "受付する" }).count()) {
+    await row.getByRole("button", { name: "受付する" }).click();
+    await row.getByRole("button", { name: "検査開始" }).waitFor();
+  }
   await row.locator("summary").click();
   await row.getByRole("button", { name: /カルテを開く|カルテ作成/u }).click();
   await page.waitForURL(/\/encounters\//u);

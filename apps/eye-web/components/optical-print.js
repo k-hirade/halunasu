@@ -63,7 +63,8 @@ export function OpticalPrint({ encounterId }) {
   const problems = evaluateOpticalPrescription({ ...optical, issue: true });
   // 未確定・未発行・不備あり・種類未選択は、処方箋として使われないよう透かしを入れる
   const draft = !finalized || !optical.issue || problems.length > 0 || !type;
-  const title = type === "contact" ? "コンタクトレンズ指示書" : type === "glasses" ? "眼鏡処方箋" : "眼鏡処方箋 / コンタクトレンズ指示書（種類未選択）";
+  const title = type === "contact" ? "コンタクトレンズ指示書" : type === "glasses" ? "眼鏡処方箋" : "眼鏡処方箋 / CL 指示書";
+  const subtitle = type ? "" : "（種類未選択）";
   const patient = encounter.patientSnapshot || {};
   const reasons = [
     !finalized ? "カルテが未確定" : "",
@@ -86,7 +87,7 @@ export function OpticalPrint({ encounterId }) {
     </p>
   ) : null;
 
-  const sheetProps = { optical, patient, encounterDate: data.encounterDate, finalized, info: facilityInfo(facility), title };
+  const sheetProps = { optical, patient, encounterDate: data.encounterDate, finalized, info: facilityInfo(facility), title, subtitle };
   return (
     <PrintShell
       {...back}
@@ -100,14 +101,14 @@ export function OpticalPrint({ encounterId }) {
       sheetClassName="sheet-rx"
       statusLabel={finalized ? `確定 v${finalized.version}（${formatDateTime(finalized.finalizedAt)}）` : "下書き（未確定）"}
       subject={`${patient.displayName || ""} 様`}
-      title={title}
+      title={`${title}${subtitle}`}
     >
       {contact ? <ContactSheet {...sheetProps} /> : <GlassesSheet {...sheetProps} />}
     </PrintShell>
   );
 }
 
-function GlassesSheet({ optical, patient, encounterDate, finalized, info, title }) {
+function GlassesSheet({ optical, patient, encounterDate, finalized, info, title, subtitle }) {
   const typed = Boolean(optical.type);
   const purpose = typed ? optical.purpose : "";
   const focus = { far: "single", near: "single", middle: "single", bifocal: "bifocal", progressive: "progressive" }[purpose] || "";
@@ -115,6 +116,7 @@ function GlassesSheet({ optical, patient, encounterDate, finalized, info, title 
     <div className="rx-sheet">
       <p className="rx-no">No. <span className="rx-blank rx-blank-short" /></p>
       <h1 className="rx-title">{title}</h1>
+      {subtitle ? <p className="rx-subtitle">{subtitle}</p> : null}
       <PatientLine encounterDate={encounterDate} patient={patient} />
 
       <h2 className="rx-sec">Ⅰ. レンズ種類</h2>
