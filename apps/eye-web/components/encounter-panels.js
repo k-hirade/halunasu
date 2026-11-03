@@ -2,7 +2,10 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { diagnosisText, formatDate, formatShortDate, PHRASE_TARGET_LABELS, prescriptionText, VISIT_TYPE_LABELS } from "../lib/format";
+import { adherenceLabel, COPYABLE_FINDING_KEYS, counsellingLabel, pupilLabel } from "@halunasu/eye-core";
+import { ALIGNMENT_LABELS, MOTILITY_LABELS, PER_EYE_PHRASE_TARGETS, RAPD_LABELS } from "@halunasu/eye-contracts";
+import { SoapMark } from "./encounter-extras";
+import { diagnosisText, formatDate, formatDateTime, formatShortDate, PHRASE_TARGET_LABELS, PHRASE_TARGET_SOAP, prescriptionText, VISIT_TYPE_LABELS } from "../lib/format";
 
 // 左列「変更点」: 前回の確定カルテから今回変わった所。
 export function ChangesPanel({ changes, previous }) {
@@ -45,7 +48,27 @@ export function VersionsPanel({ encounterId, versions }) {
 }
 
 
-const FINDING_PARTS = [["anterior", "前眼部"], ["lens", "中間透光体"], ["fundus", "眼底"]];
+const FINDING_PARTS = [["anterior", "前眼部"], ["angle", "隅角"], ["lens", "中間透光体"], ["fundus", "眼底"], ["cdRatio", "C/D"], ["other", "その他"]];
+const findingText = (key, values = {}) => {
+  if (key === "cdRatio") return Number.isFinite(values.cdRatio) ? String(values.cdRatio) : "";
+  if (key === "angle") return [values.angle, values.angleNote].filter(Boolean).join(" ");
+  return values[key] || "";
+};
+
+// 過去カードの「検査」の追加行（瞳孔・RAPD・眼位・眼球運動）。値があるものだけを 1 行に。
+function examExtrasLine(exam = {}) {
+  const binocular = exam.binocular || {};
+  const pupil = ["od", "os"].map((side) => {
+    const text = pupilLabel(exam[side]?.pupil);
+    return text ? `${side === "od" ? "R" : "L"} ${text}` : "";
+  }).filter(Boolean).join(" ");
+  return [
+    pupil ? `瞳孔 ${pupil}` : "",
+    binocular.rapd ? `RAPD ${RAPD_LABELS[binocular.rapd]}` : "",
+    binocular.alignment || binocular.alignmentNote ? `眼位 ${[ALIGNMENT_LABELS[binocular.alignment], binocular.alignmentNote].filter(Boolean).join(" ")}` : "",
+    binocular.motility || binocular.motilityNote ? `眼球運動 ${[MOTILITY_LABELS[binocular.motility], binocular.motilityNote].filter(Boolean).join(" ")}` : ""
+  ].filter(Boolean).join("　");
+}
 
 const examLine = (values = {}) => `${values.vaCorrected || values.vaUncorrected || "—"} / ${values.iop ?? "—"}`;
 
@@ -81,8 +104,8 @@ export function HistoryPane({ history, editable, onCopy }) {
           </div>
         );
         const findings = FINDING_PARTS.map(([key, label]) => {
-          const right = content.findings?.od?.[key];
-          const left = content.findings?.os?.[key];
+          const right = findingText(key, content.findings?.od);
+          const left = findingText(key, content.findings?.os);
           if (!right && !left) return null;
           return (
             <div className="history-finding" key={key}>
@@ -94,6 +117,17 @@ export function HistoryPane({ history, editable, onCopy }) {
             </div>
           );
         }).filter(Boolean);
+        if (content.findings?.general) {
+          findings.push(
+            <div className="history-finding" key="general">
+              <span className="history-part">両眼・全体</span>
+              <span>{content.findings.general}</span>
+            </div>
+          );
+        }
+        const extras = examExtrasLine(content.exam);
+        const counselling = counsellingLabel(content.counselling);
+        const adherence = adherenceLabel(content.adherence);
         return (
           <li className={`history-card${open ? " is-open" : ""}`} key={encounter.encounterId}>
             <div className="history-card-head">
@@ -120,6 +154,7 @@ export function HistoryPane({ history, editable, onCopy }) {
                   <span className="eye-os">L</span> {examLine(content.exam?.os)}
                   <span className="muted small">（視力 / 眼圧）</span>
                 </p>
+                {extras ? <p className="history-line muted small">{extras}</p> : null}
                 {content.chiefComplaint ? <p className="history-line"><span className="history-label">主訴</span>{content.chiefComplaint}</p> : null}
                 {findings.length ? group("findings", "所見", <div className="history-findings">{findings}</div>) : null}
                 {content.diagnoses?.length ? <p className="history-line"><span className="history-label">病名</span>{content.diagnoses.map(diagnosisText).join("、")}</p> : null}
@@ -127,6 +162,8 @@ export function HistoryPane({ history, editable, onCopy }) {
                   <ul className="history-rx">{content.prescriptions.map((item, index) => <li key={index}>{prescriptionText(item)}</li>)}</ul>
                 )) : null}
                 {content.plan || content.assessment ? group("plan", "方針", <p className="history-text pre">{[content.assessment, content.plan].filter(Boolean).join("\n")}</p>) : null}
+                {adherence ? <p className="history-line"><span className="history-label">点眼</span>{adherence}</p> : null}
+                {counselling ? <p className="history-line"><span className="history-label">説明</span>{counselling}</p> : null}
                 {content.sketches?.length ? group("sketches", "シェーマ", <p className="history-text muted small">{content.sketches.length}枚</p>) : null}
               </div>
             ) : null}
@@ -138,7 +175,9 @@ export function HistoryPane({ history, editable, onCopy }) {
 }
 
 function hasContent(content, kind) {
-  if (kind === "findings") return ["od", "os"].some((side) => Object.values(content.findings?.[side] || {}).some(Boolean));
+  if (kind === "findings") {
+    return Boolean(content.findings?.general) || ["od", "os"].some((side) => COPYABLE_FINDING_KEYS.some((key) => Boolean(content.findings?.[side]?.[key])));
+  }
   if (kind === "prescriptions") return (content.prescriptions || []).length > 0;
   if (kind === "plan") return Boolean(content.plan || content.assessment);
   if (kind === "sketches") return (content.sketches || []).length > 0;
@@ -190,11 +229,11 @@ export function SetsAndPhrasesPanel({ orderSets, phrases, editable, onApplySet, 
         <h2>定型文</h2>
         {groups.length === 0 ? <p className="empty">設定画面で定型文を登録できます。</p> : groups.map(([target, label, items]) => (
           <div className="phrase-group" key={target}>
-            <h3>{label}</h3>
+            <h3>{label}{PHRASE_TARGET_SOAP[target] ? <SoapMark letters={PHRASE_TARGET_SOAP[target]} /> : null}</h3>
             {items.map((item) => (
               <div className="phrase-row" key={item.phraseId}>
                 <span className="phrase-text" title={item.text}>{item.label || item.text}</span>
-                {target.startsWith("findings.") ? (
+                {PER_EYE_PHRASE_TARGETS.includes(target) ? (
                   <span className="phrase-actions">
                     <button className="btn btn-chip" disabled={!editable} onClick={() => onInsertPhrase(item, "od")} type="button">右</button>
                     <button className="btn btn-chip" disabled={!editable} onClick={() => onInsertPhrase(item, "os")} type="button">左</button>

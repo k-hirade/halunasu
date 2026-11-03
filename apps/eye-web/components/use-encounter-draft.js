@@ -9,7 +9,8 @@ const REFRESH_MS = 20000;
 const SECTION_LABELS = {
   chiefComplaint: "主訴", history: "現病歴", exam: "検査", findings: "所見", sketches: "シェーマ", diagnoses: "病名",
   assessment: "評価", plan: "方針", prescriptions: "処方", nextVisit: "次回受診", staffNote: "スタッフメモ",
-  orders: "検査オーダー", flags: "散瞳・フラグ", meta: "診療日・区分", examConfirmations: "検査値の確認"
+  orders: "検査オーダー", flags: "散瞳・フラグ", meta: "診療日・区分", examConfirmations: "検査値の確認",
+  optical: "眼鏡・CL", counselling: "説明・同意", adherence: "点眼アドヒアランス"
 };
 
 // カルテの下書きを編集・自動保存する。変更した項目だけを送り、他の人が別の項目を更新していれば取り込む。

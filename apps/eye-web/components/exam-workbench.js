@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SaveIndicator } from "./encounter-dialogs";
+import { ExamExtras } from "./encounter-extras";
 import { DilationFlags, ExamTable, hasExamValues, Orders } from "./encounter-sections";
 import { PatientBanner } from "./patient-banner";
 import { useEncounterDraft } from "./use-encounter-draft";
@@ -142,6 +143,10 @@ export function ExamWorkbench({ encounterId }) {
             previousDate={previous?.encounterDate || ""}
             update={update}
           />
+          <section aria-labelledby="exam-extras-heading" className="exam-extras" id="sec-exam-extras">
+            <h3 className="exam-extras-title" id="exam-extras-heading">瞳孔・眼位・近見・角膜曲率</h3>
+            <ExamExtras content={content} dilated={Boolean(flags.dilationStartedAt)} editable={editable} layout="workbench" update={update} />
+          </section>
         </section>
         <div className="exam-side">
           <section className="exam-block" id="sec-orders">

@@ -796,3 +796,151 @@
 .optical-details-body .optical-short {
   width: 9.5em;
 }
+
+/* ---- SOAP の目印（見出しの右の小さな灰色の文字。表示だけ） ---- */
+.soap-marks {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: 6px;
+  vertical-align: 1px;
+}
+
+.soap-mark {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  line-height: 16px;
+  min-width: 18px;
+  padding: 0 3px;
+  text-align: center;
+}
+
+/* ---- 既往・全身疾患・内服（主訴の上に 1 行） ---- */
+.history-line-bar {
+  align-items: baseline;
+  display: flex;
+  font-size: var(--fs-sm);
+  gap: 8px;
+  margin: 0 0 6px;
+  min-width: 0;
+}
+
+.history-line-label {
+  color: var(--text-soft);
+  flex: 0 0 auto;
+  font-weight: 700;
+}
+
+.history-line-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-line-kind {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
+
+.history-line-sep {
+  color: var(--muted);
+}
+
+.history-line-bar .link-button {
+  flex: 0 0 auto;
+  min-height: 24px;
+  padding: 0;
+}
+
+/* ---- 所見の追加の行（隅角・C/D 比・その他）と両眼・全体 ---- */
+.findings-cell {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  grid-column: var(--c);
+  grid-row: var(--r);
+  min-width: 0;
+}
+
+.findings-cell .num-field {
+  display: inline-block;
+}
+
+.findings-cell .input.findings-cd-input {
+  width: 64px;
+}
+
+.findings-cell .input.findings-angle-grade {
+  flex: 0 0 64px;
+  width: 64px;
+}
+
+.findings-cell .input.findings-angle-note {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+}
+
+.findings-hint {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+
+.findings-general {
+  margin-top: 8px;
+}
+
+/* ---- 説明・同意、点眼アドヒアランス ---- */
+.chip-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.btn.btn-chip.chip-toggle {
+  font-size: var(--fs-sm);
+  padding: 2px 10px;
+}
+
+.counselling {
+  display: grid;
+  gap: 8px;
+}
+
+.counselling-line {
+  gap: 8px 16px;
+  margin: 0;
+}
+
+.counselling-line .inline-field > span {
+  color: var(--text-soft);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.adherence-line {
+  align-items: center;
+  border-top: 1px dashed var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-top: 8px;
+  padding-top: 8px;
+}
+
+.adherence-label {
+  color: var(--text-soft);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.adherence-line .input.adherence-note {
+  flex: 1 1 160px;
+  min-width: 0;
+}

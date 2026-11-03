@@ -154,16 +154,40 @@ export function minutesSince(iso, now = Date.now()) {
 }
 
 export const COMMON_USAGES = ["就寝前", "朝", "朝・夕", "1日3回 朝昼夕", "1日4回 毎食後・就寝前", "疼痛時", "かゆい時", "起床時"];
+// 定型文の差し込み先。並びは S → O → A → P → その他（設定とカルテの「セット」で同じ順に出す）。
 export const PHRASE_TARGET_LABELS = {
   chiefComplaint: "主訴",
   history: "現病歴・経過",
-  assessment: "評価",
-  plan: "方針",
-  staffNote: "スタッフメモ",
   "findings.anterior": "所見：前眼部",
   "findings.lens": "所見：中間透光体",
-  "findings.fundus": "所見：眼底"
+  "findings.fundus": "所見：眼底",
+  "findings.other": "所見：その他",
+  "findings.general": "所見：両眼・全体",
+  assessment: "評価",
+  plan: "方針",
+  "counselling.note": "説明・同意のメモ",
+  staffNote: "スタッフメモ"
 };
+// 差し込み先の SOAP の区分（目印の表示用。空はスタッフメモなど区分なし）
+export const PHRASE_TARGET_SOAP = {
+  chiefComplaint: "S",
+  history: "S",
+  "findings.anterior": "O",
+  "findings.lens": "O",
+  "findings.fundus": "O",
+  "findings.other": "O",
+  "findings.general": "O",
+  assessment: "A",
+  plan: "P",
+  "counselling.note": "P",
+  staffNote: ""
+};
+export const SOAP_LABELS = { S: "S 主観（主訴・経過）", O: "O 客観（検査・所見）", A: "A 評価（病名・評価）", P: "P 計画（方針・処方・次回）", "": "その他" };
+
+// 定型文の差し込み先の欄（"findings.general" → ["findings", "general"]）
+export function phraseTargetPath(target) {
+  return String(target || "").split(".");
+}
 
 export function downloadJson(data, name) {
   const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));

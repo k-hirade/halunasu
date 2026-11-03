@@ -120,6 +120,47 @@ async function runDoctorFlow(browser) {
   await page.getByRole("button", { name: "＋ シェーマ" }).click();
   await page.getByRole("button", { name: "シェーマを追加" }).click();
   await drawStroke(page);
+  // SOAP の目印は見出しの名前に含めない（読み上げ・見出しの検索は従来どおり）
+  await page.getByRole("heading", { name: "所見", exact: true }).waitFor();
+  assert.equal(await page.locator("#findings-heading .soap-mark").innerText(), "O");
+  // 既往・全身疾患・内服はカルテの主訴の上に 1 行で出し、同じ編集ダイアログで直す
+  await page.locator(".history-line-bar").getByText(/未記入/u).waitFor();
+  await page.getByRole("button", { name: "既往・内服を編集" }).click();
+  await page.getByRole("dialog").getByLabel("全身既往・内服").fill("糖尿病\nワーファリン内服");
+  await page.getByRole("dialog").getByRole("button", { name: "保存" }).click();
+  await page.locator(".history-line-bar").getByText("糖尿病、ワーファリン内服").waitFor();
+  // 検査の追加項目（詳細の中）。Enter は右眼の項目 → 左眼の項目の順（主の検査表とは別の並び）
+  await page.getByRole("button", { name: /瞳孔・眼位など/u }).click();
+  await page.getByLabel("右眼 瞳孔径").fill("3");
+  await page.getByLabel("右眼 瞳孔径").press("Enter");
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "右眼 角膜曲率 K1");
+  await page.keyboard.type("43.25");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("44");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("175");
+  await page.keyboard.press("Enter");
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "左眼 近見視力");
+  await page.getByLabel("右眼 対光反射").selectOption("brisk");
+  await page.getByLabel("RAPD", { exact: true }).selectOption("none");
+  await page.getByLabel("眼位", { exact: true }).selectOption("exo");
+  await page.getByLabel("眼位のメモ").fill("10Δ");
+  // 所見の追加の欄（空なら＋チップ）。「空欄を異常なし」は追加の欄を埋めない
+  await page.getByRole("button", { name: "＋ C/D 比" }).click();
+  await page.getByLabel("右眼 C/D 比").fill("0.7");
+  await page.getByRole("button", { name: "＋ その他" }).click();
+  await page.getByLabel("右眼 その他", { exact: true }).fill("眼瞼腫脹なし");
+  await page.getByRole("button", { name: "＋ 両眼・全体" }).click();
+  await page.getByRole("textbox", { name: "両眼・全体" }).fill("全身状態良好");
+  await page.getByRole("button", { name: "空欄を異常なし", exact: true }).click();
+  assert.equal(await page.getByLabel("左眼 前眼部").inputValue(), "異常なし");
+  assert.equal(await page.getByLabel("左眼 その他", { exact: true }).inputValue(), "", "normal-fill must not touch the added findings");
+  assert.equal(await page.getByLabel("左眼 C/D 比").inputValue(), "");
+  // 説明・同意（P）と点眼アドヒアランス（処方の下）
+  await page.getByRole("button", { name: "＋ 説明・同意" }).click();
+  await page.getByRole("button", { name: "散瞳後の注意" }).click();
+  await page.getByLabel("同意", { exact: true }).selectOption("not_required");
+  await page.getByRole("group", { name: "点眼アドヒアランス" }).getByRole("button", { name: "時々忘れる" }).click();
   await page.getByText("保存済み").waitFor({ timeout: 15_000 });
   await page.getByRole("button", { name: "右眼を確認" }).click();
   await page.getByRole("button", { name: "左眼を確認" }).click();
@@ -127,12 +168,26 @@ async function runDoctorFlow(browser) {
   await page.getByRole("button", { name: "確定する" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "確定する" }).click();
   await page.getByText("確定 v1").first().waitFor();
+  // 印刷: 追加の項目は入力があるときだけ行を出す
+  const firstPrint = await context.newPage();
+  await firstPrint.goto(`${page.url()}/print`);
+  const firstSheet = await firstPrint.locator(".chart-sheet").innerText();
+  for (const text of ["3mm 対光反射 迅速", "K1 43.25D K2 44.00D Ax175°", "RAPD", "外斜位 10Δ", "C/D 比", "0.7", "眼瞼腫脹なし", "全身状態良好", "散瞳後の注意 同意不要", "時々忘れる"]) {
+    assert.ok(firstSheet.includes(text), `the chart print shows ${text}`);
+  }
+  assert.equal(firstSheet.includes("眼球運動"), false, "empty added rows are not printed");
+  await firstPrint.close();
 
   await page.getByRole("link", { name: /カルテ一覧/ }).click();
   await page.getByRole("button", { name: /本日のカルテを作成/ }).click();
   await page.getByRole("tab", { name: /^過去/u }).waitFor();
   await page.locator(".history-card").first().waitFor();
   assert.equal(await page.getByLabel("右眼 眼圧", { exact: true }).inputValue(), "", "measurements must not be copied");
+  // 前回コピー: 所見の自由記載は写し、C/D 比は写さず前回値をヒントに出す。説明・同意も写さない
+  assert.equal(await page.getByLabel("右眼 その他", { exact: true }).inputValue(), "眼瞼腫脹なし");
+  assert.equal(await page.getByLabel("右眼 C/D 比").inputValue(), "", "C/D is re-measured");
+  await page.locator(".findings-hint").filter({ hasText: "前回 0.7" }).waitFor();
+  await page.getByRole("button", { name: "＋ 説明・同意" }).waitFor();
   // 処方は 1 剤 1 行で表示する。押すと編集欄が開くが、開いただけでは引き継ぎの確認状態は変わらない
   assert.match(await page.locator(".rx-line").first().innerText(), /ラタノプロスト点眼液0\.005%/u);
   await page.locator(".rx-row.is-carried .rx-line").first().click();
@@ -150,6 +205,7 @@ async function runDoctorFlow(browser) {
   await page.locator('input[aria-label="右眼 眼圧"].is-high').waitFor();
   // 他覚屈折は「詳細」の中。マイナスを打った途中の状態が消えず、表示は符号付き小数 2 桁になる
   await page.getByRole("button", { name: /他覚屈折・矯正の種類・眼圧の時刻/u }).click();
+  assert.equal(await page.getByLabel("右眼 瞳孔径").inputValue(), "", "pupils are not copied");
   // 眼圧を初めて入れた眼には、測定時刻（日本時間）が自動で入る。眼圧のない眼は空のまま
   assert.match(await page.getByLabel("右眼 眼圧の測定時刻", { exact: true }).inputValue(), /^\d{2}:\d{2}$/u, "IOP time is filled when the first IOP is entered");
   assert.equal(await page.getByLabel("左眼 眼圧の測定時刻", { exact: true }).inputValue(), "");
@@ -336,6 +392,9 @@ async function runDoctorFlow(browser) {
   await page.goto(`${baseUrl}/settings#phrases`);
   await page.getByRole("button", { name: "＋ 定型文を追加" }).click();
   const phrasePanel = page.getByRole("complementary", { name: "定型文の編集" });
+  // 差し込む欄は SOAP の区分ごと。追加の自由記載欄も選べる
+  assert.equal(await phrasePanel.locator('optgroup[label^="O"] option[value="findings.other"]').count(), 1);
+  assert.equal(await phrasePanel.locator('option[value="counselling.note"]').count(), 1);
   await phrasePanel.getByLabel("差し込む欄").selectOption("plan");
   await phrasePanel.getByLabel("本文").fill("点眼継続。\n次回同様。");
   await phrasePanel.getByRole("button", { name: "保存", exact: true }).click();

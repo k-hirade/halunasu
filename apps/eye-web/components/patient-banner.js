@@ -70,7 +70,8 @@ export function AllergyBadge({ profile }) {
   return <span className="allergy-badge is-unknown">アレルギー未確認</span>;
 }
 
-function ProfileDialog({ patientId, profile, canEditDiagnoses, onCancel, onSaved }) {
+// カルテの「既往」の行からも同じダイアログを開く（追加の export。患者帯の表示・props は変えていない）。
+export function ProfileDialog({ patientId, profile, canEditDiagnoses, onCancel, onSaved }) {
   const api = useEyeApi();
   const [draft, setDraft] = useState(() => ({
     allergies: profile?.allergies || [],

@@ -169,6 +169,23 @@ async function prepare(browser) {
   await page.getByLabel("左眼 矯正視力").fill("0.6");
   await page.getByLabel("右眼 眼圧", { exact: true }).fill("14");
   await page.getByLabel("左眼 眼圧", { exact: true }).fill("23");
+  // 追加の項目（瞳孔・RAPD・眼位、C/D 比、所見のその他、説明・同意）。撮影で見えるように入れておく
+  await page.getByRole("button", { name: /瞳孔・眼位など/u }).click();
+  await page.getByLabel("右眼 瞳孔径").fill("3");
+  await page.getByLabel("右眼 対光反射").selectOption("brisk");
+  await page.getByLabel("左眼 瞳孔径").fill("3.5");
+  await page.getByLabel("左眼 対光反射").selectOption("brisk");
+  await page.getByLabel("RAPD", { exact: true }).selectOption("none");
+  await page.getByLabel("眼位", { exact: true }).selectOption("ortho");
+  if (await page.getByRole("button", { name: "＋ C/D 比" }).count()) await page.getByRole("button", { name: "＋ C/D 比" }).click();
+  await page.getByLabel("右眼 C/D 比").fill("0.6");
+  await page.getByLabel("左眼 C/D 比").fill("0.7");
+  await page.getByRole("button", { name: "＋ その他" }).click();
+  await page.getByLabel("右眼 その他", { exact: true }).fill("眼瞼・涙器 異常なし");
+  await page.getByRole("button", { name: "＋ 説明・同意" }).click();
+  await page.getByRole("button", { name: "散瞳後の注意" }).click();
+  await page.getByLabel("説明した相手").selectOption("patient");
+  await page.getByLabel("同意", { exact: true }).selectOption("not_required");
   // 眼鏡処方（詳細つき）。処方箋の紙面の撮影用
   await page.getByRole("button", { name: "＋ 眼鏡・CL" }).click();
   await page.getByLabel("眼鏡・CL の種類").selectOption("glasses");

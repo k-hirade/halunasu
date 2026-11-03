@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { printableStaffName } from "@halunasu/eye-core";
+import { PER_EYE_PHRASE_TARGETS } from "@halunasu/eye-contracts";
+import { SoapMark } from "./encounter-extras";
 import { useEyeApi } from "./eye-api";
 import { AuditLogSection } from "./settings-audit";
 import { clearPrintNames } from "./use-print-names";
 import { FilterChips, InactiveGroup, MasterEditorPanel, MasterRows, MasterToolbar, useMasterEditor } from "./settings-master";
-import { COMMON_USAGES, downloadJson, formatDateTime, PHRASE_TARGET_LABELS, PRESCRIPTION_KIND_LABELS, todayIso } from "../lib/format";
+import { COMMON_USAGES, downloadJson, formatDateTime, PHRASE_TARGET_LABELS, PHRASE_TARGET_SOAP, PRESCRIPTION_KIND_LABELS, SOAP_LABELS, todayIso } from "../lib/format";
 import {
   daysPerBottle,
   drugBottleText,
@@ -553,6 +555,8 @@ function OrderSetForm({ draft, setDraft, presets, catalog }) {
 /* ───────── 定型文 ───────── */
 
 const PHRASE_TARGETS = Object.keys(PHRASE_TARGET_LABELS);
+// 差し込む欄を SOAP の区分ごとに（設定の選択肢の見出し）
+const PHRASE_TARGET_GROUPS = ["S", "O", "A", "P", ""].map((letter) => [letter, PHRASE_TARGETS.filter((key) => PHRASE_TARGET_SOAP[key] === letter)]);
 
 function phraseToDraft(item) {
   return { phraseId: item?.phraseId || "", target: item?.target || "plan", label: item?.label || "", text: item?.text || "", active: item ? item.active !== false : true };
@@ -615,8 +619,8 @@ function PhrasesSection({ phrases, canEdit, onSaved, onDirtyChange }) {
             <div className="master-group" key={key}>
               {target ? null : (
                 <h3 className="master-group-head">
-                  {PHRASE_TARGET_LABELS[key]} <span className="master-count">{items.length}</span>
-                  {key.startsWith("findings.") ? <span className="muted small">カルテで右・左・両を選んで入れます</span> : null}
+                  {PHRASE_TARGET_LABELS[key]}{PHRASE_TARGET_SOAP[key] ? <SoapMark letters={PHRASE_TARGET_SOAP[key]} /> : null} <span className="master-count">{items.length}</span>
+                  {PER_EYE_PHRASE_TARGETS.includes(key) ? <span className="muted small">カルテで右・左・両を選んで入れます</span> : null}
                 </h3>
               )}
               <MasterRows className="phrase-cols" idKey="phraseId" items={items} onOpen={editor.open} renderRow={renderRow} selectedId={editor.selection?.id} />
@@ -642,7 +646,11 @@ function PhraseForm({ draft, setDraft }) {
         <label className="field">
           <span>差し込む欄</span>
           <select className="input" onChange={set("target")} value={draft.target}>
-            {PHRASE_TARGETS.map((value) => <option key={value} value={value}>{PHRASE_TARGET_LABELS[value]}</option>)}
+            {PHRASE_TARGET_GROUPS.map(([letter, keys]) => (
+              <optgroup key={letter || "other"} label={SOAP_LABELS[letter]}>
+                {keys.map((value) => <option key={value} value={value}>{PHRASE_TARGET_LABELS[value]}</option>)}
+              </optgroup>
+            ))}
           </select>
         </label>
         <label className="field">
@@ -655,7 +663,7 @@ function PhraseForm({ draft, setDraft }) {
         <textarea className="input phrase-text-input" maxLength={4000} onChange={set("text")} required rows={5} value={draft.text} />
       </label>
       <p className="muted small">
-        {draft.target.startsWith("findings.") ? "カルテでは右・左・両を選んで、その眼の所見に入ります。" : `カルテの「${PHRASE_TARGET_LABELS[draft.target]}」に入ります。`}
+        {PER_EYE_PHRASE_TARGETS.includes(draft.target) ? "カルテでは右・左・両を選んで、その眼の所見に入ります。" : `カルテの「${PHRASE_TARGET_LABELS[draft.target]}」に入ります。`}
         改行もそのまま入ります。
       </p>
     </>

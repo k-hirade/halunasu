@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { printableStaffName } from "@halunasu/eye-core";
+import { adherenceLabel, counsellingLabel, printableStaffName, pupilLabel } from "@halunasu/eye-core";
+import { ALIGNMENT_LABELS, MOTILITY_LABELS, RAPD_LABELS } from "@halunasu/eye-contracts";
 import { useEyeApi } from "./eye-api";
 import { facilityInfo, pickFacility, PrintMessage, PrintShell, VersionSelect } from "./print-shell";
 import { SKETCH_TEMPLATE_LABELS, SketchPad } from "./sketch-pad";
@@ -22,6 +23,12 @@ import {
 } from "../lib/format";
 
 const FINDINGS = [["anterior", "前眼部"], ["lens", "中間透光体"], ["fundus", "眼底"]];
+// 追加の所見（入力があるときだけ行を出す）
+const EXTRA_FINDINGS = [
+  ["cdRatio", "C/D 比", (values) => (Number.isFinite(values?.cdRatio) ? String(values.cdRatio) : "")],
+  ["angle", "隅角", (values) => [values?.angle ? (/^[0-4]$/u.test(values.angle) ? `Shaffer ${values.angle}` : values.angle) : "", values?.angleNote || ""].filter(Boolean).join(" ")],
+  ["other", "その他", (values) => values?.other || ""]
+];
 
 // カルテの印刷（診療録の写し）。版番号の指定があれば確定済みの版をそのまま出す。
 // 指定がなければ、いま保存されている内容（下書きなら透かし入り）を出す。
@@ -78,9 +85,24 @@ export function PrintView({ encounterId }) {
   const examRows = [
     ["視力", (side) => formatVisualAcuityLine(exam[side])],
     ["他覚屈折", (side) => formatRefraction(exam[side]?.refraction)],
-    ["眼圧", (side) => iopText(exam[side])]
+    ["眼圧", (side) => iopText(exam[side])],
+    ["近見視力", (side) => exam[side]?.vaNear || ""],
+    ["瞳孔", (side) => pupilLabel(exam[side]?.pupil)],
+    ["角膜曲率", (side) => keratometryText(exam[side]?.keratometry)]
   ].filter(([, read]) => ["od", "os"].some((side) => read(side)));
-  const findingRows = FINDINGS.filter(([key]) => ["od", "os"].some((side) => findings[side]?.[key]));
+  // 両眼で 1 つの値（RAPD・眼位・眼球運動）と所見の「両眼・全体」は 2 列をまたいで出す
+  const binocular = exam.binocular || {};
+  const bothRows = [
+    ["RAPD", RAPD_LABELS[binocular.rapd] || ""],
+    ["眼位", [ALIGNMENT_LABELS[binocular.alignment], binocular.alignmentNote].filter(Boolean).join(" ")],
+    ["眼球運動", [MOTILITY_LABELS[binocular.motility], binocular.motilityNote].filter(Boolean).join(" ")]
+  ].filter(([, text]) => text);
+  const findingRows = [
+    ...FINDINGS.map(([key, label]) => [key, label, (values) => values?.[key] || ""]),
+    ...EXTRA_FINDINGS
+  ].filter(([, , read]) => ["od", "os"].some((side) => read(findings[side])));
+  const counselling = counsellingLabel(content.counselling);
+  const adherence = adherenceLabel(content.adherence);
   const performedOrders = (content.orders || []).filter((item) => item.status === "performed" && item.name);
   const nextVisit = nextVisitText(content.nextVisit);
 
@@ -131,15 +153,19 @@ export function PrintView({ encounterId }) {
               {content.history ? <tr><th scope="row">経過</th><td className="pre" colSpan={2}>{content.history}</td></tr> : null}
             </tbody>
           ) : null}
-          {examRows.length || findingRows.length ? (
+          {examRows.length || findingRows.length || bothRows.length || findings.general ? (
             <tbody>
               <tr className="cs-eye-head"><th scope="col" /><th scope="col">右眼（R）</th><th scope="col">左眼（L）</th></tr>
               {examRows.map(([label, read]) => (
                 <tr key={label}><th scope="row">{label}</th>{["od", "os"].map((side) => <td key={side}>{read(side)}</td>)}</tr>
               ))}
-              {findingRows.map(([key, label]) => (
-                <tr key={key}><th scope="row">{label}</th>{["od", "os"].map((side) => <td className="pre" key={side}>{findings[side]?.[key] || ""}</td>)}</tr>
+              {bothRows.map(([label, text]) => (
+                <tr key={label}><th scope="row">{label}</th><td colSpan={2}>{text}</td></tr>
               ))}
+              {findingRows.map(([key, label, read]) => (
+                <tr key={key}><th scope="row">{label}</th>{["od", "os"].map((side) => <td className="pre" key={side}>{read(findings[side])}</td>)}</tr>
+              ))}
+              {findings.general ? <tr><th scope="row">両眼・全体</th><td className="pre" colSpan={2}>{findings.general}</td></tr> : null}
             </tbody>
           ) : null}
         </table>
@@ -163,10 +189,12 @@ export function PrintView({ encounterId }) {
           {content.diagnoses?.length || !draft ? <div><dt>病名</dt><dd>{(content.diagnoses || []).map(diagnosisText).join("、") || "なし"}</dd></div> : null}
           {content.assessment ? <div><dt>評価</dt><dd className="pre">{content.assessment}</dd></div> : null}
           {content.plan ? <div><dt>方針</dt><dd className="pre">{content.plan}</dd></div> : null}
+          {counselling ? <div><dt>説明・同意</dt><dd className="pre">{counselling}</dd></div> : null}
           <div>
             <dt>処方</dt>
             <dd>{content.prescriptions?.length ? <ul>{content.prescriptions.map((item, index) => <li key={index}>{prescriptionText(item)}</li>)}</ul> : "なし"}</dd>
           </div>
+          {adherence ? <div><dt>点眼状況</dt><dd>{adherence}</dd></div> : null}
           {performedOrders.length ? (
             <div><dt>検査・処置</dt><dd><ul>{performedOrders.map((item) => <li key={item.orderId}>{item.name}{item.eye ? `（${EYE_LABELS[item.eye]}）` : ""}{item.note ? ` ${item.note}` : ""}</li>)}</ul></dd></div>
           ) : null}
@@ -184,6 +212,17 @@ function iopText(value = {}) {
   if (!Number.isFinite(value?.iop)) return "";
   // 眼圧は測定法と測定時刻を添える（例: 15 mmHg NCT 10:30測定）
   return [`${value.iop} mmHg`, IOP_METHOD_LABELS[value.iopMethod] || "", value.measuredAt ? `${value.measuredAt}測定` : ""].filter(Boolean).join(" ");
+}
+
+// 角膜曲率（K1・K2 は D、軸は K1 の軸）: 「K1 43.25D K2 44.00D Ax175°」
+function keratometryText(value) {
+  if (!value) return "";
+  const diopter = (number) => (Number.isFinite(number) ? `${number.toFixed(2)}D` : "");
+  return [
+    Number.isFinite(value.k1) ? `K1 ${diopter(value.k1)}` : "",
+    Number.isFinite(value.k2) ? `K2 ${diopter(value.k2)}` : "",
+    Number.isFinite(value.axis) ? `Ax${value.axis}°` : ""
+  ].filter(Boolean).join(" ");
 }
 
 function nextVisitText(nextVisit = {}) {

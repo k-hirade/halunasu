@@ -8,6 +8,7 @@ import {
   OPTICAL_LENS_MATERIAL_LABELS,
   OPTICAL_WEAR_MODE_LABELS
 } from "@halunasu/eye-contracts";
+import { examExtrasHaveValues, ExamExtras } from "./encounter-extras";
 import { AxisField, DiopterField, moveToNextOnEnter, NumberField, VaDatalist, VaField } from "./exam-inputs";
 import { SKETCH_TEMPLATE_LABELS, SketchPad } from "./sketch-pad";
 import { useMediaQuery } from "./use-media-query";
@@ -319,7 +320,7 @@ export function ExamTable({
   // カルテ用: 1 眼 1 行。
   // 眼圧の測定時刻は眼圧を入れると自動で入るので、それだけでは「詳細」を開かない（毎回開いてしまうため）。
   const detailHasValues = SIDES.some((side) => hasRefraction(exam[side].refraction) || exam[side].vaCorrectionType)
-    || Boolean(content.flags?.myopiaTreatment);
+    || Boolean(content.flags?.myopiaTreatment) || examExtrasHaveValues(exam);
   return (
     <ChartExam
       busy={busy}
@@ -420,9 +421,14 @@ function ChartExam({ content, prevExam, previousDate, confirmations, onConfirm, 
           </div>
         );
       })}
-      <div className="xt-cell xt-detail-toggle" style={place(8, "1 / -1", 10, "1 / -1")}>
-        <button aria-expanded={detailOpen} className="link-button" onClick={() => setDetailOpen(!detailOpen)} type="button">
-          {detailOpen ? "▾ 他覚屈折・矯正の種類・眼圧の時刻" : "▸ 他覚屈折・矯正の種類・眼圧の時刻"}
+      {detailOpen ? (
+        <div className="xt-cell xt-extras" style={place(8, "1 / -1", 10, "1 / -1")}>
+          <ExamExtras content={content} dilated={Boolean(flags.dilationStartedAt)} editable={editable} layout="chart" update={update} />
+        </div>
+      ) : null}
+      <div className="xt-cell xt-detail-toggle" style={place(9, "1 / -1", 11, "1 / -1")}>
+        <button aria-expanded={detailOpen} className="link-button" onClick={() => setDetailOpen(!detailOpen)} title="他覚屈折・矯正の種類・眼圧の時刻・近見視力・瞳孔・角膜曲率・RAPD・眼位・眼球運動" type="button">
+          {detailOpen ? "▾ 他覚屈折・矯正の種類・眼圧の時刻 ／ 瞳孔・眼位など" : "▸ 他覚屈折・矯正の種類・眼圧の時刻 ／ 瞳孔・眼位など"}
         </button>
         {detailOpen ? (
           <label className="check-line xt-myopia">

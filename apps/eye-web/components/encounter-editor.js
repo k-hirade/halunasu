@@ -4,20 +4,24 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  COPYABLE_FINDING_KEYS,
   daysUntilNextVisit,
   diffEncounterContent,
   evaluateFinalizeReadiness
 } from "@halunasu/eye-core";
+import { PER_EYE_PHRASE_TARGETS } from "@halunasu/eye-contracts";
 import { AppointmentDialog } from "./appointment-dialog";
 import { AmendDialog, ConfirmDialog, FinalizeDialog, RESOLVED_IN_DIALOG, SaveIndicator } from "./encounter-dialogs";
 import { CandidatesPanel, ChangesPanel, HistoryPane, SetsAndPhrasesPanel, VersionsPanel } from "./encounter-panels";
 import { DocumentsPanel } from "./documents-panel";
-import { DilationFlags, ExamTable, hasExamValues, NextVisit, OpticalSection, Orders, Prescriptions, Section, setIn, Sketches } from "./encounter-sections";
+import { AdherenceLine, CounsellingFields, PatientHistoryLine, previousCdHint, showAdherence, soapTitle } from "./encounter-extras";
+import { DilationFlags, ExamTable, getIn, hasExamValues, NextVisit, OpticalSection, Orders, Prescriptions, Section, setIn, Sketches } from "./encounter-sections";
+import { NumberField } from "./exam-inputs";
 import { StatusTag } from "./home-workspace";
-import { CommonDiagnosesList, PatientBanner } from "./patient-banner";
+import { CommonDiagnosesList, PatientBanner, ProfileDialog } from "./patient-banner";
 import { useEncounterDraft } from "./use-encounter-draft";
 import { useMediaQuery } from "./use-media-query";
-import { addDays, EYE_LABELS, formatDate, formatDateTime, formatShortDate, patientLine, VISIT_TYPE_LABELS } from "../lib/format";
+import { addDays, EYE_LABELS, formatDate, formatDateTime, formatShortDate, patientLine, phraseTargetPath, VISIT_TYPE_LABELS } from "../lib/format";
 
 const SIDES = ["od", "os"];
 const SECTION_LINKS = [
@@ -29,14 +33,23 @@ const SECTION_LINKS = [
   ["plan", "方針"],
   ["prescriptions", "処方"],
   ["next-visit", "次回"],
+  ["counselling", "説明・同意"],
   ["orders", "オーダー"],
   ["optical", "眼鏡"],
   ["staff-note", "メモ"]
 ];
+// 「空欄を異常なし」の対象（追加の欄 その他・C/D・隅角・両眼全体・瞳孔などは対象にしない）
 const FINDING_PARTS = [["anterior", "前眼部"], ["lens", "中間透光体"], ["fundus", "眼底"]];
 // 空なら「+ 追加」のチップに畳む欄。値が 1 つでもあれば開いたまま、一度開いたらこの画面のあいだは閉じない。
-const OPTIONAL_LABELS = { history: "現病歴・経過", assessment: "評価", sketches: "シェーマ", orders: "オーダー", optical: "眼鏡・CL", "staff-note": "スタッフメモ" };
-const OPTIONAL_SECTION_OF = { history: "subjective", assessment: "plan" };
+const OPTIONAL_LABELS = {
+  history: "現病歴・経過", assessment: "評価", sketches: "シェーマ", orders: "オーダー", optical: "眼鏡・CL", "staff-note": "スタッフメモ",
+  "findings-angle": "隅角", "findings-cd": "C/D 比", "findings-other": "その他", "findings-general": "両眼・全体", counselling: "説明・同意"
+};
+const OPTIONAL_SECTION_OF = {
+  history: "subjective", assessment: "plan",
+  "findings-angle": "findings", "findings-cd": "findings", "findings-other": "findings", "findings-general": "findings"
+};
+const SHAFFER_GRADES = ["0", "1", "2", "3", "4"];
 
 export function EncounterEditor({ encounterId }) {
   const router = useRouter();
@@ -51,6 +64,7 @@ export function EncounterEditor({ encounterId }) {
   const [paneTab, setPaneTab] = useState("history");
   const [drawer, setDrawer] = useState(null);
   const [opened, setOpened] = useState(() => new Set());
+  const [historyEditing, setHistoryEditing] = useState(false);
   const wide = useMediaQuery("(min-width: 1280px)", true);
   const narrow = useMediaQuery("(max-width: 767px)", false);
   const pageRef = useRef(null);
@@ -90,14 +104,21 @@ export function EncounterEditor({ encounterId }) {
     if (wide) setDrawer((current) => (current === "history" ? null : current));
   }, [wide]);
 
+  const previousFindings = detail?.previous?.content?.findings;
   const optionalFilled = useMemo(() => (content ? {
+    // C/D 比は前回に値があれば最初から開く（測り直す値なので写さず、前回値をヒントに出す）
+    "findings-cd": SIDES.some((side) => Number.isFinite(content.findings[side]?.cdRatio) || Number.isFinite(previousFindings?.[side]?.cdRatio)),
+    "findings-angle": SIDES.some((side) => Boolean(content.findings[side]?.angle || content.findings[side]?.angleNote)),
+    "findings-other": SIDES.some((side) => Boolean(content.findings[side]?.other)),
+    "findings-general": Boolean(content.findings.general),
+    counselling: Object.values(content.counselling || {}).some((value) => (Array.isArray(value) ? value.length > 0 : Boolean(value))),
     history: Boolean(content.history),
     assessment: Boolean(content.assessment),
     sketches: content.sketches.length > 0,
     orders: (content.orders || []).length > 0,
     optical: Boolean(content.optical?.type),
     "staff-note": Boolean(content.staffNote)
-  } : {}), [content]);
+  } : {}), [content, previousFindings]);
 
   // 値が入った欄は「開いた」ことにして、あとで中身を消してもチップに戻らないようにする。
   useEffect(() => {
@@ -178,14 +199,16 @@ export function EncounterEditor({ encounterId }) {
 
   function insertPhrase(phrase, side) {
     const append = (current) => (current ? `${current}${current.endsWith("\n") ? "" : "\n"}${phrase.text}` : phrase.text);
-    if (phrase.target.startsWith("findings.")) {
+    if (PER_EYE_PHRASE_TARGETS.includes(phrase.target)) {
       const key = phrase.target.split(".")[1];
       const sides = side === "both" ? SIDES : [side];
       let next = content;
-      for (const target of sides) next = setIn(next, ["findings", target, key], append(next.findings[target][key]));
+      for (const target of sides) next = setIn(next, ["findings", target, key], append(next.findings[target][key] || ""));
       replaceContent(next);
     } else {
-      update([phrase.target], append(content[phrase.target]));
+      // 1 欄の差し込み先（"findings.general"・"counselling.note" のような入れ子も含む）
+      const path = phraseTargetPath(phrase.target);
+      update(path, append(getIn(content, path) || ""));
     }
     setNotice(`定型文「${phrase.label || phrase.text.slice(0, 12)}」を挿入しました。`);
   }
@@ -200,13 +223,22 @@ export function EncounterEditor({ encounterId }) {
   const realProblems = readiness.blockers.filter((item) => !RESOLVED_IN_DIALOG.has(item.code));
   const pendingTitle = [...readiness.blockers, ...readiness.warnings].map((item) => item.message).join("\n");
   const isOpen = (key) => opened.has(key) || optionalFilled[key];
+  // 所見の行。追加の行（隅角・C/D 比・その他）は開いたときだけ。DOM は右眼の全行 → 左眼の全行。
+  const findingRows = [
+    ["anterior", "前眼部"],
+    isOpen("findings-angle") ? ["angle", "隅角"] : null,
+    ["lens", "中間透光体"],
+    ["fundus", "眼底"],
+    isOpen("findings-cd") ? ["cdRatio", "C/D 比"] : null,
+    isOpen("findings-other") ? ["other", "その他"] : null
+  ].filter(Boolean);
 
   function openOptional(key) {
     setOpened((current) => new Set([...current, key]));
     const sectionId = OPTIONAL_SECTION_OF[key] || key;
     requestAnimationFrame(() => {
       const target = key in OPTIONAL_SECTION_OF ? document.getElementById(`field-${key}`) : document.getElementById(`sec-${sectionId}`);
-      target?.querySelector("input, textarea, select")?.focus();
+      (target?.matches?.("input, textarea, select") ? target : target?.querySelector("input, textarea, select"))?.focus();
     });
   }
 
@@ -367,7 +399,7 @@ export function EncounterEditor({ encounterId }) {
             actions={<DilationFlags content={content} editable={editable} now={now} update={update} variant="chip" />}
             className="sheet-exam"
             id="exam"
-            title="検査"
+            title={soapTitle("検査", "O")}
           >
             <ExamTable
               canConfirm={editable}
@@ -384,7 +416,8 @@ export function EncounterEditor({ encounterId }) {
 
           <div className="sheet-spread">
             <div className="sheet-left">
-              <Section id="subjective" title="主訴・経過">
+              <Section id="subjective" title={soapTitle("主訴・経過", "S")}>
+                <PatientHistoryLine onEdit={context?.canEditProfile ? () => setHistoryEditing(true) : null} profile={profile} />
                 <div className="field">
                   <textarea aria-label="主訴" className="input auto-grow" onChange={(event) => update(["chiefComplaint"], event.target.value)} placeholder="主訴" rows={2} value={content.chiefComplaint} />
                 </div>
@@ -399,7 +432,7 @@ export function EncounterEditor({ encounterId }) {
               <Section
                 actions={editable ? <button className="btn btn-chip" onClick={() => fillNormalFindings(SIDES)} title="両眼の空欄を「異常なし」にします" type="button">空欄を異常なし</button> : null}
                 id="findings"
-                title="所見"
+                title={soapTitle("所見", "O")}
               >
                 <div className="findings-grid">
                   {SIDES.map((side, column) => (
@@ -410,27 +443,59 @@ export function EncounterEditor({ encounterId }) {
                           <button aria-label={`${EYE_LABELS[side]}の空欄を異常なしに`} className="btn btn-chip findings-normal" onClick={() => fillNormalFindings([side])} title={`${EYE_LABELS[side]}の空欄を「異常なし」にします`} type="button">異常なし</button>
                         ) : null}
                       </div>
-                      {FINDING_PARTS.map(([key, label], row) => (
-                        <textarea
-                          aria-label={`${EYE_LABELS[side]} ${label}`}
-                          className="input auto-grow findings-input"
-                          key={key}
-                          onChange={(event) => update(["findings", side, key], event.target.value)}
-                          rows={1}
-                          style={{ "--c": column + 2, "--r": row + 2 }}
-                          value={content.findings[side][key]}
-                        />
-                      ))}
+                      {findingRows.map(([key, label], row) => {
+                        const style = { "--c": column + 2, "--r": row + 2 };
+                        const fieldId = side === "od" ? `field-findings-${key === "cdRatio" ? "cd" : key}` : undefined;
+                        if (key === "cdRatio") {
+                          const hint = previousCdHint(previous, side);
+                          return (
+                            <span className="findings-cell findings-cd" key={key} style={style}>
+                              <NumberField aria-label={`${EYE_LABELS[side]} C/D 比`} className="input input-num findings-cd-input" id={fieldId} max={1} min={0} onCommit={(value) => update(["findings", side, "cdRatio"], value)} placeholder="0.0" value={content.findings[side].cdRatio} />
+                              {hint ? <span className="findings-hint" title="前回の確定カルテの値（写しません）">{hint}</span> : null}
+                            </span>
+                          );
+                        }
+                        if (key === "angle") {
+                          return (
+                            <span className="findings-cell findings-angle" key={key} style={style}>
+                              <input aria-label={`${EYE_LABELS[side]} 隅角`} className="input findings-angle-grade" id={fieldId} list="shaffer-grades" maxLength={20} onChange={(event) => update(["findings", side, "angle"], event.target.value)} placeholder="Gr" title="Shaffer 分類（0〜4）など" value={content.findings[side].angle || ""} />
+                              <input aria-label={`${EYE_LABELS[side]} 隅角のメモ`} className="input findings-angle-note" maxLength={200} onChange={(event) => update(["findings", side, "angleNote"], event.target.value)} placeholder="メモ" value={content.findings[side].angleNote || ""} />
+                            </span>
+                          );
+                        }
+                        return (
+                          <textarea
+                            aria-label={`${EYE_LABELS[side]} ${label}`}
+                            className="input auto-grow findings-input"
+                            id={key === "other" ? fieldId : undefined}
+                            key={key}
+                            onChange={(event) => update(["findings", side, key], event.target.value)}
+                            rows={1}
+                            style={style}
+                            value={content.findings[side][key] || ""}
+                          />
+                        );
+                      })}
                     </div>
                   ))}
-                  {FINDING_PARTS.map(([key, label], row) => (
+                  {findingRows.map(([key, label], row) => (
                     <span aria-hidden="true" className="findings-label" key={key} style={{ "--r": row + 2 }}>{label}</span>
                   ))}
                 </div>
+                <datalist id="shaffer-grades">
+                  {SHAFFER_GRADES.map((grade) => <option key={grade} value={grade}>Shaffer {grade}</option>)}
+                </datalist>
+                {isOpen("findings-general") ? (
+                  <label className="field findings-general" id="field-findings-general">
+                    <span>両眼・全体</span>
+                    <textarea className="input auto-grow" onChange={(event) => update(["findings", "general"], event.target.value)} placeholder="眼瞼・涙器・全身状態など" rows={1} value={content.findings.general || ""} />
+                  </label>
+                ) : null}
+                {addChips(["findings-angle", "findings-cd", "findings-other", "findings-general"])}
               </Section>
 
               {isOpen("sketches") ? (
-                <Section id="sketches" title="シェーマ">
+                <Section id="sketches" title={soapTitle("シェーマ", "O")}>
                   <Sketches content={content} editable={editable} update={update} />
                 </Section>
               ) : null}
@@ -438,7 +503,7 @@ export function EncounterEditor({ encounterId }) {
             </div>
 
             <div className="sheet-right">
-              <Section id="diagnoses" title="病名">
+              <Section id="diagnoses" title={soapTitle("病名", "A")}>
                 {activeDiagnoses.length === 0 ? (
                   <p className="empty">登録された病名はありません（患者帯の「編集」から登録）。</p>
                 ) : (
@@ -456,7 +521,7 @@ export function EncounterEditor({ encounterId }) {
                 )}
               </Section>
 
-              <Section id="plan" title="評価・方針">
+              <Section id="plan" title={soapTitle("評価・方針", "A/P")}>
                 {isOpen("assessment") ? (
                   <label className="field" id="field-assessment">
                     <span>評価</span>
@@ -470,11 +535,12 @@ export function EncounterEditor({ encounterId }) {
                 {addChips(["assessment"])}
               </Section>
 
-              <Section id="prescriptions" title="処方">
+              <Section id="prescriptions" title={soapTitle("処方", "P")}>
                 <Prescriptions content={content} drugPresets={drugPresets} editable={editable} nextDays={nextDays} update={update} />
+                {showAdherence(content) ? <AdherenceLine content={content} editable={editable} update={update} /> : null}
               </Section>
 
-              <Section id="next-visit" title="次回">
+              <Section id="next-visit" title={soapTitle("次回", "P")}>
                 <NextVisit
                   action={context?.canReceive ? (
                     <button className="btn btn-chip" onClick={() => setBooking({ open: true, saved: null })} type="button">予約を取る</button>
@@ -488,13 +554,18 @@ export function EncounterEditor({ encounterId }) {
                 {booking.saved ? <p className="alert alert-ok small">予約しました: {formatDate(booking.saved.date)}{booking.saved.time ? ` ${booking.saved.time}` : ""}</p> : null}
               </Section>
 
+              {isOpen("counselling") ? (
+                <Section id="counselling" title={soapTitle("説明・同意", "P")}>
+                  <CounsellingFields content={content} editable={editable} update={update} />
+                </Section>
+              ) : null}
               {isOpen("orders") ? (
-                <Section id="orders" title="検査・処置オーダー">
+                <Section id="orders" title={soapTitle("検査・処置オーダー", "P")}>
                   <Orders catalog={bootstrap.orderCatalog} content={content} editable={editable} update={update} />
                 </Section>
               ) : null}
               {isOpen("optical") ? (
-                <Section id="optical" title="眼鏡・コンタクトレンズ処方">
+                <Section id="optical" title={soapTitle("眼鏡・コンタクトレンズ処方", "P")}>
                   <OpticalSection content={content} editable={editable} encounterId={encounterId} update={update} />
                 </Section>
               ) : null}
@@ -503,7 +574,7 @@ export function EncounterEditor({ encounterId }) {
                   <textarea aria-label="スタッフメモ" className="input auto-grow" onChange={(event) => update(["staffNote"], event.target.value)} rows={2} value={content.staffNote} />
                 </Section>
               ) : null}
-              {addChips(["orders", "optical", "staff-note"])}
+              {addChips(["counselling", "orders", "optical", "staff-note"])}
             </div>
           </div>
         </fieldset>
@@ -526,6 +597,15 @@ export function EncounterEditor({ encounterId }) {
         {drawer ? <button aria-label="閉じる" className="drawer-backdrop" onClick={() => setDrawer(null)} type="button" /> : null}
       </div>
 
+      {historyEditing ? (
+        <ProfileDialog
+          canEditDiagnoses={Boolean(context?.canEditDiagnoses)}
+          onCancel={() => setHistoryEditing(false)}
+          onSaved={(saved) => { setHistoryEditing(false); setDetail((current) => ({ ...current, profile: saved })); }}
+          patientId={encounter.patientId}
+          profile={profile}
+        />
+      ) : null}
       {dialog === "finalize" ? (
         <FinalizeDialog
           content={content}
@@ -619,8 +699,9 @@ function applyCopy(current, source, kind) {
   for (const item of kinds) {
     if (item === "findings") {
       let skipped = 0;
+      // 自由記載の所見だけを写す（C/D 比・隅角は測り直す値なので写さない）
       for (const side of SIDES) {
-        for (const [key] of FINDING_PARTS) {
+        for (const key of COPYABLE_FINDING_KEYS) {
           const value = source.findings?.[side]?.[key];
           if (!value) continue;
           if (next.findings[side][key]) {
@@ -629,6 +710,10 @@ function applyCopy(current, source, kind) {
           }
           next = setIn(next, ["findings", side, key], value);
         }
+      }
+      if (source.findings?.general) {
+        if (next.findings.general) skipped += 1;
+        else next = setIn(next, ["findings", "general"], source.findings.general);
       }
       if (skipped) notes.push(`入力済みの所見${skipped}項目はそのままにしました。`);
     }
