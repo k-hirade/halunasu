@@ -33,6 +33,7 @@ export function deriveProfileFromHistory({ orgId, patientId, encounters = [] }) 
     medicalHistory: "",
     ophthalmicHistory: "",
     contactLensUser: false,
+    patientMemo: "",
     revision: 0,
     derived: true,
     updatedAt: "",
@@ -50,6 +51,8 @@ export function applyProfileUpdate({ current, validated, orgId, patientId, actor
     medicalHistory: validated.medicalHistory,
     ophthalmicHistory: validated.ophthalmicHistory,
     contactLensUser: validated.contactLensUser,
+    // 患者メモは送られたときだけ置き換える（この欄を知らない古い画面の保存で消さない）。
+    patientMemo: validated.patientMemo ?? current?.patientMemo ?? "",
     revision: (current?.revision || 0) + 1,
     derived: false,
     createdAt: current?.createdAt || now,

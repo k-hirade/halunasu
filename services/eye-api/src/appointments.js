@@ -1,6 +1,13 @@
-import { assertAppointmentTransition } from "../../../packages/eye-contracts/src/index.js";
+import {
+  APPOINTMENT_ARRIVED_STATUSES,
+  assertAppointmentTransition,
+  isActiveAppointmentStatus,
+  normalizeAppointmentStatus
+} from "../../../packages/eye-contracts/src/index.js";
 
-// 予約・受付の状態遷移。受付番号は受付（checked_in）に初めて入ったときにストアが採番する。
+// 予約・受付の状態。状態はどこからどこへでも移れる（デジカルと同じ）。
+// 受付番号と受付時刻は、来院した状態（受付中・診察待など）に初めて入ったときに付ける（番号はストアが採番する）。
+// 受付メモは従来の note 欄に保存し、返すときに receptionMemo としても見せる。
 
 export function buildAppointment({ appointmentId, orgId, input, patientSnapshot, actor, now }) {
   const status = input.walkIn ? "checked_in" : "booked";
@@ -14,6 +21,8 @@ export function buildAppointment({ appointmentId, orgId, input, patientSnapshot,
     patientName: patientSnapshot ? patientSnapshot.displayName : input.patientName,
     purpose: input.purpose,
     note: input.note,
+    doctorMemberId: input.doctorMemberId || "",
+    department: input.department || "",
     walkIn: input.walkIn,
     sourceEncounterId: input.sourceEncounterId,
     status,
@@ -36,6 +45,8 @@ export function applyAppointmentUpdate(current, input, { patientSnapshot, actor,
     time: input.time ?? current.time,
     purpose: input.purpose ?? current.purpose,
     note: input.note ?? current.note,
+    doctorMemberId: input.doctorMemberId ?? current.doctorMemberId ?? "",
+    department: input.department ?? current.department ?? "",
     ...(patientSnapshot
       ? { patientId: patientSnapshot.patientId, patientSnapshot, patientName: patientSnapshot.displayName }
       : input.patientName !== undefined && !current.patientId
@@ -47,23 +58,41 @@ export function applyAppointmentUpdate(current, input, { patientSnapshot, actor,
   };
 }
 
-export function applyAppointmentStatus(current, status, { actor, now }) {
+// 状態の変更。同じ状態への変更は何もしない（changed: false）。
+export function applyAppointmentStatus(current, requested, { actor, now }) {
+  const status = normalizeAppointmentStatus(requested);
+  if (normalizeAppointmentStatus(current.status) === status && current.status === status) {
+    return { appointment: current, assignQueueNumber: false, changed: false };
+  }
   assertAppointmentTransition(current.status, status);
-  const firstCheckIn = status === "checked_in" && !current.queueNumber;
+  const arrived = APPOINTMENT_ARRIVED_STATUSES.includes(status);
+  const firstArrival = arrived && !current.queueNumber;
   return {
     appointment: {
       ...current,
       status,
-      checkedInAt: firstCheckIn ? now : current.checkedInAt,
+      checkedInAt: arrived && !current.checkedInAt ? now : current.checkedInAt,
       statusHistory: [...(current.statusHistory || []), { status, at: now, by: actor }].slice(-30),
       revision: current.revision + 1,
       updatedBy: actor,
       updatedAt: now
     },
-    assignQueueNumber: firstCheckIn
+    assignQueueNumber: firstArrival,
+    changed: true
   };
 }
 
 export function isActiveAppointment(appointment) {
-  return !["cancelled", "no_show"].includes(appointment.status);
+  return isActiveAppointmentStatus(appointment.status);
+}
+
+// 一覧で返す形。受付メモは note と同じ値を receptionMemo でも返す。担当医・診療科は古い予約では空。
+export function appointmentView(appointment, extra = {}) {
+  return {
+    ...appointment,
+    doctorMemberId: appointment.doctorMemberId || "",
+    department: appointment.department || "",
+    receptionMemo: appointment.note || "",
+    ...extra
+  };
 }

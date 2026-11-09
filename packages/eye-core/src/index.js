@@ -375,3 +375,4 @@ export function printableStaffName(displayName = "", printName = "") {
 
 export * from "./document-text.js";
 export * from "./exam-records.js";
+export * from "./reception.js";

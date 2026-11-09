@@ -33,7 +33,7 @@ test("audit target labels resolve setting names and summarise payloads", () => {
   assert.equal(auditTargetLabel({ eventType: "eye.clinic_exported", safePayload: { patientCount: 12 } }), "患者 12人");
   assert.equal(auditTargetLabel({ eventType: "eye.billing_handed_off", safePayload: { date: "2026-11-03", encounterCount: 4 } }), "11/03分・4件");
   assert.equal(auditTargetLabel({ eventType: "eye.billing_exported", targetType: "billing_day", targetId: "2026-11-02", safePayload: { encounterCount: 2 } }), "11/02分・2件");
-  assert.equal(auditTargetLabel({ eventType: "eye.appointment_status_changed", safePayload: { from: "checked_in", to: "waiting_doctor" } }), "受付済 → 診察待ち");
+  assert.equal(auditTargetLabel({ eventType: "eye.appointment_status_changed", safePayload: { from: "checked_in", to: "waiting_doctor" } }), "受付中 → 診察待");
   assert.equal(auditTargetLabel({ eventType: "eye.exam_confirmed", safePayload: { eye: "both" } }), "両眼");
   assert.equal(auditTargetLabel({ eventType: "eye.chart_viewed" }), "");
 });

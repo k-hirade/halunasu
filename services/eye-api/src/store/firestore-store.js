@@ -285,6 +285,16 @@ export class FirestoreEyeStore {
     return sortAppointments(docs(snapshot));
   }
 
+  // 両端を含む期間の予約。date だけの範囲条件なので単一フィールドの自動索引で足り、複合索引は要らない。
+  // 医師での絞り込みは取り出したあとに行う（等価条件を足すと複合索引が要るため）。
+  async listAppointmentsInRange(orgId, from, to) {
+    const snapshot = await this.orgCollection(orgId, collections.eyeAppointments)
+      .where("date", ">=", from)
+      .where("date", "<=", to)
+      .get();
+    return sortAppointments(docs(snapshot));
+  }
+
   async listPatientAppointments(orgId, patientId) {
     const snapshot = await this.orgCollection(orgId, collections.eyeAppointments).where("patientId", "==", patientId).get();
     return sortAppointments(docs(snapshot));
