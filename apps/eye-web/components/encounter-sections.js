@@ -7,7 +7,8 @@ import {
   CL_WEAR_SCHEDULE_LABELS,
   OPTICAL_LENS_MATERIAL_LABELS,
   OPTICAL_WEAR_MODE_LABELS,
-  PLAN_ITEM_EYE_LABELS
+  PLAN_ITEM_EYE_LABELS,
+  RP_SHARED_FIELDS
 } from "@halunasu/eye-contracts";
 import { examExtrasHaveValues, ExamExtras } from "./encounter-extras";
 import { AxisField, DiopterField, moveToNextOnEnter, NumberField, VaDatalist, VaField } from "./exam-inputs";
@@ -547,7 +548,13 @@ export function Orders({ content, catalog, update, editable, variant = "list" })
     <div>
       {rows.length === 0 ? <p className="empty">オーダーはありません。</p> : (
         <ul className="order-list">
-          {rows.map((order, index) => (
+          {rows.map((order, index) => (order.kind === "comment" ? (
+            <li className="order-row is-comment" key={order.orderId}>
+              <span className="order-name">※{order.text}</span>
+              {order.scope === "chart" ? <span className="muted small">カルテだけ</span> : null}
+              {editable ? <button aria-label={`コメント「${order.text}」を削除`} className="btn btn-chip danger-text" onClick={() => remove(index)} type="button">削除</button> : null}
+            </li>
+          ) : (
             <li className={`order-row is-${order.status}`} key={order.orderId}>
               <span className="order-name">{order.name}{order.eye ? `（${EYE_LABELS[order.eye]}）` : ""}</span>
               <span className={`tag order-status-${order.status}`}>{ORDER_STATUS_LABELS[order.status]}</span>
@@ -563,7 +570,7 @@ export function Orders({ content, catalog, update, editable, variant = "list" })
                 </span>
               ) : null}
             </li>
-          ))}
+          )))}
         </ul>
       )}
       {editable && catalog.length ? (
@@ -587,9 +594,11 @@ function OrderChecklist({ content, catalog, rows, editable, setStatus, remove, a
   const [adding, setAdding] = useState(false);
   const [eye, setEye] = useState("ou");
   const [showAll, setShowAll] = useState(false);
+  // Rp のコメント行はチェックリストに出さない（実施・取消の対象ではない）
   const sorted = rows.map((order, index) => ({ order, index }))
+    .filter(({ order }) => order.kind !== "comment")
     .sort((a, b) => (STATUS_RANK[a.order.status] ?? 3) - (STATUS_RANK[b.order.status] ?? 3) || a.index - b.index);
-  const active = rows.filter((order) => order.status !== "cancelled");
+  const active = rows.filter((order) => order.kind !== "comment" && order.status !== "cancelled");
   const done = active.filter((order) => order.status === "performed").length;
   const common = COMMON_ORDER_CODES.map((code) => catalog.find((item) => item.code === code)).filter(Boolean);
   const choices = showAll ? catalog : common;
@@ -962,7 +971,19 @@ export function Prescriptions({ content, drugPresets, nextDays, update, editable
   const [expanded, setExpanded] = useState(() => new Set());
   const listRef = useRef(null);
   // 行を編集したら、その処方は今回の内容として確認したものとみなす。
-  const setRow = (index, patch) => update(["prescriptions", index], { ...rows[index], carriedOver: false, ...patch });
+  // Rp（rpId が同じ行）の用法・日数・院内外・回数・眼は Rp で 1 つなので、同じ Rp の薬剤行にもそろえる。
+  const setRow = (index, patch) => {
+    const row = rows[index];
+    const shared = Object.fromEntries(Object.entries(patch).filter(([key]) => RP_SHARED_FIELDS.includes(key)));
+    if (!row.rpId || !Object.keys(shared).length) {
+      update(["prescriptions", index], { ...row, carriedOver: false, ...patch });
+      return;
+    }
+    update(["prescriptions"], rows.map((item, rowIndex) => {
+      if (rowIndex === index) return { ...item, carriedOver: false, ...patch };
+      return item.rpId === row.rpId && item.kind !== "comment" ? { ...item, ...shared } : item;
+    }));
+  };
   const carriedCount = rows.filter((row) => row.carriedOver).length;
   const presetByName = new Map(drugPresets.map((preset) => [preset.name, preset]));
 
@@ -1003,7 +1024,8 @@ export function Prescriptions({ content, drugPresets, nextDays, update, editable
   function splitEyes(index) {
     const row = rows[index];
     const next = [...rows];
-    next.splice(index, 1, { ...row, eye: "od", quantity: null }, { ...row, eye: "os", quantity: null });
+    // Rp に属する行は、左眼の行を別の Rp にする（Rp の眼は 1 つなので、同じ Rp のままだと右眼にそろってしまう）。
+    next.splice(index, 1, { ...row, eye: "od", quantity: null }, { ...row, eye: "os", quantity: null, ...(row.rpId ? { rpId: `rp_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}` } : {}) });
     update(["prescriptions"], next);
     const opened = new Set([...expanded].map((item) => (item > index ? item + 1 : item)));
     opened.add(index);
@@ -1041,6 +1063,14 @@ export function Prescriptions({ content, drugPresets, nextDays, update, editable
       {rows.length === 0 ? <p className="empty">処方はありません。</p> : null}
       <ul className="rx-list">
         {rows.map((row, index) => {
+          if (row.kind === "comment") {
+            return (
+              <li className="rx-row rx-comment" data-rx-index={index} key={index}>
+                <span className="rx-line-detail">※{row.text}{row.scope === "chart" ? "（カルテだけ）" : ""}</span>
+                {editable ? <button aria-label={`コメント「${row.text}」を削除`} className="btn btn-chip danger-text" onClick={() => removeRow(index)} type="button">削除</button> : null}
+              </li>
+            );
+          }
           const open = expanded.has(index);
           const preset = row.presetId ? drugPresets.find((item) => item.presetId === row.presetId) : null;
           const days = row.days || nextDays;

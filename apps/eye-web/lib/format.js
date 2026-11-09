@@ -74,11 +74,13 @@ export function patientBirthLine(patient = {}) {
 }
 
 export function diagnosisText(diagnosis = {}) {
-  const status = DIAGNOSIS_STATUS_LABELS[diagnosis.status];
+  // 疑いは status とは別のフラグ（古いデータは status "suspected"）
+  const status = diagnosis.suspected === true && diagnosis.status !== "resolved" ? "疑い" : DIAGNOSIS_STATUS_LABELS[diagnosis.status];
   return `${EYE_LABELS[diagnosis.eye] || ""} ${diagnosis.name}${status ? `（${status}）` : ""}`.trim();
 }
 
 export function prescriptionText(item = {}) {
+  if (item.kind === "comment") return `※${item.text || ""}`;
   const details = [
     item.route === "inside" ? "院内" : "",
     item.eye ? EYE_LABELS[item.eye] : "",

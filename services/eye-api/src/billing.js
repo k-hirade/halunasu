@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { COMMENT_KIND } from "../../../packages/eye-contracts/src/index.js";
+import { groupRps } from "../../../packages/eye-core/src/index.js";
 
 // 会計連携。確定済みカルテから「実施したこと・出したもの」だけを拾い、レセコンへ渡す CSV と連絡票を作る。
 // 点数の計算や算定の判断はしない（レセコン側で行う）。
@@ -17,14 +19,22 @@ export const BILLING_CSV_COLUMNS = Object.freeze([
 export function buildBillingEncounter(encounter, documents = []) {
   const content = encounter.content || {};
   const items = [];
-  for (const order of content.orders || []) {
-    if (order.status !== "performed") continue;
-    items.push({ category: order.kind === "procedure" ? "処置" : "検査", code: order.code, name: order.name, eye: order.eye, quantity: 1, unit: "回", days: null, route: "", usage: "", note: order.note || "" });
+  // Rp（まとまり）ごとに並べる。コメント行は「処方箋・レセプトに載せる」（scope free）もので、同じ Rp に渡す行があるときだけ、
+  // その Rp の行のあとに「コメント」として載せる。コードはマスターのコードがあればそれを使う。
+  for (const group of groupRps(content.orders || [])) {
+    const performed = group.items.filter(({ row }) => row.status === "performed");
+    for (const { row: order } of performed) {
+      items.push({ category: order.kind === "procedure" ? "処置" : "検査", code: order.procedureCode || order.code, name: order.name, eye: order.eye, quantity: 1, unit: "回", days: null, route: "", usage: "", note: order.note || "" });
+    }
+    if (performed.length) items.push(...commentItems(group));
   }
-  for (const item of content.prescriptions || []) {
-    if (!item.name || item.issued === false) continue;
-    const category = item.kind === "injection" ? "注射" : "処方";
-    items.push({ category, code: item.presetId || "", name: item.name, eye: item.eye, quantity: item.quantity, unit: item.unit || "", days: item.days, route: item.kind === "injection" ? "" : item.route === "inside" ? "院内" : "院外", usage: [item.timesPerDay ? `1日${item.timesPerDay}回` : "", item.usage].filter(Boolean).join(" "), note: item.note || "" });
+  for (const group of groupRps(content.prescriptions || [])) {
+    const issued = group.items.filter(({ row }) => row.name && row.issued !== false);
+    for (const { row: item } of issued) {
+      const category = item.kind === "injection" ? "注射" : "処方";
+      items.push({ category, code: item.drugCode || item.presetId || "", name: item.name, eye: item.eye, quantity: item.quantity, unit: item.unit || "", days: item.days, route: item.kind === "injection" ? "" : item.route === "inside" ? "院内" : "院外", usage: [item.timesPerDay ? `1日${item.timesPerDay}回` : "", item.usage].filter(Boolean).join(" "), note: item.note || "" });
+    }
+    if (issued.length) items.push(...commentItems(group));
   }
   if (content.optical?.issue && content.optical.type) {
     items.push({ category: "文書", code: `optical_${content.optical.type}`, name: OPTICAL[content.optical.type], eye: "ou", quantity: 1, unit: "通", days: null, route: "", usage: "", note: "" });
@@ -47,6 +57,13 @@ export function buildBillingEncounter(encounter, documents = []) {
   };
 }
 
+function commentItems(group) {
+  return group.comments
+    .map(({ row }) => row)
+    .filter((row) => row.kind === COMMENT_KIND && row.scope !== "chart" && String(row.text || "").trim())
+    .map((row) => ({ category: "コメント", code: "", name: row.text, eye: "", quantity: null, unit: "", days: null, route: "", usage: "", note: "" }));
+}
+
 // 連携した回に何を渡したかの写し。差分の表示と、その回の CSV の取り直しに使う。
 // Firestore に保存するため undefined は null にそろえ、配列の中に配列を入れない。
 export function handoffSnapshotOf(encounter) {
@@ -66,7 +83,8 @@ export function handoffSnapshotOf(encounter) {
       sex: patient.sex || ""
     },
     items: normalizedItems(encounter.items),
-    diagnoses: (encounter.diagnoses || []).map((item) => ({ name: item.name || "", eye: item.eye || "", status: item.status || "" }))
+    // 疑いは状態とは別のフラグになったが、写しは従来どおり status "suspected" で残す（差分の表示が同じ形で読めるように）。
+    diagnoses: (encounter.diagnoses || []).map((item) => ({ name: item.name || "", eye: item.eye || "", status: item.suspected && item.status !== "resolved" ? "suspected" : item.status || "" }))
   };
 }
 

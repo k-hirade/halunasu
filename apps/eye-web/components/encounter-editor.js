@@ -9,7 +9,7 @@ import {
   diffEncounterContent,
   evaluateFinalizeReadiness
 } from "@halunasu/eye-core";
-import { PER_EYE_PHRASE_TARGETS } from "@halunasu/eye-contracts";
+import { isSuspectedDiagnosis, PER_EYE_PHRASE_TARGETS } from "@halunasu/eye-contracts";
 import { AppointmentDialog } from "./appointment-dialog";
 import { AmendDialog, ConfirmDialog, FinalizeDialog, RESOLVED_IN_DIALOG, SaveIndicator } from "./encounter-dialogs";
 import { CandidatesPanel, ChangesPanel, HistoryPane, SetsAndPhrasesPanel, VersionsPanel } from "./encounter-panels";
@@ -43,11 +43,13 @@ const FINDING_PARTS = [["anterior", "前眼部"], ["lens", "中間透光体"], [
 // 空なら「+ 追加」のチップに畳む欄。値が 1 つでもあれば開いたまま、一度開いたらこの画面のあいだは閉じない。
 const OPTIONAL_LABELS = {
   history: "現病歴・経過", assessment: "評価", sketches: "シェーマ", orders: "オーダー", optical: "眼鏡・CL", "staff-note": "スタッフメモ",
-  "findings-angle": "隅角", "findings-cd": "C/D 比", "findings-other": "その他", "findings-general": "両眼・全体", counselling: "説明・同意"
+  "findings-angle": "隅角", "findings-cd": "C/D 比", "findings-other": "その他", "findings-general": "両眼・全体", counselling: "説明・同意",
+  "findings-text": "自由記載"
 };
 const OPTIONAL_SECTION_OF = {
   history: "subjective", assessment: "plan",
-  "findings-angle": "findings", "findings-cd": "findings", "findings-other": "findings", "findings-general": "findings"
+  "findings-angle": "findings", "findings-cd": "findings", "findings-other": "findings", "findings-general": "findings",
+  "findings-text": "findings"
 };
 const SHAFFER_GRADES = ["0", "1", "2", "3", "4"];
 
@@ -111,6 +113,7 @@ export function EncounterEditor({ encounterId }) {
     "findings-angle": SIDES.some((side) => Boolean(content.findings[side]?.angle || content.findings[side]?.angleNote)),
     "findings-other": SIDES.some((side) => Boolean(content.findings[side]?.other)),
     "findings-general": Boolean(content.findings.general),
+    "findings-text": Boolean(content.findingsText),
     counselling: Object.values(content.counselling || {}).some((value) => (Array.isArray(value) ? value.length > 0 : Boolean(value))),
     history: Boolean(content.history),
     assessment: Boolean(content.assessment),
@@ -181,19 +184,33 @@ export function EncounterEditor({ encounterId }) {
   }
 
   // セットを適用する。同じ処方は重ねず、オーダーは新しい予定として追加し、方針は末尾に足す。
+  // Rp はこのカルテの中で新しい rpId に振り直す（同じセットを 2 回入れたときに Rp が混ざらないように）。
+  // コメント行は、入れた薬剤・オーダーと同じ Rp のものだけを付ける。主訴・所見の自由記載は今回が空のときだけ入れる。
   function applySet(orderSet) {
+    const stamp = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const rpIds = new Map();
+    const rekey = (row) => {
+      if (!row.rpId) return { ...row };
+      if (!rpIds.has(row.rpId)) rpIds.set(row.rpId, `rp_${stamp}_${rpIds.size}`);
+      return { ...row, rpId: rpIds.get(row.rpId) };
+    };
     const keyOf = (row) => `${row.name}|${row.eye || ""}`;
-    const existing = new Set(content.prescriptions.map(keyOf));
-    const prescriptions = [...content.prescriptions, ...orderSet.prescriptions.filter((row) => !existing.has(keyOf(row))).map((row) => ({ ...row }))];
-    const orders = [...(content.orders || []), ...orderSet.orders.map((order) => ({
-      ...order,
-      orderId: `ord_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+    const existing = new Set(content.prescriptions.filter((row) => row.kind !== "comment").map(keyOf));
+    const addedRx = orderSet.prescriptions.filter((row) => row.kind !== "comment" && !existing.has(keyOf(row)));
+    const rxRps = new Set(addedRx.map((row) => row.rpId).filter(Boolean));
+    const prescriptions = [...content.prescriptions, ...orderSet.prescriptions
+      .filter((row) => addedRx.includes(row) || (row.kind === "comment" && rxRps.has(row.rpId)))
+      .map(rekey)];
+    const orders = [...(content.orders || []), ...orderSet.orders.map((order, index) => (order.kind === "comment" ? { ...rekey(order), orderId: `ord_${stamp}${index}` } : {
+      ...rekey(order),
+      orderId: `ord_${stamp}${index}`,
       status: "planned",
       statusChangedAt: "",
       statusChangedBy: null
     }))];
     const plan = orderSet.plan && !content.plan.includes(orderSet.plan) ? [content.plan, orderSet.plan].filter(Boolean).join("\n") : content.plan;
-    replaceContent({ ...content, prescriptions, orders, plan });
+    const findingsText = content.findingsText || orderSet.findingsText || "";
+    replaceContent({ ...content, prescriptions, orders, plan, ...(findingsText ? { findingsText } : {}) });
     setNotice(`セット「${orderSet.name}」を追加しました。`);
   }
 
@@ -491,7 +508,13 @@ export function EncounterEditor({ encounterId }) {
                     <textarea className="input auto-grow" onChange={(event) => update(["findings", "general"], event.target.value)} placeholder="眼瞼・涙器・全身状態など" rows={1} value={content.findings.general || ""} />
                   </label>
                 ) : null}
-                {addChips(["findings-angle", "findings-cd", "findings-other", "findings-general"])}
+                {isOpen("findings-text") ? (
+                  <label className="field findings-text" id="field-findings-text">
+                    <span>主訴・所見（自由記載）</span>
+                    <textarea className="input auto-grow" maxLength={10000} onChange={(event) => update(["findingsText"], event.target.value)} placeholder="主訴・所見をまとめて書く欄（次回の受診に写ります）" rows={3} value={content.findingsText || ""} />
+                  </label>
+                ) : null}
+                {addChips(["findings-angle", "findings-cd", "findings-other", "findings-general", "findings-text"])}
               </Section>
 
               {isOpen("sketches") ? (
@@ -513,7 +536,7 @@ export function EncounterEditor({ encounterId }) {
                         {index ? <span className="dx-sep" aria-hidden="true"> / </span> : null}
                         {item.primary ? <span className="dx-primary">主</span> : null}
                         {EYE_LABELS[item.eye]} {item.name}
-                        {item.status === "suspected" ? <span className="tag tag-warn">疑い</span> : null}
+                        {isSuspectedDiagnosis(item) ? <span className="tag tag-warn">疑い</span> : null}
                         {item.startDate ? <span className="muted small"> {formatShortDate(item.startDate).replace(/\(.\)$/u, "")}〜</span> : null}
                       </span>
                     ))}
@@ -699,6 +722,11 @@ function applyCopy(current, source, kind) {
   for (const item of kinds) {
     if (item === "findings") {
       let skipped = 0;
+      // 主訴・所見の自由記載も「今回が空のときだけ」写す（書きかけの文には足さない）
+      if (source.findingsText) {
+        if (next.findingsText) skipped += 1;
+        else next = { ...next, findingsText: source.findingsText };
+      }
       // 自由記載の所見だけを写す（C/D 比・隅角は測り直す値なので写さない）
       for (const side of SIDES) {
         for (const key of COPYABLE_FINDING_KEYS) {
@@ -720,9 +748,12 @@ function applyCopy(current, source, kind) {
     if (item === "prescriptions") {
       const keyOf = (row) => `${row.name}|${row.eye || ""}`;
       const existing = new Set(next.prescriptions.map(keyOf));
-      const added = (source.prescriptions || []).filter((row) => !existing.has(keyOf(row)));
-      next = { ...next, prescriptions: [...next.prescriptions, ...added.map((row) => ({ ...row, carriedOver: true }))] };
-      if (added.length < (source.prescriptions || []).length) notes.push("同じ処方はすでにあるため重ねていません。");
+      // コメント行は、写した薬剤と同じ Rp のものだけを付ける
+      const added = (source.prescriptions || []).filter((row) => row.kind !== "comment" && !existing.has(keyOf(row)));
+      const rps = new Set(added.map((row) => row.rpId).filter(Boolean));
+      const withComments = (source.prescriptions || []).filter((row) => added.includes(row) || (row.kind === "comment" && rps.has(row.rpId)));
+      next = { ...next, prescriptions: [...next.prescriptions, ...withComments.map((row) => (row.kind === "comment" ? { ...row } : { ...row, carriedOver: true }))] };
+      if (added.length < (source.prescriptions || []).filter((row) => row.kind !== "comment").length) notes.push("同じ処方はすでにあるため重ねていません。");
     }
     if (item === "plan") {
       if (next.plan && source.plan) notes.push("方針は入力済みのためそのままにしました。");

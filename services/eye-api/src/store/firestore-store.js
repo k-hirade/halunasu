@@ -12,6 +12,7 @@ import {
   eyeOrderSetPath,
   eyePatientProfilePath,
   eyePhrasePath,
+  eyeSetFolderPath,
   eyeStaffProfilePath,
   organizationPath
 } from "../../../../packages/firestore-schema/src/index.js";
@@ -57,6 +58,17 @@ export class FirestoreEyeStore {
 
   async listDraftDocuments(orgId, limit = 200) {
     const snapshot = await this.orgCollection(orgId, collections.eyeDocuments).where("status", "==", "draft").limit(limit).get();
+    return docs(snapshot);
+  }
+
+  // 学習リスト用。finalizedAt だけの範囲条件と並べ替えなので、複合索引は不要。
+  // 下書き（finalizedAt が ""）は範囲に入らない。修正中のものは呼ぶ側で状態を見て除く。
+  async listRecentFinalizedEncounters(orgId, { sinceIso = "", limit = 500 } = {}) {
+    const snapshot = await this.orgCollection(orgId, collections.eyeEncounters)
+      .where("finalizedAt", ">=", sinceIso || "0")
+      .orderBy("finalizedAt", "desc")
+      .limit(limit)
+      .get();
     return docs(snapshot);
   }
 
@@ -209,6 +221,14 @@ export class FirestoreEyeStore {
 
   async listOrderSets(orgId) {
     return this.listNamed(orgId, collections.eyeOrderSets);
+  }
+
+  async upsertSetFolder(orgId, item) {
+    return this.upsertNamed(eyeSetFolderPath(orgId, item.folderId), orgId, item);
+  }
+
+  async listSetFolders(orgId) {
+    return this.listNamed(orgId, collections.eyeSetFolders);
   }
 
   async upsertPhrase(orgId, item) {

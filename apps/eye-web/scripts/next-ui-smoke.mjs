@@ -152,6 +152,9 @@ async function runDoctorFlow(browser) {
   await page.getByLabel("右眼 その他", { exact: true }).fill("眼瞼腫脹なし");
   await page.getByRole("button", { name: "＋ 両眼・全体" }).click();
   await page.getByRole("textbox", { name: "両眼・全体" }).fill("全身状態良好");
+  // 主訴・所見の自由記載（1 欄）。空なら＋チップに畳む
+  await page.getByRole("button", { name: "＋ 自由記載" }).click();
+  await page.getByRole("textbox", { name: "主訴・所見（自由記載）" }).fill("右眼の霧視。前房清明。");
   await page.getByRole("button", { name: "空欄を異常なし", exact: true }).click();
   assert.equal(await page.getByLabel("左眼 前眼部").inputValue(), "異常なし");
   assert.equal(await page.getByLabel("左眼 その他", { exact: true }).inputValue(), "", "normal-fill must not touch the added findings");
@@ -168,11 +171,19 @@ async function runDoctorFlow(browser) {
   await page.getByRole("button", { name: "確定する" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "確定する" }).click();
   await page.getByText("確定 v1").first().waitFor();
+  // 確定後の修正: 理由は任意（空なら「修正」）。確定し直すと新しい版になる
+  await page.getByRole("button", { name: "修正する" }).click();
+  await page.getByRole("dialog").getByText("修正理由（任意）").waitFor();
+  await page.getByRole("dialog").getByRole("button", { name: "修正を始める" }).click();
+  await page.getByText(/確定済み v1 を修正中です。理由: 修正/u).waitFor();
+  await page.getByRole("button", { name: "確定する" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: /確定する/u }).click();
+  await page.getByText("確定 v2").first().waitFor();
   // 印刷: 追加の項目は入力があるときだけ行を出す
   const firstPrint = await context.newPage();
   await firstPrint.goto(`${page.url()}/print`);
   const firstSheet = await firstPrint.locator(".chart-sheet").innerText();
-  for (const text of ["3mm 対光反射 迅速", "K1 43.25D K2 44.00D Ax175°", "RAPD", "外斜位 10Δ", "C/D 比", "0.7", "眼瞼腫脹なし", "全身状態良好", "散瞳後の注意 同意不要", "時々忘れる"]) {
+  for (const text of ["3mm 対光反射 迅速", "K1 43.25D K2 44.00D Ax175°", "RAPD", "外斜位 10Δ", "C/D 比", "0.7", "眼瞼腫脹なし", "全身状態良好", "散瞳後の注意 同意不要", "時々忘れる", "右眼の霧視。前房清明。"]) {
     assert.ok(firstSheet.includes(text), `the chart print shows ${text}`);
   }
   assert.equal(firstSheet.includes("眼球運動"), false, "empty added rows are not printed");
@@ -233,6 +244,8 @@ async function runDoctorFlow(browser) {
   const changes = await page.locator(".changes").innerText();
   assert.match(changes, /右眼 矯正視力[\s\S]*1\.0[\s\S]*0\.8/u);
   assert.match(changes, /右眼 眼圧[\s\S]*18[\s\S]*23/u);
+  // 自由記載は前回から写る
+  assert.equal(await page.getByRole("textbox", { name: "主訴・所見（自由記載）" }).inputValue(), "右眼の霧視。前房清明。");
   await page.keyboard.press("ControlOrMeta+Enter");
   await page.getByRole("dialog").getByText("前回から引き継ぎ").waitFor();
   await page.getByRole("dialog").getByRole("button", { name: "内容を確認して確定する" }).click();

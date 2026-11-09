@@ -11,15 +11,18 @@ export function SaveIndicator({ state, onRetry }) {
   return <span aria-live="polite" className="save-state is-saved">✓ 保存済み</span>;
 }
 
-// このダイアログの中で解消できる確認（検査値の確認・引き継ぎ処方の確認）。それ以外の止まる理由があると確定できない。
+// このダイアログの中で解消できる確認（検査値の確認・引き継ぎ処方の確認）。
 export const RESOLVED_IN_DIALOG = new Set(["exam_unconfirmed", "prescription_carried_over"]);
 
+// 確定を止めるのは記録として成り立たない行（blockers）だけ。確認事項（warnings）は見せたうえで確定できる（デジカルの警告一覧と同じ）。
+// level "high" は見直してほしいもの、"low" は気付きのためのもの。
 export function FinalizeDialog({ content, changes, confirmations, readiness, version, error = "", onConfirm, onCancel }) {
   const [busy, setBusy] = useState(false);
-  const blockers = readiness.blockers.filter((item) => !RESOLVED_IN_DIALOG.has(item.code));
-  const needsReview = readiness.blockers.some((item) => RESOLVED_IN_DIALOG.has(item.code));
+  const blockers = readiness.blockers;
+  const needsReview = [...readiness.blockers, ...readiness.warnings].some((item) => RESOLVED_IN_DIALOG.has(item.code));
+  const warnings = readiness.warnings.filter((item) => !RESOLVED_IN_DIALOG.has(item.code));
   const exam = content.exam;
-  const issued = content.prescriptions.filter((item) => item.name);
+  const issued = content.prescriptions.filter((item) => item.name && item.kind !== "comment");
   return (
     <div className="dialog-backdrop" role="presentation">
       <div aria-labelledby="finalize-heading" className="dialog dialog-wide" role="dialog">
@@ -58,8 +61,8 @@ export function FinalizeDialog({ content, changes, confirmations, readiness, ver
         {blockers.length ? (
           <ul className="readiness">{blockers.map((item, index) => <li className="is-blocker" key={index}>{item.message}</li>)}</ul>
         ) : null}
-        {readiness.warnings.length ? (
-          <ul className="readiness">{readiness.warnings.map((item, index) => <li className="is-warning" key={index}>{item.message}</li>)}</ul>
+        {warnings.length ? (
+          <ul className="readiness">{warnings.map((item, index) => <li className={`is-warning${item.level === "high" ? " is-high" : ""}`} key={index}>{item.message}</li>)}</ul>
         ) : null}
         {needsReview && !blockers.length ? (
           <p className="muted small">
@@ -67,7 +70,7 @@ export function FinalizeDialog({ content, changes, confirmations, readiness, ver
             {content.prescriptions.some((item) => item.carriedOver) ? "引き継いだ処方を今回の処方として確定します。" : "確定します。"}
           </p>
         ) : null}
-        <p className="muted small">確定後の変更は「修正する」から理由を付けて行い、元の版も残ります。</p>
+        <p className="muted small">確定後も修正できます。修正して確定するたびに新しい版になり、元の版も残ります。</p>
         <div className="dialog-actions">
           <button className="btn btn-ghost" onClick={onCancel} type="button">戻って編集</button>
           <button
@@ -101,13 +104,14 @@ export function ConfirmDialog({ title, children, confirmLabel, onConfirm, onCanc
   );
 }
 
+// 修正理由は任意。空なら「修正」として版に残す。
 export function AmendDialog({ onConfirm, onCancel }) {
   const [reason, setReason] = useState("");
   return (
-    <ConfirmDialog confirmLabel="修正を始める" onCancel={onCancel} onConfirm={() => (reason.trim() ? onConfirm(reason.trim()) : null)} title="確定済みのカルテを修正">
+    <ConfirmDialog confirmLabel="修正を始める" onCancel={onCancel} onConfirm={() => onConfirm(reason.trim())} title="確定済みのカルテを修正">
       <p>修正内容は新しい版として保存され、元の版も残ります。</p>
       <label className="field">
-        <span>修正理由 <em>必須</em></span>
+        <span>修正理由（任意）</span>
         <textarea autoFocus className="input" onChange={(event) => setReason(event.target.value)} rows={2} value={reason} />
       </label>
     </ConfirmDialog>

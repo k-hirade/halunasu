@@ -370,8 +370,14 @@ function setToDraft(item) {
     name: item?.name || "",
     description: item?.description || "",
     plan: item?.plan || "",
-    prescriptions: (item?.prescriptions || []).map((row) => ({ ...row })),
-    orders: (item?.orders || []).map((row) => ({ ...row })),
+    // Rp のコメント行（カルテから作ったセットにある）はこの画面では編集せず、保存のときにそのまま戻す。
+    // フォルダ・並び順・病名・主訴所見は送らない項目なので、サーバー側で元の値が残る。
+    prescriptions: (item?.prescriptions || []).filter((row) => row.kind !== "comment").map((row) => ({ ...row })),
+    orders: (item?.orders || []).filter((row) => row.kind !== "comment").map((row) => ({ ...row })),
+    comments: {
+      prescriptions: (item?.prescriptions || []).filter((row) => row.kind === "comment"),
+      orders: (item?.orders || []).filter((row) => row.kind === "comment")
+    },
     active: item ? item.active !== false : true
   };
 }
@@ -382,8 +388,8 @@ function setBody(draft) {
     name: draft.name.trim(),
     description: draft.description.trim(),
     plan: draft.plan,
-    prescriptions: draft.prescriptions.map((row) => ({ ...row, name: String(row.name || "").trim() })),
-    orders: draft.orders,
+    prescriptions: [...draft.prescriptions.map((row) => ({ ...row, name: String(row.name || "").trim() })), ...(draft.comments?.prescriptions || [])],
+    orders: [...draft.orders, ...(draft.comments?.orders || [])],
     active: draft.active
   };
 }

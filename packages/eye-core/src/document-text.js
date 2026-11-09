@@ -9,7 +9,7 @@ const FINDING_LABELS = Object.freeze([["anterior", "前眼部"], ["lens", "中�
 const NORMAL_FINDING = /^(?:異常(?:所見)?なし|正常(?:範囲)?|特記(?:事項|すべき(?:所見|事項)?)?なし|所見なし|著変なし|著明な変化なし|変化なし|清明|透明|n\.?p\.?|wnl|nad)[。．.]?$/iu;
 
 export function documentDiagnosisText(item = {}) {
-  return `${EYE_NAMES[item.eye] || ""} ${item.name}${item.status === "suspected" ? "（疑い）" : ""}`.trim();
+  return `${EYE_NAMES[item.eye] || ""} ${item.name}${item.suspected === true || item.status === "suspected" ? "（疑い）" : ""}`.trim();
 }
 
 // 差し込む病名。治癒した病名は除く。患者プロファイルがあればそちらを使う。

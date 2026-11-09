@@ -13,6 +13,9 @@ services/eye-api/*
 !services/eye-api/package.json
 !services/eye-api/src/
 !services/eye-api/src/**
+# 公開マスター（scripts/build_eye_masters.mjs が作る検索用 JSON）
+!services/eye-api/data/
+!services/eye-api/data/**
 !services/platform-api/
 services/platform-api/*
 !services/platform-api/package.json
