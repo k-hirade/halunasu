@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { ENCOUNTER_SECTIONS, validateEncounterContent } from "../../../packages/eye-contracts/src/index.js";
+import { COMMENT_KIND, DEFAULT_AMENDMENT_REASON, ENCOUNTER_SECTIONS, validateEncounterContent } from "../../../packages/eye-contracts/src/index.js";
 import {
   calculateEyeDropBottles,
   copyContentForRevisit,
@@ -10,6 +10,8 @@ import {
 } from "../../../packages/eye-core/src/index.js";
 
 // カルテの状態遷移。draft で編集し、finalize で版を確定する。確定後の修正は amend で draft に戻し、次の版として確定する。
+// デジカルと同じく、確定済みのカルテもそのまま編集できる: 確定済みへの保存（PATCH）は自動で修正を始め（理由は任意、
+// 既定は「修正」）、次の確定で新しい版になる。確定した版は消さない・書き換えない（真正性）。
 
 export function buildDraftEncounter({ encounterId, orgId, patientSnapshot, input, copySource, actor, now }) {
   const content = input.content
@@ -44,15 +46,28 @@ export function buildDraftEncounter({ encounterId, orgId, patientSnapshot, input
 
 // 項目ごとの版で衝突を判定する。読み込み後に他の人が同じ項目を変えていた場合だけ止める。
 // 変更のない項目は送られてきても書き込まない。
-export function applyEncounterUpdate(current, input, { actor, now }) {
-  requireDraft(current);
+export function applyEncounterUpdate(loaded, input, { actor, now }) {
   const changed = ENCOUNTER_SECTIONS.filter((key) => (
-    Object.hasOwn(input.sections, key) && stableStringify(input.sections[key]) !== stableStringify(current.content[key])
+    Object.hasOwn(input.sections, key) && stableStringify(input.sections[key]) !== stableStringify(loaded.content[key])
   ));
-  const metaChanged = (input.encounterDate !== undefined && input.encounterDate !== current.encounterDate)
-    || (input.visitType !== undefined && input.visitType !== current.visitType);
+  const metaChanged = (input.encounterDate !== undefined && input.encounterDate !== loaded.encounterDate)
+    || (input.visitType !== undefined && input.visitType !== loaded.visitType);
   const keys = metaChanged ? [...changed, "meta"] : changed;
-  if (keys.length === 0) return { encounter: current, changed: false };
+  if (keys.length === 0) return { encounter: loaded, changed: false, amendStarted: false };
+
+  // 確定済みへの保存は、確定後の内容を見たうえでの編集（expectedRevision が確定後の版以上）のときだけ修正を始める。
+  // 確定前に開いていた画面からの遅れた保存は、確定した内容を知らないので止める。
+  let current = loaded;
+  let amendStarted = false;
+  if (loaded.status === "finalized") {
+    if (input.expectedRevision < loaded.revision) {
+      const error = conflict("このカルテは確定されました。画面を読み込み直してください。");
+      error.details = { sections: keys };
+      throw error;
+    }
+    current = amendEncounter(loaded, { reason: input.amendmentReason || DEFAULT_AMENDMENT_REASON, actor, now, auto: true });
+    amendStarted = true;
+  }
 
   const conflicts = keys.filter((key) => sectionRevision(current, key) > input.expectedRevision);
   if (conflicts.length > 0) {
@@ -75,6 +90,7 @@ export function applyEncounterUpdate(current, input, { actor, now }) {
 
   return {
     changed: true,
+    amendStarted,
     encounter: {
       ...current,
       encounterDate: input.encounterDate ?? current.encounterDate,
@@ -114,6 +130,7 @@ export function confirmExam(current, { eye, confirmed, expectedRevision, actor, 
 function stampOrderStatus(before, after, { actor, now }) {
   const previous = new Map(before.map((order) => [order.orderId, order]));
   return after.map((order) => {
+    if (order.kind === COMMENT_KIND) return order;
     const old = previous.get(order.orderId);
     if (old && old.status === order.status) {
       return { ...order, statusChangedAt: old.statusChangedAt || "", statusChangedBy: old.statusChangedBy || null };
@@ -129,11 +146,12 @@ function sectionRevision(encounter, key) {
   return encounter.sectionRevisions[key] || 0;
 }
 
+// 確定。止めるのは記録として成り立たない入力（blockers）だけで、確認を促す項目（warnings）は返して確定する。
 export function finalizeEncounter(current, { actor, now }) {
   requireDraft(current);
   const version = current.versionCount + 1;
   const content = validateEncounterContent(current.content);
-  const { blockers } = evaluateFinalizeReadiness(content, { examConfirmations: current.examConfirmations });
+  const { blockers, warnings } = evaluateFinalizeReadiness(content, { examConfirmations: current.examConfirmations });
   if (blockers.length > 0) {
     const error = new Error(blockers.map((item) => item.message).join(" "));
     error.name = "FinalizeBlockedError";
@@ -165,14 +183,16 @@ export function finalizeEncounter(current, { actor, now }) {
     content,
     contentHash: contentHash(content),
     amendmentReason: current.amendment?.reason || "",
+    // 確定したときに出ていた確認事項（コードだけ。止めずに確定したことの記録）
+    warningCodes: [...new Set(warnings.map((item) => item.code))],
     finalizedBy: actor,
     finalizedAt: now,
     schemaVersion: 1
   };
-  return { encounter: finalized, version: versionDocument };
+  return { encounter: finalized, version: versionDocument, warnings };
 }
 
-export function amendEncounter(current, { reason, actor, now }) {
+export function amendEncounter(current, { reason, actor, now, auto = false }) {
   if (current.status !== "finalized") {
     throw conflict("only a finalized encounter can be amended");
   }
@@ -181,7 +201,7 @@ export function amendEncounter(current, { reason, actor, now }) {
     status: "draft",
     revision: current.revision + 1,
     sectionRevisions: Object.fromEntries(Object.keys(current.sectionRevisions || {}).map((key) => [key, current.sectionRevisions[key]])),
-    amendment: { reason, requestedBy: actor, requestedAt: now },
+    amendment: { reason: reason || DEFAULT_AMENDMENT_REASON, requestedBy: actor, requestedAt: now, ...(auto ? { auto: true } : {}) },
     updatedBy: actor,
     updatedAt: now
   };

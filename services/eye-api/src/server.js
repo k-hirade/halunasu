@@ -10,15 +10,19 @@ import {
 import {
   AUDIT_CATEGORIES,
   auditEventCategory,
+  COMMENT_KIND,
   DEFAULT_ORDER_CATALOG,
   EYE_DOCUMENT_ROLES,
   EYE_FINALIZE_ROLES,
+  EYE_MASTER_TYPES,
   EYE_PRODUCT_ID,
   EYE_PROFILE_ROLES,
   EYE_READ_ROLES,
   EYE_RECEPTION_ROLES,
+  EYE_SET_ROLES,
   EYE_SETTINGS_ROLES,
   EYE_WRITE_ROLES,
+  LEARNING_CATEGORIES,
   patientSearchVariants,
   validateAmendEncounterInput,
   validateAppointmentStatusInput,
@@ -31,6 +35,8 @@ import {
   validateFinalizeEncounterInput,
   validateOrderSetInput,
   validatePhraseInput,
+  validateSetFolderInput,
+  validateSetFromEncounterInput,
   validatePatientProfileInput,
   validateStaffProfileInput,
   validateUpdateAppointmentInput,
@@ -74,6 +80,8 @@ import {
   summarizeRecipients
 } from "./documents.js";
 import { japanDate } from "./dates.js";
+import { invalidateLearningCache, learningList } from "./learning.js";
+import { defaultMasterIndex, MASTER_SEARCH_LIMIT } from "./masters.js";
 import { createId } from "./ids.js";
 import {
   applyProfileUpdate,
@@ -189,16 +197,39 @@ async function routeEyeApiRequest(input = {}) {
   }
 
   if (method === "GET" && matches(parts, ["v1", "eye", "bootstrap"])) {
-    const [facilities, drugPresets, orderSets, phrases, staff] = await Promise.all([
+    const [facilities, drugPresets, orderSets, setFolders, phrases, staff] = await Promise.all([
       platformStore.listFacilities(orgId),
       eyeStore.listDrugPresets(orgId),
-      eyeStore.listOrderSets(orgId),
+      Promise.resolve(eyeStore.listOrderSets(orgId)).then(sortSets),
+      Promise.resolve(eyeStore.listSetFolders(orgId)).then(sortSets),
       eyeStore.listPhrases(orgId),
       // 紙に載せる氏名（memberId → 氏名）。読めなくても起動は止めない（画面側は表示名から括弧を除いて出す）。
       loadEyeStaff(platformStore, eyeStore, orgId).catch(() => [])
     ]);
     const printNames = Object.fromEntries(staff.map((item) => [item.memberId, item.resolvedName]));
-    return ok({ context: contextView(context), facilities, drugPresets, orderSets, phrases, orderCatalog: DEFAULT_ORDER_CATALOG, printNames });
+    return ok({ context: contextView(context), facilities, drugPresets, orderSets, setFolders, phrases, orderCatalog: DEFAULT_ORDER_CATALOG, printNames });
+  }
+
+  // 公開マスター（医薬品・傷病名・修飾語・診療行為）の検索。語は患者の情報ではないので URL で受け取る。
+  // かな・カナ・漢字・全角半角を区別せず、前方一致 → 部分一致の順に最大 30 件。eye=1 で眼科のものだけ。
+  if (method === "GET" && matches(parts, ["v1", "eye", "masters", "search"])) {
+    const type = String(url.searchParams.get("type") || "");
+    if (!EYE_MASTER_TYPES.includes(type)) throw badRequest(`type must be one of: ${EYE_MASTER_TYPES.join(", ")}`, "type");
+    const q = String(url.searchParams.get("q") || "").trim().slice(0, 100);
+    const rawLimit = url.searchParams.get("limit");
+    const limit = rawLimit === null ? MASTER_SEARCH_LIMIT : Number(rawLimit);
+    if (!Number.isInteger(limit) || limit < 1 || limit > MASTER_SEARCH_LIMIT) throw badRequest(`limit must be 1-${MASTER_SEARCH_LIMIT}`, "limit");
+    const index = input.masterIndex || defaultMasterIndex();
+    const results = q ? index.search({ type, q, limit, eyeOnly: url.searchParams.get("eye") === "1" }) : [];
+    return ok({ type, q, results, available: index.available(type), version: index.meta?.masters?.[type]?.file || "" });
+  }
+
+  // 学習リスト: この医院の確定済みカルテでよく使われた処方の Rp・オーダー・病名（回数の多い順）。
+  if (method === "GET" && matches(parts, ["v1", "eye", "learning-list"])) {
+    requireAccess(context, EYE_WRITE_ROLES, "Eye chart write access is required");
+    const category = String(url.searchParams.get("category") || "");
+    if (category && !LEARNING_CATEGORIES.includes(category)) throw badRequest(`category must be one of: ${LEARNING_CATEGORIES.join(", ")}`, "category");
+    return ok(await learningList(eyeStore, orgId, { category, now: new Date(now) }));
   }
 
   // 患者検索の語は氏名などの個人情報なので、アクセスログに残る URL ではなく本文で受け取る。
@@ -237,9 +268,9 @@ async function routeEyeApiRequest(input = {}) {
     const patients = await platformStore.listPatients(orgId);
     const bundles = [];
     for (const patient of patients) bundles.push(await exportPatient(eyeStore, orgId, patient));
-    const [drugPresets, orderSets, phrases] = await Promise.all([eyeStore.listDrugPresets(orgId), eyeStore.listOrderSets(orgId), eyeStore.listPhrases(orgId)]);
+    const [drugPresets, orderSets, setFolders, phrases] = await Promise.all([eyeStore.listDrugPresets(orgId), eyeStore.listOrderSets(orgId), eyeStore.listSetFolders(orgId), eyeStore.listPhrases(orgId)]);
     await audit({ eventType: "eye.clinic_exported", targetType: "organization", targetId: orgId, safePayload: { patientCount: bundles.length } });
-    return ok({ format: "halunasu-eye-export-v1", exportedAt: now, orgId, settings: { drugPresets, orderSets, phrases }, patients: bundles });
+    return ok({ format: "halunasu-eye-export-v1", exportedAt: now, orgId, settings: { drugPresets, orderSets, setFolders, phrases }, patients: bundles });
   }
 
   if (method === "POST" && matches(parts, ["v1", "eye", "patients"])) {
@@ -398,11 +429,16 @@ async function routeEyeApiRequest(input = {}) {
       requirePlatformCsrf(input.headers || {}, context.session);
       const validated = validateUpdateEncounterInput(input.body || {});
       const current = await requireEncounter(eyeStore, orgId, encounterId);
-      const { encounter: updated, changed } = applyEncounterUpdate(current, validated, { actor, now });
+      // 確定済みへの保存は修正の開始を兼ねる。修正は医師（と管理者）だけ。
+      if (current.status === "finalized") requireAccess(context, EYE_FINALIZE_ROLES, "Only a doctor can amend an eye chart");
+      const { encounter: updated, changed, amendStarted } = applyEncounterUpdate(current, validated, { actor, now });
       if (!changed) return ok({ encounter: current });
       await eyeStore.replaceEncounter(orgId, updated, current.revision);
+      if (amendStarted) {
+        await audit({ eventType: "eye.encounter_amend_started", targetType: "encounter", targetId: encounterId, patientId: updated.patientId, safePayload: { fromVersion: current.versionCount, auto: true } });
+      }
       await audit({ eventType: "eye.encounter_updated", targetType: "encounter", targetId: encounterId, patientId: updated.patientId, safePayload: { revision: updated.revision } });
-      return ok({ encounter: updated });
+      return ok({ encounter: updated, amendStarted });
     }
 
     if (method === "POST" && action === "exam-confirm" && parts.length === 5) {
@@ -426,19 +462,20 @@ async function routeEyeApiRequest(input = {}) {
       const diagnoses = profile.derived && current.content.diagnoses?.length
         ? current.content.diagnoses
         : diagnosesForEncounter(profile, current.encounterDate);
-      const { encounter, version } = finalizeEncounter(
+      const { encounter, version, warnings } = finalizeEncounter(
         { ...current, content: { ...current.content, diagnoses } },
         { actor, now }
       );
       await eyeStore.replaceEncounter(orgId, encounter, expectedRevision, version);
+      invalidateLearningCache(eyeStore, orgId);
       await audit({
         eventType: "eye.encounter_finalized",
         targetType: "encounter",
         targetId: encounterId,
         patientId: encounter.patientId,
-        safePayload: { version: version.version, contentHash: version.contentHash }
+        safePayload: { version: version.version, contentHash: version.contentHash, warningCodes: version.warningCodes }
       });
-      return ok({ encounter, version: versionSummary(version) });
+      return ok({ encounter, version: versionSummary(version), warnings });
     }
 
     if (method === "POST" && action === "amend" && parts.length === 5) {
@@ -483,10 +520,10 @@ async function routeEyeApiRequest(input = {}) {
       status: encounter.status,
       dilationStartedAt: encounter.content?.flags?.dilationStartedAt || "",
       dilationEye: encounter.content?.flags?.dilationEye || "",
-      plannedOrders: (encounter.content?.orders || []).filter((order) => order.status === "planned").map((order) => order.name),
+      plannedOrders: (encounter.content?.orders || []).filter((order) => order.kind !== COMMENT_KIND && order.status === "planned").map((order) => order.name),
       // 受付一覧で検査の進み具合を出すための要約（値そのものは返さない）
       exam: examProgress(encounter.content?.exam),
-      orders: (encounter.content?.orders || []).filter((order) => order.status !== "cancelled").map((order) => ({ name: order.name, status: order.status }))
+      orders: (encounter.content?.orders || []).filter((order) => order.kind !== COMMENT_KIND && order.status !== "cancelled").map((order) => ({ name: order.name, status: order.status }))
     }]));
     return ok({ date, appointments, encountersByPatient });
   }
@@ -824,13 +861,79 @@ async function routeEyeApiRequest(input = {}) {
     return ok({ drugPreset });
   }
 
+  // セット（とフォルダ）は管理者と医師が作る・直す。医師はカルテ画面から「現在のカルテからセットを作成」できる。
+  if (method === "GET" && matches(parts, ["v1", "eye", "order-sets"])) {
+    const [orderSets, setFolders] = await Promise.all([Promise.resolve(eyeStore.listOrderSets(orgId)).then(sortSets), Promise.resolve(eyeStore.listSetFolders(orgId)).then(sortSets)]);
+    return ok({ orderSets, setFolders });
+  }
+
   if (method === "POST" && matches(parts, ["v1", "eye", "order-sets"])) {
-    requireAccess(context, EYE_SETTINGS_ROLES, "Eye settings access is required");
+    requireAccess(context, EYE_SET_ROLES, "Set management requires a doctor or administrator");
     requirePlatformCsrf(input.headers || {}, context.session);
     const validated = validateOrderSetInput(input.body || {});
+    if (validated.folderId) await requireSetFolder(eyeStore, orgId, validated.folderId);
     const orderSet = await eyeStore.upsertOrderSet(orgId, { ...validated, setId: validated.setId || createId("eset") });
     await audit({ eventType: "eye.order_set_saved", targetType: "order_set", targetId: orderSet.setId });
     return ok({ orderSet });
+  }
+
+  if (method === "POST" && matches(parts, ["v1", "eye", "order-sets", "from-encounter"])) {
+    requireAccess(context, EYE_SET_ROLES, "Set management requires a doctor or administrator");
+    requirePlatformCsrf(input.headers || {}, context.session);
+    const validated = validateSetFromEncounterInput(input.body || {});
+    const encounter = await requireEncounter(eyeStore, orgId, validated.encounterId);
+    const existingSets = await eyeStore.listOrderSets(orgId);
+    const existing = validated.setId ? existingSets.find((item) => item.setId === validated.setId) : null;
+    if (validated.setId && !existing) throw notFoundError("set not found");
+    const folderId = validated.folderId !== undefined ? validated.folderId : existing?.folderId || "";
+    if (folderId) await requireSetFolder(eyeStore, orgId, folderId);
+    const name = validated.name || existing?.name || "";
+    if (!name) throw badRequest("name is required", "name");
+    // 新しいセットは同じフォルダの先頭に入れる（デジカルと同じ）。上書きは元の位置のまま。
+    const siblings = existingSets.filter((item) => (item.folderId || "") === folderId && item.setId !== existing?.setId);
+    const sortOrder = existing?.sortOrder ?? (siblings.length ? Math.min(...siblings.map((item) => item.sortOrder ?? 0)) - 1 : 0);
+    // 上書き（現在のカルテで上書き）では、写さなかった項目は元のセットの値を残す。
+    const kept = existing ? Object.fromEntries(SET_PARTS.filter((part) => existing[part] !== undefined).map((part) => [part, existing[part]])) : {};
+    const orderSet = await eyeStore.upsertOrderSet(orgId, {
+      ...validateOrderSetInput({
+        ...kept,
+        ...setContentFromEncounter(encounter.content || {}, validated.include),
+        name,
+        description: validated.description || existing?.description || "",
+        folderId,
+        sortOrder,
+        active: existing ? existing.active !== false : true
+      }),
+      setId: existing?.setId || createId("eset")
+    });
+    await audit({ eventType: "eye.order_set_saved", targetType: "order_set", targetId: orderSet.setId, patientId: encounter.patientId, safePayload: { fromEncounterId: encounter.encounterId, overwrite: Boolean(existing) } });
+    return existing ? ok({ orderSet }) : created({ orderSet });
+  }
+
+  if (method === "GET" && matches(parts, ["v1", "eye", "set-folders"])) {
+    return ok({ setFolders: await Promise.resolve(eyeStore.listSetFolders(orgId)).then(sortSets) });
+  }
+
+  if (method === "POST" && matches(parts, ["v1", "eye", "set-folders"])) {
+    requireAccess(context, EYE_SET_ROLES, "Set management requires a doctor or administrator");
+    requirePlatformCsrf(input.headers || {}, context.session);
+    const validated = validateSetFolderInput(input.body || {});
+    const folders = await eyeStore.listSetFolders(orgId);
+    const folderId = validated.folderId || createId("esf");
+    if (validated.parentId) {
+      if (!folders.some((item) => item.folderId === validated.parentId)) throw badRequest("parent folder not found", "parentId");
+      // 親をたどって自分に戻る（輪になる）指定は受け付けない
+      const parents = new Map(folders.map((item) => [item.folderId, item.parentId || ""]));
+      parents.set(folderId, validated.parentId);
+      const seen = new Set();
+      for (let cursor = validated.parentId; cursor; cursor = parents.get(cursor) || "") {
+        if (cursor === folderId || seen.has(cursor)) throw badRequest("folders cannot form a cycle", "parentId");
+        seen.add(cursor);
+      }
+    }
+    const setFolder = await eyeStore.upsertSetFolder(orgId, { ...validated, folderId });
+    await audit({ eventType: "eye.set_folder_saved", targetType: "set_folder", targetId: folderId });
+    return ok({ setFolder });
   }
 
   if (method === "POST" && matches(parts, ["v1", "eye", "phrases"])) {
@@ -1070,6 +1173,30 @@ async function requirePatient(platformStore, orgId, patientId) {
   return patient;
 }
 
+async function requireSetFolder(eyeStore, orgId, folderId) {
+  const folder = (await eyeStore.listSetFolders(orgId)).find((item) => item.folderId === folderId);
+  if (!folder) throw badRequest("folder not found", "folderId");
+  return folder;
+}
+
+// セットとフォルダの並び: sortOrder の小さい順、同じなら名前順（listNamed の名前順を保つ安定な並べ替え）。
+function sortSets(list = []) {
+  return [...list].sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0));
+}
+
+const SET_PARTS = ["prescriptions", "orders", "diagnoses", "findingsText", "plan"];
+
+// カルテの内容からセットの中身を作る（include で選んだ項目だけ）。オーダーは予定として、処方は引き継ぎの印を外して写す。
+function setContentFromEncounter(content, include) {
+  const parts = {};
+  if (include.prescriptions) parts.prescriptions = (content.prescriptions || []).filter((row) => row.kind === COMMENT_KIND || String(row.name || "").trim()).map(({ carriedOver, ...row }) => row);
+  if (include.orders) parts.orders = (content.orders || []).filter((row) => row.kind === COMMENT_KIND || row.status !== "cancelled").map(({ status, statusChangedAt, statusChangedBy, ...row }) => row);
+  if (include.diagnoses) parts.diagnoses = (content.diagnoses || []).filter((row) => String(row.name || "").trim());
+  if (include.findingsText) parts.findingsText = content.findingsText || "";
+  if (include.plan) parts.plan = content.plan || "";
+  return parts;
+}
+
 async function requireEncounter(eyeStore, orgId, encounterId) {
   const encounter = await eyeStore.getEncounter(orgId, encounterId);
   if (!encounter) throw notFoundError("encounter not found");
@@ -1236,7 +1363,8 @@ function contextView(context) {
     canReceive: hasProductAccess(context.session, EYE_PRODUCT_ID, EYE_RECEPTION_ROLES),
     canEditProfile: hasProductAccess(context.session, EYE_PRODUCT_ID, EYE_PROFILE_ROLES),
     canEditDiagnoses: hasProductAccess(context.session, EYE_PRODUCT_ID, EYE_FINALIZE_ROLES),
-    canWriteDocuments: hasProductAccess(context.session, EYE_PRODUCT_ID, EYE_DOCUMENT_ROLES)
+    canWriteDocuments: hasProductAccess(context.session, EYE_PRODUCT_ID, EYE_DOCUMENT_ROLES),
+    canManageSets: hasProductAccess(context.session, EYE_PRODUCT_ID, EYE_SET_ROLES)
   };
 }
 

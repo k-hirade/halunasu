@@ -233,7 +233,7 @@ function CurrentStrip({ encounter, points, today }) {
         <div>
           <dt>処方中</dt>
           <dd title={prescriptions.map(prescriptionText).join("\n")}>
-            {prescriptions.length ? prescriptions.map(shortPrescription).join(" ／ ") : "—"}
+            {prescriptions.length ? prescriptions.map(shortPrescription).filter(Boolean).join(" ／ ") : "—"}
           </dd>
         </div>
         <div>
@@ -400,6 +400,7 @@ function agoLabel(iso, today) {
 }
 
 function shortPrescription(item = {}) {
+  if (item.kind === "comment") return "";
   return [item.name, item.eye ? SIDE_SHORT[item.eye] : "", item.timesPerDay ? `${item.timesPerDay}回` : ""].filter(Boolean).join(" ");
 }
 

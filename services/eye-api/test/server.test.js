@@ -63,9 +63,10 @@ test("runs the draft, finalize, amend, and refinalize lifecycle with immutable v
   assert.equal(stale.statusCode, 409);
   assert.deepEqual(stale.body.details.sections, ["exam"]);
 
-  const blocked = await request(stores, "POST", `/v1/eye/encounters/${encounterId}/finalize`, { expectedRevision: 2 }, doctor);
-  assert.equal(blocked.statusCode, 400);
-  assert.deepEqual(blocked.body.details.blockers.map((item) => item.code), ["exam_unconfirmed", "exam_unconfirmed"]);
+  // 未確認の検査値は確定を止めない（確認を促す warnings として出る）。ここでは確認してから確定する。
+  const detailBefore = await request(stores, "GET", `/v1/eye/encounters/${encounterId}`, undefined, doctor);
+  assert.deepEqual(detailBefore.body.readiness.blockers, []);
+  assert.deepEqual(detailBefore.body.readiness.warnings.filter((item) => item.level === "high").map((item) => item.code), ["exam_unconfirmed", "exam_unconfirmed"]);
 
   const confirmed = await request(stores, "POST", `/v1/eye/encounters/${encounterId}/exam-confirm`, { expectedRevision: 2, eye: "both" }, doctor);
   assert.equal(confirmed.body.encounter.examConfirmations.od.by.loginId, "eye-doctor");
@@ -74,11 +75,12 @@ test("runs the draft, finalize, amend, and refinalize lifecycle with immutable v
   assert.equal(finalized.body.encounter.status, "finalized");
   assert.equal(finalized.body.version.version, 1);
 
-  const editFinalized = await request(stores, "PATCH", `/v1/eye/encounters/${encounterId}`, {
-    expectedRevision: 4,
+  // 確定前の画面からの遅れた保存（確定後の版を見ていない）は、修正を始めずに止める
+  const lateSave = await request(stores, "PATCH", `/v1/eye/encounters/${encounterId}`, {
+    expectedRevision: 3,
     sections: { plan: "変更" }
   }, doctor);
-  assert.equal(editFinalized.statusCode, 409);
+  assert.equal(lateSave.statusCode, 409);
 
   const amended = await request(stores, "POST", `/v1/eye/encounters/${encounterId}/amend`, { expectedRevision: 4, reason: "眼圧の転記誤り" }, doctor);
   assert.equal(amended.body.encounter.status, "draft");
@@ -627,14 +629,18 @@ test("manages order sets and phrases for the clinic", async () => {
   assert.equal(set.statusCode, 200);
   assert.equal(set.body.orderSet.orders[0].status, "planned");
   assert.equal(set.body.orderSet.prescriptions[0].usage, "就寝前");
-  assert.equal((await request(stores, "POST", "/v1/eye/order-sets", { name: "x" }, doctor)).statusCode, 403);
+  // 医師もセットを作れる（カルテから作るため）。看護師・視能訓練士は作れない。
+  assert.equal((await request(stores, "POST", "/v1/eye/order-sets", { name: "x" }, doctor)).statusCode, 200);
+  const orthoptist = await signedHeaders(stores.platformStore, "orthoptist");
+  assert.equal((await request(stores, "POST", "/v1/eye/order-sets", { name: "y" }, orthoptist)).statusCode, 403);
 
   const phrase = await request(stores, "POST", "/v1/eye/phrases", { target: "findings.fundus", label: "眼底正常", text: "異常なし" }, director);
   assert.equal(phrase.body.phrase.target, "findings.fundus");
   assert.equal((await request(stores, "POST", "/v1/eye/phrases", { target: "nowhere", text: "x" }, director)).statusCode, 400);
 
   const bootstrap = await request(stores, "GET", "/v1/eye/bootstrap", undefined, doctor);
-  assert.equal(bootstrap.body.orderSets.length, 1);
+  assert.equal(bootstrap.body.orderSets.length, 2);
+  assert.deepEqual(bootstrap.body.setFolders, []);
   assert.equal(bootstrap.body.phrases.length, 1);
   assert.ok(bootstrap.body.orderCatalog.some((item) => item.code === "oct_retina"));
 });
@@ -759,7 +765,7 @@ test("suggests recipients from finalized documents across the clinic", async () 
   assert.equal(JSON.stringify(response.body).includes(first.patientId), false, "recipient suggestions carry no patient data");
 });
 
-test("blocks finalizing an issued glasses prescription with inconsistent values", async () => {
+test("finalizes an issued glasses prescription with inconsistent values but returns warnings", async () => {
   const stores = createStores();
   const doctor = await signedHeaders(stores.platformStore, "doctor");
   const patient = await createPatient(stores, doctor);
@@ -769,9 +775,12 @@ test("blocks finalizing an issued glasses prescription with inconsistent values"
     visitType: "initial",
     content: { optical: { type: "glasses", issue: true, od: { sphere: -2, cylinder: -0.5 }, os: { sphere: -1.5 }, pd: 62 } }
   }, doctor);
-  const blocked = await request(stores, "POST", `/v1/eye/encounters/${draft.body.encounter.encounterId}/finalize`, { expectedRevision: 1 }, doctor);
-  assert.equal(blocked.statusCode, 400);
-  assert.deepEqual(blocked.body.details.blockers.map((item) => item.code), ["optical_axis_mismatch"]);
+  // デジカルと同じく止めずに確定し、確認事項を warnings として返す（版にもコードを残す）
+  const finalized = await request(stores, "POST", `/v1/eye/encounters/${draft.body.encounter.encounterId}/finalize`, { expectedRevision: 1 }, doctor);
+  assert.equal(finalized.statusCode, 200);
+  assert.ok(finalized.body.warnings.some((item) => item.code === "optical_axis_mismatch" && item.level === "high"));
+  const version = await request(stores, "GET", `/v1/eye/encounters/${draft.body.encounter.encounterId}/versions/1`, undefined, doctor);
+  assert.ok(version.body.version.warningCodes.includes("optical_axis_mismatch"));
 });
 
 test("uploads files through a short-lived URL, verifies their type, and serves them back", async () => {

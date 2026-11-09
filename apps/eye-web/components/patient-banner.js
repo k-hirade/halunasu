@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { isSuspectedDiagnosis } from "@halunasu/eye-contracts";
 import { useEyeApi } from "./eye-api";
 import { EYE_LABELS, formatDate, patientLine, todayIso } from "../lib/format";
 
 const ALLERGY_CATEGORY_LABELS = { drug: "薬剤", food: "食物", contrast: "造影剤", latex: "ラテックス", other: "その他" };
 const SEVERITY_LABELS = { unknown: "程度不明", mild: "軽度", moderate: "中等度", severe: "重篤" };
-const STATUS_LABELS = { active: "確定", suspected: "疑い", resolved: "治癒・終了" };
+// 状態は継続・治癒の 2 つ。疑いは別のチェック（疑いのまま治癒・終了にできる）。
+const STATUS_LABELS = { active: "継続", resolved: "治癒・終了" };
 const OUTCOME_LABELS = { "": "—", cured: "治癒", discontinued: "中止", transferred: "転医", deceased: "死亡", other: "その他" };
 
 // 患者の帯。アレルギーはどの画面でも必ず見える位置に出す。compact はカルテ・検査画面用の 1 行表示（病名は主病名 1 つ + 「ほか n件」）。
@@ -19,8 +21,8 @@ export function PatientBanner({ patient, profile, context, onProfileSaved, actio
     <div className="patient-banner-flags">
       <AllergyBadge profile={profile} />
       {active.slice(0, shown).map((item) => (
-        <span className={`tag ${item.status === "suspected" ? "tag-warn" : ""}`} key={item.diagnosisId || item.name}>
-          {item.primary ? "★" : ""}{EYE_LABELS[item.eye]} {item.name}{item.status === "suspected" ? "（疑い）" : ""}
+        <span className={`tag ${isSuspectedDiagnosis(item) ? "tag-warn" : ""}`} key={item.diagnosisId || item.name}>
+          {item.primary ? "★" : ""}{EYE_LABELS[item.eye]} {item.name}{isSuspectedDiagnosis(item) ? "（疑い）" : ""}
         </span>
       ))}
       {active.length > shown ? <span className="muted small" title={active.slice(shown).map((item) => item.name).join("、")}>ほか{active.length - shown}件</span> : null}
@@ -76,7 +78,8 @@ export function ProfileDialog({ patientId, profile, canEditDiagnoses, onCancel, 
   const [draft, setDraft] = useState(() => ({
     allergies: profile?.allergies || [],
     noKnownAllergies: Boolean(profile?.noKnownAllergies),
-    diagnoses: profile?.diagnoses || [],
+    // 古いデータの status "suspected" は「継続中の疑い」として編集する
+    diagnoses: (profile?.diagnoses || []).map((item) => (item.status === "suspected" ? { ...item, status: "active", suspected: true } : item)),
     medicalHistory: profile?.medicalHistory || "",
     ophthalmicHistory: profile?.ophthalmicHistory || "",
     contactLensUser: Boolean(profile?.contactLensUser)
@@ -139,6 +142,7 @@ export function ProfileDialog({ patientId, profile, canEditDiagnoses, onCancel, 
                 <select aria-label="眼" className="input" onChange={(event) => setDiagnosis(index, { eye: event.target.value })} value={item.eye}>
                   {Object.entries(EYE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                 </select>
+                <label className="inline-field" title="疑い病名"><input checked={Boolean(item.suspected)} onChange={(event) => setDiagnosis(index, { suspected: event.target.checked })} type="checkbox" /><span>疑い</span></label>
                 <select aria-label="状態" className="input" onChange={(event) => setDiagnosis(index, { status: event.target.value, outcome: event.target.value === "resolved" ? (item.outcome || "cured") : "" })} value={item.status}>
                   {Object.entries(STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                 </select>

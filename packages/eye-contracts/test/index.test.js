@@ -231,3 +231,67 @@ test("accepts the new phrase targets", async () => {
   assert.ok(PER_EYE_PHRASE_TARGETS.includes("findings.other"));
   assert.ok(!PER_EYE_PHRASE_TARGETS.includes("findings.general"));
 });
+
+test("groups prescription rows into Rps and aligns the shared instructions", async () => {
+  const { validateEncounterContent: validate } = await import("../src/index.js");
+  const content = validate({
+    prescriptions: [
+      { name: "A", rpId: "rp1", eye: "ou", timesPerDay: 2, usage: "朝夕", days: 14, route: "inside" },
+      { name: "legacy", eye: "od" },
+      { name: "B", rpId: "rp1", eye: "os", timesPerDay: 4, days: 7 },
+      { kind: "comment", rpId: "rp1", text: "一般名で記載", scope: "free" }
+    ]
+  });
+  assert.deepEqual(content.prescriptions.map((row) => row.name || row.text), ["A", "B", "一般名で記載", "legacy"]);
+  assert.deepEqual(["eye", "timesPerDay", "usage", "days", "route"].map((key) => content.prescriptions[1][key]), ["ou", 2, "朝夕", 14, "inside"]);
+  assert.deepEqual(content.prescriptions[2], { kind: "comment", rpId: "rp1", text: "一般名で記載", scope: "free" });
+  assert.equal("rpId" in content.prescriptions[3], false);
+  assert.throws(() => validate({ orders: [{ orderId: "c", kind: "comment", text: "x" }] }), /rpId is required/u);
+  assert.throws(() => validate({ prescriptions: [{ kind: "comment", rpId: "r", text: "x", scope: "everywhere" }] }), /scope/u);
+});
+
+test("diagnoses carry optional codes, modifiers, a separate suspicion flag, and a department", async () => {
+  const { validateEncounterContent: validate, validatePatientProfileInput, isSuspectedDiagnosis } = await import("../src/index.js");
+  const [legacy, coded, plain] = validate({
+    diagnoses: [
+      { name: "白内障", status: "suspected" },
+      { name: "緑内障", code: "3659002", suspected: true, status: "resolved", department: "眼科", modifiers: [{ code: "2057", name: "両", position: "prefix" }] },
+      { name: "結膜炎" }
+    ]
+  }).diagnoses;
+  assert.deepEqual(legacy, { name: "白内障", eye: "ou", status: "active", onsetDate: "", suspected: true });
+  assert.equal(coded.status, "resolved", "a suspected diagnosis can still be closed");
+  assert.equal(coded.suspected, true);
+  assert.deepEqual(coded.modifiers, [{ code: "2057", name: "両", position: "prefix" }]);
+  assert.deepEqual(plain, { name: "結膜炎", eye: "ou", status: "active", onsetDate: "" }, "old-shaped rows keep their shape");
+  assert.equal(isSuspectedDiagnosis({ status: "suspected" }), true);
+  assert.throws(() => validate({ diagnoses: [{ name: "x", modifiers: [{}] }] }), /code or a name/u);
+  const profile = validatePatientProfileInput({ expectedRevision: 0, diagnoses: [{ name: "緑内障", status: "suspected", code: "3659002" }] });
+  assert.deepEqual([profile.diagnoses[0].status, profile.diagnoses[0].suspected, profile.diagnoses[0].code, profile.diagnoses[0].outcome], ["active", true, "3659002", ""]);
+});
+
+test("validates set folders, sets with folders and diagnoses, set-from-chart, and the optional amendment reason", async () => {
+  const contracts = await import("../src/index.js");
+  assert.deepEqual(contracts.validateSetFolderInput({ name: " 緑内障 " }), { folderId: "", name: "緑内障", parentId: "", sortOrder: 0, active: true });
+  assert.throws(() => contracts.validateSetFolderInput({ folderId: "f1", name: "x", parentId: "f1" }), /own parent/u);
+  const set = contracts.validateOrderSetInput({
+    name: "緑内障", folderId: "f1", sortOrder: -2, findingsText: "眼圧高値",
+    diagnoses: [{ name: "緑内障", code: "3659002", onsetDate: "2026-01-01" }],
+    prescriptions: [{ name: "A", rpId: "r" }, { kind: "comment", rpId: "r", text: "注" }],
+    orders: [{ kind: "comment", rpId: "o", text: "両側" }]
+  });
+  assert.equal(set.folderId, "f1");
+  assert.equal(set.sortOrder, -2);
+  assert.equal(set.findingsText, "眼圧高値");
+  assert.deepEqual(set.diagnoses, [{ name: "緑内障", eye: "ou", status: "active", code: "3659002" }]);
+  assert.equal(set.orders[0].kind, "comment");
+  const plainSet = contracts.validateOrderSetInput({ name: "古い形" });
+  assert.equal("folderId" in plainSet || "diagnoses" in plainSet || "findingsText" in plainSet, false);
+  const fromChart = contracts.validateSetFromEncounterInput({ encounterId: "e1", include: { orders: false } });
+  assert.deepEqual(fromChart.include, { prescriptions: true, orders: false, diagnoses: true, findingsText: true, plan: true });
+  assert.equal(contracts.validateAmendEncounterInput({}).reason, "修正");
+  assert.equal(contracts.validateAmendEncounterInput({ reason: " 誤記 " }).reason, "誤記");
+  assert.equal(contracts.validateUpdateEncounterInput({ expectedRevision: 2, amendmentReason: "日付" }).amendmentReason, "日付");
+  assert.equal(contracts.validateEncounterContent({ findingsText: "a\r\nb  " }).findingsText, "a\nb");
+  assert.equal("findingsText" in contracts.validateEncounterContent({}), false);
+});

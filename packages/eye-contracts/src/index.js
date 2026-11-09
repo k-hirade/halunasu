@@ -9,12 +9,30 @@ export const EYE_TARGET_LABELS = Object.freeze({ od: "右眼", os: "左眼", ou:
 export const VISIT_TYPES = Object.freeze(["initial", "revisit"]);
 export const ENCOUNTER_STATUSES = Object.freeze(["draft", "finalized"]);
 export const PRESCRIPTION_KINDS = Object.freeze(["eye_drop", "eye_ointment", "oral", "injection", "other"]);
+// 処方・オーダーの Rp（まとまり）。同じ rpId の行が 1 つの Rp で、Rp の中にコメント行（kind "comment"）を置ける。
+// rpId の無い古い行は、1 行で 1 つの Rp として読む。
+export const COMMENT_KIND = "comment";
+export const PRESCRIPTION_ROW_KINDS = Object.freeze([...PRESCRIPTION_KINDS, COMMENT_KIND]);
+// 処方の Rp で共有する項目（用法・日数など）。Rp の先頭の薬剤行の値を、同じ Rp のほかの薬剤行にそろえる。
+export const RP_SHARED_FIELDS = Object.freeze(["route", "usage", "timesPerDay", "days", "eye"]);
+// コメントの載せ先: free = 処方箋・レセプトにも載せる、chart = カルテだけ。
+export const COMMENT_SCOPES = Object.freeze(["free", "chart"]);
+export const COMMENT_SCOPE_LABELS = Object.freeze({ free: "処方箋・レセプトに載せる", chart: "カルテだけ" });
+// 公開マスター（支払基金の基本マスター）の種類。検索 API の type に使う。
+export const EYE_MASTER_TYPES = Object.freeze(["drug", "disease", "modifier", "procedure"]);
+// 学習リスト（この医院でよく使う組み合わせ）の区分
+export const LEARNING_CATEGORIES = Object.freeze(["prescription", "order", "diagnosis"]);
+// 確定済みカルテを直接編集したとき・修正理由を入れなかったときの理由
+export const DEFAULT_AMENDMENT_REASON = "修正";
+export const MODIFIER_POSITIONS = Object.freeze(["prefix", "suffix"]);
 export const IOP_METHODS = Object.freeze(["nct", "goldmann", "icare", "other"]);
 export const PRESCRIPTION_ROUTES = Object.freeze(["outside", "inside"]);
 export const PHRASE_TARGETS = Object.freeze([
   "chiefComplaint", "history", "assessment", "plan", "staffNote", "findings.anterior", "findings.lens", "findings.fundus",
   // 追加の差し込み先（2026-11）。findings.other は眼ごと、findings.general と counselling.note は 1 欄。
-  "findings.other", "findings.general", "counselling.note"
+  "findings.other", "findings.general", "counselling.note",
+  // 主訴・所見の自由記載（1 欄）
+  "findingsText"
 ]);
 // 眼ごとに右・左・両を選んで差し込む定型文の欄
 export const PER_EYE_PHRASE_TARGETS = Object.freeze(["findings.anterior", "findings.lens", "findings.fundus", "findings.other"]);
@@ -28,7 +46,9 @@ export const ENCOUNTER_SECTIONS = Object.freeze([
   "chiefComplaint", "history", "exam", "findings", "sketches", "diagnoses", "assessment", "plan",
   "prescriptions", "nextVisit", "staffNote", "orders", "flags", "optical",
   // 説明・同意の記録、点眼アドヒアランス。入力があるカルテだけが持つ（古いカルテには無い）。
-  "counselling", "adherence"
+  "counselling", "adherence",
+  // 主訴・所見の自由記載（デジカルの「主訴・所見」、トプコンの文字所見にあたる 1 欄）。入力があるカルテだけが持つ。
+  "findingsText"
 ]);
 // 瞳孔・対光反射・RAPD・眼位・眼球運動（検査帯の追加項目）。値は exam.{od,os} と exam.binocular に入れる。
 export const PUPIL_REACTIONS = Object.freeze(["brisk", "sluggish", "absent"]);
@@ -100,6 +120,8 @@ export const EYE_READ_ROLES = Object.freeze(["admin", "doctor", "orthoptist", "n
 export const EYE_WRITE_ROLES = Object.freeze(["admin", "doctor", "orthoptist", "nurse"]);
 export const EYE_FINALIZE_ROLES = Object.freeze(["admin", "doctor"]);
 export const EYE_SETTINGS_ROLES = Object.freeze(["admin"]);
+// セット（とフォルダ）の作成・更新。医師はカルテから「現在のカルテからセットを作成」できる。
+export const EYE_SET_ROLES = Object.freeze(["admin", "doctor"]);
 export const EYE_RECEPTION_ROLES = Object.freeze(["admin", "doctor", "orthoptist", "nurse", "medical_clerk"]);
 
 export const APPOINTMENT_PURPOSES = Object.freeze(["revisit", "initial", "exam", "injection", "postop", "contact_lens", "other"]);
@@ -121,7 +143,7 @@ export const APPOINTMENT_TRANSITIONS = Object.freeze({
 
 // 操作記録の種類。画面の絞り込みチップと API の category 絞り込みで同じ分け方を使う。
 export const AUDIT_CATEGORIES = Object.freeze(["view", "change", "finalize", "export", "settings", "other"]);
-const AUDIT_SETTINGS_EVENTS = new Set(["eye.drug_preset_saved", "eye.order_set_saved", "eye.phrase_saved", "eye.staff_profile_saved"]);
+const AUDIT_SETTINGS_EVENTS = new Set(["eye.drug_preset_saved", "eye.order_set_saved", "eye.set_folder_saved", "eye.phrase_saved", "eye.staff_profile_saved"]);
 const AUDIT_CHANGE_SUFFIX = /_(created|updated|saved|discarded|amend_started|confirmed|unconfirmed|status_changed|uploaded|archived|reviewed)$/u;
 
 export function auditEventCategory(eventType) {
@@ -135,8 +157,13 @@ export function auditEventCategory(eventType) {
 }
 
 const MAX_TEXT = 4000;
+// 主訴・所見の自由記載は 1 欄にまとめて書くため長めにする
+const MAX_LONG_TEXT = 10000;
 const MAX_SHORT_TEXT = 200;
 const MAX_LIST = 40;
+// 処方・オーダーはコメント行も数えるため多めにする
+const MAX_ROWS = 80;
+const MAX_MODIFIERS = 10;
 const MAX_SKETCHES = 8;
 const MAX_STROKES = 600;
 const MAX_POINTS_PER_STROKE = 2000;
@@ -162,7 +189,9 @@ export function validateUpdateEncounterInput(input = {}) {
     expectedRevision,
     encounterDate: input.encounterDate === undefined ? undefined : requiredDate(input.encounterDate, "encounterDate"),
     visitType: input.visitType === undefined ? undefined : requiredEnum(input.visitType, VISIT_TYPES, "visitType"),
-    sections: validateEncounterSections(input)
+    sections: validateEncounterSections(input),
+    // 確定済みのカルテを直接編集したときの修正理由（任意。空なら「修正」）
+    amendmentReason: optionalString(input.amendmentReason, "amendmentReason", MAX_TEXT)
   };
 }
 
@@ -184,9 +213,10 @@ export function validateFinalizeEncounterInput(input = {}) {
   return { expectedRevision };
 }
 
+// 修正理由は任意（デジカルと同じく、確定後もそのまま直せる）。空なら「修正」として版に残す。
 export function validateAmendEncounterInput(input = {}) {
   return {
-    reason: requiredString(input.reason, "reason", MAX_TEXT)
+    reason: optionalString(input.reason, "reason", MAX_TEXT) || DEFAULT_AMENDMENT_REASON
   };
 }
 
@@ -205,23 +235,66 @@ export function validateDrugPresetInput(input = {}) {
   };
 }
 
-// セット: よく使う処方・オーダー・方針文の組み合わせ。カルテに一括で追加する。
+// セット: よく使う処方・オーダー・方針文・病名・主訴所見の組み合わせ。カルテに一括で追加する。
+// フォルダ（folderId）と並び順（sortOrder）は任意。病名・主訴所見は入力があるときだけ持たせる（古いセットの形を変えないため）。
 export function validateOrderSetInput(input = {}) {
   const content = validateEncounterContent({
     prescriptions: input.prescriptions,
-    orders: (input.orders || []).map((order, index) => ({ ...order, orderId: order.orderId || `set-${index}` }))
+    orders: (input.orders || []).map((order, index) => ({ ...order, orderId: order.orderId || `set-${index}` })),
+    diagnoses: input.diagnoses,
+    ...(input.findingsText !== undefined ? { findingsText: input.findingsText } : {})
   });
   return {
     setId: optionalString(input.setId, "setId", MAX_SHORT_TEXT),
     name: requiredString(input.name, "name", MAX_SHORT_TEXT),
     description: optionalString(input.description, "description", MAX_SHORT_TEXT),
     prescriptions: content.prescriptions.map((item, index) => {
-      if (!item.name) throw validationError("set prescriptions need a name", `prescriptions.${index}.name`);
+      if (item.kind !== COMMENT_KIND && !item.name) throw validationError("set prescriptions need a name", `prescriptions.${index}.name`);
       return item;
     }),
-    orders: content.orders.map(({ orderId, statusChangedAt, statusChangedBy, ...order }) => ({ ...order, status: "planned" })),
+    orders: content.orders.map(({ orderId, statusChangedAt, statusChangedBy, ...order }) => (order.kind === COMMENT_KIND ? order : { ...order, status: "planned" })),
     plan: optionalText(input.plan, "plan"),
+    active: input.active === undefined ? true : Boolean(input.active),
+    ...compactValues({
+      folderId: optionalString(input.folderId, "folderId", MAX_SHORT_TEXT),
+      sortOrder: optionalNumber(input.sortOrder, "sortOrder", { min: -1000000, max: 1000000, integer: true }),
+      diagnoses: content.diagnoses.map((item, index) => {
+        if (!item.name) throw validationError("set diagnoses need a name", `diagnoses.${index}.name`);
+        const { onsetDate, ...rest } = item;
+        return rest;
+      }),
+      findingsText: content.findingsText
+    })
+  };
+}
+
+// セットのフォルダ。parentId で入れ子にできる（親の無いものが最上位）。
+export function validateSetFolderInput(input = {}) {
+  const folderId = optionalString(input.folderId, "folderId", MAX_SHORT_TEXT);
+  const parentId = optionalString(input.parentId, "parentId", MAX_SHORT_TEXT);
+  if (folderId && parentId === folderId) throw validationError("a folder cannot be its own parent", "parentId");
+  return {
+    folderId,
+    name: requiredString(input.name, "name", MAX_SHORT_TEXT),
+    parentId,
+    sortOrder: optionalNumber(input.sortOrder, "sortOrder", { min: -1000000, max: 1000000, integer: true }) ?? 0,
     active: input.active === undefined ? true : Boolean(input.active)
+  };
+}
+
+// 「現在のカルテからセットを作成」。setId を渡すとそのセットを現在のカルテで上書きする。
+// include で写す項目を選ぶ（既定はすべて）。
+export const SET_FROM_ENCOUNTER_PARTS = Object.freeze(["prescriptions", "orders", "diagnoses", "findingsText", "plan"]);
+
+export function validateSetFromEncounterInput(input = {}) {
+  const include = isPlainObject(input.include) ? input.include : {};
+  return {
+    encounterId: requiredString(input.encounterId, "encounterId", MAX_SHORT_TEXT),
+    setId: optionalString(input.setId, "setId", MAX_SHORT_TEXT),
+    name: optionalString(input.name, "name", MAX_SHORT_TEXT),
+    description: optionalString(input.description, "description", MAX_SHORT_TEXT),
+    folderId: input.folderId === undefined ? undefined : optionalString(input.folderId, "folderId", MAX_SHORT_TEXT),
+    include: Object.fromEntries(SET_FROM_ENCOUNTER_PARTS.map((part) => [part, include[part] === undefined ? true : Boolean(include[part])]))
   };
 }
 
@@ -257,7 +330,8 @@ export function validateEncounterContent(input = {}) {
     optical: validateOptical(input.optical || {}),
     // 追加の項目は、送られてきたときだけ持たせる（古いカルテの形・内容ハッシュを変えないため）。
     ...(hasKey(input, "counselling") ? { counselling: validateCounselling(input.counselling) } : {}),
-    ...(hasKey(input, "adherence") ? { adherence: validateAdherence(input.adherence) } : {})
+    ...(hasKey(input, "adherence") ? { adherence: validateAdherence(input.adherence) } : {}),
+    ...(hasKey(input, "findingsText") ? { findingsText: optionalText(input.findingsText, "content.findingsText", MAX_LONG_TEXT) } : {})
   };
 }
 
@@ -411,11 +485,13 @@ export function validateUpdateDocumentInput(input = {}) {
 }
 
 function validateOrders(value) {
-  return optionalList(value, "content.orders", MAX_LIST).map((item, index) => {
+  const rows = optionalList(value, "content.orders", MAX_ROWS).map((item, index) => {
     const field = `content.orders.${index}`;
     if (!isPlainObject(item)) throw validationError(`${field} must be an object`, field);
+    const orderId = requiredString(item.orderId, `${field}.orderId`, MAX_SHORT_TEXT);
+    if (item.kind === COMMENT_KIND) return { orderId, ...validateCommentRow(item, field) };
     return {
-      orderId: requiredString(item.orderId, `${field}.orderId`, MAX_SHORT_TEXT),
+      orderId,
       code: optionalString(item.code, `${field}.code`, 60),
       name: optionalString(item.name, `${field}.name`, MAX_SHORT_TEXT),
       kind: optionalEnum(item.kind, ORDER_KINDS, `${field}.kind`) || "exam",
@@ -426,9 +502,45 @@ function validateOrders(value) {
       statusChangedBy: isPlainObject(item.statusChangedBy) ? {
         memberId: optionalString(item.statusChangedBy.memberId, `${field}.statusChangedBy.memberId`, MAX_SHORT_TEXT),
         displayName: optionalString(item.statusChangedBy.displayName, `${field}.statusChangedBy.displayName`, MAX_SHORT_TEXT)
-      } : null
+      } : null,
+      // Rp（まとまり）と診療行為マスターのコード。入力があるときだけ持たせる。
+      ...compactValues({
+        rpId: optionalString(item.rpId, `${field}.rpId`, 60),
+        procedureCode: optionalMasterCode(item.procedureCode, `${field}.procedureCode`)
+      })
     };
   });
+  return groupRows(rows);
+}
+
+// Rp の中のコメント行。どの Rp に付くかが分からないコメントは受け付けない。
+function validateCommentRow(item, field) {
+  const rpId = optionalString(item.rpId, `${field}.rpId`, 60);
+  if (!rpId) throw validationError(`${field}.rpId is required for a comment row`, `${field}.rpId`);
+  return {
+    kind: COMMENT_KIND,
+    rpId,
+    text: optionalString(item.text, `${field}.text`, MAX_SHORT_TEXT),
+    scope: optionalEnum(item.scope, COMMENT_SCOPES, `${field}.scope`) || "free"
+  };
+}
+
+// 同じ rpId の行を、最初に出てきた位置にまとめる（Rp の中の順番はそのまま）。rpId の無い行は 1 行で 1 Rp。
+function groupRows(rows) {
+  const groups = new Map();
+  rows.forEach((row, index) => {
+    const key = row.rpId ? `rp:${row.rpId}` : `row:${index}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(row);
+  });
+  return [...groups.values()].flat();
+}
+
+// マスターのコード（医薬品 9 桁、傷病名 7 桁、修飾語 4 桁、診療行為 9 桁）。英数字だけを受け付ける。
+function optionalMasterCode(value, field) {
+  const code = optionalString(value, field, 20);
+  if (code && !/^[0-9A-Za-z]+$/u.test(code)) throw validationError(`${field} must be alphanumeric`, field);
+  return code;
 }
 
 function validateFlags(input) {
@@ -601,19 +713,57 @@ function validateDiagnoses(value) {
   return optionalList(value, "content.diagnoses", MAX_LIST).map((diagnosis, index) => {
     const field = `content.diagnoses.${index}`;
     if (!isPlainObject(diagnosis)) throw validationError(`${field} must be an object`, field);
+    const { status, suspected } = diagnosisStatus(diagnosis, field);
     return {
       name: optionalString(diagnosis.name, `${field}.name`, MAX_SHORT_TEXT),
       eye: optionalEnum(diagnosis.eye, EYE_TARGETS, `${field}.eye`) || "ou",
-      status: optionalEnum(diagnosis.status, DIAGNOSIS_STATUSES, `${field}.status`) || "active",
-      onsetDate: optionalDate(diagnosis.onsetDate, `${field}.onsetDate`)
+      status,
+      onsetDate: optionalDate(diagnosis.onsetDate, `${field}.onsetDate`),
+      ...diagnosisCodes(diagnosis, field, suspected)
     };
   });
 }
 
+// 「疑い」は状態（継続・治癒）とは別のフラグ（疑いのまま転帰することがあるため）。
+// 古いデータの status "suspected" は、継続中（active）の疑いとして読む。
+export function diagnosisStatus(diagnosis = {}, field = "diagnosis") {
+  const status = optionalEnum(diagnosis.status, DIAGNOSIS_STATUSES, `${field}.status`) || "active";
+  const legacy = status === "suspected";
+  return { status: legacy ? "active" : status, suspected: legacy || diagnosis.suspected === true };
+}
+
+export function isSuspectedDiagnosis(diagnosis = {}) {
+  return diagnosis.suspected === true || diagnosis.status === "suspected";
+}
+
+// 傷病名コード・修飾語・疑い・診療科。入力があるときだけ持たせる（古いデータの形を変えないため）。
+function diagnosisCodes(diagnosis, field, suspected) {
+  const modifiers = optionalList(diagnosis.modifiers, `${field}.modifiers`, MAX_MODIFIERS).map((item, index) => {
+    const itemField = `${field}.modifiers.${index}`;
+    if (!isPlainObject(item)) throw validationError(`${itemField} must be an object`, itemField);
+    const modifier = compactValues({
+      code: optionalMasterCode(item.code, `${itemField}.code`),
+      name: optionalString(item.name, `${itemField}.name`, 40),
+      position: optionalEnum(item.position, MODIFIER_POSITIONS, `${itemField}.position`)
+    });
+    if (!modifier.code && !modifier.name) throw validationError(`${itemField} needs a code or a name`, itemField);
+    return modifier;
+  });
+  return {
+    ...compactValues({
+      code: optionalMasterCode(diagnosis.code, `${field}.code`),
+      modifiers,
+      department: optionalString(diagnosis.department, `${field}.department`, 40)
+    }),
+    ...(suspected ? { suspected: true } : {})
+  };
+}
+
 function validatePrescriptions(value) {
-  return optionalList(value, "content.prescriptions", MAX_LIST).map((item, index) => {
+  const rows = optionalList(value, "content.prescriptions", MAX_ROWS).map((item, index) => {
     const field = `content.prescriptions.${index}`;
     if (!isPlainObject(item)) throw validationError(`${field} must be an object`, field);
+    if (item.kind === COMMENT_KIND) return validateCommentRow(item, field);
     return {
       kind: optionalEnum(item.kind, PRESCRIPTION_KINDS, `${field}.kind`) || "eye_drop",
       name: optionalString(item.name, `${field}.name`, MAX_SHORT_TEXT),
@@ -628,8 +778,28 @@ function validatePrescriptions(value) {
       usage: optionalString(item.usage, `${field}.usage`, MAX_SHORT_TEXT),
       issued: item.issued === undefined ? true : Boolean(item.issued),
       // 前回から引き継いだまま、まだ今回の内容として確認していない処方
-      carriedOver: Boolean(item.carriedOver)
+      carriedOver: Boolean(item.carriedOver),
+      // Rp（まとまり）と医薬品マスターのコード。入力があるときだけ持たせる。
+      ...compactValues({
+        rpId: optionalString(item.rpId, `${field}.rpId`, 60),
+        drugCode: optionalMasterCode(item.drugCode, `${field}.drugCode`)
+      })
     };
+  });
+  return alignRpSharedFields(groupRows(rows));
+}
+
+// 同じ Rp の薬剤行は、用法・日数・院内外・回数・眼を先頭の薬剤行にそろえる（Rp で 1 つの指示）。
+function alignRpSharedFields(rows) {
+  const heads = new Map();
+  return rows.map((row) => {
+    if (!row.rpId || row.kind === COMMENT_KIND) return row;
+    const head = heads.get(row.rpId);
+    if (!head) {
+      heads.set(row.rpId, row);
+      return row;
+    }
+    return { ...row, ...Object.fromEntries(RP_SHARED_FIELDS.map((key) => [key, head[key]])) };
   });
 }
 
@@ -665,7 +835,7 @@ export function validatePatientProfileInput(input = {}) {
   const diagnoses = optionalList(input.diagnoses, "diagnoses", MAX_LIST).map((item, index) => {
     const field = `diagnoses.${index}`;
     if (!isPlainObject(item)) throw validationError(`${field} must be an object`, field);
-    const status = optionalEnum(item.status, DIAGNOSIS_STATUSES, `${field}.status`) || "active";
+    const { status, suspected } = diagnosisStatus(item, field);
     const startDate = optionalDate(item.startDate, `${field}.startDate`);
     const endDate = optionalDate(item.endDate, `${field}.endDate`);
     if (startDate && endDate && endDate < startDate) {
@@ -680,7 +850,8 @@ export function validatePatientProfileInput(input = {}) {
       endDate,
       outcome: optionalEnum(item.outcome, DIAGNOSIS_OUTCOMES, `${field}.outcome`) || (status === "resolved" ? "cured" : ""),
       primary: Boolean(item.primary),
-      note: optionalString(item.note, `${field}.note`, MAX_SHORT_TEXT)
+      note: optionalString(item.note, `${field}.note`, MAX_SHORT_TEXT),
+      ...diagnosisCodes(item, field, suspected)
     };
   });
   return {
@@ -783,11 +954,11 @@ function optionalString(value, field, max) {
   return normalized;
 }
 
-function optionalText(value, field) {
+function optionalText(value, field, max = MAX_TEXT) {
   if (value === undefined || value === null) return "";
   if (typeof value !== "string") throw validationError(`${field} must be a string`, field);
   const normalized = value.replace(/\r\n?/gu, "\n").trimEnd();
-  if (normalized.length > MAX_TEXT) throw validationError(`${field} must be at most ${MAX_TEXT} characters`, field);
+  if (normalized.length > max) throw validationError(`${field} must be at most ${max} characters`, field);
   return normalized;
 }
 

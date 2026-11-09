@@ -2,8 +2,10 @@ import {
   ADHERENCE_LABELS,
   ALIGNMENT_LABELS,
   CONSENT_LABELS,
+  COMMENT_KIND,
   COUNSELLING_TOPIC_LABELS,
   EYE_SIDES,
+  isSuspectedDiagnosis,
   MOTILITY_LABELS,
   PUPIL_REACTION_LABELS,
   RAPD_LABELS,
@@ -105,6 +107,9 @@ export const COPYABLE_FINDING_KEYS = Object.freeze(["anterior", "lens", "fundus"
 
 // 再診の「前回コピー」。視力・眼圧などの測定値は毎回測り直すためコピーしない。
 // 追加の項目も同じ方針: 近見・瞳孔・ケラト・眼位（検査）、C/D 比・隅角、説明・同意、点眼アドヒアランスは写さない。
+// 主訴・所見の自由記載（findingsText）は写す。新しいカルテは空なので、そのまま入る。
+// 入力途中のカルテへの複写（画面の Do・複写）は「空の欄にだけ入れる」: findingsText も今回が空のときだけ写し、
+// 書きかけの文には足さない（左右別の所見と同じ扱い。矛盾した文が並ばないようにするため）。
 export function copyContentForRevisit(previousContent = {}) {
   const source = validateEncounterContent(previousContent);
   return {
@@ -113,9 +118,35 @@ export function copyContentForRevisit(previousContent = {}) {
     sketches: source.sketches,
     assessment: source.assessment,
     plan: source.plan,
-    prescriptions: source.prescriptions.map((item) => ({ ...item, carriedOver: true })),
-    nextVisit: { intervalWeeks: source.nextVisit.intervalWeeks, date: "", note: "" }
+    prescriptions: source.prescriptions.map((item) => (item.kind === COMMENT_KIND ? { ...item } : { ...item, carriedOver: true })),
+    nextVisit: { intervalWeeks: source.nextVisit.intervalWeeks, date: "", note: "" },
+    ...(source.findingsText ? { findingsText: source.findingsText } : {})
   };
+}
+
+// 処方・オーダーの行を Rp（まとまり）ごとに分ける。rpId の無い行は 1 行で 1 Rp（legacy）。
+// rows の index は元の配列の位置。Rp の共有項目（用法・日数など）は先頭の薬剤行の値を使う。
+export function groupRps(rows = []) {
+  const groups = [];
+  const byId = new Map();
+  rows.forEach((row, index) => {
+    if (row?.rpId && byId.has(row.rpId)) {
+      byId.get(row.rpId).rows.push({ row, index });
+      return;
+    }
+    const group = { rpId: row?.rpId || `row-${index}`, legacy: !row?.rpId, rows: [{ row, index }] };
+    if (row?.rpId) byId.set(row.rpId, group);
+    groups.push(group);
+  });
+  return groups.map((group) => {
+    const head = group.rows.find((item) => item.row?.kind !== COMMENT_KIND)?.row || null;
+    return {
+      ...group,
+      head,
+      items: group.rows.filter((item) => item.row?.kind !== COMMENT_KIND),
+      comments: group.rows.filter((item) => item.row?.kind === COMMENT_KIND)
+    };
+  });
 }
 
 function copyableFindings(findings) {
@@ -176,6 +207,7 @@ export function diffEncounterContent(previousContent = {}, currentContent = {}) 
   }
   // 追加の項目（毎回測る・聞く値は、今回まだ空なら数えない）
   push("findings.general", "所見（両眼・全体）", before.findings.general ?? "", after.findings.general ?? "");
+  push("findingsText", "主訴・所見", before.findingsText ?? "", after.findingsText ?? "");
   for (const side of EYE_SIDES) {
     push(`exam.${side}.vaNear`, `${SIDE_LABELS[side]} ${FIELD_LABELS.vaNear}`, before.exam[side].vaNear ?? "", after.exam[side].vaNear ?? "", { perVisit: true });
     push(`exam.${side}.pupil`, `${SIDE_LABELS[side]} 瞳孔`, pupilLabel(before.exam[side].pupil), pupilLabel(after.exam[side].pupil), { perVisit: true });
@@ -240,6 +272,7 @@ export function buildTrend(encounters = []) {
 }
 
 export function prescriptionLabel(item = {}) {
+  if (item.kind === COMMENT_KIND) return `※${item.text || ""}`;
   const details = [
     item.eye ? `${{ od: "右", os: "左", ou: "両" }[item.eye]}眼` : "",
     item.timesPerDay ? `1日${item.timesPerDay}回` : "",
@@ -273,8 +306,18 @@ export function counsellingLabel(counselling = {}) {
 
 function diagnosisLabel(diagnosis = {}) {
   const eye = { od: "右眼", os: "左眼", ou: "両眼" }[diagnosis.eye] || "";
-  const suffix = diagnosis.status === "suspected" ? "（疑い）" : diagnosis.status === "resolved" ? "（治癒）" : "";
-  return `${eye ? `${eye} ` : ""}${diagnosis.name}${suffix}`;
+  const suffix = `${isSuspectedDiagnosis(diagnosis) ? "（疑い）" : ""}${diagnosis.status === "resolved" ? "（治癒）" : ""}`;
+  return `${eye ? `${eye} ` : ""}${diagnosisName(diagnosis)}${suffix}`;
+}
+
+// 修飾語を付けた病名（例: 接頭語「右」＋「白内障」）。修飾語が無ければ name のまま。
+// name に修飾語がすでに入っている（表示名として保存された）ときは重ねない。
+export function diagnosisName(diagnosis = {}) {
+  const name = String(diagnosis.name || "");
+  const modifiers = Array.isArray(diagnosis.modifiers) ? diagnosis.modifiers : [];
+  const prefix = modifiers.filter((item) => item.position !== "suffix").map((item) => item.name || "").join("");
+  const suffix = modifiers.filter((item) => item.position === "suffix").map((item) => item.name || "").join("");
+  return `${prefix && !name.startsWith(prefix) ? prefix : ""}${name}${suffix && !name.endsWith(suffix) ? suffix : ""}`;
 }
 
 function medicationKey(item) {
@@ -298,36 +341,51 @@ function stableJson(value) {
   return JSON.stringify(value ?? null);
 }
 
-// 確定前のチェック。blockers があると確定できない。warnings は確認を促すだけ。
-// 画面の事前表示とサーバーの判定で同じ関数を使う。
+// 確定前のチェック。画面の事前表示とサーバーの判定で同じ関数を使う。
+// デジカルと同じく、確認を促す項目（warnings）では確定を止めない。止める（blockers）のは、記録として成り立たない
+// 入力だけ: 名前の無い処方・病名の行、文の無いコメント行。
+// warnings の level: "high" は確定前に見直してほしいもの（以前は確定を止めていた項目）、"low" は気付きのためのもの。
+export const FINALIZE_HARD_CODES = Object.freeze(["prescription_name_missing", "diagnosis_name_missing", "comment_text_missing"]);
+
 export function evaluateFinalizeReadiness(content = {}, { examConfirmations = null } = {}) {
   const blockers = [];
   const warnings = [];
+  const high = (code, field, message) => warnings.push({ code, field, message, level: "high" });
+  const low = (code, message, field = "") => warnings.push({ code, ...(field ? { field } : {}), message, level: "low" });
   for (const side of EYE_SIDES) {
     const values = content.exam?.[side] || {};
     const hasValue = Boolean(values.vaUncorrected || values.vaCorrected || Number.isFinite(values.iop)
       || [values.correction, values.refraction].some((item) => item && Object.values(item).some((value) => value !== null && value !== undefined)));
     if (hasValue && examConfirmations && !examConfirmations[side]) {
-      blockers.push({ code: "exam_unconfirmed", field: `content.exam.${side}`, message: `${side === "od" ? "右眼" : "左眼"}の検査値が未確認です。` });
+      high("exam_unconfirmed", `content.exam.${side}`, `${side === "od" ? "右眼" : "左眼"}の検査値が未確認です。`);
     }
   }
   (content.orders || []).forEach((order, index) => {
-    if (order.status === "planned") blockers.push({ code: "order_planned", field: `content.orders.${index}`, message: `「${order.name || "検査"}」が予定のままです（実施か取消にしてください）。` });
+    if (order.kind === COMMENT_KIND) {
+      if (!String(order.text || "").trim()) blockers.push({ code: "comment_text_missing", field: `content.orders.${index}.text`, message: "文の無いコメント行があります。" });
+      return;
+    }
+    if (order.status === "planned") high("order_planned", `content.orders.${index}`, `「${order.name || "検査"}」が予定のままです（実施か取消にしてください）。`);
   });
   (content.diagnoses || []).forEach((item, index) => {
     if (!String(item.name || "").trim()) blockers.push({ code: "diagnosis_name_missing", field: `content.diagnoses.${index}.name`, message: "病名が空の行があります。" });
   });
   (content.prescriptions || []).forEach((item, index) => {
+    if (item.kind === COMMENT_KIND) {
+      if (!String(item.text || "").trim()) blockers.push({ code: "comment_text_missing", field: `content.prescriptions.${index}.text`, message: "文の無いコメント行があります。" });
+      return;
+    }
     if (!String(item.name || "").trim()) blockers.push({ code: "prescription_name_missing", field: `content.prescriptions.${index}.name`, message: "薬剤名が空の処方があります。" });
-    else if ((item.kind === "eye_drop" || item.kind === "eye_ointment") && !item.eye) blockers.push({ code: "prescription_eye_missing", field: `content.prescriptions.${index}.eye`, message: `「${item.name}」の眼（右・左・両）が未指定です。` });
+    else if ((item.kind === "eye_drop" || item.kind === "eye_ointment") && !item.eye) high("prescription_eye_missing", `content.prescriptions.${index}.eye`, `「${item.name}」の眼（右・左・両）が未指定です。`);
   });
-  const carried = (content.prescriptions || []).filter((item) => item.carriedOver).length;
-  if (carried) blockers.push({ code: "prescription_carried_over", field: "content.prescriptions", message: `前回から引き継いだ処方 ${carried}件が未確認です。` });
-  for (const item of evaluateOpticalPrescription(content.optical)) blockers.push(item);
-  if (!String(content.chiefComplaint || "").trim()) warnings.push({ code: "chief_complaint_empty", message: "主訴が空です。" });
-  if (!String(content.plan || "").trim()) warnings.push({ code: "plan_empty", message: "方針が空です。" });
-  if ((content.prescriptions || []).length > 0 && !content.nextVisit?.intervalWeeks && !content.nextVisit?.date) {
-    warnings.push({ code: "next_visit_missing", message: "処方がありますが、次回受診が未設定です。" });
+  const carried = (content.prescriptions || []).filter((item) => item.carriedOver && item.kind !== COMMENT_KIND).length;
+  if (carried) high("prescription_carried_over", "content.prescriptions", `前回から引き継いだ処方 ${carried}件が未確認です。`);
+  for (const item of evaluateOpticalPrescription(content.optical)) high(item.code, item.field, item.message);
+  // 主訴は「主訴・所見」の自由記載に書いてもよい
+  if (!String(content.chiefComplaint || "").trim() && !String(content.findingsText || "").trim()) low("chief_complaint_empty", "主訴が空です。");
+  if (!String(content.plan || "").trim()) low("plan_empty", "方針が空です。");
+  if ((content.prescriptions || []).some((item) => item.kind !== COMMENT_KIND) && !content.nextVisit?.intervalWeeks && !content.nextVisit?.date) {
+    low("next_visit_missing", "処方がありますが、次回受診が未設定です。");
   }
   return { blockers, warnings };
 }

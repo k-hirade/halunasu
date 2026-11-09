@@ -13,6 +13,7 @@ export class MemoryEyeStore {
     this.dailyCounters = new Map();
     this.patientProfiles = new Map();
     this.orderSets = new Map();
+    this.setFolders = new Map();
     this.phrases = new Map();
     this.staffProfiles = new Map();
     this.documents = new Map();
@@ -102,6 +103,14 @@ export class MemoryEyeStore {
     return this.listNamed(this.orderSets, orgId);
   }
 
+  upsertSetFolder(orgId, item) {
+    return this.upsertNamed(this.setFolders, orgId, item, "folderId");
+  }
+
+  listSetFolders(orgId) {
+    return this.listNamed(this.setFolders, orgId);
+  }
+
   upsertPhrase(orgId, item) {
     return this.upsertNamed(this.phrases, orgId, item, "phraseId");
   }
@@ -189,6 +198,15 @@ export class MemoryEyeStore {
   listDraftDocuments(orgId, limit = 200) {
     return [...this.forOrg(this.documents, orgId).values()]
       .filter((document) => document.status === "draft")
+      .slice(0, limit)
+      .map(clone);
+  }
+
+  // 学習リスト用。確定日時が sinceIso 以降のカルテを新しい順に limit 件まで（修正中のものも含むので、呼ぶ側で状態を見る）。
+  listRecentFinalizedEncounters(orgId, { sinceIso = "", limit = 500 } = {}) {
+    return [...this.forOrg(this.encounters, orgId).values()]
+      .filter((encounter) => encounter.finalizedAt && String(encounter.finalizedAt) >= sinceIso)
+      .sort((left, right) => String(right.finalizedAt).localeCompare(String(left.finalizedAt)))
       .slice(0, limit)
       .map(clone);
   }

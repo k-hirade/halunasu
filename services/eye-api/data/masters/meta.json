@@ -1,0 +1,40 @@
+{
+  "generatedAt": "2026-11-09T10:01:48.146Z",
+  "today": "20261109",
+  "publisher": "医療情報基盤・診療報酬審査支払機構（旧 社会保険診療報酬支払基金）",
+  "page": "https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/",
+  "masters": {
+    "drug": {
+      "label": "医薬品マスター",
+      "file": "y_ALL20261013.zip",
+      "inner": "y_ALL20261013.csv",
+      "source": "https://www.hpdx.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_04.files/y_ALL20261013.zip",
+      "count": 19286,
+      "bytes": 4491031
+    },
+    "disease": {
+      "label": "傷病名マスター",
+      "file": "b_20260601.zip",
+      "inner": "b_20260601.txt",
+      "source": "https://www.hpdx.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_07.files/b_20260601.zip",
+      "count": 27684,
+      "bytes": 3234739
+    },
+    "modifier": {
+      "label": "修飾語マスター",
+      "file": "z_20260601.zip",
+      "inner": "z_20260601.txt",
+      "source": "https://www.hpdx.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_08.files/z_20260601.zip",
+      "count": 2390,
+      "bytes": 205712
+    },
+    "procedure": {
+      "label": "医科診療行為マスター",
+      "file": "s_ALL20261102.zip",
+      "inner": "s_ALL20261102.csv",
+      "source": "https://www.hpdx.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_01.files/s_ALL20261102.zip",
+      "count": 11837,
+      "bytes": 2808463
+    }
+  }
+}

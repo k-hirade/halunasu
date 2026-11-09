@@ -135,8 +135,28 @@ test("evaluates blockers and warnings before finalization", () => {
     prescriptions: [{ kind: "eye_drop", name: "" }, { kind: "eye_drop", name: "ラタノプロスト", eye: "" }],
     nextVisit: {}
   });
-  assert.deepEqual(result.blockers.map((item) => item.code), ["prescription_name_missing", "prescription_eye_missing"]);
-  assert.deepEqual(result.warnings.map((item) => item.code), ["next_visit_missing"]);
+  // 記録として成り立たない行（薬剤名なし）だけが止める。眼の未指定は確認を促す（level high）だけ。
+  assert.deepEqual(result.blockers.map((item) => item.code), ["prescription_name_missing"]);
+  assert.deepEqual(result.warnings.map((item) => [item.code, item.level]), [["prescription_eye_missing", "high"], ["next_visit_missing", "low"]]);
+});
+
+test("finalize readiness warns instead of blocking, except for rows that are not records", () => {
+  const result = evaluateFinalizeReadiness({
+    findingsText: "右眼の充血。前房清明。",
+    plan: "経過観察",
+    exam: { od: { iop: 18 }, os: {} },
+    orders: [{ orderId: "o1", name: "OCT", status: "planned" }, { orderId: "c1", kind: "comment", rpId: "rp1", text: "" }],
+    prescriptions: [{ kind: "comment", rpId: "rp9", text: "一包化" }],
+    diagnoses: [{ name: "" }],
+    optical: { issue: true, type: "glasses", od: {}, os: {} }
+  }, { examConfirmations: { od: null, os: null } });
+  assert.deepEqual(result.blockers.map((item) => item.code), ["comment_text_missing", "diagnosis_name_missing"]);
+  const codes = result.warnings.map((item) => item.code);
+  assert.ok(codes.includes("exam_unconfirmed"));
+  assert.ok(codes.includes("order_planned"));
+  assert.ok(codes.includes("optical_sphere_missing"));
+  assert.ok(!codes.includes("chief_complaint_empty"), "the free-text findings can carry the chief complaint");
+  assert.ok(!codes.includes("next_visit_missing"), "comment rows alone are not a prescription");
 });
 
 test("checks glasses and contact lens prescriptions only when they are issued", () => {
@@ -152,13 +172,14 @@ test("checks glasses and contact lens prescriptions only when they are issued", 
   assert.deepEqual(contact.map((item) => item.code), ["optical_cl_fit_missing"]);
 });
 
-test("prescriptions carried over to a revisit must be confirmed before finalizing", () => {
+test("prescriptions carried over to a revisit are flagged for review before finalizing", () => {
   const copied = copyContentForRevisit({ prescriptions: [{ kind: "eye_drop", name: "ラタノプロスト点眼液", eye: "ou", timesPerDay: 1 }] });
   assert.equal(copied.prescriptions[0].carriedOver, true);
-  const blocked = evaluateFinalizeReadiness({ ...copied, chiefComplaint: "定期", plan: "継続", nextVisit: { intervalWeeks: 8 } });
-  assert.deepEqual(blocked.blockers.map((item) => item.code), ["prescription_carried_over"]);
+  const pending = evaluateFinalizeReadiness({ ...copied, chiefComplaint: "定期", plan: "継続", nextVisit: { intervalWeeks: 8 } });
+  assert.deepEqual(pending.blockers, []);
+  assert.deepEqual(pending.warnings.map((item) => [item.code, item.level]), [["prescription_carried_over", "high"]]);
   const confirmed = { ...copied, prescriptions: copied.prescriptions.map((item) => ({ ...item, carriedOver: false })) };
-  assert.deepEqual(evaluateFinalizeReadiness({ ...confirmed, chiefComplaint: "定期", plan: "継続", nextVisit: { intervalWeeks: 8 } }).blockers, []);
+  assert.deepEqual(evaluateFinalizeReadiness({ ...confirmed, chiefComplaint: "定期", plan: "継続", nextVisit: { intervalWeeks: 8 } }).warnings, []);
 });
 
 test("document text helpers format chart data the same way the letter templates do", async () => {
@@ -240,4 +261,27 @@ test("finalize readiness adds no blockers for the added fields", () => {
     adherence: { status: "unknown" }
   }, { examConfirmations: { od: null, os: null } });
   assert.deepEqual(blockers, []);
+});
+
+test("groups Rps, labels comment rows and suspected or modified diagnoses, and copies the free-text findings", async () => {
+  const core = await import("../src/index.js");
+  const groups = core.groupRps([
+    { name: "A", rpId: "r1" }, { name: "legacy" }, { kind: "comment", rpId: "r1", text: "注" }, { name: "B", rpId: "r1" }
+  ]);
+  assert.deepEqual(groups.map((group) => [group.rpId, group.legacy, group.items.map((item) => item.index), group.comments.map((item) => item.index)]), [
+    ["r1", false, [0, 3], [2]],
+    ["row-1", true, [1], []]
+  ]);
+  assert.equal(groups[0].head.name, "A");
+  assert.equal(prescriptionLabel({ kind: "comment", text: "一包化" }), "※一包化");
+  assert.equal(core.diagnosisName({ name: "白内障", modifiers: [{ name: "右", position: "prefix" }, { name: "の疑い", position: "suffix" }] }), "右白内障の疑い");
+  assert.equal(core.diagnosisName({ name: "右白内障", modifiers: [{ name: "右" }] }), "右白内障");
+
+  const copied = copyContentForRevisit({ findingsText: "前房清明", prescriptions: [{ name: "A", rpId: "r1" }, { kind: "comment", rpId: "r1", text: "注" }] });
+  assert.equal(copied.findingsText, "前房清明");
+  assert.equal(copied.prescriptions[0].carriedOver, true);
+  assert.equal("carriedOver" in copied.prescriptions[1], false, "comments are not prescriptions to confirm");
+  assert.equal("findingsText" in copyContentForRevisit({}), false);
+  const changes = diffEncounterContent({ findingsText: "前回", diagnoses: [{ name: "緑内障", status: "suspected" }] }, { findingsText: "今回", diagnoses: [{ name: "緑内障", suspected: true }] });
+  assert.deepEqual(changes.map((item) => item.path), ["findingsText"], "the old suspected status and the new flag are the same diagnosis");
 });

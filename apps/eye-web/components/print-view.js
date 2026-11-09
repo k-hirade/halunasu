@@ -185,6 +185,7 @@ export function PrintView({ encounterId }) {
         ) : null}
 
         <dl className="cs-list">
+          {content.findingsText ? <div><dt>主訴・所見</dt><dd className="pre">{content.findingsText}</dd></div> : null}
           {/* 病名は確定時に患者の病名から写すため、下書きで空なら行を出さない（「なし」と誤読させない） */}
           {content.diagnoses?.length || !draft ? <div><dt>病名</dt><dd>{(content.diagnoses || []).map(diagnosisText).join("、") || "なし"}</dd></div> : null}
           {content.assessment ? <div><dt>評価</dt><dd className="pre">{content.assessment}</dd></div> : null}
