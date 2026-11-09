@@ -1,7 +1,12 @@
 import { createHash } from "node:crypto";
-import { ENCOUNTER_SECTIONS, validateEncounterContent } from "../../../packages/eye-contracts/src/index.js";
+import { ENCOUNTER_SECTIONS, validateEncounterContent, validateExamRecords } from "../../../packages/eye-contracts/src/index.js";
 import {
+  applyChartExamEdit,
   calculateEyeDropBottles,
+  deriveExamFromRecords,
+  hasExamRecords,
+  plannedOrdersFromPlan,
+  seedExamRecordFromExam,
   copyContentForRevisit,
   daysUntilNextVisit,
   emptyEncounterContent,
@@ -11,12 +16,20 @@ import {
 
 // カルテの状態遷移。draft で編集し、finalize で版を確定する。確定後の修正は amend で draft に戻し、次の版として確定する。
 
-export function buildDraftEncounter({ encounterId, orgId, patientSnapshot, input, copySource, actor, now }) {
-  const content = input.content
+export function buildDraftEncounter({ encounterId, orgId, patientSnapshot, input, copySource, planSource = null, createOrderId, actor, now }) {
+  let content = input.content
     ? input.content
     : copySource
       ? copyContentForRevisit(copySource.content)
       : emptyEncounterContent();
+  // 検査記録つきで作るとき（取り込みなど）は、exam を記録から作る。
+  if (hasExamRecords(content)) content = { ...content, exam: deriveExamFromRecords(content.examRecords) };
+  // 前回立てた次回の診療予定を、今回のオーダー（予定）にする。同じ項目・同じ眼がすでにあれば足さない。
+  const planItems = planSource?.content?.nextVisit?.planItems || [];
+  if (planItems.length && createOrderId) {
+    const planned = plannedOrdersFromPlan(planItems, content.orders || [], { sourceEncounterId: planSource.encounterId, createOrderId });
+    if (planned.length) content = validateEncounterContent({ ...content, orders: [...(content.orders || []), ...planned] });
+  }
   return {
     encounterId,
     orgId,
@@ -65,12 +78,14 @@ export function applyEncounterUpdate(current, input, { actor, now }) {
   const content = { ...current.content };
   for (const key of changed) content[key] = input.sections[key];
   if (changed.includes("orders")) content.orders = stampOrderStatus(current.content.orders || [], content.orders, { actor, now });
-
-  const examConfirmations = { ...(current.examConfirmations || { od: null, os: null }) };
-  if (changed.includes("exam")) {
-    for (const side of ["od", "os"]) {
-      if (stableStringify(content.exam[side]) !== stableStringify(current.content.exam?.[side])) examConfirmations[side] = null;
-    }
+  // 検査記録のあるカルテでは、exam の直接編集を「いまの記録」（最後の記録）へ写し、exam は記録から作り直す。
+  // 記録のないカルテ（古いカルテ・記録を使っていないカルテ）は、これまでどおり exam をそのまま保存する。
+  const recordKeys = [];
+  if (changed.includes("exam") && hasExamRecords(current.content)) {
+    const { records } = applyChartExamEdit(current.content.examRecords, content.exam, { actor, now });
+    content.examRecords = validateExamRecords(records);
+    content.exam = deriveExamFromRecords(content.examRecords);
+    recordKeys.push("examRecords");
   }
 
   return {
@@ -80,13 +95,106 @@ export function applyEncounterUpdate(current, input, { actor, now }) {
       encounterDate: input.encounterDate ?? current.encounterDate,
       visitType: input.visitType ?? current.visitType,
       content,
-      examConfirmations,
-      sectionRevisions: { ...(current.sectionRevisions || {}), ...Object.fromEntries(keys.map((key) => [key, revision])) },
+      examConfirmations: resetExamConfirmations(current, content.exam),
+      sectionRevisions: { ...(current.sectionRevisions || {}), ...Object.fromEntries([...keys, ...recordKeys].map((key) => [key, revision])) },
       revision,
       updatedBy: actor,
       updatedAt: now
     }
   };
+}
+
+// 値の変わった眼だけ確認を外す（確認後に値を変えると確認は外れる）。
+function resetExamConfirmations(current, exam) {
+  const examConfirmations = { ...(current.examConfirmations || { od: null, os: null }) };
+  for (const side of ["od", "os"]) {
+    if (stableStringify(exam?.[side]) !== stableStringify(current.content.exam?.[side])) examConfirmations[side] = null;
+  }
+  return examConfirmations;
+}
+
+// 検査記録を 1 件足す。記録のないカルテに exam の値があれば、先にそれを最初の記録にする（値を失わないため）。
+export function addExamRecord(current, input, { actor, now, recordId, seedRecordId }) {
+  requireDraft(current);
+  requireExamRevision(current, input.expectedRevision);
+  const at = input.at || now;
+  const existing = current.content.examRecords || [];
+  const seed = existing.length ? null : seedExamRecordFromExam(current.content.exam, {
+    recordId: seedRecordId,
+    at: [current.createdAt, at].filter(Boolean).sort()[0],
+    actor,
+    now
+  });
+  const record = {
+    recordId,
+    at,
+    source: input.source || "manual",
+    examinerMemberId: input.examinerMemberId || actor.memberId || "",
+    examinerName: input.examinerName || (input.examinerMemberId ? "" : actor.displayName || ""),
+    note: input.note || "",
+    values: input.values || {},
+    recordedBy: actor,
+    recordedAt: now
+  };
+  const records = [...existing, ...(seed ? [seed] : []), record];
+  const encounter = commitExamRecords(current, records, { actor, now });
+  return { encounter, record: findRecord(encounter.content.examRecords, recordId) };
+}
+
+// 検査記録を変える。送った項目だけを変え、values を送ったときは値をまとめて置き換える（カルテ画面で消した印も外す）。
+export function updateExamRecord(current, recordId, input, { actor, now }) {
+  requireDraft(current);
+  requireExamRevision(current, input.expectedRevision);
+  const existing = current.content.examRecords || [];
+  const index = existing.findIndex((record) => record.recordId === recordId);
+  if (index < 0) {
+    const error = new Error("exam record not found");
+    error.name = "NotFoundError";
+    error.statusCode = 404;
+    throw error;
+  }
+  const before = existing[index];
+  const patched = { ...before, updatedBy: actor, updatedAt: now };
+  if (input.at !== undefined) patched.at = input.at;
+  for (const key of ["source", "examinerMemberId", "examinerName", "note"]) {
+    if (input[key] !== undefined) patched[key] = input[key];
+  }
+  if (input.values !== undefined) {
+    patched.values = input.values;
+    delete patched.cleared;
+  }
+  const records = existing.map((record, position) => (position === index ? patched : record));
+  const encounter = commitExamRecords(current, records, { actor, now });
+  return { encounter, record: findRecord(encounter.content.examRecords, recordId) };
+}
+
+function commitExamRecords(current, records, { actor, now }) {
+  const examRecords = validateExamRecords(records);
+  const exam = deriveExamFromRecords(examRecords);
+  const revision = current.revision + 1;
+  return {
+    ...current,
+    content: { ...current.content, examRecords, exam },
+    examConfirmations: resetExamConfirmations(current, exam),
+    sectionRevisions: { ...(current.sectionRevisions || {}), exam: revision, examRecords: revision },
+    revision,
+    updatedBy: actor,
+    updatedAt: now
+  };
+}
+
+function findRecord(records, recordId) {
+  return records.find((record) => record.recordId === recordId) || null;
+}
+
+// 記録の追加・変更は、読み込んだあとに他の人が検査値（exam か記録）を変えていたら止める。
+function requireExamRevision(current, expectedRevision) {
+  const stale = ["exam", "examRecords"].filter((key) => sectionRevision(current, key) > expectedRevision);
+  if (stale.length) {
+    const error = conflict("ほかの端末で検査値が更新されました。画面を読み込み直してください。");
+    error.details = { sections: stale };
+    throw error;
+  }
 }
 
 // 検査値の確認（視能訓練士・医師）。確認後に値を変えると確認は外れる。

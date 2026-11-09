@@ -6,7 +6,8 @@ import {
   CL_REPLACEMENT_LABELS,
   CL_WEAR_SCHEDULE_LABELS,
   OPTICAL_LENS_MATERIAL_LABELS,
-  OPTICAL_WEAR_MODE_LABELS
+  OPTICAL_WEAR_MODE_LABELS,
+  PLAN_ITEM_EYE_LABELS
 } from "@halunasu/eye-contracts";
 import { examExtrasHaveValues, ExamExtras } from "./encounter-extras";
 import { AxisField, DiopterField, moveToNextOnEnter, NumberField, VaDatalist, VaField } from "./exam-inputs";
@@ -1141,6 +1142,12 @@ export function NextVisit({ content, encounterDate, suggestion, update, editable
         <input aria-label="次回のメモ" className="input grow" onChange={(event) => update(["nextVisit", "note"], event.target.value)} placeholder="メモ（例: 視野検査予定）" value={content.nextVisit.note} />
         {action}
       </div>
+      {/* 次回の診療予定（項目 × 部位）。編集の画面は段階 2 で作る。ここでは読むだけ。 */}
+      {content.nextVisit.planItems?.length ? (
+        <p className="muted small next-visit-plan">
+          予定: {content.nextVisit.planItems.map((item) => `${item.eye && item.eye !== "none" ? `${PLAN_ITEM_EYE_LABELS[item.eye]} ` : ""}${item.name || item.code}`).join("、")}
+        </p>
+      ) : null}
       {editable && suggestion && suggestion.intervalWeeks !== weeks && !(suggestion.basis === "default" && weeks) ? (
         <div className="suggestion">
           <span>候補 <strong>{suggestion.intervalWeeks}週後</strong> <span className="muted small">{suggestion.explanation}</span></span>

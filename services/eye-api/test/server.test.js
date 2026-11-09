@@ -1306,3 +1306,149 @@ test("accepts phrases for the added free-text fields", async () => {
     assert.equal(response.body.phrase.target, target);
   }
 });
+
+test("adds and edits timed exam records, keeps exam as the derived latest view, and maps chart edits into the current record", async () => {
+  const stores = createStores();
+  const doctor = await signedHeaders(stores.platformStore, "doctor");
+  const orthoptist = await signedHeaders(stores.platformStore, "orthoptist");
+  const clerk = await signedHeaders(stores.platformStore, "clerk");
+  const patient = await createPatient(stores, doctor);
+  // 記録の導入前の形で入力された検査値（古いカルテと同じ）
+  const draft = await request(stores, "POST", "/v1/eye/encounters", {
+    patientId: patient.patientId,
+    encounterDate: "2026-10-27",
+    visitType: "initial",
+    content: glaucomaContent({ iopOd: 18 })
+  }, doctor);
+  const id = draft.body.encounter.encounterId;
+  assert.equal("examRecords" in draft.body.encounter.content, false, "charts without records keep the old shape");
+  const confirmed = await request(stores, "POST", `/v1/eye/encounters/${id}/exam-confirm`, { expectedRevision: 1, eye: "both" }, doctor);
+  assert.equal(confirmed.statusCode, 200);
+
+  const path = `/v1/eye/encounters/${id}/exam-records`;
+  const afternoon = {
+    expectedRevision: 2,
+    at: "2026-10-27T05:00:00.000Z",
+    values: { iop: { od: { readings: [20, 21, 22], method: "goldmann", at: "14:00" } }, vision: { near: { od: { uncorrected: "0.5", corrected: "0.9" } } } }
+  };
+  assert.equal((await request(stores, "POST", path, afternoon, clerk)).statusCode, 403);
+  const { "x-csrf-token": _csrf, ...withoutCsrf } = orthoptist;
+  assert.equal((await request(stores, "POST", path, afternoon, withoutCsrf)).statusCode, 403);
+  assert.equal((await request(stores, "POST", path, { ...afternoon, values: { iop: { od: { readings: [1, 2, 3, 4] } } } }, orthoptist)).statusCode, 400);
+
+  const added = await request(stores, "POST", path, afternoon, orthoptist);
+  assert.equal(added.statusCode, 201, JSON.stringify(added.body));
+  const records = added.body.encounter.content.examRecords;
+  assert.equal(records.length, 2, "the old exam becomes the first record so nothing is lost");
+  assert.equal(records[0].source, "chart");
+  assert.equal(records[0].values.vision.far.od.corrected, "1.0");
+  assert.equal(added.body.record.examinerName, "eye-ort");
+  assert.equal(added.body.record.values.iop.od.average, 21);
+  const exam = added.body.encounter.content.exam;
+  assert.equal(exam.od.iop, 21);
+  assert.equal(exam.od.iopMethod, "goldmann");
+  assert.equal(exam.od.vaCorrected, "1.0", "earlier values stay in the latest view");
+  assert.equal(exam.od.vaNear, "0.5");
+  assert.equal(exam.os.iop, 16);
+  assert.equal(added.body.encounter.examConfirmations.od, null, "the changed eye needs confirming again");
+  assert.notEqual(added.body.encounter.examConfirmations.os, null, "the unchanged eye keeps its confirmation");
+
+  // 古い revision からの追加・変更は止める
+  const stale = await request(stores, "POST", path, { ...afternoon, expectedRevision: 2 }, orthoptist);
+  assert.equal(stale.statusCode, 409);
+  assert.deepEqual(stale.body.details.sections, ["exam", "examRecords"]);
+
+  // 記録の変更: values を送ると置き換え、exam を作り直す
+  const recordId = added.body.record.recordId;
+  const revision = added.body.encounter.revision;
+  const patched = await request(stores, "PATCH", `${path}/${recordId}`, {
+    expectedRevision: revision,
+    note: "散瞳後",
+    values: { iop: { od: { readings: [19, 20], method: "goldmann", at: "14:05" } } }
+  }, orthoptist);
+  assert.equal(patched.statusCode, 200, JSON.stringify(patched.body));
+  assert.equal(patched.body.record.note, "散瞳後");
+  assert.equal(patched.body.record.updatedBy.loginId, "eye-ort");
+  assert.equal(patched.body.encounter.content.exam.od.iop, 19.5);
+  assert.equal(patched.body.encounter.content.exam.od.vaNear, undefined, "near values that were replaced are gone from the latest view");
+  assert.equal((await request(stores, "PATCH", `${path}/exr_missing`, { expectedRevision: patched.body.encounter.revision, note: "x" }, orthoptist)).statusCode, 404);
+
+  // 今の画面（exam を直接編集）からの保存は、いまの記録（最後の記録）に入る
+  const chartExam = patched.body.encounter.content.exam;
+  const chartSave = await request(stores, "PATCH", `/v1/eye/encounters/${id}`, {
+    expectedRevision: patched.body.encounter.revision,
+    sections: { exam: { ...chartExam, od: { ...chartExam.od, vaCorrected: "0.9" } } }
+  }, doctor);
+  assert.equal(chartSave.statusCode, 200);
+  const saved = chartSave.body.encounter;
+  assert.equal(saved.content.exam.od.vaCorrected, "0.9");
+  assert.equal(saved.content.examRecords.length, 2);
+  assert.equal(saved.content.examRecords[0].values.vision.far.od.corrected, "1.0", "the earlier record keeps its value");
+  assert.equal(saved.content.examRecords[1].values.vision.far.od.corrected, "0.9");
+  assert.deepEqual(saved.content.examRecords[1].values.iop.od.readings, [{ value: 19 }, { value: 20 }], "untouched readings stay");
+  assert.equal(saved.sectionRevisions.examRecords, saved.revision);
+  // Firestore は undefined を保存できない
+  for (const encounter of [added.body.encounter, patched.body.encounter, saved]) {
+    assert.deepEqual(JSON.parse(JSON.stringify(encounter)), encounter);
+  }
+
+  // 確定: 版には記録も入り、内容は検証を通しても変わらない
+  await request(stores, "POST", `/v1/eye/encounters/${id}/exam-confirm`, { expectedRevision: saved.revision, eye: "both" }, doctor);
+  const finalized = await request(stores, "POST", `/v1/eye/encounters/${id}/finalize`, { expectedRevision: saved.revision + 1 }, doctor);
+  assert.equal(finalized.statusCode, 200, JSON.stringify(finalized.body));
+  const version = await request(stores, "GET", `/v1/eye/encounters/${id}/versions/1`, undefined, doctor);
+  assert.deepEqual(version.body.version.content.examRecords, saved.content.examRecords);
+  assert.equal((await request(stores, "POST", path, { ...afternoon, expectedRevision: finalized.body.encounter.revision }, orthoptist)).statusCode, 409, "finalized charts need amending first");
+
+  const chart = await request(stores, "GET", `/v1/eye/patients/${patient.patientId}/chart`, undefined, doctor);
+  const point = chart.body.trend.points.at(-1);
+  assert.equal(point.od.iop, 19.5);
+  assert.equal(point.od.iopAverage, 19.5);
+  assert.deepEqual(point.od.iopReadings, [19, 20]);
+
+  const logs = await request(stores, "GET", "/v1/eye/audit-logs?category=change", undefined, await signedHeaders(stores.platformStore, "director"));
+  const types = logs.body.auditLogs.map((log) => log.eventType);
+  assert.ok(types.includes("eye.exam_record_created"));
+  assert.ok(types.includes("eye.exam_record_updated"));
+});
+
+test("turns the previous next-visit plan (items x eye) into planned orders on the next encounter", async () => {
+  const stores = createStores();
+  const doctor = await signedHeaders(stores.platformStore, "doctor");
+  const patient = await createPatient(stores, doctor);
+  const first = await finalizedEncounter(stores, doctor, patient.patientId, "2026-07-28", {
+    ...glaucomaContent({ iopOd: 15 }),
+    nextVisit: {
+      intervalWeeks: 12,
+      note: "視野",
+      planItems: [
+        { code: "va", name: "視力検査", eye: "ou" },
+        { code: "vf_static", name: "静的視野検査", eye: "os", comment: "30-2" },
+        { name: "結果説明", eye: "none" }
+      ]
+    }
+  });
+  assert.equal(first.content.nextVisit.planItems.length, 3);
+
+  // 前回コピーの再診: 予定がオーダー（予定）として出る。次回予定そのものは写さない。
+  const revisit = await request(stores, "POST", "/v1/eye/encounters", { patientId: patient.patientId, encounterDate: "2026-10-20" }, doctor);
+  assert.equal(revisit.statusCode, 201);
+  const orders = revisit.body.encounter.content.orders;
+  assert.deepEqual(orders.map((order) => [order.code, order.name, order.eye, order.status]), [
+    ["va", "視力検査", "ou", "planned"],
+    ["vf_static", "静的視野検査", "os", "planned"],
+    ["", "結果説明", "", "planned"]
+  ]);
+  assert.equal(orders[1].note, "30-2");
+  assert.ok(orders.every((order) => order.sourceEncounterId === first.encounterId));
+  assert.equal(revisit.body.encounter.content.nextVisit.planItems, undefined);
+
+  // すでに同じ項目・同じ眼のオーダーがあれば重ねない
+  const withOrders = await request(stores, "POST", "/v1/eye/encounters", {
+    patientId: patient.patientId,
+    encounterDate: "2026-10-21",
+    content: { orders: [{ orderId: "o1", code: "va", name: "視力検査", eye: "ou" }] }
+  }, doctor);
+  assert.deepEqual(withOrders.body.encounter.content.orders.map((order) => order.code), ["va", "vf_static", ""]);
+  assert.equal(withOrders.body.encounter.content.orders[0].orderId, "o1");
+});

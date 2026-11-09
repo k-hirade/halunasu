@@ -9,6 +9,7 @@ import {
   RAPD_LABELS,
   validateEncounterContent
 } from "../../eye-contracts/src/index.js";
+import { examRecordHighlights, hasExamRecords } from "./exam-records.js";
 
 // 5mL 点眼瓶はおよそ 100〜150 滴。足りなくならないよう少ない側を既定にし、薬剤ごとに上書きできる。
 export const DEFAULT_DROPS_PER_BOTTLE = 100;
@@ -201,6 +202,8 @@ export function buildTrend(encounters = []) {
   const finalized = sortByDate(encounters.filter((encounter) => encounter.status === "finalized"));
   const points = finalized.map((encounter) => {
     const exam = encounter.content?.exam || {};
+    // 検査記録のあるカルテは、近見の矯正と眼圧の各回も記録から出す（記録のないカルテは exam の値だけ）。
+    const highlights = hasExamRecords(encounter.content) ? examRecordHighlights(encounter.content.examRecords) : null;
     return {
       encounterId: encounter.encounterId,
       encounterDate: encounter.encounterDate,
@@ -208,10 +211,18 @@ export function buildTrend(encounters = []) {
         const corrected = parseVisualAcuity(exam[side]?.vaCorrected);
         const uncorrected = parseVisualAcuity(exam[side]?.vaUncorrected);
         const best = corrected.decimal ?? uncorrected.decimal;
+        const nearCorrected = parseVisualAcuity(highlights?.[side].nearCorrected);
+        const nearUncorrected = parseVisualAcuity(highlights ? highlights[side].nearUncorrected : exam[side]?.vaNear);
+        const iopReadings = highlights?.[side].iopReadings || [];
         return [side, {
           va: best,
           vaLabel: corrected.label || uncorrected.label,
-          iop: Number.isFinite(exam[side]?.iop) ? exam[side].iop : null
+          iop: Number.isFinite(exam[side]?.iop) ? exam[side].iop : null,
+          // 追加（近見視力と眼圧の平均）。値がなければ null / 空。
+          vaNear: nearCorrected.decimal ?? nearUncorrected.decimal,
+          vaNearLabel: nearCorrected.label || nearUncorrected.label,
+          iopAverage: iopReadings.length ? highlights[side].iopAverage : null,
+          iopReadings
         }];
       }))
     };
@@ -363,3 +374,4 @@ export function printableStaffName(displayName = "", printName = "") {
 }
 
 export * from "./document-text.js";
+export * from "./exam-records.js";

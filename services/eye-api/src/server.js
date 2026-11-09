@@ -27,6 +27,7 @@ import {
   validateCreateFileInput,
   validateCreateEncounterInput,
   validateExamConfirmInput,
+  validateExamRecordInput,
   validateDrugPresetInput,
   validateFinalizeEncounterInput,
   validateOrderSetInput,
@@ -48,6 +49,7 @@ import {
 import { patientSnapshot } from "../../../packages/platform-contracts/src/index.js";
 import { createPlatformStoreFromEnv } from "../../platform-api/src/store/create-store.js";
 import {
+  addExamRecord,
   amendEncounter,
   applyEncounterUpdate,
   confirmExam,
@@ -55,7 +57,8 @@ import {
   encounterSummary,
   eyeDropBottleSuggestions,
   finalizeEncounter,
-  previousFinalizedEncounter
+  previousFinalizedEncounter,
+  updateExamRecord
 } from "./encounters.js";
 import {
   applyAppointmentStatus,
@@ -343,12 +346,15 @@ async function routeEyeApiRequest(input = {}) {
     const validated = validateCreateEncounterInput(input.body || {});
     const patient = await requirePatient(platformStore, orgId, validated.patientId);
     const copySource = await resolveCopySource(eyeStore, orgId, patient.patientId, validated);
+    const planSource = await resolvePlanSource(eyeStore, orgId, patient.patientId, validated.encounterDate);
     const encounter = buildDraftEncounter({
       encounterId: createId("eenc"),
       orgId,
       patientSnapshot: patientSnapshot(patient, new Date(now)),
       input: validated,
       copySource,
+      planSource,
+      createOrderId: () => createId("eord"),
       actor,
       now
     });
@@ -358,7 +364,10 @@ async function routeEyeApiRequest(input = {}) {
       targetType: "encounter",
       targetId: encounter.encounterId,
       patientId: encounter.patientId,
-      safePayload: { copiedFromEncounterId: encounter.copiedFromEncounterId }
+      safePayload: {
+        copiedFromEncounterId: encounter.copiedFromEncounterId,
+        plannedFromEncounterId: (encounter.content.orders || []).find((order) => order.sourceEncounterId)?.sourceEncounterId || ""
+      }
     });
     return created({ encounter });
   }
@@ -414,6 +423,41 @@ async function routeEyeApiRequest(input = {}) {
       await eyeStore.replaceEncounter(orgId, encounter, current.revision);
       await audit({ eventType: validated.confirmed ? "eye.exam_confirmed" : "eye.exam_unconfirmed", targetType: "encounter", targetId: encounterId, patientId: encounter.patientId, safePayload: { eye: validated.eye } });
       return ok({ encounter });
+    }
+
+    // 検査記録（1 日に複数回）。追加・変更のたびに exam（最新値）を作り直し、値の変わった眼の確認を外す。
+    if (method === "POST" && action === "exam-records" && parts.length === 5) {
+      requireAccess(context, EYE_WRITE_ROLES, "Eye chart write access is required");
+      requirePlatformCsrf(input.headers || {}, context.session);
+      const validated = validateExamRecordInput(input.body || {});
+      const current = await requireEncounter(eyeStore, orgId, encounterId);
+      const { encounter, record } = addExamRecord(current, validated, { actor, now, recordId: createId("exr"), seedRecordId: createId("exr") });
+      await eyeStore.replaceEncounter(orgId, encounter, current.revision);
+      await audit({
+        eventType: "eye.exam_record_created",
+        targetType: "encounter",
+        targetId: encounterId,
+        patientId: encounter.patientId,
+        safePayload: { recordId: record.recordId, revision: encounter.revision, recordCount: encounter.content.examRecords.length }
+      });
+      return created({ encounter, record });
+    }
+
+    if (method === "PATCH" && action === "exam-records" && parts.length === 6) {
+      requireAccess(context, EYE_WRITE_ROLES, "Eye chart write access is required");
+      requirePlatformCsrf(input.headers || {}, context.session);
+      const validated = validateExamRecordInput(input.body || {}, { partial: true });
+      const current = await requireEncounter(eyeStore, orgId, encounterId);
+      const { encounter, record } = updateExamRecord(current, parts[5], validated, { actor, now });
+      await eyeStore.replaceEncounter(orgId, encounter, current.revision);
+      await audit({
+        eventType: "eye.exam_record_updated",
+        targetType: "encounter",
+        targetId: encounterId,
+        patientId: encounter.patientId,
+        safePayload: { recordId: record.recordId, revision: encounter.revision }
+      });
+      return ok({ encounter, record });
     }
 
     if (method === "POST" && action === "finalize" && parts.length === 5) {
@@ -1185,6 +1229,13 @@ async function resolveCopySource(eyeStore, orgId, patientId, validated) {
     return source;
   }
   return history.filter((encounter) => encounter.status === "finalized" && encounter.encounterDate <= validated.encounterDate).at(-1) || null;
+}
+
+// 次回の診療予定を立てたカルテ: この受診日以前に確定した、いちばん新しいカルテ。
+async function resolvePlanSource(eyeStore, orgId, patientId, encounterDate) {
+  const history = await eyeStore.listPatientEncounters(orgId, patientId);
+  const finalized = history.filter((encounter) => encounter.status === "finalized" && encounter.encounterDate <= encounterDate);
+  return previousFinalizedEncounter(finalized, { encounterId: "", encounterDate }) || null;
 }
 
 function patientInput(body = {}) {
