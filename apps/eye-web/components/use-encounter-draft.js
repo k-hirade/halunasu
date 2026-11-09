@@ -14,11 +14,13 @@ const SECTION_LABELS = {
 };
 
 // カルテの下書きを編集・自動保存する。変更した項目だけを送り、他の人が別の項目を更新していれば取り込む。
-export function useEncounterDraft(encounterId) {
+// allowFinalizedEdit: 確定済みのカルテも医師はそのまま編集できる（デジカルの直接編集）。保存すると API が修正を始め、
+// 次の確定で新しい版になる（確定した版はそのまま残る）。検査ページなどは従来どおり確定済みを読むだけにする。
+export function useEncounterDraft(encounterId, { allowFinalizedEdit = false } = {}) {
   const api = useEyeApi();
   const [detail, setDetail] = useState(null);
   const [context, setContext] = useState(null);
-  const [bootstrap, setBootstrap] = useState({ drugPresets: [], orderCatalog: [], orderSets: [], phrases: [] });
+  const [bootstrap, setBootstrap] = useState({ drugPresets: [], orderCatalog: [], orderSets: [], setFolders: [], phrases: [] });
   const [content, setContent] = useState(null);
   const [meta, setMeta] = useState({ encounterDate: "", visitType: "revisit" });
   const [saveState, setSaveState] = useState("saved");
@@ -62,6 +64,7 @@ export function useEncounterDraft(encounterId) {
       drugPresets: bootstrapPayload.drugPresets.filter((preset) => preset.active !== false),
       orderCatalog: bootstrapPayload.orderCatalog || [],
       orderSets: bootstrapPayload.orderSets || [],
+      setFolders: bootstrapPayload.setFolders || [],
       phrases: bootstrapPayload.phrases || []
     });
     applyServerEncounter(detailPayload.encounter, { force: force || !contentRef.current });
@@ -74,7 +77,9 @@ export function useEncounterDraft(encounterId) {
   }, [load]);
 
   const encounter = detail?.encounter;
-  const editable = Boolean(encounter && encounter.status === "draft" && context?.canWrite);
+  const editable = Boolean(encounter && context?.canWrite && (
+    encounter.status === "draft" || (allowFinalizedEdit && encounter.status === "finalized" && context?.canFinalize)
+  ));
 
   const save = useCallback(async () => {
     if (!dirtyRef.current.size || !editable) return true;

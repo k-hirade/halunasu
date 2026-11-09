@@ -110,15 +110,17 @@ try {
           await page.getByRole("button", { name: /^未確定カルテ/u }).click();
           await page.waitForTimeout(500);
         }
-        // 過去カルテは 1280px 未満で左からの引き出し。スマホは下のバーの「目次」から開く
-        if (name === "editor-history" && width < 1280) {
-          if (width < 768) await page.locator(".toc-menu > summary").click();
-          await page.getByRole("button", { name: /^過去カルテ/u }).first().click();
+        // 左「患者の情報」は 768px 未満で引き出し。診療履歴（既定）のかわりに病名タブを撮る
+        if (name === "editor-history") {
+          if (width < 768) await page.getByRole("button", { name: "患者の情報" }).click();
+          await page.getByRole("tab", { name: "病名" }).click();
         }
-        // 文書・確定履歴は「…」メニューから開く右の引き出し（どの幅でも）
+        // 右「オーダー」は 1280px 未満で引き出し。投薬の検索結果を出して撮る
         if (name === "editor-side") {
-          await page.locator('.encounter-actions summary[aria-label="その他の操作"]').click();
-          await page.getByRole("button", { name: "文書", exact: true }).click();
+          if (width < 1280) await page.getByRole("button", { name: "オーダー", exact: true }).click();
+          await page.getByRole("tab", { name: "投薬" }).click();
+          await page.getByLabel("オーダーを検索").fill("ラタノ");
+          await page.waitForTimeout(800);
         }
         if (name.startsWith("editor-") && !name.endsWith("dark")) await page.waitForTimeout(400);
         // 会計連携: 再計待と未連携の行を開いた状態、1 人ずつの連携の確認ダイアログ
@@ -204,34 +206,41 @@ async function prepare(browser) {
   await row.locator(".rc-name").click();
   await page.waitForURL(/\/encounters\//u);
   const encounterPath = new URL(page.url()).pathname;
-  await page.getByLabel("右眼 裸眼視力").waitFor();
-  await page.getByRole("textbox", { name: "主訴", exact: true }).fill("術後定期検査。右眼のかすみは改善。");
-  await page.getByLabel("右眼 裸眼視力").fill("0.9");
-  await page.getByLabel("左眼 裸眼視力").fill("0.3");
-  await page.getByLabel("右眼 矯正視力").fill("1.2");
-  await page.getByLabel("左眼 矯正視力").fill("0.6");
-  await page.getByLabel("右眼 眼圧", { exact: true }).fill("14");
-  await page.getByLabel("左眼 眼圧", { exact: true }).fill("23");
-  // 追加の項目（瞳孔・RAPD・眼位、C/D 比、所見のその他、説明・同意）。撮影で見えるように入れておく
-  await page.getByRole("button", { name: /瞳孔・眼位など/u }).click();
-  await page.getByLabel("右眼 瞳孔径").fill("3");
-  await page.getByLabel("右眼 対光反射").selectOption("brisk");
-  await page.getByLabel("左眼 瞳孔径").fill("3.5");
-  await page.getByLabel("左眼 対光反射").selectOption("brisk");
-  await page.getByLabel("RAPD", { exact: true }).selectOption("none");
-  await page.getByLabel("眼位", { exact: true }).selectOption("ortho");
+  // 検査値は検査ページ（別の画面）で入れるので、撮影用には検査記録を API で入れておく（カルテには読み取りの帯で出る）
+  const encounterId = encounterPath.split("/").at(-1);
+  await page.getByRole("textbox", { name: "主訴・所見", exact: true }).waitFor();
+  await apiCall(page, "GET", `/v1/eye/encounters/${encounterId}`).then((payload) => apiCall(page, "POST", `/v1/eye/encounters/${encounterId}/exam-records`, {
+    expectedRevision: payload.encounter.revision,
+    values: {
+      vision: { far: { od: { uncorrected: "0.9", corrected: "1.2", sphere: -1, cylinder: -0.5, axis: 180 }, os: { uncorrected: "0.3", corrected: "0.6" }, ou: { corrected: "1.2" } } },
+      iop: { od: { readings: [14, 15, 14], method: "nct" }, os: { readings: [23, 22, 24], method: "nct" } },
+      pupil: { od: { sizeMm: 3, reaction: "brisk" }, os: { sizeMm: 3.5, reaction: "brisk" } },
+      binocular: { rapd: "none", alignment: "ortho" }
+    }
+  }));
+  await page.reload();
+  await page.getByRole("textbox", { name: "主訴・所見", exact: true }).fill("術後定期検査。右眼のかすみは改善。\n前房清明、IOL 正位。");
+  // 眼別の所見（従来の欄）・説明・同意。撮影で見えるように入れておく
+  // 前回から写った所見があれば眼別の所見は畳んだまま出ている（空なら＋チップ）
+  if (await page.getByRole("button", { name: "＋ 眼別の所見" }).count()) await page.getByRole("button", { name: "＋ 眼別の所見" }).click();
+  else await page.locator("#field-eyes > summary").click();
   if (await page.getByRole("button", { name: "＋ C/D 比" }).count()) await page.getByRole("button", { name: "＋ C/D 比" }).click();
   await page.getByLabel("右眼 C/D 比").fill("0.6");
   await page.getByLabel("左眼 C/D 比").fill("0.7");
-  await page.getByRole("button", { name: "＋ その他" }).click();
+  if (await page.getByRole("button", { name: "＋ その他" }).count()) await page.getByRole("button", { name: "＋ その他" }).click();
   await page.getByLabel("右眼 その他", { exact: true }).fill("眼瞼・涙器 異常なし");
   await page.getByRole("button", { name: "＋ 説明・同意" }).click();
   await page.getByRole("button", { name: "散瞳後の注意" }).click();
   await page.getByLabel("説明した相手").selectOption("patient");
   await page.getByLabel("同意", { exact: true }).selectOption("not_required");
-  // 眼鏡処方（詳細つき）。処方箋の紙面の撮影用
-  await page.getByRole("button", { name: "＋ 眼鏡・CL" }).click();
-  await page.getByLabel("眼鏡・CL の種類").selectOption("glasses");
+  // 処方（右のオーダーで探して入れる）と眼鏡処方（詳細つき）。処方箋の紙面の撮影用
+  await page.getByRole("tab", { name: "投薬" }).click();
+  await page.getByLabel("オーダーを検索").fill("チモロール");
+  await page.locator(".order-item").filter({ hasText: /チモロール/u }).first().click();
+  await page.getByLabel("オーダーを検索").fill("");
+  await page.getByRole("tab", { name: "眼鏡・CL" }).click();
+  await page.getByRole("button", { name: /眼鏡処方箋/u }).click();
+  await page.getByLabel("用途").selectOption("far");
   await page.getByLabel("右眼 S", { exact: true }).fill("-2");
   await page.getByLabel("右眼 C", { exact: true }).fill("-0.5");
   await page.getByLabel("右眼 Ax", { exact: true }).fill("180");
@@ -245,8 +254,8 @@ async function prepare(browser) {
   await page.getByText("今回眼鏡処方箋を発行する").click();
   await page.getByText("保存済み").waitFor({ timeout: 15_000 });
   const patientHref = await page.locator('a[href^="/patients/"]').first().getAttribute("href");
-  await page.locator('.encounter-actions summary[aria-label="その他の操作"]').click();
-  await page.getByRole("button", { name: "文書", exact: true }).click();
+  // 文書は左の「ファイル」タブから作る
+  await page.getByRole("tab", { name: "ファイル" }).click();
   await page.locator(".docs-create > summary").first().click();
   await page.getByRole("button", { name: "紹介状を作成" }).click();
   await page.waitForURL(/\/documents\//u);
@@ -322,6 +331,17 @@ async function prepare(browser) {
       "editor-side": encounterPath
     }
   };
+}
+
+// 画面の中から eye-api を呼ぶ（ログインの Cookie と CSRF をそのまま使う）。
+async function apiCall(page, method, path, body) {
+  return page.evaluate(async ({ method, path, body }) => {
+    const csrf = decodeURIComponent((document.cookie.match(/(?:^|; )halunasu_csrf=([^;]*)/u) || [])[1] || "");
+    const response = await fetch(`/api/eye${path}`, { method, credentials: "include", headers: { "content-type": "application/json", "x-csrf-token": csrf }, body: body ? JSON.stringify(body) : undefined });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(`${method} ${path} ${response.status} ${JSON.stringify(payload).slice(0, 200)}`);
+    return payload;
+  }, { method, path, body });
 }
 
 // 会計連携の撮影用に、本日の確定カルテを状態ごとに用意する（未連携 2・連携済み 1・要再連携 1・修正中 1）。
