@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { useEyeApi } from "./eye-api";
 
-// 薬剤・セット・定型文に共通の「一覧 + 右の編集パネル」。
-// 保存はパネルの[保存]の1か所だけ。表の中で直接は直さない（途中の値が保存される不具合を避ける）。
+// 薬剤・セット・定型文・利用者に共通の「一覧 + 編集ダイアログ」（デジカルの施設管理と同じく、行の［編集］でモーダルを開く）。
+// 保存はダイアログの[保存]の1か所だけ。表の中で直接は直さない（途中の値が保存される不具合を避ける）。
 
 export function useMasterEditor({ idKey, toDraft, toBody, save, validate, fieldLabels = {}, onDirtyChange }) {
   const [selection, setSelection] = useState(null); // { id: 既存の ID または null(新規), original, draft }
@@ -120,13 +121,15 @@ export function FilterChips({ label, options, value, onChange }) {
   );
 }
 
-export function MasterRows({ items, idKey, selectedId, onOpen, renderRow, className = "" }) {
+// renderBefore: 行の左に置く別の操作（並び替えの ▲▼ など。行のボタンの中には入れられないため外に置く）
+export function MasterRows({ items, idKey, selectedId, onOpen, renderRow, renderBefore = null, className = "" }) {
   return (
     <ul className={`master-rows ${className}`.trim()}>
-      {items.map((item) => {
+      {items.map((item, index) => {
         const selected = item[idKey] === selectedId;
         return (
           <li className={`master-row${selected ? " is-selected" : ""}${item.active === false ? " is-inactive" : ""}`} key={item[idKey]}>
+            {renderBefore ? renderBefore(item, index) : null}
             <button aria-current={selected ? "true" : undefined} className="master-row-open" onClick={() => onOpen(item)} type="button">
               {renderRow(item)}
             </button>
@@ -135,6 +138,11 @@ export function MasterRows({ items, idKey, selectedId, onOpen, renderRow, classN
       })}
     </ul>
   );
+}
+
+export function EmptyList({ total, canEdit, addLabel, noun }) {
+  if (total === 0) return <p className="empty master-empty">まだ登録されていません。{canEdit ? `「＋ ${addLabel}」から登録します。` : ""}</p>;
+  return <p className="empty master-empty">該当する{noun}はありません。</p>;
 }
 
 // 停止中は末尾に畳んで置く（検索中は開く）
@@ -175,7 +183,7 @@ export function MasterEditorPanel({ editor, title, canEdit, children, extraActio
   return (
     <>
       <div aria-hidden="true" className="master-backdrop" onClick={editor.close} />
-      <aside aria-label={label} className="master-panel" ref={panelRef}>
+      <div aria-label={label} aria-modal="true" className="master-panel" ref={panelRef} role="dialog">
         <form
           className="master-panel-form"
           onKeyDown={(event) => {
@@ -191,7 +199,7 @@ export function MasterEditorPanel({ editor, title, canEdit, children, extraActio
             <button aria-label="一覧に戻る" className="btn btn-ghost master-panel-back" onClick={editor.close} type="button">‹ 戻る</button>
             <h2 className="master-panel-title" tabIndex={-1}>{title}</h2>
             {inactive ? <span className="tag">停止中</span> : null}
-            <button aria-label="編集パネルを閉じる" className="master-panel-close" onClick={editor.close} type="button">×</button>
+            <button aria-label="編集を閉じる" className="master-panel-close" onClick={editor.close} type="button">×</button>
           </header>
           {editor.pending ? (
             <div className="master-guard" role="alert">
@@ -223,7 +231,163 @@ export function MasterEditorPanel({ editor, title, canEdit, children, extraActio
             )}
           </footer>
         </form>
-      </aside>
+      </div>
     </>
   );
+}
+
+// 見出しの右に置く操作（デジカルの「見出しの行の右上に［編集］［＋新規登録］」）
+export function SectionHead({ title, count, action = null, children }) {
+  return (
+    <header className="settings-section-head">
+      <div className="settings-section-title">
+        <h2>{title}{count !== undefined ? <span className="settings-head-count">{count}</span> : null}</h2>
+        {action ? <div className="settings-section-action">{action}</div> : null}
+      </div>
+      {children ? <p className="muted">{children}</p> : null}
+    </header>
+  );
+}
+
+// 小さな編集ダイアログ（医療機関情報・フォルダ）。Esc で閉じる。日本語入力の確定の Enter では送らない。
+export function SettingsDialog({ title, busy = false, error = "", onClose, onSubmit, submitLabel = "保存", children, wide = false }) {
+  const titleId = useId();
+  const boxRef = useRef(null);
+  useEffect(() => {
+    boxRef.current?.querySelector("input:not([type=hidden]):not([disabled]), select, textarea")?.focus({ preventScroll: true });
+  }, []);
+  return (
+    <>
+      <div aria-hidden="true" className="master-backdrop" onClick={busy ? undefined : onClose} />
+      <div aria-labelledby={titleId} aria-modal="true" className={`master-panel settings-dialog${wide ? " is-wide" : ""}`} ref={boxRef} role="dialog">
+        <form
+          className="master-panel-form"
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && (event.nativeEvent.isComposing || event.keyCode === 229)) event.preventDefault();
+            if (event.key === "Escape" && !busy) {
+              event.preventDefault();
+              onClose();
+            }
+          }}
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!busy) onSubmit();
+          }}
+        >
+          <header className="master-panel-head">
+            <h2 className="master-panel-title" id={titleId}>{title}</h2>
+            <button aria-label="閉じる" className="master-panel-close" disabled={busy} onClick={onClose} type="button">×</button>
+          </header>
+          {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
+          <fieldset className="master-panel-body" disabled={busy}>{children}</fieldset>
+          <footer className="master-panel-actions">
+            <span className="master-flash" />
+            <button className="btn btn-ghost" disabled={busy} onClick={onClose} type="button">キャンセル</button>
+            <button className="btn btn-primary" disabled={busy} type="submit">{busy ? "保存中…" : submitLabel}</button>
+          </footer>
+        </form>
+      </div>
+    </>
+  );
+}
+
+const MASTER_TYPE_NOTES = { drug: "公開マスター（医薬品）", disease: "公開マスター（傷病名）" };
+
+// 公開マスター（支払基金の基本マスター）を引きながら名前を入れる欄。選ばなくても自由に書ける。
+// eyeOnly で眼科のものから探す（「眼科以外も」で外せる）。
+export function MasterSearchInput({ type, value, onChange, onPick, label, placeholder = "", required = false, maxLength = 200 }) {
+  const api = useEyeApi();
+  const listId = useId();
+  const [results, setResults] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(-1);
+  const [eyeOnly, setEyeOnly] = useState(true);
+  const [status, setStatus] = useState("");
+  const ticketRef = useRef(0);
+  const typedRef = useRef(false);
+  const query = String(value || "").trim();
+
+  useEffect(() => {
+    if (!typedRef.current || query.length < 2) {
+      setResults([]);
+      setStatus("");
+      return undefined;
+    }
+    const ticket = ++ticketRef.current;
+    const timer = setTimeout(() => {
+      setStatus("検索中…");
+      api(`/v1/eye/masters/search?type=${type}&q=${encodeURIComponent(query)}&limit=8${eyeOnly ? "&eye=1" : ""}`)
+        .then((payload) => {
+          if (ticket !== ticketRef.current) return;
+          setResults(payload.results || []);
+          setActive(-1);
+          setStatus(payload.available === false ? "マスターが読み込まれていません" : (payload.results || []).length ? "" : "マスターに見つかりません（このまま登録できます）");
+        })
+        .catch(() => { if (ticket === ticketRef.current) { setResults([]); setStatus("マスターを検索できませんでした"); } });
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [api, type, query, eyeOnly]);
+
+  function pick(result) {
+    typedRef.current = false;
+    setOpen(false);
+    setResults([]);
+    setStatus("");
+    onPick(result);
+  }
+
+  const showList = open && (results.length > 0 || status);
+  return (
+    <div className="master-search-field">
+      <input
+        aria-activedescendant={active >= 0 ? `${listId}-${active}` : undefined}
+        aria-autocomplete="list"
+        aria-controls={listId}
+        aria-expanded={showList}
+        aria-label={label}
+        autoComplete="off"
+        className="input"
+        maxLength={maxLength}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onChange={(event) => { typedRef.current = true; setOpen(true); onChange(event.target.value); }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={(event) => {
+          if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+          if (event.key === "ArrowDown" && results.length) { event.preventDefault(); setOpen(true); setActive((current) => Math.min(results.length - 1, current + 1)); }
+          if (event.key === "ArrowUp" && results.length) { event.preventDefault(); setActive((current) => Math.max(0, current - 1)); }
+          if (event.key === "Enter" && open && active >= 0 && results[active]) { event.preventDefault(); pick(results[active]); }
+          if (event.key === "Escape" && showList) { event.preventDefault(); event.stopPropagation(); setOpen(false); }
+        }}
+        placeholder={placeholder}
+        required={required}
+        role="combobox"
+        value={value}
+      />
+      {showList ? (
+        <div className="master-search-pop">
+          <div className="master-search-pop-head">
+            <span>{MASTER_TYPE_NOTES[type] || "公開マスター"}</span>
+            <label><input checked={!eyeOnly} onChange={(event) => setEyeOnly(!event.target.checked)} onMouseDown={(event) => event.preventDefault()} type="checkbox" /> 眼科以外も</label>
+          </div>
+          <ul className="master-search-list" id={listId} role="listbox">
+            {results.map((result, index) => (
+              <li aria-selected={index === active} className="master-search-option" id={`${listId}-${index}`} key={result.code || index} onMouseDown={(event) => { event.preventDefault(); pick(result); }} role="option">
+                <span className="master-search-name">{result.name}</span>
+                <span className="master-search-meta">{masterMeta(type, result)}</span>
+              </li>
+            ))}
+          </ul>
+          {status ? <p className="master-search-status" role="status">{status}</p> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+const DRUG_KIND_SHORT = { eye_drop: "点眼", eye_ointment: "眼軟膏", oral: "内服", injection: "注射", other: "その他" };
+
+function masterMeta(type, result) {
+  if (type === "drug") return [DRUG_KIND_SHORT[result.kind] || "", result.unit ? `/${result.unit}` : "", result.generic && result.generic !== result.name ? result.generic : ""].filter(Boolean).join(" ");
+  if (type === "disease") return [result.icd10 || result.icd || "", result.code].filter(Boolean).join(" ");
+  return result.code || "";
 }

@@ -67,6 +67,7 @@ test("facility settings are read by everyone, saved by administrators with revis
   assert.equal(document.sender.facilityName, "医療法人 あさおか眼科クリニック");
   assert.equal(document.sender.address, "〒100-0001 東京都千代田区千代田 1-1 2階");
   assert.equal(document.sender.phone, "03-1111-2222");
+  assert.equal(document.sender.fax, "03-1111-3333");
 
   // 空に戻すと基本の値に戻る
   const cleared = await request(stores, "PUT", "/v1/eye/facility-settings", { expectedRevision: 1 }, director);

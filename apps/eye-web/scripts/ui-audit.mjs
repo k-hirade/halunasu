@@ -87,9 +87,14 @@ try {
           await page.getByRole("button", { name: "文書", exact: true }).click();
         }
         if (name.startsWith("editor-") && !name.endsWith("dark")) await page.waitForTimeout(400);
+        // 会計連携: 再計待と未連携の行を開いた状態、1 人ずつの連携の確認ダイアログ
         if (name === "billing-diff") {
-          await page.getByRole("button", { name: "差分を見る" }).first().click();
-          await page.locator(".bill-status-pending .flow-row-open").first().click();
+          await page.locator('.bill-row-wrap[data-state="changed"] .flow-row-open').first().click();
+          await page.locator('.bill-row-wrap[data-state="pending"] .flow-row-open').first().click();
+          await page.waitForTimeout(300);
+        }
+        if (name === "billing-send") {
+          await page.locator('.bill-row-wrap[data-state="pending"] .bill-actions .btn-primary').first().click();
           await page.waitForTimeout(300);
         }
         if (name === "billing-print") {
@@ -105,10 +110,18 @@ try {
           await page.waitForTimeout(800);
           await page.emulateMedia({ media: "print" });
         }
-        // 設定: 一覧の行を押して右の編集パネルを開いた状態も撮る
-        if (name.startsWith("settings-panel") || name === "settings-sets" || name === "settings-staff") {
-          await page.locator(".master-row").nth(name === "settings-panel" || name === "settings-panel-dark" ? 1 : 0).click().catch(() => null);
+        // 設定: 一覧の行を押して編集ダイアログを開いた状態も撮る
+        if (name.startsWith("settings-panel") || name === "settings-sets-edit" || name === "settings-users") {
+          await page.locator(".master-row-open").nth(name.startsWith("settings-panel") ? 1 : 0).click().catch(() => null);
           await page.waitForTimeout(400);
+        }
+        if (name === "settings-facility-edit") {
+          await page.getByRole("button", { name: "✎ 編集" }).click().catch(() => null);
+          await page.waitForTimeout(400);
+        }
+        if (name === "settings-sets") {
+          await page.locator(".set-tree-item", { hasText: "点眼" }).first().click().catch(() => null);
+          await page.waitForTimeout(300);
         }
         const tag = `${name}-${width}x${height}`;
         await page.screenshot({ path: join(outDir, `${tag}.png`) });
@@ -204,12 +217,14 @@ async function prepare(browser) {
   const patientHref = await page.locator('a[href^="/patients/"]').first().getAttribute("href");
   await page.locator('.encounter-actions summary[aria-label="その他の操作"]').click();
   await page.getByRole("button", { name: "文書", exact: true }).click();
+  await page.locator(".docs-create > summary").first().click();
   await page.getByRole("button", { name: "紹介状を作成" }).click();
   await page.waitForURL(/\/documents\//u);
   const documentPath = new URL(page.url()).pathname;
   await page.getByLabel("宛先 医療機関").fill("県立中央病院");
   await page.waitForTimeout(2500);
   if (!onlyPages || [...onlyPages].some((name) => name.startsWith("billing"))) await seedBilling(page);
+  if (!onlyPages || [...onlyPages].some((name) => name.startsWith("settings"))) await seedSettings(page);
   if (!onlyPages || onlyPages.has("patient") || onlyPages.has("images")) await uploadSampleImages(page, patientHref);
   const storageState = await context.storageState();
   await context.close();
@@ -234,11 +249,16 @@ async function prepare(browser) {
       billing: "/billing",
       "billing-diff": "/billing",
       "billing-print": "/billing",
+      "billing-send": "/billing",
+      "billing-dark": "/billing",
       settings: "/settings",
+      "settings-dark": "/settings",
+      "settings-facility-edit": "/settings#facility",
       "settings-panel": "/settings#drugs",
       "settings-sets": "/settings#sets",
+      "settings-sets-edit": "/settings#sets",
       "settings-phrases": "/settings#phrases",
-      "settings-staff": "/settings#staff",
+      "settings-users": "/settings#users",
       "settings-export": "/settings#export",
       "settings-audit": "/settings#audit",
       "settings-panel-dark": "/settings#drugs",
@@ -293,6 +313,12 @@ async function seedBilling(page) {
       const finalized = await call("POST", `/v1/eye/encounters/${id}/finalize`, { expectedRevision: confirmed.encounter.revision });
       ids.push(finalized.encounter);
     }
+    // 受付（会計待・会計済）も作って、受付番号と受付状態の列を埋める
+    for (const [index, status] of [[0, "checkout"], [1, "checkout"], [2, "done"]]) {
+      const { appointment } = await call("POST", "/v1/eye/appointments", { date: today, patientId: ids[index].patientId, walkIn: true });
+      const arrived = appointment.status === "booked" ? (await call("POST", `/v1/eye/appointments/${appointment.appointmentId}/status`, { expectedRevision: appointment.revision, status: "checked_in" })).appointment : appointment;
+      await call("POST", `/v1/eye/appointments/${arrived.appointmentId}/status`, { expectedRevision: arrived.revision, status });
+    }
     const [, , done, resend, amending] = ids;
     await call("POST", "/v1/eye/billing/handoffs", { date: today, encounterIds: [done.encounterId, resend.encounterId, amending.encounterId] });
     const amended = await call("POST", `/v1/eye/encounters/${resend.encounterId}/amend`, { expectedRevision: resend.revision, reason: "点眼薬の変更" });
@@ -303,6 +329,28 @@ async function seedBilling(page) {
     return ids.length;
   });
   if (result !== 5) throw new Error("billing seed failed");
+}
+
+// 設定の撮影用: 医療機関情報、セットのフォルダ（入れ子）とセット。
+async function seedSettings(page) {
+  await page.evaluate(async () => {
+    const csrf = decodeURIComponent((document.cookie.match(/(?:^|; )halunasu_csrf=([^;]*)/u) || [])[1] || "");
+    const call = async (method, path, body) => {
+      const response = await fetch(`/api/eye${path}`, { method, credentials: "include", headers: { "content-type": "application/json", "x-csrf-token": csrf }, body: body ? JSON.stringify(body) : undefined });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(`${method} ${path} ${response.status} ${JSON.stringify(payload).slice(0, 200)}`);
+      return payload;
+    };
+    const current = await call("GET", "/v1/eye/facility-settings");
+    await call("PUT", "/v1/eye/facility-settings", { expectedRevision: current.facilitySettings.revision, name: "医療法人 はるなす会 はるなす眼科クリニック", postalCode: "100-0001", address: "東京都千代田区千代田1-1 はるなすビル2階", phone: "03-1234-5678", fax: "03-1234-5679", founder: "医療法人 はるなす会", administrator: "春那 一郎" });
+    const glaucoma = (await call("POST", "/v1/eye/set-folders", { name: "緑内障", sortOrder: 0 })).setFolder;
+    const drops = (await call("POST", "/v1/eye/set-folders", { name: "点眼", parentId: glaucoma.folderId, sortOrder: 0 })).setFolder;
+    await call("POST", "/v1/eye/set-folders", { name: "白内障", sortOrder: 1 });
+    const drop = (name, timesPerDay) => ({ kind: "eye_drop", name, eye: "ou", timesPerDay, quantity: 1, unit: "本", route: "outside" });
+    await call("POST", "/v1/eye/order-sets", { name: "緑内障 初回", folderId: drops.folderId, sortOrder: 0, diagnoses: [{ name: "原発開放隅角緑内障", eye: "ou" }], prescriptions: [drop("ラタノプロスト点眼液0.005%", 1)], orders: [{ code: "iop", name: "眼圧検査", kind: "exam", eye: "ou" }] });
+    await call("POST", "/v1/eye/order-sets", { name: "緑内障 定期 3か月", folderId: drops.folderId, sortOrder: 1, findingsText: "視野 安定", orders: [{ code: "va", name: "視力検査", kind: "exam", eye: "ou" }, { code: "iop", name: "眼圧検査", kind: "exam", eye: "ou" }] });
+    await call("POST", "/v1/eye/order-sets", { name: "視野検査", folderId: glaucoma.folderId, orders: [{ code: "va", name: "視力検査", kind: "exam", eye: "ou" }] });
+  });
 }
 
 // デモ患者にはファイルがないので、画像の比較を撮るために OCT 2 件と眼底写真 1 件を取り込む。

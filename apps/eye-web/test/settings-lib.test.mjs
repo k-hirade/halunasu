@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { calculateEyeDropBottles } from "@halunasu/eye-core";
-import { auditRangeFor, auditTargetLabel, daysPerBottle, matchesSearch, normalizeSearch, setContentText } from "../lib/settings.js";
+import { auditRangeFor, auditTargetLabel, buildFolderTree, daysPerBottle, descendantFolderIds, facilityBaseValue, flattenFolderTree, folderPathText, matchesSearch, memberRoleText, moveSet, normalizeSearch, setContentText, setsInFolder, sortMembers } from "../lib/settings.js";
 
 test("search treats hiragana and katakana, full and half width alike", () => {
   assert.equal(normalizeSearch("ラタノプロスト"), "らたのぷろすと");
@@ -45,4 +45,52 @@ test("set contents and audit ranges", () => {
   assert.deepEqual(auditRangeFor("week", "2026-11-03"), { from: "2026-10-28", to: "2026-11-03" });
   assert.deepEqual(auditRangeFor("month", "2026-03-01"), { from: "2026-01-31", to: "2026-03-01" });
   assert.equal(auditRangeFor("custom", "2026-11-03"), null);
+});
+
+test("set folders form a tree with counts, survive broken parents and keep their order", () => {
+  const folders = [
+    { folderId: "f1", name: "緑内障", parentId: "", sortOrder: 1 },
+    { folderId: "f2", name: "点眼", parentId: "f1", sortOrder: 0 },
+    { folderId: "f0", name: "白内障", parentId: "", sortOrder: 0 },
+    { folderId: "fx", name: "迷子", parentId: "missing", sortOrder: 2 },
+    { folderId: "fa", name: "輪A", parentId: "fb", sortOrder: 3 },
+    { folderId: "fb", name: "輪B", parentId: "fa", sortOrder: 4 },
+    { folderId: "fz", name: "停止", parentId: "", active: false }
+  ];
+  const sets = [
+    { setId: "s1", name: "定期", folderId: "f2", sortOrder: 1 },
+    { setId: "s2", name: "初回", folderId: "f2", sortOrder: 0 },
+    { setId: "s3", name: "術前", folderId: "f0" },
+    { setId: "s4", name: "なし", folderId: "" },
+    { setId: "s5", name: "消えたフォルダ", folderId: "fz" },
+    { setId: "s6", name: "停止中", folderId: "f2", sortOrder: 2, active: false }
+  ];
+  const tree = buildFolderTree(folders, sets);
+  assert.deepEqual(tree.roots.map((node) => node.folder.name).slice(0, 3), ["白内障", "緑内障", "迷子"]);
+  const glaucoma = tree.roots.find((node) => node.folder.folderId === "f1");
+  assert.equal(glaucoma.setCount, 0);
+  assert.equal(glaucoma.totalCount, 2, "counts include sub folders and skip stopped sets");
+  assert.equal(glaucoma.children[0].depth, 1);
+  assert.ok(tree.roots.some((node) => node.folder.folderId === "fa") && tree.roots.some((node) => node.folder.folderId === "fb"), "folders in a cycle stay visible");
+  assert.equal(tree.unfiled, 2, "sets without a folder or in a stopped folder are unfiled");
+  assert.deepEqual(flattenFolderTree(tree.roots, new Set(["f1"])).map((node) => node.folder.folderId).slice(0, 3), ["f0", "f1", "fx"]);
+  assert.deepEqual([...descendantFolderIds(folders, "f1")].sort(), ["f1", "f2"]);
+  assert.equal(folderPathText(folders, "f2"), "緑内障 / 点眼");
+  assert.deepEqual(setsInFolder(sets, folders, "f2").map((set) => set.setId), ["s2", "s1", "s6"]);
+  assert.deepEqual(setsInFolder(sets, folders, "").map((set) => set.setId), ["s4", "s5"]);
+  const ordered = setsInFolder(sets, folders, "f2").filter((set) => set.active !== false);
+  assert.deepEqual(moveSet(ordered, "s1", -1).map(({ set, sortOrder }) => [set.setId, sortOrder]), [["s1", 0], ["s2", 1]]);
+  assert.deepEqual(moveSet(ordered, "s2", -1), [], "the first set cannot move up");
+});
+
+test("facility base values and member roles read like the paper", () => {
+  const facility = { displayName: "あさおか眼科", prefecture: "東京都", address: { city: "千代田区", line1: "1-1", postalCode: "100-0001" }, phone: "03" };
+  assert.equal(facilityBaseValue(facility, "name"), "あさおか眼科");
+  assert.equal(facilityBaseValue(facility, "address"), "東京都 千代田区 1-1");
+  assert.equal(facilityBaseValue(facility, "postalCode"), "100-0001");
+  assert.equal(facilityBaseValue(facility, "fax"), "");
+  assert.equal(facilityBaseValue(null, "name"), "");
+  assert.equal(memberRoleText(["admin", "doctor"]), "医師");
+  assert.equal(memberRoleText(["admin"]), "管理のみ");
+  assert.deepEqual(sortMembers([{ loginId: "b", eyeRoles: ["medical_clerk"] }, { loginId: "a", eyeRoles: ["doctor"] }]).map((item) => item.loginId), ["a", "b"]);
 });

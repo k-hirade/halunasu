@@ -168,6 +168,7 @@ function senderFromFacility(facility, actor, senderName) {
       .filter(Boolean)
       .join(" "),
     phone: facility?.phone || "",
+    fax: facility?.fax || "",
     // 紙の署名に使う氏名（印刷用の氏名、なければ表示名から役割の括弧を除いたもの）。memberId は後で印刷用の氏名を引き直すため。
     doctorName: senderName || actor.displayName || "",
     memberId: actor.memberId || ""

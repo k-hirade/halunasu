@@ -1,41 +1,35 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { printableStaffName } from "@halunasu/eye-core";
 import { PER_EYE_PHRASE_TARGETS } from "@halunasu/eye-contracts";
 import { SoapMark } from "./encounter-extras";
 import { useEyeApi } from "./eye-api";
 import { AuditLogSection } from "./settings-audit";
-import { clearPrintNames } from "./use-print-names";
-import { FilterChips, InactiveGroup, MasterEditorPanel, MasterRows, MasterToolbar, useMasterEditor } from "./settings-master";
+import { FacilitySection } from "./settings-facility";
+import { EmptyList, FilterChips, InactiveGroup, MasterEditorPanel, MasterRows, MasterSearchInput, MasterToolbar, SectionHead, useMasterEditor } from "./settings-master";
+import { OrderSetsSection } from "./settings-sets";
+import { UsersSection } from "./settings-users";
 import { COMMON_USAGES, downloadJson, formatDateTime, PHRASE_TARGET_LABELS, PHRASE_TARGET_SOAP, PRESCRIPTION_KIND_LABELS, SOAP_LABELS, todayIso } from "../lib/format";
-import {
-  daysPerBottle,
-  drugBottleText,
-  drugDefaultText,
-  drugSearchValues,
-  matchesSearch,
-  normalizeSearch,
-  phraseSearchValues,
-  EYE_ROLE_LABELS,
-  setContentText,
-  setSearchValues,
-  staffSearchValues
-} from "../lib/settings";
+import { daysPerBottle, drugBottleText, drugDefaultText, drugSearchValues, matchesSearch, normalizeSearch, phraseSearchValues } from "../lib/settings";
 
+// デジカルの施設管理と同じく、左にメニュー・右に「見出し + 内容」。医院の情報を先頭に、カルテ入力の候補、記録・出力の順。
 const SECTIONS = [
-  { key: "drugs", label: "よく使う薬剤", group: "input" },
+  { key: "facility", label: "医療機関情報", group: "clinic" },
+  { key: "users", label: "利用者", group: "clinic", admin: true },
   { key: "sets", label: "セット", group: "input" },
   { key: "phrases", label: "定型文", group: "input" },
-  { key: "staff", label: "印刷用の氏名", group: "admin" },
-  { key: "export", label: "データ出力", group: "admin" },
-  { key: "audit", label: "操作記録", group: "admin" }
+  { key: "drugs", label: "よく使う薬剤", group: "input" },
+  { key: "export", label: "データ出力", group: "records", admin: true },
+  { key: "audit", label: "操作記録", group: "records", admin: true }
 ];
-const NAV_GROUPS = [["input", "カルテ入力の候補"], ["admin", "管理"]];
+const NAV_GROUPS = [["clinic", "医院"], ["input", "カルテ入力の候補"], ["records", "記録・出力"]];
+// 以前のリンク（#staff = 印刷用の氏名）を新しい項目へ
+const HASH_ALIASES = { staff: "users" };
 
 function readHash() {
   if (typeof window === "undefined") return "";
-  return decodeURIComponent(window.location.hash.replace(/^#/u, ""));
+  const hash = decodeURIComponent(window.location.hash.replace(/^#/u, ""));
+  return HASH_ALIASES[hash] || hash;
 }
 
 const byName = (key) => (left, right) => String(left[key] || "").localeCompare(String(right[key] || ""), "ja");
@@ -46,6 +40,7 @@ export function SettingsWorkspace() {
   const [context, setContext] = useState(null);
   const [presets, setPresets] = useState([]);
   const [orderSets, setOrderSets] = useState([]);
+  const [setFolders, setSetFolders] = useState([]);
   const [phrases, setPhrases] = useState([]);
   const [orderCatalog, setOrderCatalog] = useState([]);
   const [error, setError] = useState("");
@@ -61,6 +56,7 @@ export function SettingsWorkspace() {
       setContext(payload.context);
       setPresets(payload.drugPresets || []);
       setOrderSets(payload.orderSets || []);
+      setSetFolders(payload.setFolders || []);
       setPhrases(payload.phrases || []);
       setOrderCatalog(payload.orderCatalog || []);
     }).catch((nextError) => { if (!cancelled) setError(nextError.message); });
@@ -84,8 +80,8 @@ export function SettingsWorkspace() {
     };
   }, []);
 
-  const visibleSections = SECTIONS.filter((item) => item.group !== "admin" || context?.canManageSettings);
-  const section = visibleSections.some((item) => item.key === hash) ? hash : "drugs";
+  const visibleSections = SECTIONS.filter((item) => !item.admin || context?.canManageSettings);
+  const section = visibleSections.some((item) => item.key === hash) ? hash : "facility";
   const counts = {
     drugs: presets.filter((item) => item.active !== false).length,
     sets: orderSets.filter((item) => item.active !== false).length,
@@ -124,7 +120,7 @@ export function SettingsWorkspace() {
     <main className="eye-page settings-page">
       <div className="settings-layout">
         <nav aria-label="設定の項目" className="settings-nav">
-          <h1 className="settings-title">設定</h1>
+          <h1 className="settings-title">設定<span className="settings-title-sub">施設管理</span></h1>
           <label className="settings-nav-select">
             <span className="sr-only">設定の項目</span>
             <select aria-label="設定の項目を選ぶ" className="input" onChange={(event) => requestSection(null, event.target.value)} value={section}>
@@ -161,30 +157,28 @@ export function SettingsWorkspace() {
             </div>
           ) : null}
           {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
-          {section === "drugs" ? <DrugsSection canEdit={context.canManageSettings} onDirtyChange={onDirtyChange} onSaved={upsert(setPresets, "presetId", (item) => item.name)} presets={presets} /> : null}
-          {section === "sets" ? <OrderSetsSection canEdit={context.canManageSettings} catalog={orderCatalog} onDirtyChange={onDirtyChange} onSaved={upsert(setOrderSets, "setId", (item) => item.name)} orderSets={orderSets} presets={presets} /> : null}
+          {section === "facility" ? <FacilitySection canEdit={context.canManageSettings} /> : null}
+          {section === "users" ? <UsersSection onDirtyChange={onDirtyChange} /> : null}
+          {section === "sets" ? (
+            <OrderSetsSection
+              canEdit={Boolean(context.canManageSets ?? context.canManageSettings)}
+              catalog={orderCatalog}
+              onDirtyChange={onDirtyChange}
+              onFolderSaved={upsert(setSetFolders, "folderId", (item) => item.name)}
+              onSaved={upsert(setOrderSets, "setId", (item) => item.name)}
+              orderSets={orderSets}
+              presets={presets}
+              setFolders={setFolders}
+            />
+          ) : null}
           {section === "phrases" ? <PhrasesSection canEdit={context.canManageSettings} onDirtyChange={onDirtyChange} onSaved={upsert(setPhrases, "phraseId", phraseSortKey)} phrases={phrases} /> : null}
-          {section === "staff" ? <StaffSection onDirtyChange={onDirtyChange} /> : null}
+          {section === "drugs" ? <DrugsSection canEdit={context.canManageSettings} onDirtyChange={onDirtyChange} onSaved={upsert(setPresets, "presetId", (item) => item.name)} presets={presets} /> : null}
           {section === "export" ? <ExportSection context={context} /> : null}
           {section === "audit" ? <AuditLogSection masters={{ drugPresets: presets, orderSets, phrases }} /> : null}
         </div>
       </div>
     </main>
   );
-}
-
-function SectionHead({ title, count, children }) {
-  return (
-    <header className="settings-section-head">
-      <h2>{title}{count !== undefined ? <span className="settings-head-count">{count}</span> : null}</h2>
-      {children ? <p className="muted">{children}</p> : null}
-    </header>
-  );
-}
-
-function EmptyList({ total, canEdit, addLabel, noun }) {
-  if (total === 0) return <p className="empty master-empty">まだ登録されていません。{canEdit ? `「＋ ${addLabel}」から登録します。` : ""}</p>;
-  return <p className="empty master-empty">該当する{noun}はありません。</p>;
 }
 
 /* ───────── よく使う薬剤 ───────── */
@@ -222,6 +216,7 @@ function presetBody(draft) {
   };
 }
 
+const MASTER_KINDS = new Set(Object.keys(PRESCRIPTION_KIND_LABELS));
 const PRESET_FIELDS = { name: "薬剤名", defaultTimesPerDay: "1日の回数", dropsPerBottle: "1本あたりの滴数", bottleVolumeMl: "容量", defaultUsage: "既定の用法" };
 
 function DrugsSection({ presets, canEdit, onSaved, onDirtyChange }) {
@@ -265,12 +260,12 @@ function DrugsSection({ presets, canEdit, onSaved, onDirtyChange }) {
 
   return (
     <section aria-label="よく使う薬剤" className="settings-section">
-      <SectionHead count={presets.filter((item) => item.active !== false).length} title="よく使う薬剤">
-        カルテの処方の候補に出ます。{canEdit ? "" : "登録・変更は管理者が行います。"}
+      <SectionHead action={canEdit ? <button className="btn btn-primary" onClick={editor.openNew} type="button">＋ 薬剤を追加</button> : null} count={presets.filter((item) => item.active !== false).length} title="よく使う薬剤">
+        カルテの処方の候補に出ます。薬剤名は公開マスター（医薬品）から選べます。{canEdit ? "" : "登録・変更は管理者が行います。"}
       </SectionHead>
       <div className={`master-layout${editor.selection ? " has-panel" : ""}`}>
         <div className="master-list">
-          <MasterToolbar addLabel="薬剤を追加" onAdd={canEdit ? editor.openNew : null} onQuery={setQuery} placeholder="薬剤名・用法で検索" query={query} searchLabel="薬剤を検索" />
+          <MasterToolbar onQuery={setQuery} placeholder="薬剤名・用法で検索" query={query} searchLabel="薬剤を検索" />
           {presets.length ? <FilterChips label="種類で絞り込む" onChange={setKind} options={chipOptions} value={kind} /> : null}
           {active.length ? (
             <div className="master-table">
@@ -302,11 +297,19 @@ function DrugPresetForm({ draft, setDraft, presets }) {
   const daysText = (result) => (result.capped ? `${result.days}日分以上` : `約${result.days}日分`);
   return (
     <>
-      <label className="field">
+      <div className="field">
         <span>薬剤名<em>必須</em></span>
-        <input autoComplete="off" className="input" maxLength={200} onChange={set("name")} required value={draft.name} />
+        <MasterSearchInput
+          label="薬剤名"
+          onChange={(name) => setDraft((current) => ({ ...current, name }))}
+          onPick={(result) => setDraft((current) => ({ ...current, name: result.name, ...(MASTER_KINDS.has(result.kind) ? { kind: result.kind } : {}) }))}
+          placeholder="2文字以上で公開マスター（医薬品）を検索"
+          required
+          type="drug"
+          value={draft.name}
+        />
         {duplicate ? <small className="field-warn" role="status">同じ名前の薬剤があります（停止中を含む）。このまま保存もできます。</small> : null}
-      </label>
+      </div>
       <div className="field-row">
         <label className="field">
           <span>種類</span>
@@ -358,202 +361,6 @@ function DrugPresetForm({ draft, setDraft, presets }) {
           </p>
         </div>
       ) : null}
-    </>
-  );
-}
-
-/* ───────── セット ───────── */
-
-function setToDraft(item) {
-  return {
-    setId: item?.setId || "",
-    name: item?.name || "",
-    description: item?.description || "",
-    plan: item?.plan || "",
-    // Rp のコメント行（カルテから作ったセットにある）はこの画面では編集せず、保存のときにそのまま戻す。
-    // フォルダ・並び順・病名・主訴所見は送らない項目なので、サーバー側で元の値が残る。
-    prescriptions: (item?.prescriptions || []).filter((row) => row.kind !== "comment").map((row) => ({ ...row })),
-    orders: (item?.orders || []).filter((row) => row.kind !== "comment").map((row) => ({ ...row })),
-    comments: {
-      prescriptions: (item?.prescriptions || []).filter((row) => row.kind === "comment"),
-      orders: (item?.orders || []).filter((row) => row.kind === "comment")
-    },
-    active: item ? item.active !== false : true
-  };
-}
-
-function setBody(draft) {
-  return {
-    ...(draft.setId ? { setId: draft.setId } : {}),
-    name: draft.name.trim(),
-    description: draft.description.trim(),
-    plan: draft.plan,
-    prescriptions: [...draft.prescriptions.map((row) => ({ ...row, name: String(row.name || "").trim() })), ...(draft.comments?.prescriptions || [])],
-    orders: [...draft.orders, ...(draft.comments?.orders || [])],
-    active: draft.active
-  };
-}
-
-function validateSet(draft) {
-  if (!draft.name.trim()) return "セット名を入れてください。";
-  if (draft.prescriptions.some((row) => !String(row.name || "").trim())) return "薬剤名が空の処方があります。入れるか、行を削除してください。";
-  if (draft.orders.some((row) => !row.code)) return "検査が選ばれていない行があります。選ぶか、行を削除してください。";
-  return "";
-}
-
-function OrderSetsSection({ orderSets, presets, catalog, canEdit, onSaved, onDirtyChange }) {
-  const api = useEyeApi();
-  const [query, setQuery] = useState("");
-  const editor = useMasterEditor({
-    idKey: "setId",
-    toDraft: setToDraft,
-    toBody: setBody,
-    validate: validateSet,
-    fieldLabels: { name: "セット名", description: "説明", plan: "方針に追加する文" },
-    onDirtyChange,
-    save: async (body) => {
-      const { orderSet } = await api("/v1/eye/order-sets", { method: "POST", body });
-      onSaved(orderSet);
-      return orderSet;
-    }
-  });
-  const shown = orderSets.filter((item) => matchesSearch(query, setSearchValues(item)));
-  const active = shown.filter((item) => item.active !== false);
-  const inactive = shown.filter((item) => item.active === false);
-  const renderRow = (item) => (
-    <>
-      <span className="master-name">
-        <strong>{item.name}</strong>
-        {item.description ? <span className="master-desc">{item.description}</span> : null}
-      </span>
-      <span className="master-default">{setContentText(item) || <span className="muted">空</span>}</span>
-    </>
-  );
-  return (
-    <section aria-label="セット" className="settings-section">
-      <SectionHead count={orderSets.filter((item) => item.active !== false).length} title="セット">
-        処方・検査・方針の組み合わせ。カルテの「候補」から一括で追加できます。{canEdit ? "" : "登録・変更は管理者が行います。"}
-      </SectionHead>
-      <div className={`master-layout${editor.selection ? " has-panel" : ""}`}>
-        <div className="master-list">
-          <MasterToolbar addLabel="セットを追加" onAdd={canEdit ? editor.openNew : null} onQuery={setQuery} placeholder="セット名・薬剤・検査で検索" query={query} searchLabel="セットを検索" />
-          {active.length ? (
-            <div className="master-table">
-              <div aria-hidden="true" className="master-head set-cols"><span>セット名</span><span>中身</span></div>
-              <MasterRows className="set-cols" idKey="setId" items={active} onOpen={editor.open} renderRow={renderRow} selectedId={editor.selection?.id} />
-            </div>
-          ) : <EmptyList addLabel="セットを追加" canEdit={canEdit} noun="セット" total={orderSets.length} />}
-          <InactiveGroup forceOpen={Boolean(normalizeSearch(query))} items={inactive}>
-            <MasterRows className="set-cols" idKey="setId" items={inactive} onOpen={editor.open} renderRow={renderRow} selectedId={editor.selection?.id} />
-          </InactiveGroup>
-        </div>
-        <MasterEditorPanel canEdit={canEdit} editor={editor} label="セットの編集" title={editor.selection?.id ? editor.selection.original.name : "セットを追加"}>
-          {editor.selection ? <OrderSetForm catalog={catalog} draft={editor.selection.draft} presets={presets} setDraft={editor.setDraft} /> : null}
-        </MasterEditorPanel>
-      </div>
-    </section>
-  );
-}
-
-const EYE_OPTIONS = [["ou", "両眼"], ["od", "右眼"], ["os", "左眼"]];
-
-function EyeSelect({ value, onChange, label }) {
-  return (
-    <select aria-label={label} className="input set-eye" onChange={(event) => onChange(event.target.value)} value={value || ""}>
-      {!value ? <option disabled value="">（未設定）</option> : null}
-      {EYE_OPTIONS.map(([key, text]) => <option key={key} value={key}>{text}</option>)}
-    </select>
-  );
-}
-
-function OrderSetForm({ draft, setDraft, presets, catalog }) {
-  const activePresets = presets.filter((item) => item.active !== false);
-  const updateRow = (listKey, index, patch) => setDraft((current) => ({
-    ...current,
-    [listKey]: current[listKey].map((row, i) => (i === index ? { ...row, ...patch } : row))
-  }));
-  const removeRow = (listKey, index) => setDraft((current) => ({ ...current, [listKey]: current[listKey].filter((_, i) => i !== index) }));
-  return (
-    <>
-      <label className="field">
-        <span>セット名<em>必須</em></span>
-        <input autoComplete="off" className="input" maxLength={200} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} required value={draft.name} />
-      </label>
-      <label className="field">
-        <span>説明</span>
-        <input className="input" maxLength={200} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} placeholder="例: 眼圧安定例。3か月ごと" value={draft.description} />
-      </label>
-
-      <div className="master-subsection">
-        <div className="master-subhead">
-          <h3>処方 <span className="master-count">{draft.prescriptions.length}</span></h3>
-          <button className="btn btn-chip" onClick={() => setDraft((current) => ({ ...current, prescriptions: [...current.prescriptions, { kind: "eye_drop", name: "", eye: "ou", timesPerDay: null, usage: "", route: "outside" }] }))} type="button">＋ 処方</button>
-        </div>
-        {draft.prescriptions.map((row, index) => (
-          <div className="set-line" key={index}>
-            <div className="set-line-main">
-              <input
-                aria-label={`処方${index + 1} 薬剤名`}
-                className="input"
-                list="settings-drugs"
-                onChange={(event) => {
-                  const name = event.target.value;
-                  const preset = activePresets.find((item) => item.name === name);
-                  updateRow("prescriptions", index, preset
-                    ? { name, presetId: preset.presetId, kind: preset.kind, route: preset.route || "outside", timesPerDay: row.timesPerDay ?? preset.defaultTimesPerDay ?? null, usage: row.usage || preset.defaultUsage || "" }
-                    : { name, presetId: "" });
-                }}
-                placeholder="薬剤名（よく使う薬剤から選べます）"
-                value={row.name || ""}
-              />
-              <span className="muted small set-kind">{PRESCRIPTION_KIND_LABELS[row.kind] || "点眼"}・{row.route === "inside" ? "院内" : "院外"}</span>
-              <button aria-label={`処方${index + 1}を削除`} className="btn btn-chip danger-text" onClick={() => removeRow("prescriptions", index)} type="button">削除</button>
-            </div>
-            <div className="set-line-sub">
-              <EyeSelect label={`処方${index + 1} 眼`} onChange={(eye) => updateRow("prescriptions", index, { eye })} value={row.eye} />
-              <span className="input-with-unit">
-                <input aria-label={`処方${index + 1} 1日の回数`} className="input input-num" inputMode="numeric" max={24} min={0} onChange={(event) => updateRow("prescriptions", index, { timesPerDay: textNumber(event.target.value) })} step={1} type="number" value={numberText(row.timesPerDay)} />
-                <span>回/日</span>
-              </span>
-              <input aria-label={`処方${index + 1} 用法`} className="input set-usage" list="settings-usages-set" onChange={(event) => updateRow("prescriptions", index, { usage: event.target.value })} placeholder="用法" value={row.usage || ""} />
-            </div>
-          </div>
-        ))}
-        <datalist id="settings-drugs">{activePresets.map((item) => <option key={item.presetId} value={item.name} />)}</datalist>
-        <datalist id="settings-usages-set">{COMMON_USAGES.map((usage) => <option key={usage} value={usage} />)}</datalist>
-        {draft.prescriptions.length ? <p className="muted small">薬剤の既定値はセットに写して保存します。あとで薬剤の設定を変えても、このセットは変わりません。</p> : null}
-      </div>
-
-      <div className="master-subsection">
-        <div className="master-subhead">
-          <h3>検査・処置 <span className="master-count">{draft.orders.length}</span></h3>
-          <button className="btn btn-chip" onClick={() => setDraft((current) => ({ ...current, orders: [...current.orders, { code: "", name: "", kind: "exam", eye: "ou" }] }))} type="button">＋ 検査</button>
-        </div>
-        {draft.orders.map((row, index) => (
-          <div className="set-line set-line-order" key={index}>
-            <select
-              aria-label={`検査${index + 1}`}
-              className="input"
-              onChange={(event) => {
-                const item = catalog.find((entry) => entry.code === event.target.value);
-                if (item) updateRow("orders", index, { code: item.code, name: item.name, kind: item.kind });
-              }}
-              value={row.code || ""}
-            >
-              {!row.code ? <option disabled value="">検査を選ぶ</option> : null}
-              {row.code && !catalog.some((item) => item.code === row.code) ? <option value={row.code}>{row.name || row.code}</option> : null}
-              {catalog.map((item) => <option key={item.code} value={item.code}>{item.name}</option>)}
-            </select>
-            <EyeSelect label={`検査${index + 1} 眼`} onChange={(eye) => updateRow("orders", index, { eye })} value={row.eye} />
-            <button aria-label={`検査${index + 1}を削除`} className="btn btn-chip danger-text" onClick={() => removeRow("orders", index)} type="button">削除</button>
-          </div>
-        ))}
-      </div>
-
-      <label className="field">
-        <span>方針に追加する文</span>
-        <textarea className="input" maxLength={4000} onChange={(event) => setDraft((current) => ({ ...current, plan: event.target.value }))} rows={3} value={draft.plan} />
-      </label>
     </>
   );
 }
@@ -614,12 +421,12 @@ function PhrasesSection({ phrases, canEdit, onSaved, onDirtyChange }) {
 
   return (
     <section aria-label="定型文" className="settings-section">
-      <SectionHead count={phrases.filter((item) => item.active !== false).length} title="定型文">
+      <SectionHead action={canEdit ? <button className="btn btn-primary" onClick={editor.openNew} type="button">＋ 定型文を追加</button> : null} count={phrases.filter((item) => item.active !== false).length} title="定型文">
         カルテの「候補」に、表示名（空なら本文）で出ます。{canEdit ? "" : "登録・変更は管理者が行います。"}
       </SectionHead>
       <div className={`master-layout${editor.selection ? " has-panel" : ""}`}>
         <div className="master-list">
-          <MasterToolbar addLabel="定型文を追加" onAdd={canEdit ? editor.openNew : null} onQuery={setQuery} placeholder="表示名・本文で検索" query={query} searchLabel="定型文を検索" />
+          <MasterToolbar onQuery={setQuery} placeholder="表示名・本文で検索" query={query} searchLabel="定型文を検索" />
           {phrases.length ? <FilterChips label="差し込む欄で絞り込む" onChange={setTarget} options={chipOptions} value={target} /> : null}
           {active.length ? groups.map(([key, items]) => (
             <div className="master-group" key={key}>
@@ -672,107 +479,6 @@ function PhraseForm({ draft, setDraft }) {
         {PER_EYE_PHRASE_TARGETS.includes(draft.target) ? "カルテでは右・左・両を選んで、その眼の所見に入ります。" : `カルテの「${PHRASE_TARGET_LABELS[draft.target]}」に入ります。`}
         改行もそのまま入ります。
       </p>
-    </>
-  );
-}
-
-/* ───────── 印刷用の氏名 ───────── */
-
-const PRINT_NAME_MAX = 40;
-
-function StaffSection({ onDirtyChange }) {
-  const api = useEyeApi();
-  const [staff, setStaff] = useState(null);
-  const [loadError, setLoadError] = useState("");
-  const [query, setQuery] = useState("");
-
-  useEffect(() => {
-    let cancelled = false;
-    api("/v1/eye/staff-profiles")
-      .then((payload) => { if (!cancelled) setStaff(payload.staff || []); })
-      .catch((nextError) => { if (!cancelled) setLoadError(nextError.message); });
-    return () => { cancelled = true; };
-  }, [api]);
-
-  const editor = useMasterEditor({
-    idKey: "memberId",
-    toDraft: (item) => ({ memberId: item?.memberId || "", printName: item?.printName || "" }),
-    toBody: (draft) => draft,
-    validate: (draft) => (draft.printName.trim().length > PRINT_NAME_MAX ? `${PRINT_NAME_MAX}文字以内で入れてください。` : ""),
-    fieldLabels: { printName: "印刷用の氏名" },
-    onDirtyChange,
-    save: async ({ memberId, printName }) => {
-      const { staffProfile } = await api(`/v1/eye/staff-profiles/${encodeURIComponent(memberId)}`, { method: "PUT", body: { printName: printName.trim() } });
-      setStaff((items) => (items || []).map((item) => (item.memberId === staffProfile.memberId ? staffProfile : item)));
-      clearPrintNames();
-      return staffProfile;
-    }
-  });
-
-  if (loadError) return <section aria-label="印刷用の氏名" className="settings-section"><p className="alert alert-danger" role="alert">{loadError}</p></section>;
-  if (!staff) return <section aria-label="印刷用の氏名" className="settings-section"><p className="loading">読み込み中…</p></section>;
-
-  const shown = staff.filter((item) => matchesSearch(query, staffSearchValues(item)));
-  const doctors = shown.filter((item) => item.eyeRoles.includes("doctor"));
-  const others = shown.filter((item) => !item.eyeRoles.includes("doctor"));
-  const selected = editor.selection ? staff.find((item) => item.memberId === editor.selection.id) : null;
-  const renderRow = (item) => (
-    <>
-      <span className="master-name"><strong>{item.printName || printableStaffName(item.displayName)}</strong></span>
-      <span className="master-desc">
-        {item.printName ? "" : <span className="muted">未設定（表示名から）</span>}
-        {item.printName ? <span className="muted">表示名 {item.displayName}</span> : null}
-      </span>
-      <span className="master-kind">{item.eyeRoles.map((role) => EYE_ROLE_LABELS[role] || role).join("・")}</span>
-    </>
-  );
-  const groups = [["医師", doctors], ["ほかの職員", others]].filter(([, items]) => items.length);
-
-  return (
-    <section aria-label="印刷用の氏名" className="settings-section">
-      <SectionHead title="印刷用の氏名">
-        眼鏡処方箋・カルテの印刷・紹介状の医師名に使います。未設定なら表示名から役割の（ ）を除いた名前を出します。
-      </SectionHead>
-      <div className={`master-layout${editor.selection ? " has-panel" : ""}`}>
-        <div className="master-list">
-          <MasterToolbar onQuery={setQuery} placeholder="氏名・ログイン ID で検索" query={query} searchLabel="職員を検索" />
-          {groups.length ? groups.map(([label, items]) => (
-            <div className="master-group" key={label}>
-              <h3 className="master-group-head">{label} <span className="master-count">{items.length}</span></h3>
-              <MasterRows className="staff-cols" idKey="memberId" items={items} onOpen={editor.open} renderRow={renderRow} selectedId={editor.selection?.id} />
-            </div>
-          )) : <p className="empty master-empty">{staff.length ? "該当する職員はいません。" : "眼科の役割を持つ職員がいません。"}</p>}
-        </div>
-        <MasterEditorPanel allowToggle={false} canEdit editor={editor} label="印刷用の氏名の編集" title={selected?.displayName || "印刷用の氏名"}>
-          {editor.selection && selected ? <StaffForm draft={editor.selection.draft} member={selected} setDraft={editor.setDraft} /> : null}
-        </MasterEditorPanel>
-      </div>
-    </section>
-  );
-}
-
-function StaffForm({ draft, setDraft, member }) {
-  const preview = printableStaffName(member.displayName, draft.printName);
-  return (
-    <>
-      <dl className="staff-facts">
-        <div><dt>表示名</dt><dd>{member.displayName}</dd></div>
-        <div><dt>ログイン ID</dt><dd>{member.loginId}</dd></div>
-        <div><dt>役割</dt><dd>{member.eyeRoles.map((role) => EYE_ROLE_LABELS[role] || role).join("・")}</dd></div>
-      </dl>
-      <label className="field">
-        <span>印刷用の氏名</span>
-        <input
-          aria-label="印刷用の氏名"
-          autoComplete="off"
-          className="input"
-          maxLength={PRINT_NAME_MAX}
-          onChange={(event) => setDraft((current) => ({ ...current, printName: event.target.value }))}
-          placeholder={printableStaffName(member.displayName)}
-          value={draft.printName}
-        />
-      </label>
-      <p className="muted small">紙には「<strong>{preview || "（空欄）"}</strong>」と出ます。空にすると表示名から役割の（ ）を除いた名前に戻ります。</p>
     </>
   );
 }

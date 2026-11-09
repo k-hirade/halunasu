@@ -278,11 +278,39 @@ async function runDoctorFlow(browser) {
   await printPage.getByRole("link", { name: "← カルテに戻る" }).waitFor();
   await printPage.close();
 
-  // 設定: 薬剤を追加 → 1本で何日分の表示 → 既存の薬剤を編集 → 停止・再開
+  // 設定（デジカルの施設管理と同じ形）: 最初は医療機関情報。［編集］のダイアログで入れた値が紙に載る
   await page.goto(`${baseUrl}/settings`);
+  await page.getByRole("heading", { name: "医療機関情報" }).waitFor();
+  assert.deepEqual(await page.locator(".settings-nav-item").allInnerTexts().then((items) => items.map((text) => text.replace(/\d+$/u, "").trim())), ["医療機関情報", "利用者", "セット", "定型文", "よく使う薬剤", "データ出力", "操作記録"]);
+  await page.getByRole("button", { name: "✎ 編集" }).click();
+  const facilityDialog = page.getByRole("dialog", { name: "医療機関情報の編集" });
+  await facilityDialog.getByLabel("医療機関名").fill("スモーク眼科クリニック");
+  await facilityDialog.getByLabel("郵便番号").fill("1000001");
+  await facilityDialog.getByLabel("住所").fill("東京都千代田区千代田1-1");
+  await facilityDialog.getByLabel("電話番号").fill("03-1234-5678");
+  await facilityDialog.getByLabel("FAX番号").fill("03-1234-5679");
+  await facilityDialog.getByLabel("管理者").fill("院長 一郎");
+  await facilityDialog.getByRole("button", { name: "保存", exact: true }).click();
+  await page.getByText("医療機関情報を保存しました。", { exact: false }).waitFor();
+  await facilityDialog.waitFor({ state: "detached" });
+  await page.locator(".kv-row").filter({ hasText: "郵便番号" }).getByText("100-0001").waitFor();
+  await page.locator(".kv-row").filter({ hasText: "FAX番号" }).getByText("03-1234-5679").waitFor();
+  const facilityPrint = await context.newPage();
+  await facilityPrint.goto(`${encounterUrl}/print`);
+  await facilityPrint.locator(".cs-facility").filter({ hasText: "スモーク眼科クリニック" }).waitFor();
+  await facilityPrint.close();
+
+  // 薬剤を追加（薬剤名は公開マスターから探せる）→ 1本で何日分の表示 → 既存の薬剤を編集 → 停止・再開
+  await page.locator(".settings-nav-item", { hasText: "よく使う薬剤" }).click();
+  await page.waitForURL(/#drugs$/u);
   await page.getByRole("button", { name: "＋ 薬剤を追加" }).click();
-  const drugPanel = page.getByRole("complementary", { name: "薬剤の編集" });
+  const drugPanel = page.getByRole("dialog", { name: "薬剤の編集" });
+  await drugPanel.getByLabel("薬剤名").fill("ヒアレイン");
+  await drugPanel.locator(".master-search-option").first().waitFor();
+  assert.match(await drugPanel.locator(".master-search-option").first().innerText(), /ヒアレイン/u, "the public drug master is searched");
   await drugPanel.getByLabel("薬剤名").fill("ヒアレイン点眼液0.1%");
+  await drugPanel.getByLabel("薬剤名").press("Escape");
+  assert.equal(await drugPanel.count(), 1, "Escape in the drug search closes only the suggestions");
   await drugPanel.getByLabel("1日の回数").fill("6");
   await drugPanel.getByLabel("1本あたりの滴数").fill("120");
   await drugPanel.getByText("両眼 約10日分").waitFor();
@@ -300,11 +328,13 @@ async function runDoctorFlow(browser) {
   await drugPanel.getByRole("button", { name: "再開する" }).click();
   await drugPanel.getByRole("button", { name: "停止する" }).waitFor();
   assert.equal(await page.locator(".master-inactive").count(), 0, "a resumed drug leaves the stopped group");
-  // 保存していない変更があると、別の項目へ移る前に確認する
+  // 保存していない変更があると、閉じる前に確認する
   await drugPanel.getByLabel("既定の用法").fill("1日4回");
+  await drugPanel.getByRole("button", { name: "閉じる", exact: true }).click();
+  await drugPanel.getByText("保存していない変更があります。", { exact: false }).waitFor();
+  await drugPanel.getByRole("button", { name: "変更を破棄" }).click();
+  await drugPanel.waitFor({ state: "detached" });
   await page.locator(".settings-nav-item", { hasText: "操作記録" }).click();
-  await page.getByText("保存していない変更があります。", { exact: false }).first().waitFor();
-  await page.getByRole("button", { name: "変更を破棄して移動" }).click();
   await page.waitForURL(/#audit$/u);
   await page.getByRole("cell", { name: "カルテを確定" }).first().waitFor();
   await page.getByRole("cell", { name: "ヒアレイン点眼液0.1%" }).first().waitFor();
@@ -315,10 +345,12 @@ async function runDoctorFlow(browser) {
   await finalizedOptical.locator(".rx-sign-name").waitFor();
   assert.equal((await finalizedOptical.locator(".rx-sign-name").innerText()).replace("印", "").trim(), "院長", "the role in parentheses is not printed");
   assert.match(await finalizedOptical.locator(".rx-no").innerText(), /No\. \d{8}-[0-9A-F]{6}-1/u, "the prescription number comes from the encounter and version");
-  await page.locator(".settings-nav-item", { hasText: "印刷用の氏名" }).click();
-  await page.waitForURL(/#staff$/u);
+  // 利用者（施設管理の利用者管理と同じ列）。［編集］で印刷用の氏名を決める
+  await page.locator(".settings-nav-item", { hasText: "利用者" }).click();
+  await page.waitForURL(/#users$/u);
+  await page.locator(".master-head.user-cols").getByText("ログイン ID").waitFor();
   await page.locator(".master-row").filter({ hasText: "院長" }).first().click();
-  const staffPanel = page.getByRole("complementary", { name: "印刷用の氏名の編集" });
+  const staffPanel = page.getByRole("dialog", { name: "利用者の編集" });
   await staffPanel.getByLabel("印刷用の氏名").fill("山田 一郎");
   await staffPanel.getByText("紙には「山田 一郎」と出ます。", { exact: false }).waitFor();
   await staffPanel.getByRole("button", { name: "保存", exact: true }).click();
@@ -334,6 +366,7 @@ async function runDoctorFlow(browser) {
   await page.locator(".settings-nav-item", { hasText: "操作記録" }).click();
   await page.waitForURL(/#audit$/u);
   await page.getByRole("cell", { name: "印刷用の氏名を保存" }).first().waitFor();
+  await page.getByRole("cell", { name: "医療機関情報を保存" }).first().waitFor();
   assert.match(await page.locator(".audit-range-line").innerText(), /の記録/u);
   await page.getByRole("group", { name: "種類で絞り込む" }).getByRole("button", { name: "設定", exact: true }).click();
   await page.getByRole("cell", { name: "薬剤設定を保存" }).first().waitFor();
@@ -404,7 +437,7 @@ async function runDoctorFlow(browser) {
   // 定型文とセットを登録して、新しいカルテで使う（定型文は複数行、作った後に表示名を直す）
   await page.goto(`${baseUrl}/settings#phrases`);
   await page.getByRole("button", { name: "＋ 定型文を追加" }).click();
-  const phrasePanel = page.getByRole("complementary", { name: "定型文の編集" });
+  const phrasePanel = page.getByRole("dialog", { name: "定型文の編集" });
   // 差し込む欄は SOAP の区分ごと。追加の自由記載欄も選べる
   assert.equal(await phrasePanel.locator('optgroup[label^="O"] option[value="findings.other"]').count(), 1);
   assert.equal(await phrasePanel.locator('option[value="counselling.note"]').count(), 1);
@@ -415,10 +448,11 @@ async function runDoctorFlow(browser) {
   await phrasePanel.getByLabel("表示名").fill("継続");
   await phrasePanel.getByRole("button", { name: "保存", exact: true }).click();
   await page.locator(".master-row").filter({ hasText: "継続" }).filter({ hasText: "次回同様。" }).waitFor();
+  await phrasePanel.getByRole("button", { name: "閉じる", exact: true }).click();
   await page.locator(".settings-nav-item", { hasText: "セット" }).click();
   await page.waitForURL(/#sets$/u);
   await page.getByRole("button", { name: "＋ セットを追加" }).click();
-  const setPanel = page.getByRole("complementary", { name: "セットの編集" });
+  const setPanel = page.getByRole("dialog", { name: "セットの編集" });
   await setPanel.getByLabel("セット名").fill("緑内障 定期");
   await setPanel.getByRole("button", { name: "＋ 検査" }).click();
   assert.equal(await setPanel.getByLabel("検査1", { exact: true }).inputValue(), "", "adding a test row does not pick a test by itself");
@@ -428,6 +462,46 @@ async function runDoctorFlow(browser) {
   await setPanel.getByRole("button", { name: "保存", exact: true }).click();
   await setPanel.getByText("保存しました").waitFor();
   await page.locator(".master-row").filter({ hasText: "緑内障 定期" }).filter({ hasText: "検査1" }).waitFor();
+  await setPanel.getByRole("button", { name: "閉じる", exact: true }).click();
+  // フォルダは入れ子にできる（デジカルのセットのフォルダ）。選んでいるフォルダが親の既定になる
+  const folderDialog = page.getByRole("dialog", { name: "フォルダを追加" });
+  await page.getByRole("button", { name: "＋ フォルダ" }).click();
+  await folderDialog.getByLabel("フォルダ名").fill("緑内障");
+  await folderDialog.getByRole("button", { name: "保存", exact: true }).click();
+  await folderDialog.waitFor({ state: "detached" });
+  await page.getByRole("button", { name: "＋ フォルダ" }).click();
+  assert.equal(await folderDialog.getByLabel("親フォルダ").locator("option:checked").innerText(), "緑内障");
+  await folderDialog.getByLabel("フォルダ名").fill("点眼");
+  await folderDialog.getByRole("button", { name: "保存", exact: true }).click();
+  await page.locator(".set-list-head h3").filter({ hasText: "緑内障 / 点眼" }).waitFor();
+  // セットをフォルダへ移し、病名（公開マスターから）と主訴・所見を足す
+  await page.locator(".set-tree-item", { hasText: "すべて" }).click();
+  await page.locator(".master-row").filter({ hasText: "緑内障 定期" }).locator(".master-row-open").click();
+  await setPanel.getByLabel("フォルダ").selectOption({ index: 2 });
+  await setPanel.getByRole("button", { name: "＋ 傷病名" }).click();
+  await setPanel.getByLabel("傷病名1", { exact: true }).fill("開放隅角緑内障");
+  await setPanel.locator(".master-search-option").first().click();
+  assert.match(await setPanel.getByLabel("傷病名1", { exact: true }).inputValue(), /緑内障/u);
+  await setPanel.getByLabel("主訴・所見").fill("視野 安定");
+  await setPanel.getByRole("button", { name: "保存", exact: true }).click();
+  await setPanel.getByText("保存しました").waitFor();
+  await setPanel.getByRole("button", { name: "閉じる", exact: true }).click();
+  await page.locator(".master-row").filter({ hasText: "緑内障 定期" }).filter({ hasText: "緑内障 / 点眼" }).waitFor();
+  // フォルダの中で作ったセットは先頭に入り、▲▼ で並べ替えられる
+  await page.locator(".set-tree-item", { hasText: "点眼" }).click();
+  await page.getByRole("button", { name: "＋ セットを追加" }).click();
+  await setPanel.getByLabel("セット名").fill("緑内障 追加");
+  await setPanel.getByRole("button", { name: "保存", exact: true }).click();
+  await setPanel.getByText("保存しました").waitFor();
+  await setPanel.getByRole("button", { name: "閉じる", exact: true }).click();
+  const setNames = () => page.locator(".set-list .master-row .master-name strong").allInnerTexts();
+  await page.waitForFunction(() => document.querySelectorAll(".set-list .master-row").length === 2);
+  assert.deepEqual(await setNames(), ["緑内障 追加", "緑内障 定期"]);
+  await page.getByRole("button", { name: "緑内障 追加 を下へ" }).click();
+  await page.waitForFunction(() => document.querySelector(".set-list .master-row .master-name strong")?.textContent === "緑内障 定期");
+  await page.reload();
+  await page.locator(".set-tree-item", { hasText: "点眼" }).click();
+  assert.deepEqual(await setNames(), ["緑内障 定期", "緑内障 追加"], "the order is saved");
 
   await page.goto(`${baseUrl}/`);
   await page.getByLabel("患者検索").fill("見本");
@@ -483,8 +557,11 @@ async function runDoctorFlow(browser) {
   // 文書・確定履歴は「…」メニューから右の引き出しで開く
   await page.locator('.encounter-actions summary[aria-label="その他の操作"]').click();
   await page.getByRole("button", { name: "文書", exact: true }).click();
+  await page.locator(".docs-create > summary").first().click();
   await page.getByRole("button", { name: "紹介状を作成" }).click();
   await page.getByRole("heading", { name: /診療情報提供書/ }).waitFor();
+  // 医療機関情報の入力が差出人に入る
+  await page.locator(".doc-preview-pane .ls-from").filter({ hasText: "スモーク眼科クリニック" }).filter({ hasText: "FAX 03-1234-5679" }).waitFor();
   const documentUrl = page.url();
   assert.match(await page.locator("textarea.document-body").inputValue(), /アレルギー・副作用歴】\nペニシリン系（発疹）/u);
   // 紹介目的が空の紹介状は確定できない
@@ -521,6 +598,7 @@ async function runDoctorFlow(browser) {
   await page.getByRole("button", { name: "確定する" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "確定する" }).click();
   await page.getByRole("button", { name: "複製して修正" }).waitFor();
+  await page.locator(".doc-done").getByRole("button", { name: "印刷する" }).waitFor();
   assert.equal(await page.locator("textarea.document-body").count(), 0, "a finalized document is shown read-only");
   const letter = await context.newPage();
   await letter.goto(`${documentUrl}/print`);
@@ -615,13 +693,15 @@ async function runReceptionFlow(browser) {
   await page.getByRole("button", { name: /^すべて/u }).click();
   assert.equal(await page.getByRole("button", { name: /^すべて/u }).getAttribute("aria-pressed"), "true");
 
-  // 会計連携: 状態ごとの一覧。未連携だけを下のバーから一括で CSV にして連携済みにする
+  // 会計連携（デジカルの会計と同じく 1 人ずつ）: 行の［連携］→ 確認 → CSV を保存して連携済。受付の順の平らな表
   await page.getByRole("link", { name: "会計連携" }).click();
-  const pendingRow = page.locator(".bill-status-pending .bill-row").filter({ hasText: "見本 花子" }).first();
+  const billRow = (state, name) => page.locator(`.bill-row-wrap[data-state="${state}"]`).filter({ hasText: name }).first();
+  const pendingRow = billRow("pending", "見本 花子");
   await pendingRow.waitFor();
-  await page.locator(".bill-status-drafts .bill-row").first().waitFor();
+  await page.locator('.bill-row-wrap[data-state="draft"]').first().waitFor();
   assert.match(await pendingRow.locator(".bill-summary").innerText(), /処方\d/u);
   assert.equal(await page.getByRole("button", { name: /全件 CSV/u }).isVisible(), false, "the all-day CSV is tucked away in the menu");
+  assert.equal(await page.locator(".bill-selbar").count(), 0, "nobody is selected for the bulk handoff at first");
   // 行を開くと区分ごとの品目。連絡票は 1 人 1 枚で、その人だけを印刷する
   await pendingRow.locator(".flow-row-open").click();
   const detail = page.locator(".bill-detail").first();
@@ -639,28 +719,37 @@ async function runReceptionFlow(browser) {
   await page.getByRole("dialog").getByText(/取込には使わないでください/u).waitFor();
   const [allDay] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "確認用に保存する" }).click()]);
   assert.match(allDay.suggestedFilename(), /-all\.csv$/u);
-  const selbar = page.locator(".bill-selbar");
-  assert.match(await selbar.innerText(), /人を選択中/u);
-  const [download] = await Promise.all([
-    page.waitForEvent("download"),
-    selbar.getByRole("button", { name: "CSV を出力して連携済みにする" }).click()
-  ]);
-  assert.match(download.suggestedFilename(), /^eye-billing-\d{4}-\d{2}-\d{2}-/u);
-  await page.getByText(/人を連携済みにしました。/u).waitFor();
-  await selbar.waitFor({ state: "detached" });
-  await page.getByRole("button", { name: /^▶ 連携済み/u }).click();
-  await page.locator(".bill-status-handed_off .bill-row").filter({ hasText: "見本 花子" }).first().waitFor();
+  // 1 人ずつ連携。確認は Esc でやめられる
+  const sendDialog = page.getByRole("dialog", { name: /会計情報をレセコンへ渡しますか/u });
+  await pendingRow.getByRole("button", { name: "見本 花子 を連携" }).click();
+  await sendDialog.locator(".bill-items").waitFor();
+  await page.keyboard.press("Escape");
+  await sendDialog.waitFor({ state: "detached" });
+  await pendingRow.getByRole("button", { name: "見本 花子 を連携" }).click();
+  let [latestDownload] = await Promise.all([page.waitForEvent("download"), sendDialog.getByRole("button", { name: "連携する" }).click()]);
+  assert.match(latestDownload.suggestedFilename(), /^eye-billing-\d{4}-\d{2}-\d{2}-/u);
+  await page.getByText(/見本 花子さんを連携しました。/u).waitFor();
+  await billRow("handed_off", "見本 花子").locator(".bill-state").filter({ hasText: "連携済" }).waitFor();
+  // 残りの未連携は、選んでまとめて連携もできる（補助）
+  if (await page.locator('.bill-row-wrap[data-state="pending"]').count()) {
+    await page.getByLabel("未連携の全員を選ぶ").check();
+    const selbar = page.locator(".bill-selbar");
+    assert.match(await selbar.innerText(), /人を選択中/u);
+    [latestDownload] = await Promise.all([page.waitForEvent("download"), selbar.getByRole("button", { name: "まとめて連携（CSV）" }).click()]);
+    await page.getByText(/人をまとめて連携しました。/u).waitFor();
+    await selbar.waitFor({ state: "detached" });
+  }
   // その回の CSV を取り直せる（連携したときと同じ中身）
   await page.getByRole("button", { name: /連携の記録/u }).click();
   const [again] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "この回の CSV" }).first().click()]);
-  assert.equal(readFileSync(await again.path(), "utf8"), readFileSync(await download.path(), "utf8"));
+  assert.equal(readFileSync(await again.path(), "utf8"), readFileSync(await latestDownload.path(), "utf8"));
   // 日付を変えると通知は消え、今日でないことを示す
   await page.getByRole("button", { name: "前日" }).click();
   await page.getByText(/今日ではありません/u).waitFor();
-  assert.equal(await page.getByText(/人を連携済みにしました。/u).count(), 0);
+  assert.equal(await page.getByText(/連携しました。/u).count(), 0);
   await page.getByRole("button", { name: "今日", exact: true }).click();
 
-  // 要再連携: 前回の品目と違う行は差分チップを出し、差分を見てから 1 人ずつ再連携する（前回の品目は応答を差し替えて作る）
+  // 再計待: 前回の品目と違う行は差分チップを出し、差分を見てから［再連携］する（前回の品目は応答を差し替えて作る）
   const dayRoute = /\/v1\/eye\/billing\/day\?/u;
   await page.route(dayRoute, async (route) => {
     const response = await route.fetch();
@@ -677,14 +766,20 @@ async function runReceptionFlow(browser) {
     await route.fulfill({ response, json: body });
   });
   await page.reload();
-  const changedRow = page.locator(".bill-status-changed .bill-row").first();
+  const changedRow = page.locator('.bill-row-wrap[data-state="changed"]').first();
   await changedRow.locator(".bill-chip.is-removed").filter({ hasText: "旧点眼薬" }).waitFor();
-  assert.equal(await page.locator(".bill-status-changed input[type=checkbox]").count(), 0, "rows that need another handoff are never bulk-selected");
-  await changedRow.getByRole("button", { name: "差分を見る" }).click();
+  await changedRow.locator(".bill-state").filter({ hasText: "再計待" }).waitFor();
+  assert.equal(await page.locator('.bill-row-wrap[data-state="changed"] input[type=checkbox]').count(), 0, "rows that need another handoff are never bulk-selected");
+  await page.getByRole("button", { name: /^再計待/u }).click();
+  assert.equal(await page.locator(".bill-rows > .bill-row-wrap").count(), await page.locator('.bill-rows > .bill-row-wrap[data-state="changed"]').count(), "the tab shows only rows waiting for another handoff");
+  await changedRow.locator(".flow-row-open").click();
   await page.locator(".bill-diff-row.is-removed").filter({ hasText: "旧点眼薬" }).waitFor();
   await page.locator(".bill-diff-row.is-added").first().waitFor();
   await page.getByText(/前回分（v\d+）を取り消すか直してから/u).waitFor();
-  const [redo] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "この人だけ CSV を出力して再連携" }).click()]);
+  await changedRow.locator(".bill-actions").getByRole("button", { name: /を再連携$/u }).click();
+  const resendDialog = page.getByRole("dialog", { name: /もう一度レセコンへ渡しますか/u });
+  await resendDialog.getByText(/−旧点眼薬/u).waitFor();
+  const [redo] = await Promise.all([page.waitForEvent("download"), resendDialog.getByRole("button", { name: "再連携する" }).click()]);
   assert.match(redo.suggestedFilename(), /^eye-billing-/u);
   await page.getByText(/再連携しました。/u).waitFor();
   await page.unrouteAll({ behavior: "wait" });
@@ -800,13 +895,18 @@ async function runOrthoptistFlow(browser) {
   assert.equal(await page.locator(".exam-bar-eye.is-empty").filter({ hasText: "L" }).count(), 1, "an eye without values is not confirmed");
   // 該当する受付がなければ、確認だけにして受付は動かさない
   await page.getByRole("button", { name: "検査値を確認する" }).waitFor();
-  // 管理者でない人は設定を見るだけ（追加・保存はできず、管理の項目は出ない）
+  // 管理者でない人は設定を見るだけ（追加・保存はできず、管理の項目は出ない）。医療機関情報は見られるが直せない
   await page.goto(`${baseUrl}/settings#audit`);
+  await page.getByRole("heading", { name: "医療機関情報" }).waitFor();
+  await page.locator(".kv-row").filter({ hasText: "医療機関名" }).getByText("スモーク眼科クリニック").waitFor();
+  assert.equal(await page.getByRole("button", { name: "✎ 編集" }).count(), 0);
+  assert.equal(await page.locator(".settings-nav-item", { hasText: "操作記録" }).count(), 0);
+  assert.equal(await page.locator(".settings-nav-item", { hasText: "利用者" }).count(), 0);
+  await page.locator(".settings-nav-item", { hasText: "よく使う薬剤" }).click();
   await page.getByRole("heading", { name: /よく使う薬剤/u }).waitFor();
   assert.equal(await page.getByRole("button", { name: "＋ 薬剤を追加" }).count(), 0);
-  assert.equal(await page.locator(".settings-nav-item", { hasText: "操作記録" }).count(), 0);
   await page.locator(".master-row").first().click();
-  await page.getByRole("complementary", { name: "薬剤の編集" }).getByText("変更は管理者が行います。").waitFor();
+  await page.getByRole("dialog", { name: "薬剤の編集" }).getByText("変更は管理者が行います。").waitFor();
   assert.equal(await page.getByRole("button", { name: "保存", exact: true }).count(), 0);
   assert.deepEqual(pageErrors, []);
   await context.close();

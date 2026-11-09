@@ -73,3 +73,52 @@ function sameDetails(left, right) {
 function normalize(value) {
   return value === null || value === undefined ? "" : String(value);
 }
+
+// ───────── 会計連携の一覧（デジカルの受付一覧の［会計］と同じく、1 人ずつ連携する） ─────────
+
+// 一覧のタブ。人が見るべきもの（未連携・再計待）を先に。
+export const BILLING_TABS = [
+  { key: "pending", label: "未連携" },
+  { key: "changed", label: "再計待" },
+  { key: "handed_off", label: "連携済" },
+  { key: "draft", label: "未確定" }
+];
+
+const INACTIVE_APPOINTMENT = new Set(["cancelled", "absent", "no_show"]);
+
+// その患者のこの日の受付。取消・不在は除き、会計待があればそれ、なければ来院の早いもの。
+export function appointmentFor(patientId, appointments = []) {
+  if (!patientId) return null;
+  const mine = appointments.filter((item) => item.patientId === patientId && !INACTIVE_APPOINTMENT.has(item.status));
+  if (!mine.length) return null;
+  return mine.find((item) => item.status === "checkout") || [...mine].sort(byArrival)[0];
+}
+
+// 会計の状態: pending 未連携 / changed 再計待 / handed_off 連携済 / draft 未確定（修正中を含む）。
+// 並びは受付番号の順（受付の無いカルテは後ろ、確定・更新の順）。
+export function billingRows(day, appointments = []) {
+  if (!day) return [];
+  const finals = (day.encounters || []).map((item) => ({ key: item.encounterId, state: item.handoff?.state || "pending", item, patient: item.patient || {}, patientId: item.patient?.patientId || item.patientId || "" }));
+  const drafts = (day.drafts || []).map((item) => ({ key: item.encounterId, state: "draft", item, patient: item.patientSnapshot || {}, patientId: item.patientId || item.patientSnapshot?.patientId || "" }));
+  return [...finals, ...drafts]
+    .map((row) => ({ ...row, appointment: appointmentFor(row.patientId, appointments) }))
+    .sort((left, right) => byArrival(left.appointment || {}, right.appointment || {}) || String(timeOf(left)).localeCompare(String(timeOf(right))));
+}
+
+export function countByState(rows = []) {
+  const counts = { all: rows.length };
+  for (const tab of BILLING_TABS) counts[tab.key] = rows.filter((row) => row.state === tab.key).length;
+  return counts;
+}
+
+// 受付番号の順（番号の無い予約は後ろ、同じなら受付時刻）
+function byArrival(left, right) {
+  const leftNumber = Number.isFinite(left.queueNumber) ? left.queueNumber : Number.POSITIVE_INFINITY;
+  const rightNumber = Number.isFinite(right.queueNumber) ? right.queueNumber : Number.POSITIVE_INFINITY;
+  if (leftNumber !== rightNumber) return leftNumber < rightNumber ? -1 : 1;
+  return String(left.checkedInAt || left.time || "").localeCompare(String(right.checkedInAt || right.time || ""));
+}
+
+function timeOf(row) {
+  return row.item.finalizedAt || row.item.updatedAt || "";
+}

@@ -471,3 +471,152 @@
     grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(8.5em, auto);
   }
 }
+
+.doc-done {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+
+/* ---- 文書の一覧（カルテの文書タブ・患者ページ）: デジカルのファイルタブと同じく［文書作成 ▾］［⟳］+ 日付順の表 ---- */
+.docs-head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.docs-head h2 {
+  font-size: var(--fs-lg);
+  margin: 0;
+}
+
+.docs-toolbar {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
+.docs-create > summary {
+  list-style: none;
+}
+
+.docs-create > summary::-webkit-details-marker {
+  display: none;
+}
+
+.docs-template-list {
+  min-width: 280px;
+}
+
+.btn.docs-template {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 0;
+  justify-content: flex-start;
+  min-height: 48px;
+  text-align: left;
+  white-space: normal;
+}
+
+.docs-template-name {
+  align-items: baseline;
+  display: flex;
+  font-weight: 700;
+  gap: 8px;
+}
+
+.docs-template-form,
+.docs-template-note {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  font-weight: 400;
+}
+
+.docs-reload {
+  min-width: 36px;
+}
+
+.docs-panel {
+  container: docs / inline-size;
+}
+
+.docs-table {
+  width: 100%;
+}
+
+.docs-table .tag {
+  white-space: nowrap;
+}
+
+.docs-table td {
+  vertical-align: middle;
+}
+
+.docs-date {
+  white-space: nowrap;
+}
+
+.docs-title a {
+  font-weight: 700;
+}
+
+.docs-type {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  margin-left: 6px;
+}
+
+.docs-note {
+  color: var(--text-soft);
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+}
+
+.docs-actions {
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* 狭い置き場所（カルテの引き出し・スマートフォン）では 1 件 2 段 */
+@container docs (max-width: 560px) {
+  .docs-table thead {
+    display: none;
+  }
+
+  .docs-table tr {
+    border-bottom: 1px solid var(--line);
+    display: grid;
+    gap: 2px 8px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 8px 0;
+  }
+
+  .data-table.docs-table td {
+    border: 0;
+    padding: 0;
+  }
+
+  .docs-table .docs-date {
+    font-size: var(--fs-sm);
+  }
+
+  .docs-table .docs-title,
+  .docs-table .docs-note {
+    grid-column: 1;
+  }
+
+  .docs-table td:nth-child(4) {
+    grid-column: 2;
+    grid-row: 1;
+    text-align: right;
+  }
+
+  .docs-table .docs-actions {
+    grid-column: 2;
+    grid-row: 2 / span 2;
+  }
+}
