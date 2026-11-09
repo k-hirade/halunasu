@@ -107,7 +107,7 @@ try {
         }
         if (name.startsWith("reception-")) await page.waitForTimeout(600);
         if (name === "home-tasks") {
-          await page.getByRole("button", { name: /^未確定カルテ/u }).click();
+          await page.getByRole("tab", { name: /^未確定カルテ/u }).click();
           await page.waitForTimeout(500);
         }
         // 左「患者の情報」は 768px 未満で引き出し。診療履歴（既定）のかわりに病名タブを撮る
