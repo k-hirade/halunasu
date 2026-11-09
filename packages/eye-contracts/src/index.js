@@ -90,6 +90,28 @@ export const DEFAULT_ORDER_CATALOG = Object.freeze([
   { code: "ivi", name: "硝子体内注射", kind: "procedure", requiresEye: true },
   { code: "foreign_body", name: "角膜異物除去", kind: "procedure", requiresEye: true }
 ]);
+// 検査記録（1 日に複数回。検査日時＋検者の単位）。content.examRecords[] に持ち、content.exam はそこから作る「最新値」。
+export const MAX_EXAM_RECORDS = 30;
+export const MAX_IOP_READINGS = 3;
+export const MAX_DEVICE_READINGS = 10;
+export const EXAM_RECORD_SOURCES = Object.freeze(["manual", "chart", "device"]);
+// IOL/CL 列: 眼内レンズ眼・コンタクトレンズ装用のまま測った値の印
+export const IOL_CL_VALUES = Object.freeze(["iol", "cl"]);
+export const IOL_CL_LABELS = Object.freeze({ iol: "IOL", cl: "CL" });
+// 他覚屈折の出どころ
+export const REFRACTION_SOURCES = Object.freeze(["autoref", "retinoscopy", "manual", "other"]);
+export const REFRACTION_SOURCE_LABELS = Object.freeze({ autoref: "オートレフ", retinoscopy: "検影法", manual: "手入力", other: "その他" });
+// 次回の診療予定の部位。none は眼を問わない項目（診察のみ・説明など）。
+export const PLAN_ITEM_EYES = Object.freeze(["od", "os", "ou", "none"]);
+export const PLAN_ITEM_EYE_LABELS = Object.freeze({ od: "右", os: "左", ou: "両", none: "なし" });
+// 次回予定のプリセット（トプコンの「視・圧」などの新規作成ボタン）。項目は DEFAULT_ORDER_CATALOG の code。
+export const NEXT_VISIT_PLAN_PRESETS = Object.freeze([
+  { presetId: "va_iop", label: "視・圧", codes: ["va", "iop"] },
+  { presetId: "va_iop_dilation", label: "視・圧・散", codes: ["va", "iop", "dilation", "fundus_dilated"] },
+  { presetId: "cataract_preop", label: "白内障術前検査", codes: ["va", "refraction", "iop", "keratometry", "axial_length", "endothelium", "slit_lamp", "fundus_dilated"] },
+  { presetId: "glaucoma", label: "視・圧・視野", codes: ["va", "iop", "vf_static", "oct_disc"] },
+  { presetId: "consult_only", label: "診察のみ", codes: [] }
+]);
 export const DIAGNOSIS_OUTCOMES = Object.freeze(["", "cured", "discontinued", "transferred", "deceased", "other"]);
 export const ALLERGY_CATEGORIES = Object.freeze(["drug", "food", "contrast", "latex", "other"]);
 export const ALLERGY_SEVERITIES = Object.freeze(["unknown", "mild", "moderate", "severe"]);
@@ -255,6 +277,8 @@ export function validateEncounterContent(input = {}) {
     orders: validateOrders(input.orders),
     flags: validateFlags(input.flags || {}),
     optical: validateOptical(input.optical || {}),
+    // 検査記録は 1 件以上あるときだけ持たせる（古いカルテの形・内容ハッシュを変えないため）。
+    ...optionalExamRecords(input.examRecords),
     // 追加の項目は、送られてきたときだけ持たせる（古いカルテの形・内容ハッシュを変えないため）。
     ...(hasKey(input, "counselling") ? { counselling: validateCounselling(input.counselling) } : {}),
     ...(hasKey(input, "adherence") ? { adherence: validateAdherence(input.adherence) } : {})
@@ -426,7 +450,9 @@ function validateOrders(value) {
       statusChangedBy: isPlainObject(item.statusChangedBy) ? {
         memberId: optionalString(item.statusChangedBy.memberId, `${field}.statusChangedBy.memberId`, MAX_SHORT_TEXT),
         displayName: optionalString(item.statusChangedBy.displayName, `${field}.statusChangedBy.displayName`, MAX_SHORT_TEXT)
-      } : null
+      } : null,
+      // 前回の診療予定から作ったオーダーの、予定を立てたカルテ。予定から来たものだけが持つ。
+      ...compactValues({ sourceEncounterId: optionalString(item.sourceEncounterId, `${field}.sourceEncounterId`, MAX_SHORT_TEXT) })
     };
   });
 }
@@ -635,11 +661,310 @@ function validatePrescriptions(value) {
 
 function validateNextVisit(input) {
   if (!isPlainObject(input)) throw validationError("nextVisit must be an object", "content.nextVisit");
+  const planItems = validatePlanItems(input.planItems, "content.nextVisit.planItems");
   return {
     intervalWeeks: optionalNumber(input.intervalWeeks, "content.nextVisit.intervalWeeks", { min: 0, max: 104 }),
     date: optionalDate(input.date, "content.nextVisit.date"),
-    note: optionalString(input.note, "content.nextVisit.note", MAX_SHORT_TEXT)
+    note: optionalString(input.note, "content.nextVisit.note", MAX_SHORT_TEXT),
+    // 次回の診療予定（項目 × 部位）。1 件以上あるときだけ持たせる。
+    ...(planItems.length ? { planItems } : {})
   };
+}
+
+export function validatePlanItems(value, field = "planItems") {
+  return optionalList(value, field, MAX_LIST).map((item, index) => {
+    const itemField = `${field}.${index}`;
+    if (!isPlainObject(item)) throw validationError(`${itemField} must be an object`, itemField);
+    const code = optionalString(item.code, `${itemField}.code`, 60);
+    const name = optionalString(item.name, `${itemField}.name`, MAX_SHORT_TEXT);
+    if (!code && !name) throw validationError(`${itemField} needs a code or a name`, `${itemField}.name`);
+    return {
+      code,
+      name,
+      eye: optionalEnum(item.eye, PLAN_ITEM_EYES, `${itemField}.eye`) || "none",
+      ...compactValues({ comment: optionalString(item.comment, `${itemField}.comment`, MAX_SHORT_TEXT) })
+    };
+  });
+}
+
+// ---- 検査記録 ----
+// Firestore は配列の入れ子を持てないため、測定の繰り返し（眼圧 3 回など）はオブジェクトの配列にする。
+
+function optionalExamRecords(value) {
+  if (value === undefined || value === null) return {};
+  const records = validateExamRecords(value);
+  return records.length ? { examRecords: records } : {};
+}
+
+export function validateExamRecords(value, field = "content.examRecords") {
+  const records = optionalList(value, field, MAX_EXAM_RECORDS).map((item, index) => validateExamRecord(item, `${field}.${index}`));
+  const ids = new Set();
+  records.forEach((record, index) => {
+    if (ids.has(record.recordId)) throw validationError(`${field}.${index}.recordId is duplicated`, `${field}.${index}.recordId`);
+    ids.add(record.recordId);
+  });
+  return records;
+}
+
+// 保存されている記録（サーバーが付けた recordId・登録者・時刻を含む）の検証。
+export function validateExamRecord(input, field = "examRecord") {
+  if (!isPlainObject(input)) throw validationError(`${field} must be an object`, field);
+  const at = requiredString(input.at, `${field}.at`, 40);
+  if (Number.isNaN(Date.parse(at))) throw validationError(`${field}.at must be an ISO timestamp`, `${field}.at`);
+  return {
+    recordId: requiredString(input.recordId, `${field}.recordId`, MAX_SHORT_TEXT),
+    at,
+    source: optionalEnum(input.source, EXAM_RECORD_SOURCES, `${field}.source`) || "manual",
+    examinerMemberId: optionalString(input.examinerMemberId, `${field}.examinerMemberId`, MAX_SHORT_TEXT),
+    examinerName: optionalString(input.examinerName, `${field}.examinerName`, MAX_SHORT_TEXT),
+    values: validateExamRecordValues(input.values, `${field}.values`),
+    ...compactValues({
+      note: optionalString(input.note, `${field}.note`, MAX_SHORT_TEXT),
+      // カルテ画面（exam の直接編集）で消した項目の印。前の記録の値は残したまま、最新値だけを空にする。
+      cleared: validateClearedPaths(input.cleared, `${field}.cleared`),
+      recordedBy: validateActorRef(input.recordedBy, `${field}.recordedBy`),
+      recordedAt: optionalString(input.recordedAt, `${field}.recordedAt`, 40),
+      updatedBy: validateActorRef(input.updatedBy, `${field}.updatedBy`),
+      updatedAt: optionalString(input.updatedAt, `${field}.updatedAt`, 40)
+    })
+  };
+}
+
+// API で受け取る新しい記録（partial=false）・記録の変更（partial=true）。recordId と登録者はサーバーが付ける。
+// 変更で送らなかった項目は undefined のまま返す（今の値を残す）。
+export function validateExamRecordInput(input = {}, { partial = false } = {}) {
+  if (!isPlainObject(input)) throw validationError("body must be an object", "body");
+  const expectedRevision = Number(input.expectedRevision);
+  if (!Number.isInteger(expectedRevision) || expectedRevision < 1) {
+    throw validationError("expectedRevision must be a positive integer", "expectedRevision");
+  }
+  const at = optionalString(input.at, "at", 40);
+  if (at && Number.isNaN(Date.parse(at))) throw validationError("at must be an ISO timestamp", "at");
+  const pick = (key, read) => (partial && input[key] === undefined ? undefined : read());
+  return {
+    expectedRevision,
+    at: at ? new Date(Date.parse(at)).toISOString() : undefined,
+    source: pick("source", () => optionalEnum(input.source, EXAM_RECORD_SOURCES, "source") || "manual"),
+    examinerMemberId: pick("examinerMemberId", () => optionalString(input.examinerMemberId, "examinerMemberId", MAX_SHORT_TEXT)),
+    examinerName: pick("examinerName", () => optionalString(input.examinerName, "examinerName", MAX_SHORT_TEXT)),
+    note: pick("note", () => optionalString(input.note, "note", MAX_SHORT_TEXT)),
+    values: pick("values", () => validateExamRecordValues(input.values, "values"))
+  };
+}
+
+// exam の項目（記録から作る「最新値」の単位）。カルテ画面で消した印（cleared）もこの書き方で持つ。
+export const EXAM_FIELD_PATHS = Object.freeze([
+  ...EYE_SIDES.flatMap((side) => [
+    "vaUncorrected", "vaCorrected", "vaCorrectionType", "correction", "refraction", "iop", "iopMethod", "measuredAt",
+    "vaNear", "pupil", "keratometry"
+  ].map((key) => `${side}.${key}`)),
+  ...["rapd", "alignment", "alignmentNote", "motility", "motilityNote"].map((key) => `binocular.${key}`)
+]);
+
+function validateClearedPaths(value, field) {
+  const list = optionalList(value, field, EXAM_FIELD_PATHS.length).map((item, index) => {
+    const path = optionalString(item, `${field}.${index}`, 60);
+    if (!EXAM_FIELD_PATHS.includes(path)) throw validationError(`${field}.${index} is not an exam field`, `${field}.${index}`);
+    return path;
+  });
+  return [...new Set(list)];
+}
+
+function validateActorRef(value, field) {
+  if (value === undefined || value === null) return {};
+  if (!isPlainObject(value)) throw validationError(`${field} must be an object`, field);
+  return compactValues({
+    memberId: optionalString(value.memberId, `${field}.memberId`, MAX_SHORT_TEXT),
+    loginId: optionalString(value.loginId, `${field}.loginId`, MAX_SHORT_TEXT),
+    displayName: optionalString(value.displayName, `${field}.displayName`, MAX_SHORT_TEXT)
+  });
+}
+
+// 記録の値。トプコンの視力の表（遠見・近見 × R / L / B）、他覚屈折、角膜曲率、眼圧（3 回＋平均）、
+// 瞳孔・眼位（両眼）、機器の値（オートレフ・ケラト・眼圧計）。どれも入力のある部分だけを持つ。
+export function validateExamRecordValues(value, field = "values") {
+  if (value === undefined || value === null) return {};
+  if (!isPlainObject(value)) throw validationError(`${field} must be an object`, field);
+  return compactValues({
+    vision: validateVisionGrid(value.vision, `${field}.vision`),
+    refraction: validateRecordRefraction(value.refraction, `${field}.refraction`),
+    keratometry: perEye(value.keratometry, `${field}.keratometry`, validateKeratometry),
+    iop: validateRecordIop(value.iop, `${field}.iop`),
+    pupil: perEye(value.pupil, `${field}.pupil`, validatePupil),
+    binocular: validateBinocular(value.binocular, `${field}.binocular`),
+    devices: validateDevices(value.devices, `${field}.devices`)
+  });
+}
+
+function requireObject(value, field) {
+  if (value === undefined || value === null) return null;
+  if (!isPlainObject(value)) throw validationError(`${field} must be an object`, field);
+  return value;
+}
+
+function perEye(value, field, validate) {
+  const input = requireObject(value, field);
+  if (!input) return {};
+  return compactValues(Object.fromEntries(EYE_SIDES.map((side) => [side, validate(input[side], `${field}.${side}`)])));
+}
+
+function validateVisionGrid(value, field) {
+  const input = requireObject(value, field);
+  if (!input) return {};
+  const distance = (raw, distanceField) => {
+    const row = requireObject(raw, distanceField);
+    if (!row) return {};
+    return compactValues({
+      od: validateVisionRow(row.od, `${distanceField}.od`),
+      os: validateVisionRow(row.os, `${distanceField}.os`),
+      // B（両眼）は裸眼・矯正の視力だけ
+      ou: validateBinocularVisionRow(row.ou, `${distanceField}.ou`)
+    });
+  };
+  return compactValues({
+    far: distance(input.far, `${field}.far`),
+    near: distance(input.near, `${field}.near`),
+    comment: optionalText(input.comment, `${field}.comment`)
+  });
+}
+
+function validateVisionRow(value, field) {
+  const input = requireObject(value, field);
+  if (!input) return {};
+  return compactValues({
+    uncorrected: optionalString(input.uncorrected, `${field}.uncorrected`, 40),
+    iolCl: optionalEnum(input.iolCl, IOL_CL_VALUES, `${field}.iolCl`),
+    corrected: optionalString(input.corrected, `${field}.corrected`, 40),
+    correctionType: optionalEnum(input.correctionType, VA_CORRECTION_TYPES, `${field}.correctionType`),
+    sphere: optionalNumber(input.sphere, `${field}.sphere`, { min: -40, max: 40 }),
+    cylinder: optionalNumber(input.cylinder, `${field}.cylinder`, { min: -20, max: 20 }),
+    axis: optionalNumber(input.axis, `${field}.axis`, { min: 0, max: 180, integer: true }),
+    rg: optionalString(input.rg, `${field}.rg`, 40)
+  });
+}
+
+function validateBinocularVisionRow(value, field) {
+  const input = requireObject(value, field);
+  if (!input) return {};
+  return compactValues({
+    uncorrected: optionalString(input.uncorrected, `${field}.uncorrected`, 40),
+    corrected: optionalString(input.corrected, `${field}.corrected`, 40)
+  });
+}
+
+function validateSca(value, field) {
+  const input = requireObject(value, field);
+  if (!input) return {};
+  return compactValues({
+    sphere: optionalNumber(input.sphere, `${field}.sphere`, { min: -40, max: 40 }),
+    cylinder: optionalNumber(input.cylinder, `${field}.cylinder`, { min: -20, max: 20 }),
+    axis: optionalNumber(input.axis, `${field}.axis`, { min: 0, max: 180, integer: true })
+  });
+}
+
+function validateRecordRefraction(value, field) {
+  const input = requireObject(value, field);
+  if (!input) return {};
+  return compactValues({
+    od: validateSca(input.od, `${field}.od`),
+    os: validateSca(input.os, `${field}.os`),
+    source: optionalEnum(input.source, REFRACTION_SOURCES, `${field}.source`),
+    device: optionalString(input.device, `${field}.device`, 60)
+  });
+}
+
+// 眼圧: 眼ごとに最大 3 回の値と測定法・時刻。平均はここで計算して持つ（送られてきた平均は使わない）。
+function validateRecordIop(value, field) {
+  const input = requireObject(value, field);
+  if (!input) return {};
+  const eye = (raw, eyeField) => {
+    const item = requireObject(raw, eyeField);
+    if (!item) return {};
+    const readings = validateIopReadings(item.readings, `${eyeField}.readings`, MAX_IOP_READINGS);
+    return compactValues({
+      readings,
+      average: averageOf(readings.map((reading) => reading.value)),
+      method: optionalEnum(item.method, IOP_METHODS, `${eyeField}.method`),
+      at: optionalTime(item.at, `${eyeField}.at`)
+    });
+  };
+  return compactValues({
+    od: eye(input.od, `${field}.od`),
+    os: eye(input.os, `${field}.os`),
+    comment: optionalString(input.comment, `${field}.comment`, MAX_SHORT_TEXT)
+  });
+}
+
+function validateIopReadings(value, field, max) {
+  return optionalList(value, field, max).map((item, index) => {
+    const readingField = `${field}.${index}`;
+    // 数値だけの配列（[15, 16]）も受け付け、保存はオブジェクトの配列にする。
+    const raw = isPlainObject(item) ? item.value : item;
+    const number = optionalNumber(raw, `${readingField}.value`, { min: 0, max: 90 });
+    if (number === null) throw validationError(`${readingField}.value is required`, `${readingField}.value`);
+    return { value: number };
+  });
+}
+
+// 平均（2 回以上なら小数 1 桁に丸める。1 回ならその値のまま）。値がなければ null。
+export function averageOf(values = []) {
+  const numbers = values.filter((value) => Number.isFinite(value));
+  if (!numbers.length) return null;
+  if (numbers.length === 1) return numbers[0];
+  return Math.round((numbers.reduce((sum, value) => sum + value, 0) / numbers.length) * 10) / 10;
+}
+
+// 機器の値（参照パネル用。exam には自動で採用しない）。
+function validateDevices(value, field) {
+  const input = requireObject(value, field);
+  if (!input) return {};
+  const panel = (raw, deviceField, eyeValidate, extra = () => ({})) => {
+    const item = requireObject(raw, deviceField);
+    if (!item) return {};
+    return compactValues({
+      device: optionalString(item.device, `${deviceField}.device`, 60),
+      measuredAt: optionalString(item.measuredAt, `${deviceField}.measuredAt`, 40),
+      raw: optionalText(item.raw, `${deviceField}.raw`),
+      ...extra(item, deviceField),
+      od: eyeValidate(item.od, `${deviceField}.od`),
+      os: eyeValidate(item.os, `${deviceField}.os`)
+    });
+  };
+  const autorefEye = (raw, eyeField) => {
+    const item = requireObject(raw, eyeField);
+    if (!item) return {};
+    return compactValues({
+      readings: optionalList(item.readings, `${eyeField}.readings`, MAX_DEVICE_READINGS)
+        .map((reading, index) => validateSca(reading, `${eyeField}.readings.${index}`))
+        .filter((reading) => Object.keys(reading).length),
+      representative: validateSca(item.representative, `${eyeField}.representative`)
+    });
+  };
+  const keratoEye = (raw, eyeField) => {
+    const item = requireObject(raw, eyeField);
+    if (!item) return {};
+    return compactValues({
+      ...validateKeratometry(item, eyeField),
+      r1: optionalNumber(item.r1, `${eyeField}.r1`, { min: 5, max: 12 }),
+      r2: optionalNumber(item.r2, `${eyeField}.r2`, { min: 5, max: 12 }),
+      cylinder: optionalNumber(item.cylinder, `${eyeField}.cylinder`, { min: -20, max: 20 })
+    });
+  };
+  const tonometerEye = (raw, eyeField) => {
+    const item = requireObject(raw, eyeField);
+    if (!item) return {};
+    const readings = validateIopReadings(item.readings, `${eyeField}.readings`, MAX_DEVICE_READINGS);
+    return compactValues({ readings, average: averageOf(readings.map((reading) => reading.value)) });
+  };
+  return compactValues({
+    autoref: panel(input.autoref, `${field}.autoref`, autorefEye, (item, deviceField) => ({
+      pd: optionalNumber(item.pd, `${deviceField}.pd`, { min: 40, max: 85 })
+    })),
+    kerato: panel(input.kerato, `${field}.kerato`, keratoEye),
+    tonometer: panel(input.tonometer, `${field}.tonometer`, tonometerEye, (item, deviceField) => ({
+      method: optionalEnum(item.method, IOP_METHODS, `${deviceField}.method`)
+    }))
+  });
 }
 
 export function validatePatientProfileInput(input = {}) {

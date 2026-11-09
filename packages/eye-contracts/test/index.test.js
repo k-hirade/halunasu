@@ -231,3 +231,29 @@ test("accepts the new phrase targets", async () => {
   assert.ok(PER_EYE_PHRASE_TARGETS.includes("findings.other"));
   assert.ok(!PER_EYE_PHRASE_TARGETS.includes("findings.general"));
 });
+
+test("next-visit plan items and exam records are optional and keep old content unchanged", async () => {
+  const { validateExamRecordInput, PLAN_ITEM_EYES } = await import("../src/index.js");
+  const old = validateEncounterContent({ nextVisit: { intervalWeeks: 4 }, examRecords: [] });
+  assert.deepEqual(Object.keys(old.nextVisit), ["intervalWeeks", "date", "note"]);
+  assert.equal("examRecords" in old, false);
+
+  const planned = validateEncounterContent({ nextVisit: { intervalWeeks: 12, planItems: [{ code: "va", name: "視力検査", eye: "ou" }, { name: "説明", comment: "OP 説明" }] } });
+  assert.deepEqual(planned.nextVisit.planItems, [{ code: "va", name: "視力検査", eye: "ou" }, { code: "", name: "説明", eye: "none", comment: "OP 説明" }]);
+  assert.deepEqual(validateEncounterContent(planned), planned);
+  assert.deepEqual(PLAN_ITEM_EYES, ["od", "os", "ou", "none"]);
+  assert.throws(() => validateEncounterContent({ nextVisit: { planItems: [{ eye: "ou" }] } }), (error) => error.field === "content.nextVisit.planItems.0.name");
+  assert.throws(() => validateEncounterContent({ nextVisit: { planItems: [{ code: "va", eye: "both" }] } }), (error) => error.field === "content.nextVisit.planItems.0.eye");
+
+  // examRecords は PATCH の sections では送れない（専用の API だけで変える）
+  assert.throws(() => validateUpdateEncounterInput({ expectedRevision: 1, sections: { examRecords: [] } }), (error) => error.field === "sections");
+
+  const input = validateExamRecordInput({ expectedRevision: 3, at: "2026-11-09T09:00:00+09:00", values: { iop: { od: { readings: [12, 13] } } } });
+  assert.equal(input.at, "2026-11-09T00:00:00.000Z");
+  assert.equal(input.values.iop.od.average, 12.5);
+  const patch = validateExamRecordInput({ expectedRevision: 3, note: "散瞳後" }, { partial: true });
+  assert.equal(patch.values, undefined, "values not sent are left as they are");
+  assert.equal(patch.note, "散瞳後");
+  assert.throws(() => validateExamRecordInput({ expectedRevision: 0 }), (error) => error.field === "expectedRevision");
+  assert.throws(() => validateExamRecordInput({ expectedRevision: 1, values: { vision: { far: { od: { iolCl: "glasses" } } } } }), (error) => error.field === "values.vision.far.od.iolCl");
+});
