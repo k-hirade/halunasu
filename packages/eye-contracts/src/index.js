@@ -132,6 +132,33 @@ export const NEXT_VISIT_PLAN_PRESETS = Object.freeze([
   { presetId: "glaucoma", label: "視・圧・視野", codes: ["va", "iop", "vf_static", "oct_disc"] },
   { presetId: "consult_only", label: "診察のみ", codes: [] }
 ]);
+// 検査入力（トプコンの大タブ）の追加の検査。記録の values.tests に入れる。どれも入力のある部分だけを持つ。
+// Worth 4 灯: 見え方のパターン（赤フィルターを右眼に置いた見え方で記録する）
+export const WORTH_PATTERNS = Object.freeze(["four", "red2", "green3", "five", "alternating", "unknown"]);
+export const WORTH_PATTERN_LABELS = Object.freeze({
+  four: "4灯（融像）", red2: "赤2灯（左眼抑制）", green3: "緑3灯（右眼抑制）", five: "5灯（複視）", alternating: "赤2・緑3が交互", unknown: "判定不能"
+});
+export const TEST_DISTANCES = Object.freeze(["near", "far"]);
+export const TEST_DISTANCE_LABELS = Object.freeze({ near: "近見", far: "遠見" });
+// 遮閉試験（Cover Test）
+export const COVER_KINDS = Object.freeze(["ortho", "phoria", "intermittent", "tropia"]);
+export const COVER_KIND_LABELS = Object.freeze({ ortho: "正位", phoria: "斜位", intermittent: "間欠性斜視", tropia: "斜視" });
+export const COVER_DIRECTIONS = Object.freeze(["exo", "eso", "hyper", "hypo"]);
+export const COVER_DIRECTION_LABELS = Object.freeze({ exo: "外", eso: "内", hyper: "上", hypo: "下" });
+// 9 方向眼位。向きは患者から見た向き。値は「正常」か、制限（−1〜−4）・過動（+1〜+4）の程度。
+export const NINE_GAZE_DIRECTIONS = Object.freeze(["up_right", "up", "up_left", "right", "center", "left", "down_right", "down", "down_left"]);
+export const NINE_GAZE_DIRECTION_LABELS = Object.freeze({
+  up_right: "右上", up: "上", up_left: "左上", right: "右", center: "正面", left: "左", down_right: "右下", down: "下", down_left: "左下"
+});
+export const NINE_GAZE_VALUES = Object.freeze(["normal", "-1", "-2", "-3", "-4", "+1", "+2", "+3", "+4"]);
+// 形の決まっていない検査（公開資料で中身が分からないもの）は、文字の欄だけを持つ。
+export const EXAM_TEXT_TESTS = Object.freeze({
+  color: ["test", "od", "os", "note"],
+  stereo: ["test", "result", "note"],
+  accommodation: ["od", "os", "note"],
+  anterior: ["od", "os", "note"],
+  other: ["name", "text"]
+});
 export const DIAGNOSIS_OUTCOMES = Object.freeze(["", "cured", "discontinued", "transferred", "deceased", "other"]);
 export const ALLERGY_CATEGORIES = Object.freeze(["drug", "food", "contrast", "latex", "other"]);
 export const ALLERGY_SEVERITIES = Object.freeze(["unknown", "mild", "moderate", "severe"]);
@@ -997,8 +1024,75 @@ export function validateExamRecordValues(value, field = "values") {
     iop: validateRecordIop(value.iop, `${field}.iop`),
     pupil: perEye(value.pupil, `${field}.pupil`, validatePupil),
     binocular: validateBinocular(value.binocular, `${field}.binocular`),
-    devices: validateDevices(value.devices, `${field}.devices`)
+    devices: validateDevices(value.devices, `${field}.devices`),
+    // 追加（2026-11 段階 2C）: 瞳孔間距離と、眼位・両眼視などの検査
+    pd: validatePd(value.pd, `${field}.pd`),
+    tests: validateExamTests(value.tests, `${field}.tests`)
   });
+}
+
+function validatePd(value, field) {
+  const input = requireObject(value, field);
+  if (!input) return {};
+  return compactValues({
+    far: optionalNumber(input.far, `${field}.far`, { min: 40, max: 85 }),
+    near: optionalNumber(input.near, `${field}.near`, { min: 40, max: 85 })
+  });
+}
+
+function validateExamTests(value, field) {
+  const input = requireObject(value, field);
+  if (!input) return {};
+  const fixing = (raw, rawField) => optionalEnum(raw, EYE_SIDES, rawField);
+  const worth = (() => {
+    const item = requireObject(input.worth, `${field}.worth`);
+    if (!item) return {};
+    return compactValues({
+      fixingEye: fixing(item.fixingEye, `${field}.worth.fixingEye`),
+      distance: optionalEnum(item.distance, TEST_DISTANCES, `${field}.worth.distance`),
+      pattern: optionalEnum(item.pattern, WORTH_PATTERNS, `${field}.worth.pattern`),
+      note: optionalString(item.note, `${field}.worth.note`, MAX_SHORT_TEXT)
+    });
+  })();
+  const cover = (() => {
+    const item = requireObject(input.cover, `${field}.cover`);
+    if (!item) return {};
+    const row = (raw, rowField) => {
+      const entry = requireObject(raw, rowField);
+      if (!entry) return {};
+      return compactValues({
+        fixingEye: fixing(entry.fixingEye, `${rowField}.fixingEye`),
+        kind: optionalEnum(entry.kind, COVER_KINDS, `${rowField}.kind`),
+        direction: optionalEnum(entry.direction, COVER_DIRECTIONS, `${rowField}.direction`),
+        amount: optionalString(entry.amount, `${rowField}.amount`, 20)
+      });
+    };
+    return compactValues(Object.fromEntries(TEST_DISTANCES.map((distance) => [distance, row(item[distance], `${field}.cover.${distance}`)])));
+  })();
+  const nineGaze = (() => {
+    const item = requireObject(input.nineGaze, `${field}.nineGaze`);
+    if (!item) return {};
+    const cells = requireObject(item.cells, `${field}.nineGaze.cells`) || {};
+    for (const key of Object.keys(cells)) {
+      if (!NINE_GAZE_DIRECTIONS.includes(key)) throw validationError(`${field}.nineGaze.cells.${key} is not a direction`, `${field}.nineGaze.cells.${key}`);
+    }
+    return compactValues({
+      condition: optionalString(item.condition, `${field}.nineGaze.condition`, 40),
+      cells: compactValues(Object.fromEntries(NINE_GAZE_DIRECTIONS.map((direction) => {
+        const cellField = `${field}.nineGaze.cells.${direction}`;
+        const cell = requireObject(cells[direction], cellField);
+        if (!cell) return [direction, {}];
+        return [direction, compactValues(Object.fromEntries(EYE_SIDES.map((side) => [side, optionalEnum(cell[side], NINE_GAZE_VALUES, `${cellField}.${side}`)])))];
+      }))),
+      note: optionalString(item.note, `${field}.nineGaze.note`, MAX_SHORT_TEXT)
+    });
+  })();
+  const texts = Object.fromEntries(Object.entries(EXAM_TEXT_TESTS).map(([key, fields]) => {
+    const item = requireObject(input[key], `${field}.${key}`);
+    if (!item) return [key, {}];
+    return [key, compactValues(Object.fromEntries(fields.map((name) => [name, optionalString(item[name], `${field}.${key}.${name}`, MAX_SHORT_TEXT)])))];
+  }));
+  return compactValues({ worth, cover, nineGaze, ...texts });
 }
 
 function requireObject(value, field) {
@@ -1029,6 +1123,8 @@ function validateVisionGrid(value, field) {
   return compactValues({
     far: distance(input.far, `${field}.far`),
     near: distance(input.near, `${field}.near`),
+    // 視標・条件など（グリッド左上のプルダウン）
+    condition: optionalString(input.condition, `${field}.condition`, 40),
     comment: optionalText(input.comment, `${field}.comment`)
   });
 }

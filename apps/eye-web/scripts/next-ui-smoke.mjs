@@ -254,13 +254,22 @@ async function runDoctorFlow(browser) {
   const encounterUrl = page.url();
 
   await page.getByRole("link", { name: /カルテ一覧/ }).click();
-  // 患者ページ: 前回の要点（前回差つき）→ 経過（グラフ + 1 受診 1 行の表）
+  // 患者ページ: カルテ概要（2 列 × 4 段）→ 経過（グラフ + 1 受診 1 行の表）
   await page.locator(".trend-svg").waitFor();
   await page.getByText("アレルギー: ペニシリン系（発疹）").first().waitFor();
   assert.equal(await page.locator(".visit-rows .visit-row").count(), 2);
-  assert.equal((await page.locator(".pt-eye-od .pt-delta").last().innerText()).trim(), "↑5", "IOP change against the previous finalized visit");
+  assert.match(await page.locator(".ps-iop").innerText(), /<R>\s*23/u, "the summary shows the latest finalized IOP");
+  assert.match(await page.locator(".ps-va").innerText(), /RV=[\s\S]*0\.8/u);
   assert.match(await page.locator(".visit-rows .visit-row").first().innerText(), /0\.8[\s\S]*23/u);
   assert.equal(await page.locator(".trend-svg .mark-started").count() > 0, true, "drop start is marked on the time axis");
+  // 視力眼圧タブ: 表 2 つ（視力・眼圧）＋ グラフ 2 つ。系列はチェックで切り替える
+  await page.getByRole("tab", { name: "視力眼圧" }).click();
+  await page.locator(".vi-chart.is-iop .series-od .dot").first().waitFor();
+  assert.match(await page.locator(".vi-table-wrap.is-iop tbody tr").first().innerText(), /23/u);
+  assert.match(await page.locator(".vi-table-wrap").first().locator("tbody tr").first().innerText(), /0\.8/u);
+  await page.getByRole("checkbox", { name: "眼圧(右)" }).uncheck();
+  assert.equal(await page.locator(".vi-chart.is-iop .series-od .dot").count(), 0, "unchecking a series hides it");
+  await page.getByRole("tab", { name: "カルテ概要" }).click();
   await page.locator('summary[aria-label="その他の操作"]').click();
   await page.getByRole("button", { name: /この患者のデータを出力/u }).waitFor();
   await page.locator('summary[aria-label="その他の操作"]').click();
@@ -398,6 +407,14 @@ async function runDoctorFlow(browser) {
   assert.deepEqual(await page.locator(".cmp-pane-rel").allInnerTexts(), ["最新", "最新"]);
   await page.getByRole("button", { name: "左の面を前の日付へ" }).click();
   assert.deepEqual(await page.locator(".cmp-pane-rel").allInnerTexts(), ["前回", "最新"]);
+  // 表示モード: OU（同じ日の右眼・左眼）と時系列（同じ眼を古い順に横へ）
+  await page.getByRole("button", { name: "OU", exact: true }).click();
+  await page.locator(".cmp-ou-date").waitFor();
+  assert.deepEqual(await page.locator(".cmp-grid .cmp-pane-rel").allInnerTexts(), ["右眼", "左眼"]);
+  await page.getByRole("button", { name: "時系列", exact: true }).click();
+  assert.equal(await page.locator(".cmp-series-item").count(), 2);
+  await page.getByRole("button", { name: "比較", exact: true }).click();
+  await page.locator(".cmp-strip").waitFor();
   await page.getByRole("link", { name: "← 患者ページ" }).click();
   await page.locator(".trend-svg").waitFor();
 
@@ -708,14 +725,23 @@ async function runOrthoptistFlow(browser) {
   page.on("pageerror", (error) => pageErrors.push(error.message));
   await login(page, "orthoptist");
   // 診察: 受付で検査を終えた患者が「診察待ち」に出て、ナビに人数が出る。要対応のチップで一覧を切り替える
+  // 患者一覧: 最初は「診察待」のタブ。行を 1 回押すと右に概要（カルテは開かない）
   await page.getByRole("heading", { name: "診察", exact: true }).waitFor();
-  const waitingRow = page.locator(".flow-group.status-waiting_doctor .flow-row").filter({ hasText: "試験 一郎" });
+  const waitingRow = page.locator(".cl-row.stage-waiting").filter({ hasText: "試験 一郎" });
   await waitingRow.waitFor();
-  await waitingRow.getByRole("button", { name: "診察開始" }).waitFor();
+  assert.equal(await page.getByRole("tab", { name: /^診察待/u }).getAttribute("aria-selected"), "true");
   assert.equal((await page.locator(".nav-menu-button .nav-badge").innerText()).trim(), "1");
-  await page.getByRole("button", { name: /^未確定カルテ/u }).click();
+  await waitingRow.click();
+  const summary = page.getByRole("region", { name: /^カルテ概要/u });
+  await summary.getByRole("button", { name: "診察開始" }).waitFor();
+  await summary.locator(".ps-info").getByText("試験 一郎").waitFor();
+  assert.equal(new URL(page.url()).pathname, "/", "a single click must not open the chart");
+  assert.equal(await waitingRow.getAttribute("aria-selected"), "true");
+  assert.equal(await page.getByRole("button", { name: "次の患者" }).isEnabled(), true);
+  await page.getByRole("tab", { name: /^未確定カルテ/u }).click();
   await page.getByRole("region", { name: "未確定カルテ" }).waitFor();
-  await page.getByRole("button", { name: /^すべて/u }).click();
+  await page.getByRole("tab", { name: /^全て/u }).click();
+  await page.locator(".cl-row").filter({ hasText: "試験 一郎" }).waitFor();
   await page.getByLabel("患者検索").fill("試験");
   await page.locator(".patient-row").filter({ hasText: "試験 一郎" }).click();
   await page.getByRole("button", { name: "初診カルテを作成" }).click();
@@ -732,35 +758,83 @@ async function runOrthoptistFlow(browser) {
   await page.getByRole("button", { name: "受け付ける" }).click();
   await page.locator(".flow-group.status-checked_in .flow-row").filter({ hasText: "試験 一郎" }).waitFor();
 
-  // 検査ページ: 検査の順の表、前回列、本日の検査、散瞳、申し送り、下の固定ボタン
+  // 検査入力: 記録の行（検査日・時刻・検者・登録）→ 大タブ 11 個 → 本文。下は「確定系 … キャンセル … 保存して戻る … 保存して次へ」
   await page.goto(`${encounterUrl}/exam`);
-  await page.getByRole("heading", { name: "検査値" }).waitFor();
-  const labels = await page.locator(".xt-grid.is-workbench .xt-label").allInnerTexts();
-  assert.deepEqual(labels, ["他覚屈折", "裸眼視力", "矯正視力", "眼圧"], "rows follow the exam order");
-  // Enter は右眼の全項目 → 左眼の順（屈折 S → C → Ax も進む）
-  await page.getByLabel("右眼 屈折 球面").click();
+  await page.getByRole("heading", { name: "検査入力" }).waitFor();
+  assert.deepEqual(await page.locator(".rd-tab").allInnerTexts(), ["視力", "眼圧", "屈折", "角膜曲率", "眼位", "両眼視", "色覚", "立体視", "調節", "前眼部", "その他"]);
+  await page.getByRole("button", { name: "検査終了 → 診察待ちへ" }).waitFor();
+  assert.deepEqual(await page.locator(".rd-bar-buttons .btn").allInnerTexts(), ["検査終了 → 診察待ちへ", "キャンセル", "保存して戻る", "保存して次へ"]);
+  assert.equal(await page.locator(".rd-device").count(), 3, "kerato / refraction / tonometer reference panels");
+  // 視力の表: 行 = 遠見 R/L/B・近見 R/L/B。Enter は行の順（裸眼 → 矯正 → S → C → A → RG → 次の行）
+  await page.getByLabel("遠見 右眼 裸眼視力").click();
+  await page.keyboard.type("0.3");
+  await page.keyboard.press("Enter");
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "遠見 右眼 矯正視力");
+  await page.keyboard.type("0.7");
+  await page.keyboard.press("Enter");
   await page.keyboard.type("-");
-  assert.equal(await page.getByLabel("右眼 屈折 球面").inputValue(), "-", "a lone minus sign must stay while typing");
+  assert.equal(await page.getByLabel("遠見 右眼 球面").inputValue(), "-", "a lone minus sign must stay while typing");
   await page.keyboard.type("2.5");
   await page.keyboard.press("Enter");
-  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "右眼 屈折 円柱");
-  assert.equal(await page.getByLabel("右眼 屈折 球面").inputValue(), "-2.50");
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "遠見 右眼 円柱");
+  assert.equal(await page.getByLabel("遠見 右眼 球面").inputValue(), "-2.50");
   await page.keyboard.type("-0.75");
   await page.keyboard.press("Enter");
   await page.keyboard.type("180");
   await page.keyboard.press("Enter");
-  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "右眼 裸眼視力");
-  // 他覚屈折を矯正レンズの空欄へ写す
-  await page.getByRole("button", { name: "右眼 他覚屈折を矯正レンズへ写す" }).click();
-  assert.equal(await page.getByLabel("右眼 矯正 球面").inputValue(), "-2.50");
-  assert.equal(await page.getByLabel("右眼 矯正 軸").inputValue(), "180");
-  await page.getByLabel("右眼 矯正視力").fill("0.7");
-  await page.getByLabel("右眼 眼圧の測定時刻", { exact: true }).fill("09:05");
-  await page.getByLabel("右眼 眼圧", { exact: true }).fill("14");
-  await page.getByLabel("右眼 眼圧", { exact: true }).press("Tab");
-  assert.equal(await page.getByLabel("右眼 眼圧の測定時刻", { exact: true }).inputValue(), "09:05", "an entered IOP time is never overwritten");
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "遠見 右眼 RG");
+  await page.keyboard.press("Enter");
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "遠見 左眼 裸眼視力");
+  assert.equal(await page.getByLabel("遠見 両眼 球面").count(), 0, "the B rows hold VA only");
+  await page.getByLabel("近見 両眼 矯正視力").fill("1.0");
   // 視力の候補に「矯正不能（n.c.）」がある
   assert.equal(await page.locator('#va-values option[value="n.c."]').count(), 1);
+  // 眼圧: 3 回と平均（自動計算）・測定方法・時刻
+  await page.getByRole("tab", { name: "眼圧" }).click();
+  await page.getByLabel("右眼 眼圧 1回目").fill("14");
+  await page.getByLabel("右眼 眼圧 2回目").fill("15");
+  await page.getByLabel("右眼 眼圧 3回目").fill("15");
+  assert.match(await page.locator('[aria-label="右眼 眼圧の平均"]').innerText(), /^14\.7/u);
+  await page.getByLabel("眼圧の測定方法").selectOption("nct");
+  await page.getByLabel("眼圧の測定時刻").fill("09:05");
+  // 登録で「その時刻の記録」が 1 件できる
+  await page.getByLabel("検査時刻").fill("09:00");
+  await page.getByText("未登録の入力があります").waitFor();
+  await page.getByRole("button", { name: "登録", exact: true }).click();
+  await page.locator(".rd-record-chip").filter({ hasText: "09:00" }).waitFor();
+  await page.getByText("未登録の入力があります").waitFor({ state: "detached" });
+  assert.equal(await page.locator(".rd-tab.has-values").count(), 2, "tabs with values are marked");
+  // 同じ日の 2 件目（散瞳後など）: 眼位の 9 方向と Worth 4 灯（図のボタン）
+  await page.getByRole("button", { name: "＋ 新しい記録" }).click();
+  await page.getByRole("tab", { name: "視力" }).click();
+  assert.equal(await page.getByLabel("遠見 右眼 裸眼視力").inputValue(), "", "a new record starts empty");
+  await page.getByRole("tab", { name: "眼位" }).click();
+  await page.getByRole("button", { name: "全て正常" }).click();
+  await page.getByLabel("左上 左眼").selectOption("-2");
+  assert.equal(await page.locator(".rd-nine-cell.is-abnormal").count(), 1);
+  await page.getByRole("button", { name: "右上 クリア" }).click();
+  assert.equal(await page.locator(".rd-nine-cell.is-normal").count(), 7);
+  await page.getByRole("tab", { name: "両眼視" }).click();
+  await page.getByRole("button", { name: /4灯（融像）/u }).click();
+  assert.equal(await page.getByRole("button", { name: /4灯（融像）/u }).getAttribute("aria-pressed"), "true");
+  await page.getByLabel("遮閉試験 近見 種類").selectOption("phoria");
+  await page.getByLabel("検査時刻").fill("10:30");
+  await page.getByRole("button", { name: "登録", exact: true }).click();
+  await page.locator(".rd-record-chip").filter({ hasText: "10:30" }).waitFor();
+  assert.equal(await page.locator(".rd-record-chip:not(.is-new)").count(), 2);
+  // データ表示: 記録を検査ごとの見出しで並べる
+  await page.getByRole("button", { name: "データ表示" }).click();
+  const dataDialog = page.getByRole("dialog", { name: "本日の検査記録" });
+  await dataDialog.getByText(/14 15 15/u).waitFor();
+  await dataDialog.getByText(/4灯（融像）/u).waitFor();
+  await dataDialog.getByRole("button", { name: "閉じる" }).click();
+  // 前の記録に切り替えて直す → キャンセルで登録前に戻る
+  await page.locator(".rd-record-chip").filter({ hasText: "09:00" }).click();
+  await page.getByRole("tab", { name: "視力" }).click();
+  assert.equal(await page.getByLabel("遠見 右眼 裸眼視力").inputValue(), "0.3");
+  await page.getByLabel("遠見 右眼 裸眼視力").fill("0.4");
+  await page.getByRole("button", { name: "キャンセル" }).click();
+  assert.equal(await page.getByLabel("遠見 右眼 裸眼視力").inputValue(), "0.3");
 
   // 本日の検査: 追加 → 押して実施（値を入れても自動では実施にしない）
   await page.getByRole("button", { name: "＋ 検査を追加" }).click();
@@ -800,6 +874,14 @@ async function runOrthoptistFlow(browser) {
   assert.equal(await page.locator(".exam-bar-eye.is-empty").filter({ hasText: "L" }).count(), 1, "an eye without values is not confirmed");
   // 該当する受付がなければ、確認だけにして受付は動かさない
   await page.getByRole("button", { name: "検査値を確認する" }).waitFor();
+  // 保存して次へ: 次に検査する患者（受付中・検査中）の検査入力へ。いなければ、その旨を出して留まる
+  await page.getByRole("button", { name: "保存して次へ" }).click();
+  const examPath = new URL(`${encounterUrl}/exam`).pathname;
+  await Promise.race([
+    page.getByText("次に検査する患者はいません").waitFor(),
+    page.waitForURL((url) => url.pathname.endsWith("/exam") && url.pathname !== examPath)
+  ]);
+  if (new URL(page.url()).pathname !== examPath) await page.getByRole("heading", { name: "検査入力" }).waitFor();
   // 管理者でない人は設定を見るだけ（追加・保存はできず、管理の項目は出ない）
   await page.goto(`${baseUrl}/settings#audit`);
   await page.getByRole("heading", { name: /よく使う薬剤/u }).waitFor();

@@ -240,6 +240,8 @@ export function useEncounterDraft(encounterId) {
     saveWith,
     updateMeta,
     runAction,
-    confirmExam
+    confirmExam,
+    // 検査記録の API など、ほかの API が返したカルテを取り込む（編集中の項目は残す）
+    applyServerEncounter
   };
 }

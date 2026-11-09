@@ -53,3 +53,647 @@
     flex-wrap: wrap;
   }
 }
+
+/* ---- 診察の患者一覧（トプコンの「患者一覧＋カルテ概要」に倣う） ---- */
+.cl-head {
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+}
+
+.cl-stats {
+  display: flex;
+  gap: 2px;
+  margin: 0;
+}
+
+.cl-stats > div {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  min-width: 64px;
+  padding: 2px 10px;
+}
+
+.cl-stats > div:first-child {
+  border-radius: 8px 0 0 8px;
+}
+
+.cl-stats > div:last-child {
+  border-radius: 0 8px 8px 0;
+}
+
+.cl-stats dt {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
+
+.cl-stats dd {
+  font-size: var(--fs-lg);
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  margin: 0;
+}
+
+.cl-page .head-actions {
+  margin-left: auto;
+}
+
+/* 場所（段階）のタブ: 下線のタブと人数 */
+.cl-tabs {
+  align-items: flex-end;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 2px;
+  margin: 4px 0 10px;
+}
+
+.cl-tab {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: var(--fs-md);
+  font-weight: 700;
+  gap: 6px;
+  margin-bottom: -1px;
+  min-height: 44px;
+  padding: 4px 12px;
+}
+
+.cl-tab:hover {
+  color: var(--text);
+}
+
+.cl-tab[aria-selected="true"] {
+  border-bottom-color: var(--teal);
+  color: var(--text);
+}
+
+.cl-tab-count {
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  min-width: 26px;
+  padding: 0 6px;
+  text-align: center;
+}
+
+.cl-tab.stage-waiting .cl-tab-count {
+  background: var(--teal-soft);
+  border-color: var(--teal);
+  color: var(--teal-dark);
+}
+
+.cl-tab.is-task.has-items .cl-tab-count {
+  color: var(--amber);
+}
+
+.cl-tab-divider {
+  align-self: center;
+  background: var(--line-strong);
+  height: 24px;
+  margin: 0 6px;
+  width: 1px;
+}
+
+.cl-layout {
+  align-items: start;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 38%);
+}
+
+.cl-layout.is-task {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.panel.cl-list {
+  min-width: 0;
+  padding: 0;
+}
+
+.cl-table-wrap {
+  overflow-x: auto;
+}
+
+.cl-table {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  width: 100%;
+}
+
+.cl-table thead th {
+  background: var(--surface-muted);
+  border-bottom: 1px solid var(--line-strong);
+  color: var(--text-soft);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  padding: 6px 8px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.cl-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 6px 8px;
+  vertical-align: middle;
+}
+
+.cl-row {
+  cursor: pointer;
+  user-select: none;
+}
+
+.cl-row:hover {
+  background: var(--surface-muted);
+}
+
+.cl-row:focus {
+  outline: none;
+}
+
+.cl-row:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--focus-ring);
+}
+
+.cl-row.is-selected,
+.cl-row.is-selected:hover {
+  background: var(--teal-soft);
+  box-shadow: inset 4px 0 0 var(--teal);
+}
+
+.cl-row.is-selected:focus-visible {
+  box-shadow: inset 4px 0 0 var(--teal), inset 0 0 0 2px var(--focus-ring);
+}
+
+.cl-no {
+  color: var(--muted);
+  font-weight: 800;
+  text-align: right;
+  width: 40px;
+}
+
+.cl-name {
+  min-width: 140px;
+}
+
+.cl-name-main {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
+.cl-name-main strong {
+  font-size: var(--fs-lg);
+}
+
+.cl-kana {
+  color: var(--muted);
+  display: block;
+  font-size: var(--fs-xs);
+}
+
+.cl-new {
+  border: 1px solid var(--teal);
+  border-radius: 4px;
+  color: var(--teal-dark);
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  padding: 0 4px;
+}
+
+.cl-sex {
+  font-weight: 700;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.cl-sex.sex-male {
+  color: var(--os);
+}
+
+.cl-sex.sex-female {
+  color: var(--od);
+}
+
+.cl-age,
+.cl-time,
+.cl-plan {
+  color: var(--text-soft);
+  white-space: nowrap;
+}
+
+.cl-stage {
+  white-space: nowrap;
+}
+
+.cl-stage-tag {
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  font-size: var(--fs-sm);
+  font-weight: 800;
+  padding: 0 6px;
+}
+
+.cl-stage-tag.stage-waiting {
+  background: var(--teal-soft);
+  border-color: var(--teal);
+  color: var(--teal-dark);
+}
+
+.cl-stage-tag.stage-consult {
+  background: var(--blue-soft);
+  border-color: var(--blue-line);
+  color: var(--blue-ink);
+}
+
+.cl-stage-tag.stage-dark {
+  background: var(--amber-soft);
+  border-color: var(--amber-line);
+  color: var(--amber);
+}
+
+.cl-sub {
+  color: var(--muted);
+  display: block;
+  font-size: var(--fs-xs);
+}
+
+.cl-wait {
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.cl-wait.is-warn {
+  color: var(--amber);
+}
+
+.cl-wait.is-alert {
+  color: var(--red);
+}
+
+.cl-purpose {
+  color: var(--text-soft);
+  font-size: var(--fs-sm);
+  max-width: 220px;
+}
+
+.cl-note {
+  color: var(--muted);
+  display: block;
+  font-size: var(--fs-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cl-help {
+  margin: 0;
+  padding: 8px 12px;
+}
+
+.cl-unlinked {
+  border-top: 1px solid var(--line);
+  padding: 8px 12px;
+}
+
+.cl-unlinked h2 {
+  align-items: center;
+  display: flex;
+  font-size: var(--fs-md);
+  gap: 6px;
+  margin: 0 0 6px;
+}
+
+.cl-unlinked ul {
+  display: grid;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.cl-unlinked a {
+  align-items: center;
+  color: var(--text);
+  display: flex;
+  gap: 8px;
+  min-height: 40px;
+  text-decoration: none;
+}
+
+.cl-list .flow-group {
+  padding: 0 0 8px;
+}
+
+/* 概要ペイン（2 列 × 4 段）。患者ページでも使う */
+.ps-pane {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  min-width: 0;
+}
+
+.ps-head {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  padding: 8px 12px;
+}
+
+.ps-head h2 {
+  font-size: var(--fs-md);
+  margin: 0;
+}
+
+.ps-loading {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.ps-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.ps-error {
+  margin: 8px 12px 0;
+}
+
+.ps-grid {
+  display: grid;
+  grid-template-areas:
+    "info plan"
+    "va rx"
+    "iop dx"
+    "memo dx";
+  grid-template-columns: minmax(0, 55fr) minmax(0, 45fr);
+}
+
+.ps-cell {
+  border-bottom: 1px solid var(--line);
+  min-width: 0;
+  padding: 8px 12px;
+}
+
+.ps-info { grid-area: info; }
+.ps-plan { grid-area: plan; }
+.ps-va { grid-area: va; }
+.ps-rx { grid-area: rx; }
+.ps-iop { grid-area: iop; }
+.ps-dx { grid-area: dx; }
+.ps-memo { grid-area: memo; border-bottom: 0; }
+
+.ps-plan,
+.ps-rx,
+.ps-dx {
+  border-left: 1px solid var(--line);
+}
+
+.ps-dx {
+  border-bottom: 0;
+}
+
+.ps-cell h3 {
+  align-items: baseline;
+  color: var(--text-soft);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--fs-sm);
+  gap: 6px;
+  margin: 0 0 4px;
+}
+
+.ps-when {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
+
+.ps-empty {
+  color: var(--muted);
+}
+
+.ps-dl {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+}
+
+.ps-dl > div {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 7em minmax(0, 1fr);
+}
+
+.ps-dl dt {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  padding-top: 2px;
+}
+
+.ps-dl dd {
+  font-size: var(--fs-sm);
+  margin: 0;
+  min-width: 0;
+}
+
+.ps-kana {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  margin-left: 6px;
+}
+
+.ps-lines p {
+  font-size: var(--fs-sm);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ps-lines .ps-sub {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
+
+.ps-avg {
+  color: var(--text);
+}
+
+.ps-list {
+  display: grid;
+  font-size: var(--fs-sm);
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ps-list li.is-done {
+  color: var(--muted);
+}
+
+.ps-eye {
+  display: inline-block;
+  font-weight: 800;
+  min-width: 1.6em;
+}
+
+.ps-done {
+  color: var(--green);
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  margin-left: 6px;
+}
+
+.ps-primary {
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  margin-right: 4px;
+  padding: 0 3px;
+}
+
+.ps-memo-body {
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: var(--fs-sm);
+  margin: 0;
+  min-height: 44px;
+  padding: 6px 8px;
+  white-space: pre-wrap;
+}
+
+/* タブレット縦・スマホ: 概要は下からのシート */
+.cl-sheet-backdrop {
+  background: rgba(15, 23, 42, 0.32);
+  inset: 0;
+  position: fixed;
+  z-index: 45;
+}
+
+.cl-sheet {
+  background: var(--page);
+  border-radius: 14px 14px 0 0;
+  bottom: 0;
+  left: 0;
+  max-height: 82vh;
+  overflow: auto;
+  padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+  position: absolute;
+  right: 0;
+}
+
+.btn.cl-sheet-close {
+  display: flex;
+  margin: 0 0 6px auto;
+}
+
+@media (max-width: 1023px) {
+  .cl-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 767px) {
+  .cl-stats {
+    order: 3;
+    width: 100%;
+  }
+
+  .cl-stats > div {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .cl-tab {
+    padding: 4px 8px;
+  }
+
+  .cl-table .cl-sex,
+  .cl-table .cl-plan,
+  .cl-table .cl-purpose,
+  .cl-table .cl-time {
+    display: none;
+  }
+
+  .cl-name {
+    min-width: 0;
+  }
+
+  .ps-grid {
+    grid-template-areas: "info" "plan" "va" "iop" "rx" "dx" "memo";
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ps-plan,
+  .ps-rx,
+  .ps-dx {
+    border-left: 0;
+  }
+
+  .ps-dx {
+    border-bottom: 1px solid var(--line);
+  }
+}
+
+/* 患者一覧: 調整 */
+.cl-name .tag {
+  white-space: nowrap;
+}
+
+.ps-allergy {
+  margin-top: 6px;
+}
+
+.ps-pane .allergy-badge {
+  display: inline-block;
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+  max-width: 100%;
+  padding: 2px 6px;
+}
+
+.ps-dl > div {
+  grid-template-columns: 5.5em minmax(0, 1fr);
+}
+
+@media (min-width: 1024px) {
+  .cl-layout {
+    grid-template-columns: minmax(0, 1fr) 420px;
+  }
+}
+
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .cl-layout:not(.is-task) .cl-table .cl-purpose {
+    display: none;
+  }
+
+  .cl-tab {
+    padding: 4px 8px;
+  }
+}
+
+@media (min-width: 1440px) {
+  .cl-layout {
+    grid-template-columns: minmax(0, 1fr) 36%;
+  }
+}

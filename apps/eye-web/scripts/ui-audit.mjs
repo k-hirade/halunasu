@@ -1,6 +1,7 @@
 // UI 監査。デモデータ入りのローカル環境（メモリストア）と Next 開発サーバーを起動し、
 // 主要画面を 5 つの画面幅で撮影して、文字サイズ・コントラスト・タップ領域・横あふれを計測する。
-// 診察（/）関連: home（診察）・home-tasks（要対応の一覧）・home-dark・search（検索）・register（新規患者登録）・menu
+// 診察（/）関連: home（診察）・home-summary（行を選んで概要）・home-tasks（要対応の一覧）・home-dark・search（検索）・register（新規患者登録）・menu
+// 検査入力: exam・exam-dark・exam-iop・exam-gaze・exam-worth。患者: patient・patient-vaiop・patient-dark・images・images-ou・images-series
 //
 //   node scripts/ui-audit.mjs [--out DIR] [--pages editor,reception]
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -71,6 +72,26 @@ try {
         if (name === "register") {
           await page.getByRole("button", { name: /新規患者を登録/u }).click();
           await page.waitForTimeout(800);
+        }
+        // 診察の一覧: 最初の行を 1 回押して概要を出す（1024px 未満は下からのシート）
+        if (name === "home-summary") {
+          await page.getByRole("tab", { name: /^全て/u }).click().catch(() => null);
+          await page.locator(".cl-row").first().click().catch(() => null);
+          await page.waitForTimeout(1200);
+        }
+        // 検査入力の大タブ
+        const examTab = { "exam-iop": "眼圧", "exam-gaze": "眼位", "exam-worth": "両眼視" }[name];
+        if (examTab) {
+          await page.getByRole("tab", { name: examTab, exact: true }).click();
+          await page.waitForTimeout(300);
+        }
+        if (name === "patient-vaiop") {
+          await page.getByRole("tab", { name: "視力眼圧" }).click();
+          await page.waitForTimeout(500);
+        }
+        if (name === "images-ou" || name === "images-series") {
+          await page.getByRole("button", { name: name === "images-ou" ? "OU" : "時系列", exact: true }).click().catch(() => null);
+          await page.waitForTimeout(500);
         }
         if (name === "home-tasks") {
           await page.getByRole("button", { name: /^未確定カルテ/u }).click();
@@ -210,7 +231,7 @@ async function prepare(browser) {
   await page.getByLabel("宛先 医療機関").fill("県立中央病院");
   await page.waitForTimeout(2500);
   if (!onlyPages || [...onlyPages].some((name) => name.startsWith("billing"))) await seedBilling(page);
-  if (!onlyPages || onlyPages.has("patient") || onlyPages.has("images")) await uploadSampleImages(page, patientHref);
+  if (!onlyPages || [...onlyPages].some((name) => name.startsWith("patient") || name.startsWith("images"))) await uploadSampleImages(page, patientHref);
   const storageState = await context.storageState();
   await context.close();
   return {
@@ -224,6 +245,14 @@ async function prepare(browser) {
       "patient-dark": patientHref,
       editor: encounterPath,
       exam: `${encounterPath}/exam`,
+      "exam-dark": `${encounterPath}/exam`,
+      "exam-iop": `${encounterPath}/exam`,
+      "exam-gaze": `${encounterPath}/exam`,
+      "exam-worth": `${encounterPath}/exam`,
+      "patient-vaiop": patientHref,
+      "images-ou": `${patientHref}/images`,
+      "images-series": `${patientHref}/images`,
+      "home-summary": "/",
       optical: `${encounterPath}/optical`,
       document: documentPath,
       "document-print": `${documentPath}/print`,
@@ -312,6 +341,7 @@ async function uploadSampleImages(page, patientHref) {
   const samples = [
     { name: "oct-old.png", hue: 0, kind: "oct", eye: "od", daysAgo: 120, title: "OCT 黄斑 右" },
     { name: "oct-new.png", hue: 1, kind: "oct", eye: "od", daysAgo: 21, title: "OCT 黄斑 右" },
+    { name: "oct-new-l.png", hue: 2, kind: "oct", eye: "os", daysAgo: 21, title: "OCT 黄斑 左" },
     { name: "fundus.png", hue: 2, kind: "fundus_photo", eye: "ou", daysAgo: 21, title: "眼底写真" }
   ];
   await page.goto(baseUrl + patientHref);

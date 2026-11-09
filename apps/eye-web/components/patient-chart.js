@@ -7,19 +7,19 @@ import { useEyeApi } from "./eye-api";
 import { DocumentsPanel } from "./documents-panel";
 import { FilesPanel, UploadDialog } from "./files-panel";
 import { PatientBanner } from "./patient-banner";
+import { PatientSummaryPane } from "./patient-summary-pane";
 import { TrendPanel } from "./trend-chart";
+import { VaIopView } from "./va-iop-view";
 import { useMediaQuery } from "./use-media-query";
 import {
   downloadJson,
   APPOINTMENT_PURPOSE_LABELS,
   APPOINTMENT_STATUS_LABELS,
   formatDate,
-  prescriptionText,
   todayIso,
   VISIT_TYPE_LABELS
 } from "../lib/format";
 
-const SIDE_SHORT = { od: "右", os: "左", ou: "両" };
 const VISIT_ROWS = 6;
 
 export function PatientChart({ patientId }) {
@@ -33,6 +33,22 @@ export function PatientChart({ patientId }) {
   const [uploading, setUploading] = useState(false);
   const [filesKey, setFilesKey] = useState(0);
   const [paperFiles, setPaperFiles] = useState([]);
+  const [view, setView] = useState("summary");
+  const [todayEncounter, setTodayEncounter] = useState(null);
+  const todayEncounterId = chart?.encounters?.find((encounter) => encounter.encounterDate === todayIso())?.encounterId || "";
+
+  // 概要には今日のカルテ（検査室で入れた値・本日予定）も出す
+  useEffect(() => {
+    if (!todayEncounterId) return undefined;
+    let active = true;
+    api(`/v1/eye/encounters/${todayEncounterId}`).then((payload) => { if (active) setTodayEncounter(payload.encounter); }).catch(() => {});
+    return () => { active = false; };
+  }, [api, todayEncounterId]);
+
+  // ?tab=va-iop（検査入力の「過去履歴」から）で視力眼圧のタブを開く
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("tab") === "va-iop") setView("va-iop");
+  }, []);
 
   const reloadPaper = useCallback(() => {
     api(`/v1/eye/patients/${patientId}/files`)
@@ -130,8 +146,30 @@ export function PatientChart({ patientId }) {
 
       <div className="chart-grid pt-grid">
         <div className="chart-main">
-          <CurrentStrip encounter={latestFinalized} points={trend?.points || []} today={today} />
-          <CourseBlock encounters={encounters} today={today} trend={trend} />
+          <div aria-label="表示" className="pt-tabs" role="tablist">
+            <button aria-selected={view === "summary"} className="pt-tab" onClick={() => setView("summary")} role="tab" type="button">カルテ概要</button>
+            <button aria-selected={view === "va-iop"} className="pt-tab" onClick={() => setView("va-iop")} role="tab" type="button">視力眼圧</button>
+            <Link className="pt-tab is-link" href={`/patients/${patientId}/images`}>画像 ›</Link>
+          </div>
+          {view === "va-iop" ? (
+            <section aria-label="視力眼圧" className="panel pt-va-iop" role="tabpanel">
+              <VaIopView points={trend?.points || []} />
+            </section>
+          ) : (
+            <div role="tabpanel">
+              <PatientSummaryPane
+                summary={{
+                  patient,
+                  profile: chart.profile,
+                  latestFinalized,
+                  today: todayEncounter,
+                  lastVisitDate: encounters.find((encounter) => encounter.encounterDate < today)?.encounterDate || ""
+                }}
+                title="カルテ概要"
+              />
+              <CourseBlock encounters={encounters} today={today} trend={trend} />
+            </div>
+          )}
         </div>
         <aside className="chart-side pt-side">
           <AppointmentsPanel items={upcomingAppointments} today={today} />
@@ -169,79 +207,6 @@ export function PatientChart({ patientId }) {
         />
       ) : null}
     </main>
-  );
-}
-
-// 前回確定の要点（左右の視力・眼圧と前回差、処方中、方針、次回指示）を 1 つの帯に出す。
-function CurrentStrip({ encounter, points, today }) {
-  if (!encounter) {
-    return (
-      <section className="pt-current is-empty" aria-label="前回の状態">
-        <p className="empty">確定済みのカルテはまだありません。</p>
-      </section>
-    );
-  }
-  const content = encounter.content || {};
-  const exam = content.exam || {};
-  const prescriptions = content.prescriptions || [];
-  const index = points.findIndex((point) => point.encounterId === encounter.encounterId);
-  const planLine = String(content.plan || "").split("\n").map((line) => line.trim()).find(Boolean) || "";
-  const weeks = content.nextVisit?.intervalWeeks;
-  return (
-    <section className="pt-current" aria-label="前回の状態">
-      <div className="pt-current-head">
-        <span className="pt-current-title">前回 {formatDate(encounter.encounterDate).slice(5)}</span>
-        <span className="pt-current-ago">{agoLabel(encounter.encounterDate, today)}</span>
-        <span className="pt-current-state">確定</span>
-        {weeks ? <span className="pt-current-next">次回指示 {weeks}週後{content.nextVisit?.note ? `（${content.nextVisit.note}）` : ""}</span> : null}
-      </div>
-      <div className="pt-current-eyes">
-        {["od", "os"].map((side) => {
-          const values = exam[side] || {};
-          const iop = isNumber(values.iop) ? values.iop : null;
-          const previousIop = index > 0 ? previousValue(points, index, side, "iop") : null;
-          const previousVa = index > 0 ? previousValue(points, index, side, "va") : null;
-          const currentVa = index >= 0 ? points[index][side]?.va : null;
-          const delta = iop !== null && previousIop ? iop - previousIop.value : null;
-          return (
-            <div className={`pt-eye pt-eye-${side}`} key={side}>
-              <span className="pt-eye-label">{SIDE_SHORT[side]}</span>
-              <span className="pt-metric">
-                <span className="pt-metric-label">VA</span>
-                <span className="pt-metric-value">
-                  {values.vaUncorrected || (values.vaCorrected ? "" : "—")}
-                  {values.vaCorrected ? <span className="pt-va-corrected">({values.vaCorrected})</span> : null}
-                </span>
-                {isNumber(currentVa) && previousVa && previousVa.value !== currentVa ? (
-                  <span className="pt-delta" title={`前回 ${formatDate(previousVa.date)}: ${previousVa.label}`}>{currentVa > previousVa.value ? "↑" : "↓"}</span>
-                ) : null}
-              </span>
-              <span className="pt-metric">
-                <span className="pt-metric-label">IOP</span>
-                <span className="pt-metric-value">{iop ?? "—"}</span>
-                {delta !== null ? (
-                  <span className={`pt-delta${delta >= 2 ? " is-up" : ""}`} title={`前回 ${formatDate(previousIop.date)}: ${previousIop.value} mmHg`}>
-                    {delta > 0 ? `↑${delta}` : delta < 0 ? `↓${-delta}` : "→"}
-                  </span>
-                ) : null}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-      <dl className="pt-current-lines">
-        <div>
-          <dt>処方中</dt>
-          <dd title={prescriptions.map(prescriptionText).join("\n")}>
-            {prescriptions.length ? prescriptions.map(shortPrescription).filter(Boolean).join(" ／ ") : "—"}
-          </dd>
-        </div>
-        <div>
-          <dt>方針</dt>
-          <dd title={content.plan || ""}>{planLine || "—"}</dd>
-        </div>
-      </dl>
-    </section>
   );
 }
 
@@ -379,29 +344,6 @@ function AppointmentLine({ item, today, primary = false }) {
       {item.note ? <span className="appt-note" title={item.note}>{item.note}</span> : null}
     </div>
   );
-}
-
-function previousValue(points, index, side, key) {
-  for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
-    const value = points[cursor]?.[side]?.[key];
-    if (isNumber(value)) return { value, date: points[cursor].encounterDate, label: key === "va" ? points[cursor][side].vaLabel || String(value) : String(value) };
-  }
-  return null;
-}
-
-function agoLabel(iso, today) {
-  const days = Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${iso}T00:00:00Z`)) / 86400000);
-  if (!Number.isFinite(days) || days < 0) return "";
-  if (days === 0) return "本日";
-  if (days < 7) return `${days}日前`;
-  if (days < 7 * 9) return `${Math.round(days / 7)}週前`;
-  if (days < 365 * 2) return `${Math.round(days / 30)}か月前`;
-  return `${Math.floor(days / 365)}年前`;
-}
-
-function shortPrescription(item = {}) {
-  if (item.kind === "comment") return "";
-  return [item.name, item.eye ? SIDE_SHORT[item.eye] : "", item.timesPerDay ? `${item.timesPerDay}回` : ""].filter(Boolean).join(" ");
 }
 
 function shortLabel(label = "") {
