@@ -143,3 +143,73 @@ function SketchTemplate({ template, eye }) {
   }
   return null;
 }
+
+// 縮小図（読むだけ）。押すと描画ダイアログを開く（デジカルの主訴・所見の下に並ぶシェーマ）。
+export function SketchThumb({ sketch, onOpen = null, label = "" }) {
+  const title = label || `${EYE_LABELS[sketch.eye] || ""}${SKETCH_TEMPLATE_LABELS[sketch.template] || ""}`;
+  const body = (
+    <svg aria-hidden="true" className="sketch-thumb-svg" viewBox={`0 0 ${SIZE} ${SIZE}`}>
+      <rect fill="#ffffff" height={SIZE} width={SIZE} />
+      <SketchTemplate eye={sketch.eye} template={sketch.template} />
+      {(sketch.strokes || []).map((stroke, index) => (
+        <polyline fill="none" key={index} points={toPolylinePoints(stroke.points)} stroke={stroke.color} strokeLinecap="round" strokeLinejoin="round" strokeWidth={stroke.width} />
+      ))}
+    </svg>
+  );
+  return (
+    <figure className="sketch-thumb">
+      {onOpen ? <button aria-label={`シェーマ ${title}を開く`} className="sketch-thumb-button" onClick={onOpen} type="button">{body}</button> : body}
+      <figcaption>{title}{sketch.caption ? ` ・ ${sketch.caption}` : ""}</figcaption>
+    </figure>
+  );
+}
+
+// シェーマの追加: 下絵の格子から選ぶ（眼底・前眼部は右眼・左眼、白紙）。
+export function SketchTemplateDialog({ onPick, onCancel }) {
+  const choices = [["fundus", "od"], ["fundus", "os"], ["anterior", "od"], ["anterior", "os"], ["blank", "ou"]];
+  return (
+    <div className="dialog-backdrop" role="presentation">
+      <div aria-labelledby="sketch-template-heading" className="dialog dialog-wide" role="dialog">
+        <h2 id="sketch-template-heading">シェーマ追加</h2>
+        <div className="sketch-template-grid">
+          {choices.map(([template, eye]) => {
+            const label = `${template === "blank" ? "" : EYE_LABELS[eye]}${SKETCH_TEMPLATE_LABELS[template]}`;
+            return (
+              <button aria-label={label} className="sketch-template-choice" key={`${template}-${eye}`} onClick={() => onPick({ template, eye })} type="button">
+                <svg aria-hidden="true" viewBox={`0 0 ${SIZE} ${SIZE}`}>
+                  <rect fill="#ffffff" height={SIZE} width={SIZE} />
+                  <SketchTemplate eye={eye} template={template} />
+                </svg>
+                <span>{label}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="dialog-actions">
+          <button className="btn btn-ghost" onClick={onCancel} type="button">キャンセル</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 描画ダイアログ。保存するまでカルテには入れない（キャンセルで元のまま）。
+export function SketchEditDialog({ sketch, onSave, onCancel, onDelete = null, readOnly = false }) {
+  const [draft, setDraft] = useState(sketch);
+  return (
+    <div className="dialog-backdrop" role="presentation">
+      <div aria-labelledby="sketch-edit-heading" className="dialog dialog-wide sketch-dialog" role="dialog">
+        <h2 id="sketch-edit-heading">シェーマ {EYE_LABELS[sketch.eye] || ""}{SKETCH_TEMPLATE_LABELS[sketch.template]}</h2>
+        <SketchPad onChange={setDraft} readOnly={readOnly} sketch={draft} />
+        {!readOnly ? (
+          <input aria-label="シェーマの説明" className="input" maxLength={200} onChange={(event) => setDraft({ ...draft, caption: event.target.value })} placeholder="説明（任意）" value={draft.caption || ""} />
+        ) : null}
+        <div className="dialog-actions">
+          {onDelete && !readOnly ? <button className="btn btn-ghost danger-text dialog-action-left" onClick={onDelete} type="button">削除</button> : null}
+          <button className="btn btn-ghost" onClick={onCancel} type="button">{readOnly ? "閉じる" : "キャンセル"}</button>
+          {!readOnly ? <button className="btn btn-primary" onClick={() => onSave(draft)} type="button">保存</button> : null}
+        </div>
+      </div>
+    </div>
+  );
+}

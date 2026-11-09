@@ -55,6 +55,14 @@ console.log("Eye web UI smoke passed");
 
 async function runDoctorFlow(browser) {
   const context = await browser.newContext({ viewport: { width: 1366, height: 1000 } });
+  // 開発サーバーの左下の表示（Next の開発用バッジ）が、左のペインの下端のボタンに重ならないように隠す。実行時エラーは pageerror で拾う
+  await context.addInitScript(() => {
+    document.addEventListener("DOMContentLoaded", () => {
+      const style = document.createElement("style");
+      style.textContent = "nextjs-portal{display:none!important}";
+      document.head.appendChild(style);
+    });
+  });
   const page = await context.newPage();
   const pageErrors = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
@@ -85,105 +93,167 @@ async function runDoctorFlow(browser) {
   await page.getByLabel("患者検索").fill("見本");
   await page.locator(".patient-row").filter({ hasText: "見本 花子" }).click();
   await page.getByRole("button", { name: "初診カルテを作成" }).click();
-  await page.getByRole("heading", { name: "検査", exact: true }).waitFor();
-  // 診療日・区分は小さなボタンの中
-  await page.locator(".visit-meta > summary").click();
-  await page.getByLabel("診療日", { exact: true }).fill("2026-07-28");
-  await page.locator(".visit-meta > summary").click();
+  await page.getByRole("textbox", { name: "主訴・所見", exact: true }).waitFor();
+  // デジカルの 3 ペイン: 左「患者の情報」・中央「本日のカルテ」・右「オーダー」と右下の操作
+  for (const name of ["患者の情報", "オーダー"]) assert.equal(await page.getByRole("complementary", { name }).isVisible(), true, `${name} pane is visible at 1366px`);
+  await page.getByRole("toolbar", { name: "カルテの操作" }).getByRole("button", { name: /次へ/u }).waitFor();
+  assert.equal(await page.getByRole("tab", { name: /^診療履歴/u }).getAttribute("aria-selected"), "true", "the history tab is the default left tab");
+  const firstEncounterId = page.url().split("/").at(-1);
+  // 診療日・区分は見出しの［✎］
+  await page.getByRole("button", { name: /^診療日・区分を変える/u }).click();
+  await page.getByRole("dialog").getByLabel("診療日", { exact: true }).fill("2026-07-28");
+  await page.getByRole("dialog").getByRole("button", { name: "閉じる" }).click();
+  await page.locator(".chart-date").filter({ hasText: "2026/07/28" }).waitFor();
+  await page.getByRole("button", { name: "＋ 主訴" }).click();
   await page.getByRole("textbox", { name: "主訴", exact: true }).fill("緑内障の定期検査");
-  await page.getByLabel("右眼 矯正視力").fill("1.0");
-  await page.getByLabel("左眼 矯正視力").fill("0.9");
-  await page.getByLabel("右眼 眼圧", { exact: true }).fill("18");
-  await page.getByLabel("左眼 眼圧", { exact: true }).fill("16");
+  // 検査値は検査ページで入る（ここでは記録を API で入れる）。カルテには読み取りの帯で出る
+  await page.getByText("保存済み").waitFor({ timeout: 15_000 });
+  await addExamRecord(page, firstEncounterId, {
+    vision: { far: { od: { corrected: "1.0" }, os: { corrected: "0.9" } } },
+    iop: { od: { readings: [18], method: "nct" }, os: { readings: [16], method: "nct" } },
+    pupil: { od: { sizeMm: 3, reaction: "brisk" } },
+    keratometry: { od: { k1: 43.25, k2: 44, axis: 175 } },
+    binocular: { rapd: "none", alignment: "exo", alignmentNote: "10Δ" }
+  });
+  await page.reload();
+  await page.locator(".exam-band").getByText(/RV=/u).first().waitFor();
+  assert.match(await page.locator(".exam-band").innerText(), /1\.0[\s\S]*18[\s\S]*16/u);
+  await page.getByRole("link", { name: "検査入力を開く" }).waitFor();
   await page.getByRole("button", { name: "アレルギー・病名" }).click();
   await page.getByRole("button", { name: "アレルギーを追加" }).click();
   await page.getByLabel("原因").fill("ペニシリン系");
   await page.getByLabel("症状").fill("発疹");
-  await page.getByRole("button", { name: "傷病名を追加" }).click();
-  await page.getByRole("combobox", { name: "傷病名" }).fill("原発開放隅角緑内障");
-  await page.getByLabel("開始日").fill("2026-07-28");
   await page.getByRole("dialog").getByRole("button", { name: "保存" }).click();
   await page.getByText("アレルギー: ペニシリン系（発疹）").first().waitFor();
-  await page.locator(".dx-list").getByText("原発開放隅角緑内障").waitFor();
-  await page.getByRole("textbox", { name: "方針", exact: true }).fill("点眼継続");
+  // 病名タブ（Shift+-）→ B で新規登録。マスター検索の行の［主病］で登録し、ダイアログは開いたまま
+  await page.locator(".chart-head").click();
+  await page.keyboard.press("Shift+Minus");
+  assert.equal(await page.getByRole("tab", { name: "病名" }).getAttribute("aria-selected"), "true");
+  await page.keyboard.press("b");
+  const dxDialog = page.getByRole("dialog", { name: "傷病名新規登録" });
+  await dxDialog.getByLabel("傷病名を検索").fill("開放隅角緑内障");
+  await dxDialog.locator(".dx-add-row").filter({ hasText: /^原発開放隅角緑内障/u }).first().getByRole("button", { name: "主病" }).click();
+  await dxDialog.getByText(/登録しました: 原発開放隅角緑内障（主病）/u).waitFor();
+  await dxDialog.getByRole("button", { name: "閉じる" }).click();
+  await page.locator(".dx-table").getByText("原発開放隅角緑内障").waitFor();
+  assert.match(await page.locator(".dx-table .dx-code").first().innerText(), /^\d+$/u, "a master code is kept");
+  // 編集: 修飾語（右）と補足
+  await page.getByRole("button", { name: "原発開放隅角緑内障を編集" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "右", exact: true }).click();
+  await page.getByRole("dialog").getByLabel("傷病名補足").fill("視野進行なし");
+  await page.getByRole("dialog").getByRole("button", { name: "保存" }).click();
+  await page.locator(".dx-table").getByText("右原発開放隅角緑内障").waitFor();
+  await page.locator(".chart-head-dx").getByText(/原発開放隅角緑内障/u).waitFor();
+  // 次回（週）と次回予定（トプコン: 項目 × 部位、全て右）
   await page.getByLabel("次回まで（週）").fill("12");
-  await page.getByRole("button", { name: "処方を追加" }).click();
-  await page.getByRole("combobox", { name: "薬剤名", exact: true }).fill("ラタノプロスト点眼液0.005%");
-  await page.getByLabel("1日の回数").fill("1");
-  await page.getByRole("button", { name: "反映", exact: true }).click();
-  assert.equal(await page.getByLabel("数量").inputValue(), "2");
-  // 空の欄は「＋」チップに畳まれている。開いたら、中身を消しても閉じない
-  await page.getByRole("button", { name: "＋ スタッフメモ" }).click();
-  await page.getByRole("textbox", { name: "スタッフメモ" }).fill("メモ");
-  await page.getByRole("textbox", { name: "スタッフメモ" }).fill("");
-  await page.locator("#sec-staff-note").waitFor();
-  await page.getByRole("button", { name: "＋ シェーマ" }).click();
-  await page.getByRole("button", { name: "シェーマを追加" }).click();
+  await page.getByRole("group", { name: "予定のプリセット" }).getByRole("button", { name: "視・圧", exact: true }).click();
+  await page.getByRole("group", { name: "部位を一括で変える" }).getByRole("button", { name: "全て右" }).click();
+  assert.equal(await page.getByRole("group", { name: "視力検査の部位" }).getByRole("button", { name: "右" }).getAttribute("aria-pressed"), "true");
+  // 処方: 数字キー 3 で投薬 → 公開マスターを検索して押すと、新しい Rp として入る
+  await page.locator(".chart-head").click();
+  await page.keyboard.press("3");
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "オーダーを検索");
+  await page.keyboard.type("ラタノプロスト");
+  await page.locator(".order-item").filter({ hasText: /ラタノプロスト点眼液/u }).first().click();
+  const firstRp = page.locator(".rp-group.is-rx").first();
+  await firstRp.getByText(/ラタノプロスト/u).first().waitFor();
+  await firstRp.locator('summary[aria-label="用法"]').click();
+  await firstRp.getByRole("group", { name: "1日の回数" }).getByRole("button", { name: "1回" }).click();
+  await firstRp.locator('summary[aria-label="用法"]').click();
+  await firstRp.getByRole("button", { name: /目安\d+本 反映/u }).click();
+  assert.equal(await firstRp.getByLabel("数量").inputValue(), "2");
+  // 束を押して選択中にすると、次に選んだ薬は同じ Rp に入る（用法・眼もそろう）
+  await firstRp.locator(".rp-name").first().click();
+  await page.locator(".rp-group.is-rx.is-selected").waitFor();
+  await page.getByLabel("オーダーを検索").fill("チモロール");
+  await page.locator(".order-item").filter({ hasText: /チモロール/u }).first().click();
+  assert.equal(await page.locator(".rp-group.is-rx").count(), 1, "the drug joined the selected Rp");
+  assert.equal(await firstRp.locator(".rp-row:not(.is-comment)").count(), 2);
+  // 区分バッジのメニューからコメント行
+  await firstRp.locator('summary[aria-label="点眼の操作"]').first().click();
+  await page.getByRole("button", { name: "コメントを追加（処方箋に載せる）" }).click();
+  await firstRp.getByLabel("コメント", { exact: true }).fill("後発品変更不可");
+  // 検査: 7 で検査 → 院内の検査の一覧から入れる（予定）→ 実施
+  await page.locator(".chart-head").click();
+  await page.keyboard.press("7");
+  // 検索語は区分を変えても残る（デジカルと同じ。全てに切り替えて同じ語で探せる）ので消してから一覧を見る
+  assert.equal(await page.getByLabel("オーダーを検索").inputValue(), "チモロール");
+  await page.getByLabel("オーダーを検索").fill("");
+  await page.locator(".order-item").filter({ hasText: "視力検査" }).first().click();
+  const orderRp = page.locator(".rp-group.is-order").first();
+  await orderRp.getByText("視力検査").waitFor();
+  await orderRp.getByRole("button", { name: "実施" }).click();
+  await orderRp.locator(".order-status-performed").waitFor();
+  // 主訴・所見（1 つの自由記載）。入力中は 1 文字のショートカットが効かない
+  const findingsText = page.getByRole("textbox", { name: "主訴・所見", exact: true });
+  await findingsText.fill("右眼の霧視。前房清明。");
+  await findingsText.press("1");
+  assert.equal(await page.getByRole("tab", { name: "セット" }).getAttribute("aria-selected"), "false", "digit keys do nothing while typing");
+  await findingsText.press("Backspace");
+  // 眼別の所見（従来の欄。空なら＋チップ）。「空欄を異常なし」は追加の欄を埋めない
+  await page.getByRole("button", { name: "＋ 眼別の所見" }).click();
+  await page.getByRole("button", { name: "＋ C/D 比" }).click();
+  await page.getByLabel("右眼 C/D 比").fill("0.7");
+  await page.getByRole("button", { name: "＋ その他" }).click();
+  await page.getByLabel("右眼 その他", { exact: true }).fill("眼瞼腫脹なし");
+  await page.getByRole("textbox", { name: "両眼・全体" }).fill("全身状態良好");
+  await page.getByRole("button", { name: "空欄を異常なし", exact: true }).click();
+  assert.equal(await page.getByLabel("左眼 前眼部").inputValue(), "異常なし");
+  assert.equal(await page.getByLabel("左眼 その他", { exact: true }).inputValue(), "", "normal-fill must not touch the added findings");
+  // 方針・説明・同意（＋チップ）と点眼アドヒアランス（処方の下）
+  await page.getByRole("button", { name: "＋ 評価・方針" }).click();
+  await page.getByRole("textbox", { name: "方針", exact: true }).fill("点眼継続");
+  await page.getByRole("button", { name: "＋ 説明・同意" }).click();
+  await page.getByRole("button", { name: "散瞳後の注意" }).click();
+  await page.getByLabel("同意", { exact: true }).selectOption("not_required");
+  await page.getByRole("group", { name: "点眼アドヒアランス" }).getByRole("button", { name: "時々忘れる" }).click();
+  // シェーマ: ［シェーマ追加］→ 下絵の格子 → 描画ダイアログ → 保存すると縮小図
+  await page.getByRole("button", { name: "シェーマ追加" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "右眼眼底" }).click();
   await drawStroke(page);
-  // SOAP の目印は見出しの名前に含めない（読み上げ・見出しの検索は従来どおり）
-  await page.getByRole("heading", { name: "所見", exact: true }).waitFor();
-  assert.equal(await page.locator("#findings-heading .soap-mark").innerText(), "O");
-  // 既往・全身疾患・内服はカルテの主訴の上に 1 行で出し、同じ編集ダイアログで直す
+  await page.getByRole("dialog").getByRole("button", { name: "保存" }).click();
+  await page.locator(".sketch-strip .sketch-thumb polyline").first().waitFor();
+  // 既往・全身疾患・内服は主訴・所見の上に 1 行で出し、同じ編集ダイアログで直す
   await page.locator(".history-line-bar").getByText(/未記入/u).waitFor();
   await page.getByRole("button", { name: "既往・内服を編集" }).click();
   await page.getByRole("dialog").getByLabel("全身既往・内服").fill("糖尿病\nワーファリン内服");
   await page.getByRole("dialog").getByRole("button", { name: "保存" }).click();
   await page.locator(".history-line-bar").getByText("糖尿病、ワーファリン内服").waitFor();
-  // 検査の追加項目（詳細の中）。Enter は右眼の項目 → 左眼の項目の順（主の検査表とは別の並び）
-  await page.getByRole("button", { name: /瞳孔・眼位など/u }).click();
-  await page.getByLabel("右眼 瞳孔径").fill("3");
-  await page.getByLabel("右眼 瞳孔径").press("Enter");
-  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "右眼 角膜曲率 K1");
-  await page.keyboard.type("43.25");
-  await page.keyboard.press("Enter");
-  await page.keyboard.type("44");
-  await page.keyboard.press("Enter");
-  await page.keyboard.type("175");
-  await page.keyboard.press("Enter");
-  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "左眼 近見視力");
-  await page.getByLabel("右眼 対光反射").selectOption("brisk");
-  await page.getByLabel("RAPD", { exact: true }).selectOption("none");
-  await page.getByLabel("眼位", { exact: true }).selectOption("exo");
-  await page.getByLabel("眼位のメモ").fill("10Δ");
-  // 所見の追加の欄（空なら＋チップ）。「空欄を異常なし」は追加の欄を埋めない
-  await page.getByRole("button", { name: "＋ C/D 比" }).click();
-  await page.getByLabel("右眼 C/D 比").fill("0.7");
-  await page.getByRole("button", { name: "＋ その他" }).click();
-  await page.getByLabel("右眼 その他", { exact: true }).fill("眼瞼腫脹なし");
-  await page.getByRole("button", { name: "＋ 両眼・全体" }).click();
-  await page.getByRole("textbox", { name: "両眼・全体" }).fill("全身状態良好");
-  // 主訴・所見の自由記載（1 欄）。空なら＋チップに畳む
-  await page.getByRole("button", { name: "＋ 自由記載" }).click();
-  await page.getByRole("textbox", { name: "主訴・所見（自由記載）" }).fill("右眼の霧視。前房清明。");
-  await page.getByRole("button", { name: "空欄を異常なし", exact: true }).click();
-  assert.equal(await page.getByLabel("左眼 前眼部").inputValue(), "異常なし");
-  assert.equal(await page.getByLabel("左眼 その他", { exact: true }).inputValue(), "", "normal-fill must not touch the added findings");
-  assert.equal(await page.getByLabel("左眼 C/D 比").inputValue(), "");
-  // 説明・同意（P）と点眼アドヒアランス（処方の下）
-  await page.getByRole("button", { name: "＋ 説明・同意" }).click();
-  await page.getByRole("button", { name: "散瞳後の注意" }).click();
-  await page.getByLabel("同意", { exact: true }).selectOption("not_required");
-  await page.getByRole("group", { name: "点眼アドヒアランス" }).getByRole("button", { name: "時々忘れる" }).click();
-  await page.getByText("保存済み").waitFor({ timeout: 15_000 });
-  await page.getByRole("button", { name: "右眼を確認" }).click();
-  await page.getByRole("button", { name: "左眼を確認" }).click();
-  await page.locator(".exam-confirmed").nth(1).waitFor();
-  await page.getByRole("button", { name: "確定する" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "確定する" }).click();
+  // ショートカット一覧（?）
+  await page.locator(".chart-head").click();
+  await page.keyboard.press("Shift+Slash");
+  await page.getByRole("dialog", { name: "ショートカット" }).getByText("次へ（確定 → 受付の状態 → 次の患者）").waitFor();
+  await page.getByRole("dialog").getByRole("button", { name: "閉じる" }).click();
+  // S で保存
+  await page.keyboard.press("s");
+  await page.getByText("保存しました。").waitFor({ timeout: 15_000 });
+  // Q（次へ）: 警告一覧（止めない）→ 受付の状態（受付が無ければ確定だけ）
+  await page.keyboard.press("q");
+  const warnings = page.getByRole("dialog", { name: /警告一覧/u });
+  await warnings.getByText("右眼の検査値が未確認です。").waitFor();
+  await warnings.getByRole("button", { name: "確認して次へ" }).click();
+  const statusDialog = page.getByRole("dialog", { name: "患者ステータス選択" });
+  await statusDialog.getByText("受付なし").waitFor();
+  await statusDialog.getByRole("button", { name: "決定" }).click();
   await page.getByText("確定 v1").first().waitFor();
-  // 確定後の修正: 理由は任意（空なら「修正」）。確定し直すと新しい版になる
-  await page.getByRole("button", { name: "修正する" }).click();
-  await page.getByRole("dialog").getByText("修正理由（任意）").waitFor();
-  await page.getByRole("dialog").getByRole("button", { name: "修正を始める" }).click();
-  await page.getByText(/確定済み v1 を修正中です。理由: 修正/u).waitFor();
-  await page.getByRole("button", { name: "確定する" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: /確定する/u }).click();
+  await page.locator(".exam-confirmed").first().waitFor();
+  // 確定済みの直接編集: そのまま書くと修正になり、次へで新しい版（v2）になる。版履歴から前の版を開ける
+  await page.getByText(/このまま直すと修正になり/u).waitFor();
+  await findingsText.fill("右眼の霧視。前房清明。");
+  await page.getByRole("textbox", { name: "方針", exact: true }).fill("点眼継続。");
+  await page.getByText(/確定済み v1 を修正中です/u).waitFor({ timeout: 15_000 });
+  await page.keyboard.press("ControlOrMeta+Enter");
+  await page.getByRole("dialog", { name: /警告一覧|カルテを確定します/u }).getByRole("button", { name: /次へ/u }).click();
+  await page.getByRole("dialog", { name: "患者ステータス選択" }).getByRole("button", { name: "決定" }).click();
   await page.getByText("確定 v2").first().waitFor();
+  await page.getByRole("button", { name: /^版履歴/u }).first().click();
+  assert.equal(await page.getByRole("dialog", { name: "版履歴" }).getByRole("link", { name: /^v\d$/u }).count(), 2, "both versions are kept");
+  await page.getByRole("dialog").getByRole("button", { name: "閉じる" }).click();
   // 印刷: 追加の項目は入力があるときだけ行を出す
   const firstPrint = await context.newPage();
   await firstPrint.goto(`${page.url()}/print`);
   const firstSheet = await firstPrint.locator(".chart-sheet").innerText();
-  for (const text of ["3mm 対光反射 迅速", "K1 43.25D K2 44.00D Ax175°", "RAPD", "外斜位 10Δ", "C/D 比", "0.7", "眼瞼腫脹なし", "全身状態良好", "散瞳後の注意 同意不要", "時々忘れる", "右眼の霧視。前房清明。"]) {
+  for (const text of ["3mm 対光反射 迅速", "K1 43.25D K2 44.00D Ax175°", "RAPD", "外斜位 10Δ", "C/D 比", "0.7", "眼瞼腫脹なし", "全身状態良好", "散瞳後の注意 同意不要", "時々忘れる", "右眼の霧視。前房清明。", "後発品変更不可"]) {
     assert.ok(firstSheet.includes(text), `the chart print shows ${text}`);
   }
   assert.equal(firstSheet.includes("眼球運動"), false, "empty added rows are not printed");
@@ -191,66 +261,61 @@ async function runDoctorFlow(browser) {
 
   await page.getByRole("link", { name: /カルテ一覧/ }).click();
   await page.getByRole("button", { name: /本日のカルテを作成/ }).click();
-  await page.getByRole("tab", { name: /^過去/u }).waitFor();
   await page.locator(".history-card").first().waitFor();
-  assert.equal(await page.getByLabel("右眼 眼圧", { exact: true }).inputValue(), "", "measurements must not be copied");
-  // 前回コピー: 所見の自由記載は写し、C/D 比は写さず前回値をヒントに出す。説明・同意も写さない
+  const revisitId = page.url().split("/").at(-1);
+  // 再診: 測定値は写らない。所見の自由記載・眼別の所見は写り、C/D 比は写さず前回値をヒントに出す。説明・同意も写さない
+  await page.locator(".exam-band").getByText("検査値はまだありません。").waitFor();
+  assert.equal(await page.getByRole("textbox", { name: "主訴・所見", exact: true }).inputValue(), "右眼の霧視。前房清明。");
   assert.equal(await page.getByLabel("右眼 その他", { exact: true }).inputValue(), "眼瞼腫脹なし");
   assert.equal(await page.getByLabel("右眼 C/D 比").inputValue(), "", "C/D is re-measured");
-  await page.locator(".findings-hint").filter({ hasText: "前回 0.7" }).waitFor();
+  assert.equal(await page.locator(".findings-hint").filter({ hasText: "前回 0.7" }).count(), 1);
   await page.getByRole("button", { name: "＋ 説明・同意" }).waitFor();
-  // 処方は 1 剤 1 行で表示する。押すと編集欄が開くが、開いただけでは引き継ぎの確認状態は変わらない
-  assert.match(await page.locator(".rx-line").first().innerText(), /ラタノプロスト点眼液0\.005%/u);
-  await page.locator(".rx-row.is-carried .rx-line").first().click();
-  assert.equal(await page.getByRole("combobox", { name: "薬剤名", exact: true }).inputValue(), "ラタノプロスト点眼液0.005%");
-  assert.equal(await page.locator(".rx-row.is-carried").count(), 1, "opening a carried-over prescription must not confirm it");
-  await page.locator(".rx-edit").getByRole("button", { name: "閉じる" }).click();
-  assert.equal(await page.locator(".rx-edit").count(), 0);
-  // Enter で 右眼 矯正視力 → 右眼 眼圧 → 左眼 裸眼視力 と進む
-  await page.getByLabel("右眼 矯正視力").fill("0.8");
-  await page.getByLabel("右眼 矯正視力").press("Enter");
-  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "右眼 眼圧");
-  await page.keyboard.type("23");
-  await page.keyboard.press("Enter");
-  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "左眼 裸眼視力");
-  await page.locator('input[aria-label="右眼 眼圧"].is-high').waitFor();
-  // 他覚屈折は「詳細」の中。マイナスを打った途中の状態が消えず、表示は符号付き小数 2 桁になる
-  await page.getByRole("button", { name: /他覚屈折・矯正の種類・眼圧の時刻/u }).click();
-  assert.equal(await page.getByLabel("右眼 瞳孔径").inputValue(), "", "pupils are not copied");
-  // 眼圧を初めて入れた眼には、測定時刻（日本時間）が自動で入る。眼圧のない眼は空のまま
-  assert.match(await page.getByLabel("右眼 眼圧の測定時刻", { exact: true }).inputValue(), /^\d{2}:\d{2}$/u, "IOP time is filled when the first IOP is entered");
-  assert.equal(await page.getByLabel("左眼 眼圧の測定時刻", { exact: true }).inputValue(), "");
-  const sphere = page.getByLabel("右眼 屈折 球面");
-  await sphere.click();
-  await page.keyboard.type("-");
-  assert.equal(await sphere.inputValue(), "-", "a lone minus sign must stay while typing");
-  await page.keyboard.type("1.25");
-  await page.keyboard.press("Tab");
-  assert.equal(await sphere.inputValue(), "-1.25");
+  // 引き継いだ処方は Rp ごと「引継」（未確認）。次回予定はオーダーの「前回予定」として入る
+  assert.equal(await page.locator(".rp-group.is-rx.is-carried").count(), 1);
+  await page.locator(".rp-group.is-order").getByText("前回予定").first().waitFor();
+  // 学習リスト（確定したカルテから）: 投薬タブの空の検索に、よく使う処方の束が出る
+  await page.getByRole("tab", { name: "投薬" }).click();
+  await page.locator(".order-bundle").filter({ hasText: /ラタノプロスト/u }).first().waitFor();
+  // 診療履歴: すべて開いたカード。束を押すと複写（同じ処方は重ねない）、下絵だけの複写、ドラッグ＆ドロップ
+  const card = page.locator(".history-card").first();
+  await card.locator(".history-group").filter({ hasText: /ラタノプロスト/u }).click();
+  await page.getByText(/同じ処方はすでにあるため重ねていません。/u).waitFor();
+  const sketchCount = await page.locator(".sketch-strip .sketch-thumb").count();
+  await card.getByRole("button", { name: "図だけ" }).first().click();
+  assert.equal(await page.locator(".sketch-strip .sketch-thumb").count(), sketchCount + 1, "copying the template adds a blank sketch");
+  const orderCount = await page.locator(".rp-group.is-order .rp-row").count();
+  await card.locator(".history-group.is-order").first().dragTo(page.locator(".chart-col-acts .chart-col-head"));
+  await page.getByText(/検査・処置を複写しました|同じ検査・処置はすでにあるため/u).first().waitFor();
+  assert.ok(await page.locator(".rp-group.is-order .rp-row").count() >= orderCount, "dropping an order group copies it");
+  // 検査値（API で入れた記録）を帯から確認する
   await page.getByText("保存済み").waitFor({ timeout: 15_000 });
-  // 値のある「詳細」は開き直しても畳まれない
+  await addExamRecord(page, revisitId, { vision: { far: { od: { corrected: "0.8" } } }, iop: { od: { readings: [23, 24, 22], method: "nct" } }, refraction: { od: { sphere: -1.25 } } });
   await page.reload();
-  assert.equal(await page.getByLabel("右眼 屈折 球面").inputValue(), "-1.25");
-  // 確定前の確認は「確定する」ボタンの件数と説明にまとめる
-  await page.locator(".finalize-button .finalize-count").waitFor();
-  assert.match(await page.locator(".finalize-button").getAttribute("title"), /右眼の検査値が未確認です。/u);
+  await page.locator(".exam-iop.is-high").getByText(/23 \/ 24 \/ 22（平均 23）/u).waitFor();
   await page.getByRole("button", { name: "右眼を確認" }).click();
+  await page.locator(".exam-confirmed").first().waitFor();
   assert.equal(await page.getByRole("button", { name: "左眼を確認" }).count(), 0, "an eye without values needs no confirmation");
-  await page.waitForFunction(() => !document.querySelector(".finalize-button")?.title.includes("右眼の検査値が未確認です。"));
-  // 前回から引き継いだ処方は、確定ダイアログで内容を見てから確定する
-  await page.locator(".rx-row.is-carried .rx-carried-tag").waitFor();
-  assert.match(await page.locator(".finalize-button").getAttribute("title"), /前回から引き継いだ処方 1件が未確認です。/u);
-  await page.getByRole("tab", { name: /^変更点/u }).click();
+  // 前回との差分（診療履歴のツール行）
+  await page.getByRole("button", { name: /^前回との差分/u }).click();
   const changes = await page.locator(".changes").innerText();
   assert.match(changes, /右眼 矯正視力[\s\S]*1\.0[\s\S]*0\.8/u);
   assert.match(changes, /右眼 眼圧[\s\S]*18[\s\S]*23/u);
-  // 自由記載は前回から写る
-  assert.equal(await page.getByRole("textbox", { name: "主訴・所見（自由記載）" }).inputValue(), "右眼の霧視。前房清明。");
+  // 左「検査」タブ: 視力・眼圧の表。値を押すと主訴・所見に日付付きで書き込む
+  await page.locator(".chart-head").click();
+  await page.keyboard.press("Shift+Digit6");
+  await page.locator(".exam-history-table").first().waitFor();
+  await page.getByRole("table", { name: "眼圧" }).getByRole("button", { name: "18" }).click();
+  assert.match(await page.getByRole("textbox", { name: "主訴・所見", exact: true }).inputValue(), /07\/28\(火\) 右眼 眼圧 18/u);
+  // 薬歴: 薬剤 × 年月の ✓ を押すと診療履歴のそのカルテへ
+  await page.keyboard.press("Shift+Digit8");
+  await page.locator(".drug-matrix").getByRole("button", { name: /ラタノプロスト/u }).first().click();
+  await page.locator(".history-card.is-highlighted").waitFor();
   await page.keyboard.press("ControlOrMeta+Enter");
-  await page.getByRole("dialog").getByText("前回から引き継ぎ").waitFor();
-  await page.getByRole("dialog").getByRole("button", { name: "内容を確認して確定する" }).click();
+  await page.getByRole("dialog", { name: /警告一覧/u }).getByText("前回から引き継ぎ").first().waitFor();
+  await page.getByRole("dialog", { name: /警告一覧/u }).getByRole("button", { name: /次へ/u }).click();
+  await page.getByRole("dialog", { name: "患者ステータス選択" }).getByRole("button", { name: "決定" }).click();
   await page.getByText("確定 v1").first().waitFor();
-  assert.equal(await page.locator(".rx-row.is-carried").count(), 0, "finalizing confirms carried-over prescriptions");
+  assert.equal(await page.locator(".rp-group.is-carried").count(), 0, "finalizing confirms carried-over prescriptions");
   const encounterUrl = page.url();
 
   await page.getByRole("link", { name: /カルテ一覧/ }).click();
@@ -434,15 +499,30 @@ async function runDoctorFlow(browser) {
   await page.locator(".patient-row").filter({ hasText: "見本 花子" }).click();
   await page.getByRole("heading", { name: "経過" }).waitFor();
   await page.getByRole("button", { name: /本日のカルテを作成/ }).click();
-  await page.getByRole("tab", { name: "セット" }).click();
+  // セット（右のオーダー、1 キー）: フォルダの木から押すと中央に入る
+  await page.getByRole("textbox", { name: "主訴・所見", exact: true }).waitFor();
+  await page.locator(".chart-head").click();
+  await page.keyboard.press("1");
   await page.getByRole("button", { name: /緑内障 定期/ }).click();
   await page.getByText("セット「緑内障 定期」を追加しました。").waitFor();
-  await page.locator(".order-row").first().waitFor();
+  await page.locator(".rp-group.is-order").first().waitFor();
+  await page.getByRole("tab", { name: "定型文" }).click();
   await page.locator(".phrase-row").getByRole("button", { name: "挿入" }).click();
   assert.match(await page.getByRole("textbox", { name: "方針", exact: true }).inputValue(), /点眼継続。\n次回同様。/u);
-  // 眼鏡処方（空の欄は「＋」チップから開く）
-  await page.getByRole("button", { name: "＋ 眼鏡・CL" }).click();
-  await page.getByLabel("眼鏡・CL の種類").selectOption("glasses");
+  // 現在のカルテからセット（フォルダもその場で作る）→ セットタブの先頭に入る
+  await page.getByRole("button", { name: "セット登録" }).click();
+  const setDialog = page.getByRole("dialog", { name: /セット登録/u });
+  await setDialog.getByLabel("セット名").fill("緑内障 再診 Do");
+  await setDialog.getByRole("button", { name: "＋ フォルダ" }).click();
+  await setDialog.getByLabel("新しいフォルダ名").fill("緑内障");
+  await setDialog.getByRole("button", { name: "追加", exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('select[aria-label="フォルダ"]')?.value, null, { timeout: 10_000 });
+  await setDialog.getByRole("button", { name: "保存" }).click();
+  await page.getByText("セット「緑内障 再診 Do」を保存しました。").waitFor();
+  await page.locator(".set-folder").filter({ hasText: "緑内障" }).getByRole("button", { name: /緑内障 再診 Do/u }).waitFor();
+  // 眼鏡処方（右のオーダーの「眼鏡・CL」から処置・行為に入れる）
+  await page.getByRole("tab", { name: "眼鏡・CL" }).click();
+  await page.getByRole("button", { name: /眼鏡処方箋/u }).click();
   await page.getByLabel("右眼 S", { exact: true }).fill("-2");
   await page.getByLabel("左眼 S", { exact: true }).fill("-1.5");
   await page.getByLabel("瞳孔間距離").fill("62");
@@ -454,10 +534,13 @@ async function runDoctorFlow(browser) {
   await page.getByLabel("装用方法", { exact: true }).selectOption("always");
   await page.getByText("今回眼鏡処方箋を発行する").click();
   await page.getByRole("link", { name: "眼鏡処方箋を印刷" }).waitFor();
-  assert.equal(await page.locator("#optical-heading ~ div .readiness .is-blocker").count(), 0);
-  await page.locator(".rx-line").first().click();
-  await page.getByRole("button", { name: "左右に分ける" }).first().click();
-  assert.deepEqual(await page.getByRole("combobox", { name: "処方の眼" }).evaluateAll((items) => items.map((item) => item.value)).then((values) => values.slice(0, 2)), ["od", "os"]);
+  assert.equal(await page.locator("#sec-optical .readiness .is-blocker").count(), 0);
+  // 区分バッジのメニュー「左右に分ける」: 両眼の Rp を右眼・左眼の 2 つの Rp にする
+  const carriedRp = page.locator(".rp-group.is-rx").first();
+  await carriedRp.locator("summary.rp-badge").first().click();
+  await page.getByRole("button", { name: "左右に分ける" }).click();
+  assert.equal(await page.locator(".rp-group.is-rx").nth(0).getByRole("button", { name: "R", exact: true }).getAttribute("aria-pressed"), "true");
+  assert.equal(await page.locator(".rp-group.is-rx").nth(1).getByRole("button", { name: "L", exact: true }).getAttribute("aria-pressed"), "true");
   await page.getByText("保存済み").waitFor({ timeout: 15_000 });
   const opticalPage = await context.newPage();
   await opticalPage.goto(`${page.url()}/optical`);
@@ -479,10 +562,8 @@ async function runDoctorFlow(browser) {
   await draftChart.close();
   await opticalPage.close();
 
-  // 紹介状を作成・確定・印刷
-  // 文書・確定履歴は「…」メニューから右の引き出しで開く
-  await page.locator('.encounter-actions summary[aria-label="その他の操作"]').click();
-  await page.getByRole("button", { name: "文書", exact: true }).click();
+  // 紹介状を作成・確定・印刷（左の「ファイル」タブの文書から）
+  await page.getByRole("tab", { name: "ファイル" }).click();
   await page.getByRole("button", { name: "紹介状を作成" }).click();
   await page.getByRole("heading", { name: /診療情報提供書/ }).waitFor();
   const documentUrl = page.url();
@@ -720,7 +801,7 @@ async function runOrthoptistFlow(browser) {
   await page.locator(".patient-row").filter({ hasText: "試験 一郎" }).click();
   await page.getByRole("button", { name: "初診カルテを作成" }).click();
   await page.getByRole("heading", { name: "検査", exact: true }).waitFor();
-  assert.equal(await page.getByRole("button", { name: "確定する" }).count(), 0, "orthoptists cannot finalize");
+  assert.equal(await page.getByRole("button", { name: /次へ/u }).count(), 0, "orthoptists cannot finalize");
   await page.getByText("確定は医師が行います").waitFor();
   const encounterUrl = page.url();
 
@@ -836,8 +917,23 @@ async function assertNavFits(page) {
   await page.setViewportSize(original);
 }
 
+// 画面の中から eye-api を呼ぶ（ログインの Cookie と CSRF をそのまま使う）。検査値は検査ページの担当なので、カルテの確認用に記録を直接入れる。
+async function addExamRecord(page, encounterId, values) {
+  return page.evaluate(async ({ encounterId, values }) => {
+    const csrf = decodeURIComponent((document.cookie.match(/(?:^|; )halunasu_csrf=([^;]*)/u) || [])[1] || "");
+    const call = async (method, path, body) => {
+      const response = await fetch(`/api/eye${path}`, { method, credentials: "include", headers: { "content-type": "application/json", "x-csrf-token": csrf }, body: body ? JSON.stringify(body) : undefined });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(`${method} ${path} ${response.status} ${JSON.stringify(payload).slice(0, 200)}`);
+      return payload;
+    };
+    const current = await call("GET", `/v1/eye/encounters/${encounterId}`);
+    return call("POST", `/v1/eye/encounters/${encounterId}/exam-records`, { expectedRevision: current.encounter.revision, values });
+  }, { encounterId, values });
+}
+
 async function drawStroke(page) {
-  const canvas = page.locator(".encounter-form .sketch-canvas").first();
+  const canvas = page.locator(".sketch-dialog .sketch-canvas").first();
   // hover で画面内に入れてから座標を取り直す（固定ヘッダーの下に隠れないよう中央付近を使う）。
   await canvas.hover({ position: { x: 150, y: 150 } });
   const box = await canvas.boundingBox();
@@ -849,7 +945,7 @@ async function drawStroke(page) {
     await page.mouse.move(startX + step * 8, startY + step * 5);
   }
   await page.mouse.up();
-  await page.locator(".encounter-form .sketch-canvas polyline").first().waitFor();
+  await page.locator(".sketch-dialog .sketch-canvas polyline").first().waitFor();
 }
 
 async function launchBrowser() {
