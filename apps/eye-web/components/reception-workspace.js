@@ -1,78 +1,89 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useEyeApi } from "./eye-api";
+import { APPOINTMENT_STATUS_MENU } from "@halunasu/eye-contracts";
 import { AppointmentDialog } from "./appointment-dialog";
-import { linkAppointmentToPatient, PatientRegisterDialog } from "./patient-register-dialog";
+import { useEyeApi } from "./eye-api";
+import { DateNav } from "./mini-calendar";
+import { linkAppointmentToPatient, PatientRegisterDialog, RECEPTION_CHANGED_EVENT } from "./patient-register-dialog";
+import { doctorName, useDoctors } from "./use-doctors";
 import {
-  addDays,
   ageOn,
   APPOINTMENT_PURPOSE_LABELS,
   APPOINTMENT_STATUS_LABELS,
-  formatDate,
   minutesSince,
   SEX_LABELS,
   todayIso
 } from "../lib/format";
+import {
+  birthWithEra,
+  COLUMNS_STORAGE_KEY,
+  DEFAULT_FILTERS,
+  DEFAULT_SORT,
+  defaultSortValue,
+  displayStatusOf,
+  filterAppointments,
+  isFiltered,
+  kanaOf,
+  NARROW_HIDDEN_COLUMNS,
+  NARROW_MAX_WIDTH,
+  queueLabel,
+  readStored,
+  RECEPTION_COLUMNS,
+  sanitizeHiddenColumns,
+  sanitizeSort,
+  SORT_STORAGE_KEY,
+  sortAppointments,
+  UNSET,
+  writeStored
+} from "../lib/reception-table";
 
 const REFRESH_MS = 15000;
 const IN_CLINIC = ["checked_in", "in_exam", "in_treatment", "waiting_doctor", "in_consult", "checkout"];
-// 会計済・取消・不在（古い「来院なし」を含む）。画面の作り直し（段階 2）までは「終了・キャンセル」にまとめる
-const FINISHED = ["done", "cancelled", "absent", "no_show"];
 // 散瞳の点眼から診察できるまでの目安（分）
 const DILATION_READY_MINUTES = 20;
-// 段階ごとの待ち時間の目安（分）。超えたら数字だけを黄 → 赤にする
-const WAIT_THRESHOLDS = { checked_in: [15, 30], in_exam: [20, 40], in_treatment: [20, 40], dilating: [30, 45], waiting_doctor: [30, 60], checkout: [10, 20] };
-// 一覧のまとまり。上の人数チップと同じ順に並べる
-const GROUPS = [
-  { key: "booked", label: "来院予定" },
-  { key: "checked_in", label: "受付済" },
-  { key: "in_exam", label: "検査中" },
-  { key: "in_treatment", label: "処置中" },
-  { key: "dilating", label: "散瞳中" },
-  { key: "waiting_doctor", label: "診察待ち" },
-  { key: "in_consult", label: "診察中" },
-  { key: "checkout", label: "会計待ち" },
-  { key: "finished", label: "終了・キャンセル" }
-];
-const LIST_ORDER = ["checked_in", "in_exam", "in_treatment", "dilating", "waiting_doctor", "in_consult", "checkout", "booked", "finished"];
-const UPCOMING_WINDOW_MINUTES = 60;
-// 次へ進める操作。受付から会計までを1つずつ進める
-const NEXT_ACTIONS = {
-  booked: { status: "checked_in", label: "受付する" },
-  checked_in: { status: "in_exam", label: "検査開始" },
-  in_exam: { status: "waiting_doctor", label: "検査終了" },
-  in_treatment: { status: "waiting_doctor", label: "処置終了" },
-  waiting_doctor: { status: "in_consult", label: "診察開始" },
-  in_consult: { status: "checkout", label: "診察終了" },
-  checkout: { status: "done", label: "会計済み" }
-};
-// 1 段戻す操作（取り違えの直し）。状態は API ではどこへでも移れるが、プルダウンは段階 2 で作る
-const PREVIOUS = {
-  in_exam: "checked_in",
-  in_treatment: "in_exam",
-  waiting_doctor: "in_exam",
-  in_consult: "waiting_doctor",
-  checkout: "in_consult"
-};
+// 状態ごとの待ち時間の目安（分）。超えたら数字だけを黄 → 赤にする
+const WAIT_THRESHOLDS = { checked_in: [15, 30], in_exam: [20, 40], in_treatment: [20, 40], waiting_doctor: [30, 60], checkout: [10, 20] };
+// フィルタのステータスの並び（再計待・不在を含む。取消は最後）
+const FILTER_STATUSES = APPOINTMENT_STATUS_MENU;
 
+// 受付（デジカルの受付一覧）。画面幅いっぱいのフラットな表で、列の見出しで並べ替え、▼ の絞り込みで状態・医師・診療科・表示する列を選ぶ。
+// ステータスは行のプルダウンでどこへでも移せる。行を押すとカルテを開く。
 export function ReceptionWorkspace() {
   const api = useEyeApi();
   const router = useRouter();
+  const doctors = useDoctors();
   const [date, setDate] = useState(todayIso());
-  const [data, setData] = useState({ appointments: [], encountersByPatient: {} });
+  const [data, setData] = useState({ appointments: [], encountersByPatient: {}, loaded: false });
+  const [details, setDetails] = useState({});
   const [context, setContext] = useState(null);
+  const [sort, setSort] = useState(DEFAULT_SORT);
+  const [hiddenColumns, setHiddenColumns] = useState([]);
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [filterOpen, setFilterOpen] = useState(false);
   const [dialog, setDialog] = useState(null);
   const [registering, setRegistering] = useState(null);
+  const [memo, setMemo] = useState(null);
+  const [billing, setBilling] = useState({ confirm: null, busy: false, errors: {} });
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [now, setNow] = useState(Date.now());
-  const [filter, setFilter] = useState(null);
-  const [expanded, setExpanded] = useState({ finished: false, upcomingAll: false });
+  const [refreshing, setRefreshing] = useState(false);
+
+  // 端末ごとに覚えた列と並べ替え、URL の ?date=
+  useEffect(() => {
+    const narrowDefault = window.innerWidth <= NARROW_MAX_WIDTH ? [...NARROW_HIDDEN_COLUMNS] : [];
+    setHiddenColumns(sanitizeHiddenColumns(readStored(COLUMNS_STORAGE_KEY, narrowDefault)));
+    setSort(sanitizeSort(readStored(SORT_STORAGE_KEY, DEFAULT_SORT)));
+    const requested = new URLSearchParams(window.location.search).get("date");
+    if (requested && /^\d{4}-\d{2}-\d{2}$/u.test(requested)) setDate(requested);
+  }, []);
 
   const load = useCallback(async () => {
     const payload = await api(`/v1/eye/appointments?date=${date}`);
-    setData(payload);
+    setData({ ...payload, loaded: true });
     setNow(Date.now());
   }, [api, date]);
 
@@ -81,13 +92,46 @@ export function ReceptionWorkspace() {
   }, [api]);
 
   useEffect(() => {
+    setData((current) => (current.date === date ? current : { appointments: [], encountersByPatient: {}, loaded: false }));
     load().catch((nextError) => setError(nextError.message));
     const handle = setInterval(() => { load().catch(() => {}); }, REFRESH_MS);
-    return () => clearInterval(handle);
-  }, [load]);
+    const onChanged = () => { load().catch(() => {}); };
+    window.addEventListener(RECEPTION_CHANGED_EVENT, onChanged);
+    return () => { clearInterval(handle); window.removeEventListener(RECEPTION_CHANGED_EVENT, onChanged); };
+  }, [load, date]);
+
+  // 患者メモ・前回受付日は、日付を変えたときと患者が増えたときだけ引く（15 秒ごとの更新では引かない）
+  const patientKey = useMemo(() => [...new Set(data.appointments.map((item) => item.patientId).filter(Boolean))].sort().join(","), [data.appointments]);
+  const loadDetails = useCallback(async () => {
+    if (!patientKey) {
+      setDetails({});
+      return;
+    }
+    const payload = await api(`/v1/eye/appointments/patient-details?date=${date}`);
+    setDetails(payload.patients || {});
+  }, [api, date, patientKey]);
+  useEffect(() => { loadDetails().catch(() => {}); }, [loadDetails]);
+
+  const canReceive = Boolean(context?.canReceive);
+  const canWrite = Boolean(context?.canWrite);
+  const isToday = date === todayIso();
+  const appointments = data.appointments;
+
+  async function refresh() {
+    setRefreshing(true);
+    setError("");
+    try {
+      await Promise.all([load(), loadDetails()]);
+    } catch (nextError) {
+      setError(nextError.message);
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   async function move(appointment, status) {
     setError("");
+    setNotice("");
     try {
       await api(`/v1/eye/appointments/${appointment.appointmentId}/status`, {
         method: "POST",
@@ -95,7 +139,7 @@ export function ReceptionWorkspace() {
       });
       await load();
     } catch (nextError) {
-      setError(nextError.message);
+      setError(nextError.status === 409 && status === "cancelled" ? `${appointment.patientName}: ${nextError.message}` : nextError.message);
       await load().catch(() => {});
     }
   }
@@ -123,6 +167,30 @@ export function ReceptionWorkspace() {
     }
   }
 
+  // 行を押したとき: カルテがあれば開く。来院済み（受付中〜会計待）でカルテの記載ができる人なら作って開く。
+  // 予約済・取消・不在の行や、カルテを書けない役割は患者のページへ（予約だけでは下書きカルテを作らない）。
+  function openRow(appointment) {
+    if (!appointment.patientId) {
+      if (canReceive) setRegistering(appointment);
+      return;
+    }
+    const existing = data.encountersByPatient[appointment.patientId];
+    if (existing) {
+      router.push(`/encounters/${existing.encounterId}`);
+      return;
+    }
+    if (canWrite && IN_CLINIC.includes(appointment.status)) {
+      openChart(appointment);
+      return;
+    }
+    router.push(`/patients/${appointment.patientId}`);
+  }
+
+  function onRowClick(event, appointment) {
+    if (event.target.closest("button, select, a, input, textarea, summary, details, label, [data-cell-action]")) return;
+    openRow(appointment);
+  }
+
   // 登録した（または選んだ）患者を受付に紐づける。再試行でも最新の版を使う
   async function linkRegistering(patient) {
     const current = data.appointments.find((item) => item.appointmentId === registering.appointmentId) || registering;
@@ -131,180 +199,262 @@ export function ReceptionWorkspace() {
     await load();
   }
 
-  // 行を押したとき: 来院中でカルテがあれば開く。なければ患者のページへ（押しただけでカルテは作らない）
-  function openRow(appointment) {
-    if (!appointment.patientId) {
-      if (canReceive) setRegistering(appointment);
-      return;
+  async function saveMemo(text) {
+    const target = memo.appointment;
+    if (memo.kind === "patient") {
+      await api(`/v1/eye/patients/${target.patientId}/memo`, {
+        method: "PUT",
+        body: { expectedRevision: details[target.patientId]?.patientMemoRevision ?? 0, patientMemo: text }
+      });
+      await loadDetails();
+    } else {
+      await api(`/v1/eye/appointments/${target.appointmentId}`, {
+        method: "PATCH",
+        body: { expectedRevision: target.revision, receptionMemo: text }
+      });
+      await load();
     }
-    const existing = data.encountersByPatient[appointment.patientId];
-    router.push(existing ? `/encounters/${existing.encounterId}` : `/patients/${appointment.patientId}`);
+    setMemo(null);
   }
 
-  const canReceive = Boolean(context?.canReceive);
-  const isToday = date === todayIso();
-  const appointments = data.appointments;
-  const groupOf = (item) => {
-    if (FINISHED.includes(item.status)) return "finished";
-    const encounter = data.encountersByPatient[item.patientId];
-    if (["checked_in", "in_exam", "waiting_doctor"].includes(item.status) && encounter?.dilationStartedAt
-      && minutesSince(encounter.dilationStartedAt, now) < DILATION_READY_MINUTES) return "dilating";
-    return item.status;
-  };
-  const waitOf = (item) => minutesSince(item.statusHistory?.at(-1)?.at, now);
-  const grouped = Object.fromEntries(GROUPS.map((group) => [group.key, []]));
-  for (const item of appointments) grouped[groupOf(item)]?.push(item);
-  for (const key of Object.keys(grouped)) {
-    grouped[key].sort(key === "booked" || key === "finished"
-      ? (left, right) => String(left.time || "99").localeCompare(String(right.time || "99"))
-      : (left, right) => (waitOf(right) ?? 0) - (waitOf(left) ?? 0));
+  // 1 人分の会計連携（レセコンへ渡す）。CSV を保存し、会計待なら会計済にする。
+  async function sendBilling(appointment) {
+    const encounter = data.encountersByPatient[appointment.patientId];
+    setBilling((current) => ({ ...current, busy: true }));
+    setError("");
+    try {
+      const payload = await api("/v1/eye/billing/send", {
+        method: "POST",
+        body: { date: appointment.date, encounterId: encounter.encounterId, appointmentId: appointment.appointmentId }
+      });
+      downloadCsv(payload.csv, `eye-billing-${appointment.date}-${String(payload.handoff?.handoffId || "").slice(-6)}.csv`);
+      const { [appointment.appointmentId]: _removed, ...rest } = billing.errors;
+      setBilling({ confirm: null, busy: false, errors: rest });
+      setNotice(payload.appointmentError ? `${appointment.patientName}: 会計情報を渡しました。${payload.appointmentError.message}` : `${appointment.patientName}: 会計情報を渡しました（会計済）。`);
+      await load();
+    } catch (nextError) {
+      setBilling((current) => ({ confirm: null, busy: false, errors: { ...current.errors, [appointment.appointmentId]: nextError.message } }));
+      setError(`${appointment.patientName}: 会計情報を渡せませんでした。${nextError.message}`);
+    }
   }
-  const nowMinutes = Math.floor((now + 9 * 3600000) % 86400000 / 60000);
-  const inUpcomingWindow = (item) => !isToday || !item.time || toMinutes(item.time) <= nowMinutes + UPCOMING_WINDOW_MINUTES;
-  const inClinicCount = appointments.filter((item) => IN_CLINIC.includes(item.status)).length;
+
+  function toggleSort(key) {
+    const next = sort.key === key ? { key, dir: sort.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" };
+    setSort(next);
+    writeStored(SORT_STORAGE_KEY, next);
+  }
+
+  function setColumnHidden(key, hidden) {
+    const next = hidden ? [...new Set([...hiddenColumns, key])] : hiddenColumns.filter((item) => item !== key);
+    setHiddenColumns(next);
+    writeStored(COLUMNS_STORAGE_KEY, next);
+  }
+
+  const waitOf = (item) => (IN_CLINIC.includes(item.status) ? minutesSince(item.statusHistory?.at(-1)?.at, now) : null);
+  const dilationOf = (item) => {
+    const encounter = data.encountersByPatient[item.patientId];
+    return IN_CLINIC.includes(item.status) && encounter?.dilationStartedAt ? minutesSince(encounter.dilationStartedAt, now) : null;
+  };
+  const sortValue = (row, key) => {
+    switch (key) {
+      case "doctor": return doctorName(doctors, row.doctorMemberId);
+      case "number": return (row.patientId ? details[row.patientId]?.primaryPatientNumber : "") || row.patientSnapshot?.primaryPatientNumber || "";
+      case "purpose": return APPOINTMENT_PURPOSE_LABELS[row.purpose] || "";
+      case "previous": return row.patientId ? details[row.patientId]?.previousVisitDate || "" : "";
+      case "patientMemo": return row.patientId ? details[row.patientId]?.patientMemo || "" : "";
+      case "receptionMemo": return row.receptionMemo ?? row.note ?? "";
+      case "progress": {
+        const encounter = data.encountersByPatient[row.patientId];
+        if (!encounter || !IN_CLINIC.includes(row.status)) return null;
+        const chips = progressChips(encounter);
+        return chips.filter(([, state]) => state === "done").length / Math.max(chips.length, 1);
+      }
+      case "dilation": return dilationOf(row);
+      case "wait": return waitOf(row);
+      default: return undefined;
+    }
+  };
+  const valueOf = (row, key) => {
+    const custom = sortValue(row, key);
+    return custom === undefined ? defaultSortValue(row, key) : custom;
+  };
+
+  const baseRows = appointments;
+  const filtered = filterAppointments(baseRows, filters, details);
+  const rows = sortAppointments(filtered, sort, valueOf);
+  const filteredOn = isFiltered(filters);
+  const totalShown = filterAppointments(baseRows, DEFAULT_FILTERS, details).length;
+  const columns = RECEPTION_COLUMNS.filter((column) => !hiddenColumns.includes(column.key));
+
+  function renderCell(column, item) {
+    const snapshot = item.patientSnapshot || {};
+    const encounter = data.encountersByPatient[item.patientId];
+    const display = displayStatusOf(item);
+    const extra = item.patientId ? details[item.patientId] : null;
+    const editable = canReceive && !["cancelled"].includes(item.status);
+    const editCell = (content, label) => (editable ? (
+      <button aria-label={`${item.patientName} の${label}を編集`} className="rc-cell-edit" onClick={() => setDialog({ appointment: item })} type="button">
+        <span>{content || <span className="muted">-</span>}</span><span aria-hidden="true" className="rc-pencil">✎</span>
+      </button>
+    ) : content);
+    switch (column.key) {
+      case "no": return <span className="mono">{queueLabel(item)}</span>;
+      case "time": return editCell(<span className="mono">{item.time || "-"}</span>, "予約時間");
+      case "checkin": return <span className="mono">{formatClock(item.checkedInAt) || "-"}</span>;
+      case "status": return (
+        <StatusSelect appointment={item} disabled={!canReceive} display={display} onChange={(status) => move(item, status)} />
+      );
+      case "number": return <span className="mono">{extra?.primaryPatientNumber || snapshot.primaryPatientNumber || ""}</span>;
+      case "name": return (
+        <button className="rc-name" onClick={() => openRow(item)} type="button">
+          <span className="rc-kana">{kanaOf(item) || " "}</span>
+          <strong>{item.patientName}</strong>
+          {!item.patientId ? <span className="tag tag-warn">未登録</span> : null}
+        </button>
+      );
+      case "birth": return <span className="mono">{birthWithEra(snapshot.birthDate)}</span>;
+      case "age": {
+        const age = ageOn(snapshot.birthDate, item.date);
+        return age === null ? "" : `${age}歳${snapshot.sex && snapshot.sex !== "unknown" ? ` ${SEX_LABELS[snapshot.sex] || ""}` : ""}`;
+      }
+      case "purpose": return editCell(<>{item.purpose === "initial" ? <span className="flow-new">新</span> : null}{APPOINTMENT_PURPOSE_LABELS[item.purpose]}</>, "目的");
+      case "department": return editCell(item.department, "診療科");
+      case "doctor": return editCell(doctorName(doctors, item.doctorMemberId), "医師");
+      case "previous": return item.patientId ? <span className="mono">{extra ? (extra.previousVisitDate ? extra.previousVisitDate.replaceAll("-", "/") : "初") : ""}</span> : "";
+      case "patientMemo": return item.patientId ? (
+        <MemoCell disabled={!canReceive} label="患者メモ" name={item.patientName} onOpen={() => setMemo({ kind: "patient", appointment: item, text: extra?.patientMemo || "" })} text={extra?.patientMemo || ""} />
+      ) : "";
+      case "receptionMemo": return (
+        <MemoCell disabled={!canReceive} label="受付メモ" name={item.patientName} onOpen={() => setMemo({ kind: "reception", appointment: item, text: item.receptionMemo ?? item.note ?? "" })} text={item.receptionMemo ?? item.note ?? ""} />
+      );
+      case "billing": return (
+        <BillingCell
+          appointment={item}
+          canSend={canReceive}
+          display={display}
+          encounter={encounter}
+          error={billing.errors[item.appointmentId]}
+          onSend={() => setBilling((current) => ({ ...current, confirm: item }))}
+        />
+      );
+      case "progress": return <span className="rc-progress">{IN_CLINIC.includes(item.status) && encounter ? progressChips(encounter).map(([label, state], index) => (
+        <span className={`flow-step is-${state}`} key={`${label}${index}`} title={`${label}: ${state === "done" ? "済" : "未"}`}>{label}{state === "done" ? "✓" : "・"}</span>
+      )) : null}</span>;
+      case "dilation": return <DilationChip minutes={dilationOf(item)} />;
+      case "wait": {
+        const wait = waitOf(item);
+        if (wait === null) return "";
+        const [warnAt, alertAt] = WAIT_THRESHOLDS[item.status] || [];
+        const level = !warnAt ? "" : wait >= alertAt ? " is-alert" : wait >= warnAt ? " is-warn" : "";
+        return <span className={`flow-wait${level}`}>{wait}分</span>;
+      }
+      default: return "";
+    }
+  }
 
   function rowMenu(item) {
-    const encounter = data.encountersByPatient[item.patientId];
-    const previous = PREVIOUS[item.status];
     const entries = [];
-    if (item.patientId && ["checked_in", "in_exam", "in_treatment"].includes(item.status)) entries.push(["検査入力", () => openChart(item, "exam")]);
-    if (item.patientId && IN_CLINIC.includes(item.status)) entries.push([encounter ? "カルテを開く" : "カルテ作成", () => openChart(item)]);
     if (item.patientId) entries.push(["患者のページ", () => router.push(`/patients/${item.patientId}`)]);
+    if (item.patientId && canWrite && IN_CLINIC.includes(item.status)) entries.push(["検査入力", () => openChart(item, "exam")]);
     if (!item.patientId && canReceive) entries.push(["患者登録", () => setRegistering(item)]);
-    if (canReceive && previous) entries.push([`${APPOINTMENT_STATUS_LABELS[previous]}に戻す`, () => move(item, previous)]);
-    if (canReceive && item.status === "booked") {
-      entries.push(["キャンセル", () => move(item, "cancelled")]);
-      if (isToday) entries.push(["不在", () => move(item, "absent")]);
-    }
-    if (canReceive && ["checked_in", "in_exam", "in_treatment", "waiting_doctor"].includes(item.status)) {
-      if (item.status !== "in_treatment") entries.push(["処置中にする", () => move(item, "in_treatment")]);
-      entries.push(["不在（呼んでもいない）", () => move(item, "absent")]);
-    }
-    if (canReceive && ["cancelled", "absent", "no_show"].includes(item.status)) entries.push(["予約に戻す", () => move(item, "booked")]);
+    if (canReceive && item.status !== "cancelled") entries.push([item.status === "booked" ? "予約を編集" : "受付を編集", () => setDialog({ appointment: item })]);
     return entries;
   }
 
-  function renderRow(item) {
-    const group = groupOf(item);
-    const encounter = data.encountersByPatient[item.patientId];
-    const next = NEXT_ACTIONS[item.status];
-    const showNext = canReceive && next && (item.status !== "booked" || isToday);
-    const wait = IN_CLINIC.includes(item.status) ? waitOf(item) : null;
-    const [warnAt, alertAt] = WAIT_THRESHOLDS[group] || [];
-    const waitLevel = wait === null || !warnAt ? "" : wait >= alertAt ? " is-alert" : wait >= warnAt ? " is-warn" : "";
-    const snapshot = item.patientSnapshot || {};
-    const age = ageOn(snapshot.birthDate, item.date);
-    const menu = rowMenu(item);
-    return (
-      <li className={`flow-row status-${group}`} key={item.appointmentId}>
-        <button aria-label={`${item.patientName} を開く`} className="flow-row-open" onClick={() => openRow(item)} type="button" />
-        <span className="flow-slot mono">{item.queueNumber && item.status !== "booked" ? `#${item.queueNumber}` : ""}</span>
-        <span className="flow-time mono" title={item.status === "booked" ? "予約時刻" : "受付時刻"}>{item.status === "booked" ? item.time || "—" : formatClock(item.checkedInAt) || item.time || "—"}</span>
-        <span className="flow-name">
-          <strong>{item.patientName}</strong>
-          {snapshot.displayNameKana ? <span className="flow-kana">{snapshot.displayNameKana}</span> : null}
-          {!item.patientId ? <span className="tag tag-warn">未登録</span> : null}
-          {FINISHED.includes(item.status) || item.displayStatus === "rebill_waiting" ? (
-            <span className={`tag appointment-${item.displayStatus || item.status}`}>{APPOINTMENT_STATUS_LABELS[item.displayStatus || item.status]}</span>
-          ) : null}
-        </span>
-        <span className="flow-age">{age !== null ? `${age}${SEX_LABELS[snapshot.sex] && snapshot.sex !== "unknown" ? SEX_LABELS[snapshot.sex] : ""}` : ""}</span>
-        <span className="flow-purpose">
-          {item.purpose === "initial" ? <span className="flow-new">新</span> : null}
-          {APPOINTMENT_PURPOSE_LABELS[item.purpose]}{item.note ? <span className="flow-note" title={item.note}><span className="flow-note-label">メモ</span>{item.note}</span> : null}
-        </span>
-        <span className="flow-progress">{progressOf(item, encounter, now)}</span>
-        <span className={`flow-wait${waitLevel}`}>{wait === null ? "" : `${group === "in_exam" ? "検" : "待"} ${wait}分`}</span>
-        <span className="flow-actions">
-          {showNext ? <button className="btn btn-primary btn-sm" onClick={() => move(item, next.status)} type="button">{next.label}</button> : null}
-          {menu.length ? (
-            <details className="more-menu">
-              <summary aria-label={`${item.patientName} のその他の操作`} className="btn btn-chip">…</summary>
-              <div className="more-menu-list">
-                {menu.map(([label, action]) => (
-                  <button className="btn btn-ghost" key={label} onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); action(); }} type="button">{label}</button>
-                ))}
-              </div>
-            </details>
-          ) : null}
-        </span>
-      </li>
-    );
-  }
-
-  const visibleGroups = filter ? [filter] : LIST_ORDER;
-
   return (
-    <main className="eye-page">
-      <header className="page-head">
-        <div>
-          <h1>受付</h1>
-          <p className="page-sub">{isToday ? "本日" : formatDate(date)}：予約 {appointments.filter((item) => item.status !== "cancelled").length}件 ・ 院内 {inClinicCount}人 ・ 終了 {appointments.filter((item) => item.status === "done").length}人</p>
+    <main className="eye-page rc-page">
+      <div className="rc-toolbar">
+        <h1 className="rc-title">受付</h1>
+        <DateNav date={date} onChange={(value) => { setDate(value || todayIso()); setNotice(""); }} />
+        {!isToday ? <button className="btn btn-ghost btn-sm" onClick={() => setDate(todayIso())} type="button">今日</button> : null}
+        <span className="rc-count" aria-live="polite">{filteredOn ? `${rows.length} / ${totalShown}件` : `全 ${rows.length}件`}</span>
+        <div className="rc-filter-wrap">
+          <button aria-expanded={filterOpen} aria-haspopup="dialog" className={`btn btn-ghost btn-sm rc-filter-button${filteredOn ? " is-active" : ""}`} onClick={() => setFilterOpen(!filterOpen)} type="button">▼ 絞り込み</button>
+          {filteredOn ? <button aria-label="絞り込みを解除" className="btn btn-ghost btn-sm" onClick={() => setFilters(DEFAULT_FILTERS)} type="button">×</button> : null}
+          {filterOpen ? (
+            <FilterPopover
+              appointments={baseRows}
+              doctors={doctors}
+              filters={filters}
+              hiddenColumns={hiddenColumns}
+              onClose={() => setFilterOpen(false)}
+              onColumn={setColumnHidden}
+              onFilters={setFilters}
+            />
+          ) : null}
         </div>
-        <div className="head-actions">
-          <div className="date-nav">
-            <button aria-label="前日" className="btn btn-ghost" onClick={() => setDate(addDays(date, -1))} type="button">‹</button>
-            <input aria-label="日付" className="input input-date" onChange={(event) => setDate(event.target.value || todayIso())} type="date" value={date} />
-            <button aria-label="翌日" className="btn btn-ghost" onClick={() => setDate(addDays(date, 1))} type="button">›</button>
-            {!isToday ? <button className="btn btn-ghost" onClick={() => setDate(todayIso())} type="button">今日</button> : null}
-          </div>
+        <div className="rc-toolbar-actions">
+          <Link className="btn btn-ghost btn-sm" href={`/reception/schedule?date=${date}`}>予約状況</Link>
           {canReceive ? (
             <>
-              <button className="btn btn-ghost" onClick={() => setDialog({ walkIn: false })} type="button">予約を追加</button>
-              {isToday ? <button className="btn btn-primary" onClick={() => setDialog({ walkIn: true })} type="button">当日受付</button> : null}
+              <button className="btn btn-ghost btn-sm" onClick={() => setDialog({ walkIn: false })} type="button">予約を追加</button>
+              {isToday ? <button className="btn btn-primary btn-sm" onClick={() => setDialog({ walkIn: true })} type="button">当日受付</button> : null}
             </>
           ) : null}
+          <button aria-label="受付一覧を更新" className="btn btn-ghost btn-sm" disabled={refreshing} onClick={refresh} title="更新" type="button">↻</button>
         </div>
-      </header>
-      {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
-
-      <div aria-label="段階ごとの人数（押すとその段階だけを表示）" className="flow-chips" role="group">
-        <button aria-pressed={filter === null} className="flow-chip flow-chip-all" onClick={() => setFilter(null)} type="button">
-          すべて<strong>{appointments.length}</strong>
-        </button>
-        {GROUPS.map((group) => (
-          <button aria-pressed={filter === group.key} className={`flow-chip status-${group.key}`} key={group.key} onClick={() => setFilter(filter === group.key ? null : group.key)} type="button">
-            <span className="flow-dot" aria-hidden="true" />{group.label}<strong>{grouped[group.key].length}</strong>
-          </button>
-        ))}
       </div>
+      {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
+      {notice ? <p className="alert alert-ok" role="status">{notice}</p> : null}
 
-      <section aria-label="予約・受付の一覧" className="panel flow-list">
-        {appointments.length === 0 ? <p className="empty">この日の予約・受付はありません。</p> : null}
-        {visibleGroups.map((key) => {
-          const group = GROUPS.find((item) => item.key === key);
-          const items = grouped[key];
-          if (!items.length && !filter) return null;
-          const collapsed = key === "finished" && !expanded.finished && !filter;
-          // 来院予定は次の 60 分（遅れている人を含む）だけを出す。少ないときは先頭の 3 件までは出す
-          const shown = key === "booked" && !expanded.upcomingAll && !filter ? items.slice(0, Math.max(items.filter(inUpcomingWindow).length, 3)) : items;
-          const hidden = items.length - shown.length;
-          return (
-            <section aria-label={group.label} className={`flow-group status-${key}`} key={key}>
-              <h2 className="flow-group-head">
-                {key === "finished" ? (
-                  <button aria-expanded={!collapsed} className="flow-group-toggle" onClick={() => setExpanded({ ...expanded, finished: !expanded.finished })} type="button">{collapsed ? "▶" : "▼"} {group.label}</button>
-                ) : <span>{group.label}</span>}
-                <span className="count">{items.length}</span>
-                {key === "booked" && isToday && !filter ? <span className="muted small">次の{UPCOMING_WINDOW_MINUTES}分</span> : null}
-              </h2>
-              {collapsed ? null : items.length === 0 ? <p className="empty">該当する患者はいません。</p> : (
-                <ul className="flow-rows">{shown.map(renderRow)}</ul>
-              )}
-              {!collapsed && hidden > 0 ? (
-                <button className="btn btn-chip flow-more" onClick={() => setExpanded({ ...expanded, upcomingAll: true })} type="button">ほか {hidden}件を表示</button>
-              ) : null}
-            </section>
-          );
-        })}
-      </section>
+      <div className="rc-table-wrap">
+        <table aria-label="受付一覧" className="rc-table">
+          <thead>
+            <tr>
+              {columns.map((column) => (
+                <th aria-sort={sort.key === column.key ? (sort.dir === "asc" ? "ascending" : "descending") : undefined} className={`rc-col-${column.key}`} key={column.key} scope="col">
+                  <button className="rc-sort" onClick={() => toggleSort(column.key)} type="button">
+                    {column.label}
+                    <span aria-hidden="true" className="rc-sort-mark">{sort.key === column.key ? (sort.dir === "asc" ? "▲" : "▼") : "↕"}</span>
+                  </button>
+                </th>
+              ))}
+              <th className="rc-col-actions" scope="col"><span className="sr-only">操作</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((item) => {
+              const menu = rowMenu(item);
+              return (
+                <tr className={`rc-row status-${displayStatusOf(item)}`} key={item.appointmentId} onClick={(event) => onRowClick(event, item)}>
+                  {columns.map((column) => <td className={`rc-col-${column.key}`} key={column.key}>{renderCell(column, item)}</td>)}
+                  <td className="rc-col-actions">
+                    {canReceive ? (
+                      <button
+                        aria-label={`${item.patientName} の次回予約`}
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => setDialog({ walkIn: false, patient: item.patientId ? patientOf(item) : null, patientName: item.patientId ? "" : item.patientName })}
+                        type="button"
+                      >予約</button>
+                    ) : null}
+                    {menu.length ? (
+                      <details className="more-menu">
+                        <summary aria-label={`${item.patientName} のその他の操作`} className="btn btn-chip">…</summary>
+                        <div className="more-menu-list">
+                          {menu.map(([label, action]) => (
+                            <button className="btn btn-ghost" key={label} onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); action(); }} type="button">{label}</button>
+                          ))}
+                        </div>
+                      </details>
+                    ) : null}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        {data.loaded && rows.length === 0 ? <p className="rc-empty muted">{appointments.length ? "絞り込みに当てはまる受付はありません。" : "この日の予約・受付はありません。"}</p> : null}
+        {!data.loaded && !error ? <p className="rc-empty muted">読み込み中…</p> : null}
+      </div>
 
       {dialog ? (
         <AppointmentDialog
-          initial={{ date, walkIn: dialog.walkIn, purpose: "revisit", time: "" }}
+          appointment={dialog.appointment || null}
+          fixedPatient={dialog.patient || null}
+          initial={{ date: dialog.walkIn ? todayIso() : date, walkIn: Boolean(dialog.walkIn), purpose: "revisit", time: "", patientName: dialog.patientName || "" }}
           onCancel={() => setDialog(null)}
-          onSaved={async () => { setDialog(null); await load(); }}
-          title={dialog.walkIn ? "当日受付" : "予約を追加"}
+          onSaved={async () => { setDialog(null); await Promise.all([load(), loadDetails()]).catch(() => {}); }}
+          title={dialog.appointment ? (dialog.appointment.status === "booked" ? "予約の編集" : "受付の編集") : dialog.walkIn ? "当日受付" : "予約登録"}
         />
       ) : null}
       {registering ? (
@@ -315,21 +465,248 @@ export function ReceptionWorkspace() {
           onPickExisting={linkRegistering}
           pickExistingLabel="この患者で受付"
           submitLabel="登録して受付に紐づける"
-          title={`患者登録（受付 #${registering.queueNumber ?? "—"}）`}
+          title={`患者登録（受付 ${queueLabel(registering)}）`}
         />
+      ) : null}
+      {memo ? (
+        <MemoDialog
+          label={memo.kind === "patient" ? "患者メモ" : "受付メモ"}
+          note={memo.kind === "patient" ? "患者に固定のメモです。毎回の受付に出ます。" : "この日の受付だけのメモです。"}
+          onCancel={() => setMemo(null)}
+          onSave={saveMemo}
+          patientName={memo.appointment.patientName}
+          text={memo.text}
+        />
+      ) : null}
+      {billing.confirm ? (
+        <div className="dialog-backdrop" role="presentation">
+          <div aria-labelledby="rc-billing-heading" aria-modal="true" className="dialog" role="alertdialog">
+            <h2 id="rc-billing-heading">レセコンへ会計情報を渡しますか？</h2>
+            <p>{billing.confirm.patientName}（{queueLabel(billing.confirm)}）の確定済みカルテの会計情報を CSV にして渡し、{billing.confirm.status === "checkout" ? "会計済にします。" : "連携済みにします。"}</p>
+            <div className="dialog-actions">
+              <button className="btn btn-ghost" disabled={billing.busy} onClick={() => setBilling((current) => ({ ...current, confirm: null }))} type="button">キャンセル</button>
+              <button autoFocus className="btn btn-primary" disabled={billing.busy} onClick={() => sendBilling(billing.confirm)} type="button">{billing.busy ? "渡しています…" : "渡す"}</button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </main>
   );
 }
 
-// 検査の進み具合（視力・眼圧・オーダー）と散瞳。値そのものは出さず、済んだかどうかだけを出す
-export function progressOf(appointment, encounter, now) {
-  if (!IN_CLINIC.includes(appointment.status) || !encounter) return null;
-  const chips = [
+function patientOf(item) {
+  return { patientId: item.patientId, displayName: item.patientName, ...(item.patientSnapshot || {}) };
+}
+
+// ステータスのプルダウン（デジカルの「診察待 ▾」）。全ステータスへ移せる。再計待は表示だけ（選べない）。
+function StatusSelect({ appointment, display, disabled, onChange }) {
+  return (
+    <select
+      aria-label={`${appointment.patientName} のステータス`}
+      className={`rc-status is-${display}`}
+      disabled={disabled}
+      onChange={(event) => { if (event.target.value !== display) onChange(event.target.value); }}
+      value={display}
+    >
+      {APPOINTMENT_STATUS_MENU.map((status) => (
+        <option disabled={status === "rebill_waiting"} key={status} value={status}>{APPOINTMENT_STATUS_LABELS[status]}</option>
+      ))}
+    </select>
+  );
+}
+
+function MemoCell({ text, label, name, disabled, onOpen }) {
+  if (disabled) return <span className="rc-memo" title={text || undefined}>{text}</span>;
+  return (
+    <button aria-label={`${name} の${label}${text ? `: ${text}` : "（なし）"}`} className="rc-cell-edit rc-memo" onClick={onOpen} title={text || undefined} type="button">
+      <span>{text || <span className="muted">-</span>}</span><span aria-hidden="true" className="rc-pencil">✎</span>
+    </button>
+  );
+}
+
+// 会計の列: 会計待で確定済みなら［会計］、再計待なら［再送］、送れなかったら「失敗」と再試行。
+function BillingCell({ appointment, display, encounter, error, canSend, onSend }) {
+  const finalized = encounter?.status === "finalized";
+  if (error && canSend && finalized) {
+    return <span className="rc-billing"><span className="tag tag-danger" title={error}>失敗</span><button className="btn btn-ghost btn-sm" onClick={onSend} type="button">再試行</button></span>;
+  }
+  if (display === "rebill_waiting") {
+    return canSend && finalized ? <button className="btn btn-ghost btn-sm rc-billing-send" onClick={onSend} type="button">再送</button> : <span className="muted small">再計待</span>;
+  }
+  if (appointment.status === "checkout") {
+    if (!encounter) return <span className="muted small">カルテなし</span>;
+    if (!finalized) return <span className="muted small" title="カルテを確定すると渡せます">未確定</span>;
+    return canSend ? <button className="btn btn-primary btn-sm rc-billing-send" onClick={onSend} type="button">会計</button> : null;
+  }
+  if (appointment.status === "done" || appointment.billingState === "handed_off") return <span className="muted small">連携済</span>;
+  return null;
+}
+
+function DilationChip({ minutes }) {
+  if (minutes === null) return null;
+  if (minutes >= DILATION_READY_MINUTES) return <span className="flow-dilation is-ready">散瞳OK</span>;
+  return (
+    <span className="flow-dilation" title={`散瞳から ${minutes}分`}>
+      {minutes}/{DILATION_READY_MINUTES}分
+      <span className="flow-dilation-bar" aria-hidden="true"><span style={{ width: `${Math.round((minutes / DILATION_READY_MINUTES) * 100)}%` }} /></span>
+    </span>
+  );
+}
+
+// 絞り込み（デジカルの ▼ フィルタ）: ステータス・医師・診療科・表示する列の 4 列と、下段に患者メモ・受付メモの文字列。選ぶとすぐ反映する。
+function FilterPopover({ appointments, doctors, filters, hiddenColumns, onFilters, onColumn, onClose }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const onDown = (event) => {
+      if (ref.current?.contains(event.target) || event.target.closest?.(".rc-filter-button")) return;
+      onClose();
+    };
+    const onKey = (event) => { if (event.key === "Escape") onClose(); };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
+  }, [onClose]);
+
+  const counts = {};
+  for (const item of appointments) counts[displayStatusOf(item)] = (counts[displayStatusOf(item)] || 0) + 1;
+  const doctorIds = [...new Set([...doctors.map((doctor) => doctor.memberId), ...appointments.map((item) => item.doctorMemberId || UNSET)])];
+  const departments = [...new Set(appointments.map((item) => item.department || UNSET))];
+  if (!departments.includes(UNSET)) departments.push(UNSET);
+  if (!doctorIds.includes(UNSET)) doctorIds.push(UNSET);
+
+  const toggle = (field, value) => {
+    const list = filters[field];
+    onFilters({ ...filters, [field]: list.includes(value) ? list.filter((item) => item !== value) : [...list, value] });
+  };
+  const all = (field) => onFilters({ ...filters, [field]: [] });
+  const none = (field, values) => onFilters({ ...filters, [field]: values });
+
+  return (
+    <div className="rc-popover rc-filter" ref={ref} role="dialog" aria-label="絞り込み">
+      <div className="rc-filter-columns">
+        <fieldset className="rc-filter-group">
+          <legend>ステータス</legend>
+          <div className="rc-filter-bulk">
+            <button className="btn btn-ghost btn-sm" onClick={() => all("hiddenStatuses")} type="button">すべて選択</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => none("hiddenStatuses", [...FILTER_STATUSES])} type="button">クリア</button>
+          </div>
+          {FILTER_STATUSES.map((status) => (
+            <label className="rc-check" key={status}>
+              <input checked={!filters.hiddenStatuses.includes(status)} onChange={() => toggle("hiddenStatuses", status)} type="checkbox" />
+              <span aria-hidden="true" className={`rc-dot is-${status}`} />{APPOINTMENT_STATUS_LABELS[status]}<span className="muted small">{counts[status] || 0}</span>
+            </label>
+          ))}
+        </fieldset>
+        <fieldset className="rc-filter-group">
+          <legend>医師</legend>
+          <div className="rc-filter-bulk">
+            <button className="btn btn-ghost btn-sm" onClick={() => all("hiddenDoctors")} type="button">すべて選択</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => none("hiddenDoctors", doctorIds)} type="button">クリア</button>
+          </div>
+          {doctorIds.map((memberId) => (
+            <label className="rc-check" key={memberId}>
+              <input checked={!filters.hiddenDoctors.includes(memberId)} onChange={() => toggle("hiddenDoctors", memberId)} type="checkbox" />
+              {memberId === UNSET ? "指定なし" : doctorName(doctors, memberId)}
+            </label>
+          ))}
+        </fieldset>
+        <fieldset className="rc-filter-group">
+          <legend>診療科</legend>
+          <div className="rc-filter-bulk">
+            <button className="btn btn-ghost btn-sm" onClick={() => all("hiddenDepartments")} type="button">すべて選択</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => none("hiddenDepartments", departments)} type="button">クリア</button>
+          </div>
+          {departments.map((name) => (
+            <label className="rc-check" key={name}>
+              <input checked={!filters.hiddenDepartments.includes(name)} onChange={() => toggle("hiddenDepartments", name)} type="checkbox" />
+              {name === UNSET ? "指定なし" : name}
+            </label>
+          ))}
+        </fieldset>
+        <fieldset className="rc-filter-group rc-filter-columns-list">
+          <legend>表示する列</legend>
+          <p className="muted small">この端末に記憶します</p>
+          {RECEPTION_COLUMNS.filter((column) => !column.fixed).map((column) => (
+            <label className="rc-check" key={column.key}>
+              <input checked={!hiddenColumns.includes(column.key)} onChange={(event) => onColumn(column.key, !event.target.checked)} type="checkbox" />
+              {column.label}
+            </label>
+          ))}
+        </fieldset>
+      </div>
+      <div className="rc-filter-text">
+        <label>
+          <span>患者メモ</span>
+          <input className="input" onChange={(event) => onFilters({ ...filters, patientMemo: event.target.value })} placeholder="含む文字" value={filters.patientMemo} />
+        </label>
+        <label>
+          <span>受付メモ</span>
+          <input className="input" onChange={(event) => onFilters({ ...filters, receptionMemo: event.target.value })} placeholder="含む文字" value={filters.receptionMemo} />
+        </label>
+        <button className="btn btn-ghost btn-sm" onClick={onClose} type="button">閉じる</button>
+      </div>
+    </div>
+  );
+}
+
+// 患者メモ・受付メモの小さなダイアログ（テキストエリア＋［キャンセル］［登録］）
+function MemoDialog({ label, note, patientName, text, onCancel, onSave }) {
+  const [value, setValue] = useState(text);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    const onKey = (event) => { if (event.key === "Escape" && !busy) onCancel(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [busy, onCancel]);
+  async function submit(event) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      await onSave(value.trim());
+    } catch (nextError) {
+      setError(nextError.message);
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="dialog-backdrop" role="presentation">
+      <form aria-labelledby="rc-memo-heading" aria-modal="true" className="dialog rc-memo-dialog" onSubmit={submit} role="dialog">
+        <h2 id="rc-memo-heading">{label}（{patientName}）</h2>
+        <p className="muted small">{note}</p>
+        {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
+        <textarea aria-label={label} autoFocus className="input" maxLength={1000} onChange={(event) => setValue(event.target.value)} rows={5} value={value} />
+        <div className="dialog-actions">
+          <button className="btn btn-ghost" disabled={busy} onClick={onCancel} type="button">キャンセル</button>
+          <button className="btn btn-primary" disabled={busy || value.trim() === text.trim()} type="submit">登録</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function progressChips(encounter) {
+  return [
     ["視", encounter.exam?.va ? "done" : "todo"],
     ["圧", encounter.exam?.iop ? "done" : "todo"],
     ...(encounter.orders || []).map((order) => [order.name, order.status === "performed" ? "done" : "todo"])
   ];
+}
+
+function downloadCsv(data, name) {
+  const url = URL.createObjectURL(new Blob([data], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// 検査の進み具合（視力・眼圧・オーダー）と散瞳。値そのものは出さず、済んだかどうかだけを出す（診察の一覧でも使う）
+export function progressOf(appointment, encounter, now) {
+  if (!IN_CLINIC.includes(appointment.status) || !encounter) return null;
+  const chips = progressChips(encounter);
   const dilation = encounter.dilationStartedAt ? minutesSince(encounter.dilationStartedAt, now) : null;
   return (
     <>
@@ -348,11 +725,6 @@ export function progressOf(appointment, encounter, now) {
       ) : null}
     </>
   );
-}
-
-function toMinutes(time) {
-  const [hours, minutes] = String(time).split(":").map(Number);
-  return hours * 60 + (minutes || 0);
 }
 
 export function formatClock(iso) {

@@ -1,6 +1,7 @@
 // UI 監査。デモデータ入りのローカル環境（メモリストア）と Next 開発サーバーを起動し、
 // 主要画面を 5 つの画面幅で撮影して、文字サイズ・コントラスト・タップ領域・横あふれを計測する。
 // 診察（/）関連: home（診察）・home-tasks（要対応の一覧）・home-dark・search（検索）・register（新規患者登録）・menu
+// 受付関連: reception・reception-dark・reception-filter・reception-booking・reception-booking-calendar(-dark)・reception-search・reception-register・reception-schedule(-dark)
 //
 //   node scripts/ui-audit.mjs [--out DIR] [--pages editor,reception]
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -72,6 +73,18 @@ try {
           await page.getByRole("button", { name: /新規患者を登録/u }).click();
           await page.waitForTimeout(800);
         }
+        // 受付: 絞り込みのポップオーバー・行末の［予約］（2 列の予約登録）・患者検索のモーダル・モーダルからの新規患者登録
+        if (name === "reception-filter") await page.getByRole("button", { name: "▼ 絞り込み" }).click();
+        if (name === "reception-booking" || name.startsWith("reception-booking-calendar")) {
+          await page.locator(".rc-row", { hasText: "見本 花子" }).getByRole("button", { name: /の次回予約$/u }).click();
+          if (name.startsWith("reception-booking-calendar")) await page.getByRole("dialog", { name: "予約登録" }).getByRole("button", { name: "予約状況" }).click();
+        }
+        if (name === "reception-search" || name === "reception-register") {
+          await page.getByRole("button", { name: "詳しく検索（受付・予約・編集）", exact: true }).click();
+          await page.waitForTimeout(800);
+          if (name === "reception-register") await page.getByRole("button", { name: "新規患者登録" }).click();
+        }
+        if (name.startsWith("reception-")) await page.waitForTimeout(600);
         if (name === "home-tasks") {
           await page.getByRole("button", { name: /^未確定カルテ/u }).click();
           await page.waitForTimeout(500);
@@ -147,18 +160,14 @@ async function prepare(browser) {
   await page.getByRole("button", { name: "確認" }).click();
   await page.getByRole("link", { name: "受付", exact: true }).click();
   // 過去カルテのあるデモ患者で撮る。未受付なら受付してからカルテを開く。
-  const row = page.locator(".flow-row", { hasText: "模擬 和子" });
-  await page.locator(".flow-list").waitFor();
-  await page.locator(".flow-more").click().catch(() => null);
-  if (await row.getByRole("button", { name: "受付する" }).count()) {
-    await row.getByRole("button", { name: "受付する" }).click();
-    // 受付の反映を待ってからメニューを開く（反映前に開くと「カルテ作成」がまだない）
-    await row.getByRole("button", { name: "受付する" }).waitFor({ state: "detached" });
-    // 再読み込みが終わってから「…」を開く（古い行のメニューにはカルテの項目がない）
-    await page.locator(".flow-group.status-checked_in .flow-row", { hasText: "模擬 和子" }).waitFor();
+  const row = page.locator(".rc-row", { hasText: "模擬 和子" });
+  await row.waitFor();
+  // 予約済ならステータスのプルダウンで受付中にしてから、氏名を押してカルテを開く（来院済みの行はカルテを作って開く）
+  if ((await row.locator("select.rc-status").inputValue()) === "booked") {
+    await row.locator("select.rc-status").selectOption("checked_in");
+    await row.locator("select.rc-status.is-checked_in").waitFor();
   }
-  await row.locator("summary").click();
-  await row.getByRole("button", { name: /カルテを開く|カルテ作成/u }).click();
+  await row.locator(".rc-name").click();
   await page.waitForURL(/\/encounters\//u);
   const encounterPath = new URL(page.url()).pathname;
   await page.getByLabel("右眼 裸眼視力").waitFor();
@@ -244,6 +253,14 @@ async function prepare(browser) {
       "settings-panel-dark": "/settings#drugs",
       "editor-dark": encounterPath,
       "reception-dark": "/reception",
+      "reception-filter": "/reception",
+      "reception-booking": "/reception",
+      "reception-booking-calendar": "/reception",
+      "reception-booking-calendar-dark": "/reception",
+      "reception-search": "/reception",
+      "reception-register": "/reception",
+      "reception-schedule": "/reception/schedule",
+      "reception-schedule-dark": "/reception/schedule",
       menu: "/reception",
       images: `${patientHref}/images`,
       "encounter-print": `${encounterPath}/print`,

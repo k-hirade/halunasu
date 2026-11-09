@@ -1839,3 +1839,39 @@ test("sends one patient's billing, marks the reception paid, and shows 再計待
   assert.equal(bulk.statusCode, 201);
   assert.equal(bulk.body.handoff.encounters.length, 2);
 });
+
+test("reception extras: doctors, a patient's appointments, memo and previous visit per patient, and search details", async () => {
+  const stores = createStores();
+  const clerk = await signedHeaders(stores.platformStore, "clerk");
+  const doctorContext = await contextOf(stores, await signedHeaders(stores.platformStore, "doctor"));
+  const patient = await createPatient(stores, clerk);
+
+  const doctors = await request(stores, "GET", "/v1/eye/doctors", undefined, clerk);
+  assert.equal(doctors.statusCode, 200);
+  const doctorIds = doctors.body.doctors.map((item) => item.memberId);
+  assert.ok(doctorIds.includes(doctorContext.memberId));
+  assert.equal(doctorIds.length, 2, "the director (admin + doctor) and the doctor; never the clerk");
+
+  const earlier = await book(stores, clerk, { date: "2026-10-20", time: "09:00", patientId: patient.patientId, doctorMemberId: doctorContext.memberId, department: "眼科" });
+  await moveTo(stores, clerk, earlier, "done");
+  await book(stores, clerk, { date: "2026-10-24", time: "09:00", patientId: patient.patientId });
+  const today = await book(stores, clerk, { time: "10:00", patientId: patient.patientId });
+  await book(stores, clerk, { time: "10:30", patientName: "未登録 さん" });
+
+  const own = await request(stores, "GET", `/v1/eye/appointments?patientId=${patient.patientId}`, undefined, clerk);
+  assert.equal(own.statusCode, 200);
+  assert.deepEqual(own.body.appointments.map((item) => item.date), ["2026-10-27", "2026-10-24", "2026-10-20"], "newest first");
+  assert.equal(own.body.appointments[2].doctorMemberId, doctorContext.memberId);
+  assert.equal((await request(stores, "GET", "/v1/eye/appointments?patientId=missing", undefined, clerk)).statusCode, 404);
+
+  await request(stores, "PUT", `/v1/eye/patients/${patient.patientId}/memo`, { expectedRevision: 0, patientMemo: "車いす" }, clerk);
+  const details = await request(stores, "GET", `/v1/eye/appointments/patient-details?date=${today.date}`, undefined, clerk);
+  assert.equal(details.statusCode, 200);
+  assert.deepEqual(details.body.patients, { [patient.patientId]: { primaryPatientNumber: "000123", patientMemo: "車いす", patientMemoRevision: 1, previousVisitDate: "2026-10-20" } }, "a booking that never arrived is not a visit");
+
+  const plain = await request(stores, "POST", "/v1/eye/patients/search", { q: "ガンカ" }, clerk);
+  assert.equal(plain.body.patients[0].lastVisitDate, undefined, "the header search stays light");
+  const detailed = await request(stores, "POST", "/v1/eye/patients/search", { q: "ガンカ", details: true }, clerk);
+  assert.equal(detailed.body.patients[0].patientMemo, "車いす");
+  assert.equal(detailed.body.patients[0].lastVisitDate, "2026-10-20");
+});

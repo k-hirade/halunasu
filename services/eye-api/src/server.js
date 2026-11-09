@@ -8,6 +8,7 @@ import {
   requireProductContext
 } from "../../../packages/auth-client/src/index.js";
 import {
+  APPOINTMENT_ARRIVED_STATUSES,
   AUDIT_CATEGORIES,
   auditEventCategory,
   COMMENT_KIND,
@@ -251,8 +252,24 @@ async function routeEyeApiRequest(input = {}) {
     const search = String(input.body?.q || "").trim().slice(0, 100);
     const birthDate = String(input.body?.birthDate || "").trim();
     if (birthDate && !DATE_PATTERN.test(birthDate)) throw badRequest("birthDate must be YYYY-MM-DD", "birthDate");
-    const patients = await searchPatients(platformStore, orgId, { search, birthDate });
-    return ok({ patients: patients.filter((patient) => patient.status !== "merged") });
+    const patients = (await searchPatients(platformStore, orgId, { search, birthDate })).filter((patient) => patient.status !== "merged");
+    // details: true（患者検索の画面）では、最終受付日と患者メモを付ける。候補の一覧（ヘッダー）では引かない。
+    if (input.body?.details === true) {
+      const tomorrow = addIsoDays(today(input), 1);
+      const details = await Promise.all(patients.map((patient) => patientVisitDetails(eyeStore, orgId, patient.patientId, tomorrow)));
+      return ok({ patients: patients.map((patient, index) => ({ ...patient, lastVisitDate: details[index].lastVisitDate, patientMemo: details[index].patientMemo })), limit: SEARCH_LIMIT });
+    }
+    return ok({ patients });
+  }
+
+  // 担当医の候補（受付・予約の医師の選択）。この医院の眼科で医師の役割を持つ有効な職員。
+  if (method === "GET" && matches(parts, ["v1", "eye", "doctors"])) {
+    const staff = await loadEyeStaff(platformStore, eyeStore, orgId);
+    return ok({
+      doctors: staff
+        .filter((member) => member.eyeRoles.includes("doctor") && (!member.status || member.status === "active"))
+        .map((member) => ({ memberId: member.memberId, displayName: member.displayName, printName: member.resolvedName }))
+    });
   }
 
   // 診察画面の「要対応」: 未確定カルテ（前日以前も含む）・紙カルテ要約の未確認・文書の下書き。
@@ -614,6 +631,36 @@ async function routeEyeApiRequest(input = {}) {
       await audit({ eventType: "eye.version_viewed", targetType: "encounter", targetId: encounterId, patientId: encounter.patientId, safePayload: { version: version.version } });
       return ok({ version });
     }
+  }
+
+  // 1 人の患者の予約・受付（予約ダイアログの左の一覧）。新しい日付が先。
+  if (method === "GET" && matches(parts, ["v1", "eye", "appointments"]) && url.searchParams.has("patientId")) {
+    const patient = await requirePatient(platformStore, orgId, String(url.searchParams.get("patientId") || ""));
+    const appointments = await eyeStore.listPatientAppointments(orgId, patient.patientId);
+    const sorted = [...appointments].sort((left, right) => `${right.date} ${right.time || ""}`.localeCompare(`${left.date} ${left.time || ""}`));
+    return ok({ patientId: patient.patientId, appointments: sorted.slice(0, 100).map((item) => appointmentView(item, { displayStatus: appointmentDisplayStatus(item) })) });
+  }
+
+  // 受付一覧の患者ごとの補足（患者メモ・前回受付日）。一覧の 15 秒ごとの更新とは別に、日付を変えたときと患者が増えたときだけ引く。
+  if (method === "GET" && matches(parts, ["v1", "eye", "appointments", "patient-details"])) {
+    const date = String(url.searchParams.get("date") || today(input));
+    if (!DATE_PATTERN.test(date)) throw badRequest("date must be YYYY-MM-DD", "date");
+    const appointments = await eyeStore.listAppointmentsByDate(orgId, date);
+    const patientIds = [...new Set(appointments.map((item) => item.patientId).filter(Boolean))];
+    const [details, patients] = await Promise.all([
+      Promise.all(patientIds.map((patientId) => patientVisitDetails(eyeStore, orgId, patientId, date))),
+      // 患者番号は受付の写し（patientSnapshot）に入っていないので、いまの患者情報から返す
+      Promise.all(patientIds.map((patientId) => Promise.resolve(platformStore.getPatient(orgId, patientId)).catch(() => null)))
+    ]);
+    return ok({
+      date,
+      patients: Object.fromEntries(patientIds.map((patientId, index) => [patientId, {
+        primaryPatientNumber: patients[index]?.primaryPatientNumber || "",
+        patientMemo: details[index].patientMemo,
+        patientMemoRevision: details[index].patientMemoRevision,
+        previousVisitDate: details[index].lastVisitDate
+      }]))
+    });
   }
 
   if (method === "GET" && matches(parts, ["v1", "eye", "appointments"])) {
@@ -1235,6 +1282,30 @@ async function searchPatients(platformStore, orgId, { search, birthDate }) {
     }
   }
   return [...byId.values()].slice(0, SEARCH_LIMIT);
+}
+
+// 患者メモと、before（YYYY-MM-DD）より前のいちばん新しい受診日（来院した受付・カルテの日付）。
+async function patientVisitDetails(eyeStore, orgId, patientId, before) {
+  const [profile, appointments, encounters] = await Promise.all([
+    eyeStore.getPatientProfile(orgId, patientId),
+    eyeStore.listPatientAppointments(orgId, patientId),
+    eyeStore.listPatientEncounters(orgId, patientId)
+  ]);
+  const dates = [
+    ...appointments.filter((item) => item.checkedInAt || APPOINTMENT_ARRIVED_STATUSES.includes(item.status)).map((item) => item.date),
+    ...encounters.map((item) => item.encounterDate)
+  ].filter((value) => value && value < before);
+  return {
+    patientMemo: profile?.patientMemo || "",
+    patientMemoRevision: Number.isInteger(profile?.revision) ? profile.revision : 0,
+    lastVisitDate: dates.sort().at(-1) || ""
+  };
+}
+
+function addIsoDays(iso, days) {
+  const value = new Date(`${iso}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
 }
 
 async function buildWorklist(eyeStore, platformStore, orgId) {
