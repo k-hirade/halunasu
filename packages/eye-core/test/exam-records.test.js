@@ -153,6 +153,11 @@ test("adds near VA and IOP averages to the trend without changing the old fields
   assert.equal(recorded.od.iopAverage, 15.7);
   assert.deepEqual(recorded.od.iopReadings, [15, 16, 16]);
   assert.equal(recorded.os.vaNear, 0.5);
+  // 裸眼と矯正を分けた値（視力眼圧の表・グラフ用）
+  assert.equal(old.od.vaCorrected, 1);
+  assert.equal(old.od.vaCorrectedLabel, "1.0");
+  assert.equal(old.od.vaUncorrected, null);
+  assert.equal(old.od.correction, null);
 });
 
 test("plans next-visit items per eye and turns them into planned orders once", () => {

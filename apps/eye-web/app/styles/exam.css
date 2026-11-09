@@ -1260,3 +1260,874 @@
     grid-template-columns: 66px minmax(0, 1fr) minmax(0, 1fr) 112px;
   }
 }
+
+/* ---- 検査入力（トプコンの RegData に倣う: 記録の行 → 大タブ → 小タブ → 本文） ---- */
+.rd-page {
+  padding-bottom: calc(150px + env(safe-area-inset-bottom));
+}
+
+.rd-title {
+  font-size: var(--fs-lg);
+  margin: 4px 0 6px;
+}
+
+.rd-record-row {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 0;
+  min-width: 0;
+  padding: 8px 12px;
+}
+
+.rd-record-field {
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+}
+
+.rd-record-label {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.input.rd-examiner {
+  width: 160px;
+}
+
+.btn.rd-register {
+  min-height: 40px;
+  min-width: 96px;
+}
+
+.rd-dirty {
+  color: var(--amber);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.rd-records {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 0;
+}
+
+.rd-records-label {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+.rd-records-spacer {
+  flex: 1;
+}
+
+.btn.rd-record-chip {
+  font-variant-numeric: tabular-nums;
+}
+
+.btn.rd-record-chip.is-new {
+  border-style: dashed;
+}
+
+.rd-notice {
+  background: var(--amber-soft);
+  border: 1px solid var(--amber-line);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: var(--fs-sm);
+  margin: 8px 0 0;
+  padding: 6px 10px;
+}
+
+.exam-bar-message.rd-message {
+  margin: 8px 0 0;
+  max-width: none;
+}
+
+.rd-layout {
+  align-items: start;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  margin-top: 10px;
+}
+
+.rd-main {
+  min-width: 0;
+}
+
+.rd-side {
+  border: 0;
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+/* 大タブ（ボタン型）。押しやすい大きさで、値のあるタブには印を付ける */
+.rd-tabs {
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+}
+
+.rd-tab {
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  color: var(--text-soft);
+  cursor: pointer;
+  font-size: var(--fs-md);
+  font-weight: 700;
+  min-height: 44px;
+  padding: 4px 6px;
+  position: relative;
+}
+
+.rd-tab:hover {
+  border-color: var(--teal);
+}
+
+.rd-tab[aria-selected="true"] {
+  background: var(--teal);
+  border-color: var(--teal);
+  color: var(--on-accent);
+}
+
+.rd-tab.has-values::after {
+  background: var(--teal);
+  border-radius: 50%;
+  content: "";
+  height: 7px;
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  width: 7px;
+}
+
+.rd-tab.has-values[aria-selected="true"]::after {
+  background: var(--on-accent);
+}
+
+/* 小タブ（ノート型） */
+.rd-subtabs {
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-top: 8px;
+}
+
+.rd-subtab {
+  background: none;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: var(--fs-md);
+  font-weight: 700;
+  margin-bottom: -1px;
+  min-height: 40px;
+  padding: 4px 12px;
+}
+
+.rd-subtab[aria-selected="true"] {
+  border-bottom-color: var(--teal);
+  color: var(--text);
+}
+
+.rd-panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  margin: 8px 0 0;
+  min-width: 0;
+  padding: 10px 12px 12px;
+}
+
+.rd-panel-title {
+  align-items: center;
+  display: flex;
+  font-size: var(--fs-lg);
+  gap: 8px;
+  margin: 0 0 8px;
+}
+
+.tag.rd-provisional-tag {
+  font-size: var(--fs-xs);
+}
+
+.rd-provisional {
+  background: var(--surface-muted);
+  border-radius: 6px;
+  color: var(--text-soft);
+  font-size: var(--fs-sm);
+  margin: 0 0 10px;
+  padding: 6px 10px;
+}
+
+.rd-tools {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-bottom: 8px;
+}
+
+.rd-tools-spacer {
+  flex: 1;
+}
+
+.rd-tool-field {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.rd-tool-field > span {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.rd-form-grid {
+  display: grid;
+  gap: 10px 16px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  margin-bottom: 10px;
+}
+
+.rd-form-grid .rd-tool-field {
+  align-items: stretch;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rd-form-grid .rd-tool-field.is-wide {
+  grid-column: 1 / -1;
+}
+
+.rd-wide-field {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.rd-wide-field > span {
+  color: var(--muted);
+  flex: 0 0 auto;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.rd-wide-field .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.rd-record-note {
+  border-top: 1px dashed var(--line);
+  padding-top: 10px;
+}
+
+.rd-hint {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  margin: 8px 0 0;
+}
+
+/* 表（視力・眼圧・屈折など共通）。入力欄はタブレットで押しやすい高さ */
+.rd-grid {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.rd-grid th,
+.rd-grid td {
+  border-bottom: 1px solid var(--line);
+  padding: 3px 4px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.rd-grid thead th {
+  background: var(--surface-muted);
+  color: var(--text-soft);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.rd-grid .input {
+  min-height: 40px;
+  padding: 4px 6px;
+}
+
+.rd-grid .input.input-num,
+.rd-grid .input.input-iop {
+  width: 76px;
+}
+
+.rd-grid .input.input-va,
+.rd-grid .input.rd-rg {
+  width: 66px;
+}
+
+.rd-grid select.input {
+  padding-right: 2px;
+  width: auto;
+}
+
+.rd-grid .rd-distance {
+  background: var(--surface-muted);
+  color: var(--text-soft);
+  font-size: var(--fs-sm);
+  font-weight: 800;
+  text-align: center;
+  width: 32px;
+  writing-mode: vertical-rl;
+}
+
+.rd-grid .rd-eye {
+  font-size: var(--fs-lg);
+  font-weight: 800;
+  text-align: center;
+  width: 34px;
+}
+
+.rd-grid tbody + tbody tr:first-child > * {
+  border-top: 2px solid var(--line-strong);
+}
+
+.rd-row.is-ou td,
+.rd-row.is-ou th {
+  background: var(--surface-muted);
+}
+
+.rd-grid-area {
+  align-items: stretch;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(160px, 1fr);
+}
+
+.rd-grid-scroll {
+  min-width: 0;
+}
+
+.rd-comment {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rd-comment > span {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.rd-comment textarea {
+  flex: 1;
+  min-height: 88px;
+  resize: vertical;
+}
+
+/* 右寄りの欄（S・C・A・RG）のテンキーは右端にそろえて開く */
+.rd-grid td:nth-last-child(-n + 4) .num-pad,
+.rd-grid td:nth-last-child(-n + 4) .va-picker {
+  left: auto;
+  right: 0;
+}
+
+.rd-pd {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 0 0 8px;
+}
+
+.rd-pd-label {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.rd-average {
+  font-size: var(--fs-lg);
+  font-weight: 800;
+  min-width: 96px;
+}
+
+.rd-unit {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  margin-left: 4px;
+}
+
+/* 機器の値（参照パネル 3 枚） */
+.rd-devices {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 10px;
+}
+
+.rd-device {
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 6px 8px;
+}
+
+.rd-device-head {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.rd-device-head strong {
+  font-size: var(--fs-sm);
+}
+
+.rd-device-count,
+.rd-device-time {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.rd-device-step {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.rd-device-body {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  margin: 4px 0;
+  overflow: hidden;
+  white-space: pre-wrap;
+}
+
+.rd-device-empty {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  margin: 6px 0 2px;
+}
+
+.btn.rd-device-copy {
+  align-self: flex-start;
+}
+
+/* 9 方向眼位 */
+.rd-nine-grid {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.rd-nine-cell {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 6px;
+}
+
+.rd-nine-cell.is-normal {
+  border-color: var(--green-line);
+}
+
+.rd-nine-cell.is-abnormal {
+  background: var(--amber-soft);
+  border-color: var(--amber-line);
+}
+
+.rd-nine-head {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
+.rd-gaze-pic {
+  flex: 0 0 auto;
+  height: 24px;
+  width: 64px;
+}
+
+.rd-gaze-eye {
+  fill: var(--surface);
+  stroke: var(--text-soft);
+  stroke-width: 1.5;
+}
+
+.rd-gaze-pupil {
+  fill: var(--text);
+}
+
+.rd-nine-label {
+  font-size: var(--fs-sm);
+  font-weight: 800;
+}
+
+.rd-nine-eyes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+.rd-nine-eye {
+  align-items: center;
+  display: inline-flex;
+  font-size: var(--fs-sm);
+  font-weight: 800;
+  gap: 4px;
+}
+
+.rd-nine-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* Worth 4 灯 */
+.rd-radio-group {
+  align-items: center;
+  border: 0;
+  display: inline-flex;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+}
+
+.rd-radio-group legend {
+  color: var(--muted);
+  float: left;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  margin-right: 8px;
+}
+
+.rd-radio-group label {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+  min-height: 40px;
+}
+
+.rd-worth-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 160px));
+}
+
+.rd-worth-button {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  gap: 4px;
+  min-height: 96px;
+  padding: 8px;
+}
+
+.rd-worth-button[aria-pressed="true"] {
+  background: var(--teal-soft);
+  border-color: var(--teal);
+  box-shadow: inset 0 0 0 1px var(--teal);
+}
+
+.rd-worth-pic {
+  height: 48px;
+  width: 64px;
+}
+
+.rd-worth-dot.is-red {
+  fill: var(--od);
+}
+
+.rd-worth-dot.is-green {
+  fill: var(--green);
+}
+
+.rd-worth-dot.is-white {
+  fill: var(--surface);
+  stroke: var(--text);
+  stroke-width: 1.5;
+}
+
+.rd-worth-unknown,
+.rd-worth-arrow {
+  fill: var(--text-soft);
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.rd-cover {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin: 12px 0 0;
+  min-width: 0;
+  padding: 6px 10px 10px;
+}
+
+.rd-cover legend {
+  font-size: var(--fs-sm);
+  font-weight: 800;
+  padding: 0 4px;
+}
+
+/* 下の操作（トプコンの順: 確定系 … キャンセル … 保存して戻る … 保存して次へ） */
+.rd-bar-buttons {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 6px auto 0;
+  max-width: 1440px;
+}
+
+.rd-bar-gap {
+  flex: 1;
+}
+
+.rd-bar .btn {
+  min-height: 44px;
+}
+
+.rd-bar .btn.rd-next {
+  border-color: var(--teal);
+  color: var(--teal-dark);
+  font-weight: 800;
+}
+
+/* データ表示 */
+.dialog.rd-data-dialog {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 48px);
+  max-width: 720px;
+}
+
+.rd-data-dialog .dialog-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.rd-data-body {
+  overflow: auto;
+}
+
+.rd-data-record + .rd-data-record {
+  border-top: 1px solid var(--line);
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.rd-data-record h3 {
+  font-size: var(--fs-lg);
+  margin: 0 0 6px;
+}
+
+.rd-data-block h4 {
+  background: var(--surface-muted);
+  font-size: var(--fs-sm);
+  margin: 6px 0 2px;
+  padding: 2px 6px;
+}
+
+.rd-data-block p {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--fs-sm);
+  margin: 0;
+  padding-left: 6px;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 1279px) {
+  .rd-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rd-side {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1099px) {
+  .rd-grid-area {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .rd-side {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rd-devices {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* スマホ: 表は横にスクロール（テンキーは画面下のシートなので切れない） */
+@media (max-width: 639px) {
+  .rd-grid-scroll {
+    overflow-x: auto;
+  }
+
+  .rd-tabs {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .rd-tab {
+    font-size: var(--fs-sm);
+  }
+
+  .rd-nine-grid {
+    gap: 4px;
+  }
+
+  .rd-nine-cell {
+    padding: 4px;
+  }
+
+  .rd-nine-eyes {
+    flex-direction: column;
+  }
+
+  .rd-gaze-pic {
+    width: 44px;
+  }
+
+  .rd-worth-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .rd-panel {
+    padding: 8px;
+  }
+
+  .input.rd-examiner {
+    width: 120px;
+  }
+
+  .rd-bar-gap {
+    display: none;
+  }
+
+  .rd-bar-buttons .btn {
+    flex: 1 1 40%;
+  }
+
+  .rd-bar-buttons .btn.rd-finish {
+    flex-basis: 100%;
+  }
+
+  .rd-page .exam-bar-hint {
+    display: none;
+  }
+}
+
+/* 検査入力: 調整（下の操作は広い画面で 1 行、表とコメントは 900px 以上で横並び、スマホは詰める） */
+.rd-radio-group label {
+  flex-direction: row;
+  white-space: nowrap;
+}
+
+.rd-radio-group input[type="radio"] {
+  margin: 0;
+  min-height: 0;
+  width: auto;
+}
+
+@media (min-width: 900px) and (max-width: 1099px) {
+  .rd-grid-area {
+    grid-template-columns: auto minmax(160px, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .rd-bar {
+    align-items: center;
+    display: flex;
+    gap: 12px;
+  }
+
+  .rd-bar .exam-bar-row {
+    flex: 0 1 auto;
+    margin: 0;
+    order: 1;
+  }
+
+  .rd-bar .exam-bar-row .exam-bar-spacer {
+    display: none;
+  }
+
+  .rd-bar .rd-bar-buttons {
+    flex: 1;
+    margin: 0;
+    order: 2;
+  }
+
+  .rd-page {
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  }
+}
+
+@media (max-width: 639px) {
+  .rd-devices {
+    grid-auto-columns: minmax(220px, 78%);
+    grid-auto-flow: column;
+    grid-template-columns: none;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .rd-bar-buttons .btn {
+    flex: 1 1 0;
+    font-size: var(--fs-sm);
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+
+  .rd-bar .btn {
+    min-height: 40px;
+  }
+
+  .rd-bar .exam-bar-row {
+    font-size: var(--fs-xs);
+  }
+}

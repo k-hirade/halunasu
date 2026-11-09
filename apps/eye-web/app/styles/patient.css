@@ -988,3 +988,265 @@ a.visit-row:focus-visible {
     height: 45vh;
   }
 }
+
+/* ---- 患者ページのタブ（カルテ概要 / 視力眼圧 / 画像の比較） ---- */
+.pt-tabs {
+  align-items: flex-end;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+
+.pt-tab {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: var(--fs-md);
+  font-weight: 700;
+  margin-bottom: -1px;
+  min-height: 44px;
+  padding: 4px 14px;
+  text-decoration: none;
+}
+
+.pt-tab[aria-selected="true"] {
+  border-bottom-color: var(--teal);
+  color: var(--text);
+}
+
+.pt-tab.is-link {
+  color: var(--teal-dark);
+  margin-left: auto;
+}
+
+.pt-page .ps-pane {
+  margin-bottom: 12px;
+}
+
+.panel.pt-va-iop {
+  padding: 12px;
+}
+
+/* ---- 視力眼圧（表 2 つ ＋ グラフ 2 つ） ---- */
+.vi-view {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.vi-tables {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 65fr) minmax(0, 35fr);
+}
+
+.vi-table-wrap {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  max-height: 260px;
+  min-width: 0;
+  overflow: auto;
+}
+
+.vi-table {
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  width: 100%;
+}
+
+.vi-table th {
+  background: var(--surface-muted);
+  color: var(--text-soft);
+  font-weight: 700;
+  position: sticky;
+  text-align: left;
+  top: 0;
+  white-space: nowrap;
+}
+
+.vi-table th,
+.vi-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 4px 8px;
+}
+
+.vi-table td {
+  white-space: nowrap;
+}
+
+.vi-chart {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-width: 0;
+  padding: 6px 8px 2px;
+}
+
+.vi-chart-head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
+
+.vi-unit {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
+
+.vi-series {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+}
+
+.vi-series-item {
+  align-items: center;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  gap: 4px;
+  min-height: 32px;
+}
+
+.vi-swatch {
+  border-top: 3px solid currentColor;
+  display: inline-block;
+  width: 18px;
+}
+
+.vi-series-item.series-od {
+  color: var(--od);
+}
+
+.vi-series-item.series-os {
+  color: var(--os);
+}
+
+.vi-series-item.is-dashed .vi-swatch {
+  border-top-style: dashed;
+}
+
+.vi-plot {
+  min-width: 0;
+}
+
+.vi-svg .series-od .line {
+  stroke: var(--od);
+}
+
+.vi-svg .series-os .line {
+  stroke: var(--os);
+}
+
+.vi-svg .is-dashed .line {
+  stroke-dasharray: 5 4;
+}
+
+.vi-svg .series-od .dot {
+  fill: var(--od);
+}
+
+.vi-svg .series-os .dot {
+  fill: var(--os);
+}
+
+.vi-svg .is-dashed .dot {
+  fill: var(--surface);
+  stroke-width: 1.5;
+}
+
+.vi-svg .series-od.is-dashed .dot {
+  stroke: var(--od);
+}
+
+.vi-svg .series-os.is-dashed .dot {
+  stroke: var(--os);
+}
+
+.vi-value {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.vi-svg .series-od .vi-value {
+  fill: var(--od);
+}
+
+.vi-svg .series-os .vi-value {
+  fill: var(--os);
+}
+
+/* ---- 画像の比較: 表示モード（比較 / OU / 時系列） ---- */
+.cmp-page .cmp-modes {
+  flex: 0 0 auto;
+}
+
+.cmp-ou-head {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.cmp-ou-date {
+  font-size: var(--fs-lg);
+  font-variant-numeric: tabular-nums;
+}
+
+.cmp-pane-select.is-static {
+  cursor: default;
+}
+
+.cmp-series {
+  display: grid;
+  gap: 8px;
+  grid-auto-columns: minmax(220px, 1fr);
+  grid-auto-flow: column;
+  list-style: none;
+  margin: 8px 0 0;
+  overflow-x: auto;
+  padding: 0 0 6px;
+}
+
+.cmp-series-item {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-width: 0;
+  padding: 6px;
+}
+
+.cmp-series-head {
+  align-items: baseline;
+  display: flex;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.cmp-series .file-preview {
+  max-height: 46vh;
+  object-fit: contain;
+  width: 100%;
+}
+
+@media (max-width: 767px) {
+  .vi-tables {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pt-tab {
+    padding: 4px 10px;
+  }
+}

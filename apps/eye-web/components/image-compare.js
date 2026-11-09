@@ -14,6 +14,13 @@ const PANES = [
   { key: "right", mark: "2", label: "右の面" }
 ];
 const THUMB_LIMIT = 24;
+const SERIES_LIMIT = 6;
+// 表示モード（IMAGEnet の比較・OU・トレンドの表示に倣う）
+const MODES = [
+  { key: "compare", label: "比較", title: "同じ眼の 2 つの日付を左右に並べる" },
+  { key: "ou", label: "OU", title: "同じ日の右眼と左眼を並べる" },
+  { key: "series", label: "時系列", title: "同じ眼・同じ種類を古い順に横に並べる" }
+];
 
 // 画像の比較。時系列のサムネイル列から選び、左右に日付の違う検査を並べる（判定はしない）。
 // 既定は ②=最新、①=その 1 つ前。選択中の面だけを ‹ › で前後に送る。
@@ -29,6 +36,8 @@ export function ImageCompare({ patientId }) {
   const [activePane, setActivePane] = useState("right");
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
+  const [mode, setMode] = useState("compare");
+  const [ouDate, setOuDate] = useState("");
 
   const loadFiles = useCallback(async () => {
     const payload = await api(`/v1/eye/patients/${patientId}/files`);
@@ -88,10 +97,30 @@ export function ImageCompare({ patientId }) {
   }, [candidateKey]);
 
   const stripFiles = candidates.slice(-THUMB_LIMIT);
+  // OU: この種類で右眼・左眼のそろう日付（古い → 新しい）。片眼だけの日も選べる。
+  const ouDates = useMemo(() => {
+    const byDate = new Map();
+    for (const item of comparable.filter((file) => file.kind === kind)) {
+      const entry = byDate.get(item.takenOn) || {};
+      for (const side of item.eye === "ou" ? ["od", "os"] : [item.eye]) {
+        if ((side === "od" || side === "os") && (!entry[side] || byNewest(item, entry[side]) < 0)) entry[side] = item;
+      }
+      byDate.set(item.takenOn, entry);
+    }
+    return [...byDate.entries()].filter(([, entry]) => entry.od || entry.os).sort(([left], [right]) => String(left).localeCompare(String(right)));
+  }, [comparable, kind]);
+  const ouIndex = (() => {
+    const index = ouDates.findIndex(([value]) => value === ouDate);
+    if (index >= 0) return index;
+    const both = ouDates.map(([, entry], position) => (entry.od && entry.os ? position : -1)).filter((position) => position >= 0);
+    return both.length ? both.at(-1) : ouDates.length - 1;
+  })();
+  const ouEntry = ouIndex >= 0 ? ouDates[ouIndex][1] : null;
+  const seriesFiles = candidates.slice(-SERIES_LIMIT);
+  const shownIds = mode === "ou" ? [ouEntry?.od?.fileId, ouEntry?.os?.fileId] : mode === "series" ? seriesFiles.map((item) => item.fileId) : [selection.left, selection.right];
   const { urls, failed } = useFileUrls([
-    ...stripFiles.filter(isImageFile).map((item) => item.fileId),
-    selection.left,
-    selection.right
+    ...(mode === "compare" ? stripFiles.filter(isImageFile).map((item) => item.fileId) : []),
+    ...shownIds
   ]);
 
   const indexOf = (fileId) => candidates.findIndex((item) => item.fileId === fileId);
@@ -109,12 +138,13 @@ export function ImageCompare({ patientId }) {
     const onKey = (event) => {
       if (event.isComposing || uploading || event.altKey || event.metaKey || event.ctrlKey) return;
       if (event.target instanceof HTMLElement && event.target.closest("input, select, textarea, [contenteditable='true']")) return;
+      if (mode !== "compare") return;
       if (event.key === "ArrowLeft") { event.preventDefault(); step(activePane, -1); }
       if (event.key === "ArrowRight") { event.preventDefault(); step(activePane, 1); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [activePane, step, uploading]);
+  }, [activePane, mode, step, uploading]);
 
   const byId = new Map(candidates.map((item) => [item.fileId, item]));
   const canUpload = Boolean(context?.canWriteDocuments);
@@ -140,6 +170,13 @@ export function ImageCompare({ patientId }) {
       <div className="cmp-head">
         <h2>画像の比較</h2>
         {kindCounts.length ? (
+          <div aria-label="表示モード" className="segmented cmp-modes" role="group">
+            {MODES.map((item) => (
+              <button aria-pressed={mode === item.key} key={item.key} onClick={() => setMode(item.key)} title={item.title} type="button">{item.label}</button>
+            ))}
+          </div>
+        ) : null}
+        {kindCounts.length ? (
           <div aria-label="種類" className="cmp-chips" role="group">
             {kindCounts.map(([value, count]) => (
               <button aria-pressed={kind === value} className="flow-chip cmp-chip" key={value} onClick={() => chooseKind(value)} type="button">
@@ -148,7 +185,7 @@ export function ImageCompare({ patientId }) {
             ))}
           </div>
         ) : null}
-        {kindCounts.length ? (
+        {kindCounts.length && mode !== "ou" ? (
           <div aria-label="眼" className="cmp-eyes" role="group">
             {EYE_FILTERS.map(([value, label]) => (
               <button aria-pressed={eye === value} className="btn btn-chip btn-sm" key={value || "all"} onClick={() => setEye(value)} type="button">{label}</button>
@@ -164,8 +201,53 @@ export function ImageCompare({ patientId }) {
           {uploadButton}
         </div>
       ) : null}
-      {kindCounts.length > 0 && candidates.length === 0 ? <p className="empty">この条件の画像はありません。眼を「すべて」にすると表示されます。</p> : null}
-      {candidates.length > 0 ? (
+      {mode !== "ou" && kindCounts.length > 0 && candidates.length === 0 ? <p className="empty">この条件の画像はありません。眼を「すべて」にすると表示されます。</p> : null}
+      {mode === "ou" && kindCounts.length ? (
+        ouEntry ? (
+          <>
+            <div className="cmp-ou-head">
+              <button aria-label="前の日付へ" className="btn btn-chip btn-sm" disabled={ouIndex <= 0} onClick={() => setOuDate(ouDates[ouIndex - 1][0])} type="button">‹</button>
+              <strong className="cmp-ou-date">{formatDate(ouDates[ouIndex][0])}</strong>
+              <button aria-label="次の日付へ" className="btn btn-chip btn-sm" disabled={ouIndex >= ouDates.length - 1} onClick={() => setOuDate(ouDates[ouIndex + 1][0])} type="button">›</button>
+              <span className="muted small">{ouIndex + 1}/{ouDates.length} 日</span>
+            </div>
+            <div className="compare-grid cmp-grid">
+              {[["od", "右眼"], ["os", "左眼"]].map(([side, label]) => {
+                const file = ouEntry[side];
+                return (
+                  <section aria-label={label} className="cmp-pane" key={side}>
+                    <div className="cmp-pane-head">
+                      <span className="cmp-pane-select is-static">
+                        <span className={`cmp-pane-mark eye-${side}`}>{side === "od" ? "R" : "L"}</span>
+                        <span className="cmp-pane-rel">{label}</span>
+                        {file ? <span className="cmp-pane-meta">{FILE_KIND_LABELS[file.kind]}</span> : null}
+                      </span>
+                    </div>
+                    {file ? <FilePreview file={file} url={urls[file.fileId]} /> : <div className="file-preview is-empty">この日の{label}の画像はありません</div>}
+                  </section>
+                );
+              })}
+            </div>
+          </>
+        ) : <p className="empty">この種類の画像はありません。</p>
+      ) : null}
+      {mode === "series" && candidates.length > 0 ? (
+        <>
+          <ol aria-label="時系列（古い順）" className="cmp-series">
+            {seriesFiles.map((item, index) => (
+              <li className="cmp-series-item" key={item.fileId}>
+                <div className="cmp-series-head">
+                  <strong>{formatDate(item.takenOn)}</strong>
+                  <span className="muted small">{item.eye ? EYE_LABELS[item.eye] : ""}{index === seriesFiles.length - 1 ? " ・ 最新" : ""}</span>
+                </div>
+                <FilePreview file={item} url={urls[item.fileId]} />
+              </li>
+            ))}
+          </ol>
+          {candidates.length > SERIES_LIMIT ? <p className="muted small">新しい {SERIES_LIMIT} 件を表示しています。</p> : null}
+        </>
+      ) : null}
+      {mode === "compare" && candidates.length > 0 ? (
         <>
           <ol aria-label="時系列（古い順）" className="cmp-strip">
             {stripFiles.map((item) => {

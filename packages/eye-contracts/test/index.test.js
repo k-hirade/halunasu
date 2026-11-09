@@ -272,6 +272,31 @@ test("next-visit plan items and exam records are optional and keep old content u
   assert.throws(() => validateExamRecordInput({ expectedRevision: 1, values: { vision: { far: { od: { iolCl: "glasses" } } } } }), (error) => error.field === "values.vision.far.od.iolCl");
 });
 
+test("exam records hold PD, the grid condition and the binocular / gaze / text tests (all optional)", async () => {
+  const { validateExamRecordValues } = await import("../src/index.js");
+  assert.deepEqual(validateExamRecordValues({ tests: {}, pd: {} }), {}, "empty tests are dropped");
+  const values = validateExamRecordValues({
+    vision: { condition: "5m 字ひとつ", far: { ou: { corrected: "1.2" } } },
+    pd: { far: 62, near: "59" },
+    tests: {
+      worth: { fixingEye: "od", distance: "near", pattern: "four" },
+      cover: { near: { fixingEye: "os", kind: "phoria", direction: "exo", amount: "8" }, far: {} },
+      nineGaze: { condition: "裸眼", cells: { up_right: { od: "normal", os: "-2" }, center: {} } },
+      color: { test: "石原", od: "正常", os: "" },
+      other: { name: "涙液", text: "BUT 5秒" }
+    }
+  });
+  assert.equal(values.vision.condition, "5m 字ひとつ");
+  assert.deepEqual(values.pd, { far: 62, near: 59 });
+  assert.deepEqual(values.tests.cover, { near: { fixingEye: "os", kind: "phoria", direction: "exo", amount: "8" } });
+  assert.deepEqual(values.tests.nineGaze, { condition: "裸眼", cells: { up_right: { od: "normal", os: "-2" } } });
+  assert.deepEqual(values.tests.color, { test: "石原", od: "正常" });
+  assert.deepEqual(validateExamRecordValues(values), values, "validation is stable");
+  assert.throws(() => validateExamRecordValues({ tests: { worth: { pattern: "six" } } }), (error) => error.field === "values.tests.worth.pattern");
+  assert.throws(() => validateExamRecordValues({ tests: { nineGaze: { cells: { middle: { od: "normal" } } } } }), (error) => error.field === "values.tests.nineGaze.cells.middle");
+  assert.throws(() => validateExamRecordValues({ pd: { far: 120 } }), (error) => error.field === "values.pd.far");
+});
+
 test("lists the eleven DigiKar reception statuses with labels and keeps no_show as a legacy alias of absent", () => {
   assert.deepEqual(APPOINTMENT_STATUS_MENU.map((status) => APPOINTMENT_STATUS_LABELS[status]), [
     "予約済", "受付中", "診察待", "診察中", "検査中", "処置中", "会計待", "会計済", "再計待", "不在", "取消"

@@ -1,6 +1,6 @@
 // 診察画面（/）とヘッダーの人数バッジで使う「段階」の決め方。
 // 受付（reception-workspace.js）と同じ基準: 散瞳の点眼から 20 分たつまでは「散瞳中」として扱う。
-import { minutesSince } from "./format";
+import { minutesSince } from "./format.js";
 
 export const CONSULT_REFRESH_MS = 15000;
 export const DILATION_READY_MINUTES = 20;
@@ -31,6 +31,28 @@ export function consultStageOf(item, encountersByPatient = {}, now = Date.now())
   return null;
 }
 
+// 診察の患者一覧の場所タブ（トプコンの「場所一覧」: 受付・検査・暗室・診察 … 会計・全て に倣う）
+export const LIST_STAGES = [
+  { key: "waiting", label: "診察待", status: "waiting_doctor" },
+  { key: "consult", label: "診察中", status: "in_consult" },
+  { key: "exam", label: "検査", status: "in_exam" },
+  { key: "dark", label: "暗室", status: "dilating", title: "散瞳中（点眼から20分まで）" },
+  { key: "booked", label: "予約", status: "booked" },
+  { key: "checkout", label: "会計", status: "checkout" }
+];
+
+export function listStageOf(item, encountersByPatient = {}, now = Date.now()) {
+  if (item.status === "done") return "checkout";
+  const group = flowGroupOf(item, encountersByPatient, now);
+  if (group === "waiting_doctor") return "waiting";
+  if (group === "in_consult") return "consult";
+  if (group === "dilating") return "dark";
+  if (["checked_in", "in_exam", "in_treatment"].includes(group)) return "exam";
+  if (group === "booked") return "booked";
+  if (group === "checkout") return "checkout";
+  return null;
+}
+
 export function countWaiting(payload = {}, now = Date.now()) {
   return (payload.appointments || []).filter((item) => consultStageOf(item, payload.encountersByPatient, now) === "waiting").length;
 }
@@ -41,4 +63,39 @@ export const WAITING_COUNT_EVENT = "halunasu-eye:waiting-count";
 export function publishWaitingCount(count) {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent(WAITING_COUNT_EVENT, { detail: count }));
+}
+
+// 段階に入った時刻（受付の状態が最後に変わった時刻）
+export function stageEnteredAt(item) {
+  return item.statusHistory?.at(-1)?.at || item.checkedInAt || "";
+}
+
+function byStageEntered(left, right) {
+  return String(stageEnteredAt(left)).localeCompare(String(stageEnteredAt(right))) || (left.queueNumber || 0) - (right.queueNumber || 0);
+}
+
+// 次の検査の患者（受付済・検査中で、その段階に入ったのが早い順。同時なら受付番号順）
+export function nextExamPatient(appointments = [], excludePatientId = "") {
+  return appointments
+    .filter((item) => item.patientId && item.patientId !== excludePatientId && ["checked_in", "in_exam"].includes(item.status))
+    .sort(byStageEntered)[0] || null;
+}
+
+// 次に診る患者（診察待ちになったのが早い順。同時なら受付番号順）。デジカルの「患者リスト（診察待）」の先頭。
+export function nextWaitingPatient(appointments = [], encountersByPatient = {}, now = Date.now()) {
+  return appointments
+    .filter((item) => item.patientId && consultStageOf(item, encountersByPatient, now) === "waiting")
+    .sort(byStageEntered)[0] || null;
+}
+
+// その日のカルテの ID。なければ作る（前回の確定カルテがあれば再診）。
+export async function ensureEncounterFor(api, item, encountersByPatient = {}) {
+  const existing = encountersByPatient[item.patientId];
+  if (existing) return existing.encounterId;
+  const chart = await api(`/v1/eye/patients/${item.patientId}/chart`);
+  const payload = await api("/v1/eye/encounters", {
+    method: "POST",
+    body: { patientId: item.patientId, encounterDate: item.date, visitType: chart.latestFinalized ? "revisit" : "initial" }
+  });
+  return payload.encounter.encounterId;
 }

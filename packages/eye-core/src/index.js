@@ -254,7 +254,15 @@ export function buildTrend(encounters = []) {
           vaNear: nearCorrected.decimal ?? nearUncorrected.decimal,
           vaNearLabel: nearCorrected.label || nearUncorrected.label,
           iopAverage: iopReadings.length ? highlights[side].iopAverage : null,
-          iopReadings
+          iopReadings,
+          // 視力眼圧の表・グラフ用（裸眼と矯正を分けて持つ。追加 2026-11）
+          vaUncorrected: uncorrected.decimal,
+          vaUncorrectedLabel: uncorrected.label,
+          vaCorrected: corrected.decimal,
+          vaCorrectedLabel: corrected.label,
+          vaCorrectionType: exam[side]?.vaCorrectionType || "",
+          correction: hasSca(exam[side]?.correction) ? exam[side].correction : null,
+          iopMethod: exam[side]?.iopMethod || ""
         }];
       }))
     };
@@ -280,6 +288,10 @@ export function buildTrend(encounters = []) {
     .map((item) => ({ encounterDate: encounter.encounterDate, label: prescriptionLabel(item) })));
 
   return { points, medicationEvents, injections };
+}
+
+function hasSca(value) {
+  return Boolean(value) && ["sphere", "cylinder", "axis"].some((key) => Number.isFinite(value[key]));
 }
 
 export function prescriptionLabel(item = {}) {
