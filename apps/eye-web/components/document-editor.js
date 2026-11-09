@@ -42,6 +42,7 @@ export function DocumentEditor({ documentId }) {
   const [suggestions, setSuggestions] = useState([]);
   const [purposeDraft, setPurposeDraft] = useState(null);
   const [notice, setNotice] = useState("");
+  const [finalizedNow, setFinalizedNow] = useState(false);
   const revisionRef = useRef(0);
   const dirtyRef = useRef(false);
   const savingRef = useRef(null);
@@ -225,6 +226,7 @@ export function DocumentEditor({ documentId }) {
       revisionRef.current = payload.document.revision;
       setDialog("");
       setPane("preview");
+      setFinalizedNow(true);
     } catch (nextError) {
       setDialog("");
       setError(nextError.message);
@@ -319,6 +321,13 @@ export function DocumentEditor({ documentId }) {
       {document.status === "discarded" ? <p className="alert alert-warn">この下書きは破棄されています（{formatDateTime(document.discardedAt)} {document.discardedBy?.displayName || ""}）。</p> : null}
       {document.status === "draft" && !context?.canFinalize ? <p className="alert alert-info">下書きとして保存されます。確定は医師が行います。</p> : null}
       {notice ? <p aria-live="polite" className="sr-only">{notice}</p> : null}
+      {finalizedNow && document.status === "finalized" ? (
+        <p className="alert alert-ok doc-done" role="status">
+          確定しました。この文書は患者の文書の一覧（カルテの文書タブ・患者ページ）に並びます。
+          <button className="btn btn-primary btn-sm" onClick={openPrint} type="button">印刷する</button>
+          <Link className="btn btn-ghost btn-sm" href={`/patients/${document.patientId}`}>文書の一覧へ</Link>
+        </p>
+      ) : null}
 
       {editable ? (
         <div aria-label="表示の切り替え" className="doc-pane-switch" role="tablist">

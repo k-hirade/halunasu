@@ -96,6 +96,9 @@ export const AUDIT_EVENT_LABELS = {
   "eye.order_set_saved": "セットを保存",
   "eye.phrase_saved": "定型文を保存",
   "eye.staff_profile_saved": "印刷用の氏名を保存",
+  "eye.set_folder_saved": "セットのフォルダを保存",
+  "eye.facility_settings_saved": "医療機関情報を保存",
+  "eye.billing_handoff_redownloaded": "連携した回の CSV を再出力",
   "eye.profile_updated": "アレルギー・病名を更新",
   "eye.exam_confirmed": "検査値を確認",
   "eye.exam_unconfirmed": "検査値の確認を取消",
@@ -168,4 +171,137 @@ export function auditRangeFor(preset, today) {
   const date = new Date(`${today}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() - offsets[preset]);
   return { from: date.toISOString().slice(0, 10), to: today };
+}
+
+// ───────── 医療機関情報 ─────────
+
+export const FACILITY_FIELDS = [
+  { key: "name", label: "医療機関名", max: 100, wide: true },
+  { key: "medicalInstitutionCode", label: "医療機関コード", max: 20, inputMode: "numeric", placeholder: "10桁" },
+  { key: "postalCode", label: "郵便番号", max: 10, inputMode: "numeric", placeholder: "123-4567" },
+  { key: "address", label: "住所", max: 200, wide: true },
+  { key: "phone", label: "電話番号", max: 30, inputMode: "tel", type: "tel" },
+  { key: "fax", label: "FAX番号", max: 30, inputMode: "tel", type: "tel" },
+  { key: "email", label: "メールアドレス", max: 200, type: "email", wide: true },
+  { key: "founder", label: "開設者", max: 100 },
+  { key: "administrator", label: "管理者", max: 100 }
+];
+
+// 基本の施設情報（platform の facility）から、その項目の値を作る。表の「基本情報」と入力欄の薄い字に使う。
+export function facilityBaseValue(facility, key) {
+  if (!facility) return "";
+  const address = facility.address || {};
+  if (key === "name") return facility.legalName || facility.displayName || "";
+  if (key === "postalCode") return address.postalCode || "";
+  if (key === "address") return [address.prefecture || facility.prefecture || "", address.city || "", address.line1 || address.street || "", address.line2 || ""].filter(Boolean).join(" ");
+  return typeof facility[key] === "string" ? facility[key] : "";
+}
+
+// ───────── 利用者 ─────────
+
+export const MEMBER_STATUS_LABELS = { active: "有効", disabled: "無効", inactive: "無効", locked: "ロック中", invited: "招待中" };
+
+// 役割の並び（医師 → 視能訓練士 → 看護師 → 医療事務 → 閲覧）。管理者は「設定権限」の列に出す。
+const ROLE_ORDER = ["doctor", "orthoptist", "nurse", "medical_clerk", "viewer"];
+export function memberRoleText(roles = []) {
+  const shown = ROLE_ORDER.filter((role) => roles.includes(role));
+  return shown.length ? shown.map((role) => EYE_ROLE_LABELS[role]).join("・") : roles.includes("admin") ? "管理のみ" : "—";
+}
+
+export function sortMembers(members = []) {
+  const rank = (member) => {
+    const index = ROLE_ORDER.findIndex((role) => (member.eyeRoles || []).includes(role));
+    return index < 0 ? ROLE_ORDER.length : index;
+  };
+  return [...members].sort((left, right) => rank(left) - rank(right) || String(left.loginId).localeCompare(String(right.loginId)));
+}
+
+// ───────── セットのフォルダ ─────────
+
+const bySortThenName = (left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0) || String(left.name || "").localeCompare(String(right.name || ""), "ja");
+
+// フォルダの木。親が見つからない・輪になっているフォルダは最上位に置く（見えなくならないように）。
+// 返す節: { folder, depth, children: [節], setCount: 直下の有効なセット数, totalCount: 下の全部 }
+export function buildFolderTree(folders = [], sets = []) {
+  const active = folders.filter((item) => item.active !== false);
+  const ids = new Set(active.map((item) => item.folderId));
+  const childrenOf = new Map();
+  for (const folder of active) {
+    const parent = folder.parentId && ids.has(folder.parentId) && folder.parentId !== folder.folderId ? folder.parentId : "";
+    if (!childrenOf.has(parent)) childrenOf.set(parent, []);
+    childrenOf.get(parent).push(folder);
+  }
+  const direct = new Map();
+  for (const set of sets) {
+    if (set.active === false) continue;
+    const key = set.folderId && ids.has(set.folderId) ? set.folderId : "";
+    direct.set(key, (direct.get(key) || 0) + 1);
+  }
+  const seen = new Set();
+  const build = (parentId, depth) => [...(childrenOf.get(parentId) || [])].sort(bySortThenName).flatMap((folder) => {
+    if (seen.has(folder.folderId)) return [];
+    seen.add(folder.folderId);
+    const children = build(folder.folderId, depth + 1);
+    const setCount = direct.get(folder.folderId) || 0;
+    return [{ folder, depth, children, setCount, totalCount: setCount + children.reduce((sum, child) => sum + child.totalCount, 0) }];
+  });
+  const roots = build("", 0);
+  // 輪になっていて上からたどれなかったフォルダ
+  for (const folder of active.filter((item) => !seen.has(item.folderId)).sort(bySortThenName)) {
+    seen.add(folder.folderId);
+    const setCount = direct.get(folder.folderId) || 0;
+    roots.push({ folder, depth: 0, children: [], setCount, totalCount: setCount });
+  }
+  return { roots, unfiled: direct.get("") || 0 };
+}
+
+// 木を上から順に平らにする（select の選択肢用）。collapsed に入っている節の下は出さない。
+export function flattenFolderTree(nodes = [], collapsed = new Set()) {
+  return nodes.flatMap((node) => [node, ...(collapsed.has(node.folder.folderId) ? [] : flattenFolderTree(node.children, collapsed))]);
+}
+
+// そのフォルダと、その下のすべてのフォルダの ID（親に自分の子孫を選ばせないため）
+export function descendantFolderIds(folders = [], folderId) {
+  const result = new Set([folderId]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const folder of folders) {
+      if (folder.parentId && result.has(folder.parentId) && !result.has(folder.folderId)) {
+        result.add(folder.folderId);
+        grew = true;
+      }
+    }
+  }
+  return result;
+}
+
+export function folderPathText(folders = [], folderId) {
+  const byId = new Map(folders.map((item) => [item.folderId, item]));
+  const names = [];
+  const seen = new Set();
+  for (let cursor = byId.get(folderId); cursor && !seen.has(cursor.folderId); cursor = byId.get(cursor.parentId)) {
+    seen.add(cursor.folderId);
+    names.unshift(cursor.name);
+  }
+  return names.join(" / ");
+}
+
+// フォルダの中のセットの並び（sortOrder → 名前）。folderId "" はフォルダなし（停止・見つからないフォルダを含む）。
+export function setsInFolder(sets = [], folders = [], folderId) {
+  const ids = new Set(folders.filter((item) => item.active !== false).map((item) => item.folderId));
+  return sets
+    .filter((set) => (folderId ? set.folderId === folderId : !set.folderId || !ids.has(set.folderId)))
+    .sort(bySortThenName);
+}
+
+// 1 つ上・下へ動かしたあとの並びで、sortOrder を振り直す必要のあるセット（[{ set, sortOrder }]）
+export function moveSet(ordered = [], setId, delta) {
+  const index = ordered.findIndex((item) => item.setId === setId);
+  const target = index + delta;
+  if (index < 0 || target < 0 || target >= ordered.length) return [];
+  const next = [...ordered];
+  const [moved] = next.splice(index, 1);
+  next.splice(target, 0, moved);
+  return next.map((set, position) => ({ set, sortOrder: position })).filter(({ set, sortOrder }) => (set.sortOrder ?? null) !== sortOrder);
 }

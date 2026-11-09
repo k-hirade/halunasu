@@ -103,7 +103,7 @@ export function VersionSelect({ versions = [], value, onChange, latestLabel }) {
   );
 }
 
-// 施設の名称・住所・電話。文書の API と同じく、有効な施設を優先する。
+// 施設の名称・住所・電話・FAX。文書の API と同じく、有効な施設を優先する（bootstrap が医療機関情報の入力を重ねて返す）。
 export function pickFacility(facilities = []) {
   return facilities.find((item) => item.status === "active") || facilities[0] || null;
 }
@@ -114,7 +114,8 @@ export function facilityInfo(facility) {
     name: facility?.legalName || facility?.displayName || "",
     postalCode: address.postalCode || "",
     address: [address.prefecture || facility?.prefecture || "", address.city || "", address.line1 || address.street || "", address.line2 || ""].filter(Boolean).join(" "),
-    phone: facility?.phone || ""
+    phone: facility?.phone || "",
+    fax: facility?.fax || ""
   };
 }
 

@@ -1,7 +1,7 @@
 /*
- * 設定（/settings）
- * 左の縦ナビ + 「一覧(1行40px) + 右の編集パネル」。
- * 1101px 以上: 縦ナビ・パネルは一覧の右に並ぶ / 641〜1100px: 上に横並びのナビ・パネルは右から重なる / 640px 以下: ナビは select・パネルは全画面。
+ * 設定（/settings）。デジカルの施設管理と同じ形: 左の縦メニュー + 右に「見出し（右上に［編集］［＋追加］）+ 表」。
+ * 編集はどの項目もダイアログ（.master-panel）。
+ * 861px 以上: 縦メニュー / 641〜860px: 上に横並びのメニュー / 640px 以下: メニューは select・ダイアログは全画面。
  */
 
 .settings-layout {
@@ -18,8 +18,17 @@
 }
 
 .settings-title {
+  align-items: baseline;
+  display: flex;
   font-size: var(--fs-xl);
+  gap: 8px;
   margin: 4px 0 16px;
+}
+
+.settings-title-sub {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 700;
 }
 
 .settings-nav-select {
@@ -81,9 +90,18 @@
   margin-bottom: 12px;
 }
 
-/* 見出し */
+/* 見出し（右上に［編集］［＋追加］） */
 .settings-section-head {
   margin-bottom: 12px;
+}
+
+.settings-section-title {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  justify-content: space-between;
+  margin: 4px 0 2px;
 }
 
 .settings-section-head h2 {
@@ -91,7 +109,13 @@
   display: flex;
   font-size: var(--fs-xl);
   gap: 10px;
-  margin: 4px 0 2px;
+  margin: 0;
+}
+
+.settings-section-action {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
 }
 
 .settings-head-count {
@@ -114,9 +138,6 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
-.master-layout.has-panel {
-  grid-template-columns: minmax(0, 1fr) 420px;
-}
 
 .master-list {
   min-width: 0;
@@ -134,9 +155,6 @@
   max-width: 420px;
 }
 
-.master-toolbar .btn {
-  margin-left: auto;
-}
 
 .flow-chips.master-chips {
   margin-bottom: 10px;
@@ -183,7 +201,28 @@
 
 .set-cols .master-row-open,
 .master-head.set-cols {
-  grid-template-columns: minmax(0, 1fr) 150px;
+  grid-template-columns: minmax(0, 1fr) 150px minmax(0, 0.5fr);
+}
+
+/* 行の右端の「編集」（行全体が押せる。デジカルの［✎］にあたる目印） */
+.master-row-open {
+  position: relative;
+}
+
+.master-row-open::after {
+  color: var(--teal-dark);
+  content: "編集";
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.master-rows .master-row-open,
+.master-head {
+  padding-right: 64px;
 }
 
 .set-cols .master-name .master-desc {
@@ -308,19 +347,35 @@
   background: var(--surface-muted);
 }
 
-/* 編集パネル */
+/* 編集ダイアログ（どの画面幅でも中央に重ねる。スマートフォンは全画面） */
+.master-backdrop {
+  background: rgba(15, 23, 42, 0.42);
+  inset: 0;
+  position: fixed;
+  z-index: 48;
+}
+
 .master-panel {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  max-height: calc(100vh - var(--nav-h) - 32px);
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.28);
+  left: 50%;
+  max-height: calc(100vh - 48px);
   overflow-y: auto;
-  position: sticky;
-  top: calc(var(--nav-h) + 16px);
+  position: fixed;
+  top: 24px;
+  transform: translateX(-50%);
+  width: min(640px, calc(100vw - 32px));
+  z-index: 49;
 }
 
-.master-backdrop {
-  display: none;
+.master-panel.settings-dialog {
+  width: min(480px, calc(100vw - 32px));
+}
+
+.master-panel.settings-dialog.is-wide {
+  width: min(640px, calc(100vw - 32px));
 }
 
 .master-panel-form {
@@ -698,8 +753,8 @@
   padding: 10px;
 }
 
-/* iPad 横置き・ノート PC の狭い幅: ナビは上に横並び、パネルは右から重ねる */
-@media (max-width: 1100px) {
+/* 縦置きのタブレット: メニューは上に横並び */
+@media (max-width: 860px) {
   .settings-layout {
     gap: 12px;
     grid-template-columns: minmax(0, 1fr);
@@ -744,33 +799,6 @@
     box-shadow: none;
   }
 
-  .master-layout.has-panel {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .master-backdrop {
-    background: rgba(15, 23, 42, 0.36);
-    display: block;
-    inset: 0;
-    position: fixed;
-    z-index: 48;
-  }
-
-  .master-panel {
-    border-radius: 0;
-    bottom: 0;
-    box-shadow: -12px 0 32px rgba(15, 23, 42, 0.2);
-    max-height: none;
-    position: fixed;
-    right: 0;
-    top: 0;
-    width: min(460px, 100%);
-    z-index: 49;
-  }
-
-  .master-panel-form {
-    min-height: 100%;
-  }
 }
 
 /* スマートフォン: ナビは select、一覧は2段、パネルは全画面 */
@@ -859,9 +887,17 @@
   .phrase-cols .master-kind { grid-area: kind; }
   .phrase-cols .master-desc { grid-area: desc; }
 
-  .master-panel {
-    border-left: 0;
+  .master-panel,
+  .master-panel.settings-dialog,
+  .master-panel.settings-dialog.is-wide {
+    border: 0;
+    border-radius: 0;
     box-shadow: none;
+    height: 100%;
+    left: 0;
+    max-height: none;
+    top: 0;
+    transform: none;
     width: 100%;
   }
 
@@ -1015,4 +1051,453 @@
   .staff-cols .master-name { grid-area: name; }
   .staff-cols .master-kind { grid-area: kind; }
   .staff-cols .master-desc { grid-area: desc; font-size: var(--fs-sm); }
+}
+
+/* ---- 医療機関情報（キーと値の表） ---- */
+.facility-panel {
+  max-width: 880px;
+  padding: 4px 0 10px;
+}
+
+.kv-table {
+  margin: 0;
+}
+
+.kv-row {
+  align-items: baseline;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 11em minmax(0, 1fr);
+  min-height: 40px;
+  padding: 8px 18px;
+}
+
+.kv-row dt {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.kv-row dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.kv-value.is-base {
+  color: var(--text-soft);
+}
+
+.kv-note {
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  margin-left: 8px;
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
+.facility-updated {
+  margin: 10px 18px 0;
+}
+
+.facility-form {
+  display: grid;
+  gap: 4px 12px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.facility-form .field.is-wide {
+  grid-column: 1 / -1;
+}
+
+.field-check {
+  align-items: center;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: var(--fs-sm);
+  gap: 6px;
+  min-height: 36px;
+}
+
+.field-check input {
+  height: 18px;
+  margin: 0;
+  width: 18px;
+}
+
+/* ---- 公開マスターの検索欄 ---- */
+.master-search-field {
+  min-width: 0;
+  position: relative;
+}
+
+.master-search-field > .input {
+  width: 100%;
+}
+
+.master-search-pop {
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
+  left: 0;
+  margin-top: 4px;
+  max-height: 320px;
+  overflow-y: auto;
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 5;
+}
+
+.master-search-pop-head {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  display: flex;
+  font-size: var(--fs-xs);
+  justify-content: space-between;
+  padding: 4px 10px;
+}
+
+.master-search-pop-head label {
+  align-items: center;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 4px;
+}
+
+.master-search-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+}
+
+.master-search-option {
+  align-items: baseline;
+  cursor: pointer;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  min-height: 36px;
+  padding: 6px 10px;
+}
+
+.master-search-option:hover,
+.master-search-option[aria-selected="true"] {
+  background: var(--teal-soft);
+}
+
+.master-search-name {
+  font-weight: 700;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.master-search-meta {
+  color: var(--muted);
+  flex: none;
+  font-size: var(--fs-xs);
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.master-search-status {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  margin: 0;
+  padding: 6px 10px;
+}
+
+/* ---- セット（フォルダの木 + そのフォルダのセット） ---- */
+.set-browser {
+  align-items: start;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 236px minmax(0, 1fr);
+}
+
+.set-tree {
+  padding: 8px 0;
+  position: sticky;
+  top: calc(var(--nav-h) + 16px);
+}
+
+.set-tree-head {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  justify-content: space-between;
+  padding: 0 10px 6px 14px;
+}
+
+.set-tree-list {
+  list-style: none;
+  margin: 0;
+  max-height: calc(100vh - var(--nav-h) - 120px);
+  overflow-y: auto;
+  padding: 0;
+}
+
+.set-tree-row {
+  align-items: center;
+  display: flex;
+  padding-left: calc(var(--depth, 0) * 16px);
+}
+
+.set-tree-toggle {
+  background: none;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  flex: none;
+  height: 36px;
+  padding: 0;
+  width: 22px;
+}
+
+span.set-tree-toggle {
+  cursor: default;
+}
+
+.set-tree-item {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text-soft);
+  cursor: pointer;
+  display: flex;
+  flex: 1 1 auto;
+  font: inherit;
+  font-weight: 700;
+  gap: 8px;
+  justify-content: space-between;
+  min-height: 36px;
+  min-width: 0;
+  padding: 4px 10px;
+  text-align: left;
+}
+
+.set-tree-list > li > .set-tree-item {
+  margin: 0 8px;
+  width: calc(100% - 16px);
+}
+
+.set-tree-item:hover {
+  background: var(--surface-muted);
+}
+
+.set-tree-item[aria-current="true"] {
+  background: var(--teal-soft);
+  color: var(--text);
+}
+
+.set-tree-item.is-muted {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.set-tree-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.set-tree-count {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.set-tree-edit {
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  flex: none;
+  height: 32px;
+  margin-right: 6px;
+  width: 32px;
+}
+
+.set-tree-edit:hover {
+  background: var(--surface-muted);
+  color: var(--text);
+}
+
+.set-list-head {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-bottom: 8px;
+}
+
+.set-list-head h3 {
+  font-size: var(--fs-lg);
+  margin: 0;
+}
+
+.set-cols.has-order .master-row {
+  align-items: center;
+  display: flex;
+}
+
+.set-cols.has-order .master-row-open {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.master-head.set-cols.has-order {
+  padding-left: 94px;
+}
+
+.set-order {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  padding-left: 10px;
+}
+
+.set-order .btn {
+  min-height: 32px;
+  min-width: 36px;
+  padding: 0;
+}
+
+.set-line-dx {
+  align-items: center;
+  display: grid;
+  gap: 6px;
+  grid-template-columns: minmax(0, 1fr) 92px auto auto;
+}
+
+.set-dx-suspected {
+  white-space: nowrap;
+}
+
+/* ---- 利用者 ---- */
+.user-toolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-bottom: 10px;
+}
+
+.user-toolbar .master-toolbar {
+  flex: 1 1 320px;
+  margin-bottom: 0;
+}
+
+.user-cols .master-row-open,
+.master-head.user-cols {
+  grid-template-columns: minmax(96px, 0.7fr) minmax(120px, 1fr) minmax(90px, 0.8fr) 64px minmax(110px, 1fr) 56px;
+}
+
+.user-login,
+.user-print {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-role,
+.user-admin,
+.user-status {
+  font-size: var(--fs-sm);
+}
+
+.user-status.is-off {
+  color: var(--muted);
+}
+
+@media (max-width: 1100px) {
+  .set-browser {
+    grid-template-columns: 200px minmax(0, 1fr);
+  }
+
+  .user-cols .master-row-open,
+  .master-head.user-cols {
+    grid-template-columns: minmax(84px, 0.6fr) minmax(110px, 1fr) minmax(80px, 0.8fr) 56px minmax(0, 1fr) 48px;
+  }
+}
+
+@media (max-width: 860px) {
+  .set-browser {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .set-tree {
+    position: static;
+  }
+
+  .set-tree-list {
+    max-height: 220px;
+  }
+}
+
+@media (max-width: 640px) {
+  .kv-row {
+    gap: 2px;
+    grid-template-columns: minmax(0, 1fr);
+    padding: 8px 14px;
+  }
+
+  .facility-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .user-cols .master-row-open {
+    gap: 2px 10px;
+    grid-template-areas: "name role" "login status" "print admin";
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-height: 56px;
+    padding: 8px 64px 8px 14px;
+  }
+
+  .user-cols .master-name { grid-area: name; }
+  .user-cols .user-role { grid-area: role; text-align: right; }
+  .user-cols .user-login { grid-area: login; font-size: var(--fs-sm); color: var(--muted); }
+  .user-cols .user-status { grid-area: status; text-align: right; }
+  .user-cols .user-print { grid-area: print; font-size: var(--fs-sm); }
+  .user-cols .user-admin { grid-area: admin; text-align: right; }
+
+  .set-cols .master-row-open {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .set-cols .master-kind {
+    grid-column: 1 / -1;
+  }
+
+  .master-head.set-cols.has-order {
+    display: none;
+  }
+
+  .set-line-dx {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .set-line-dx .master-search-field {
+    grid-column: 1 / -1;
+  }
+
+  .master-row-open,
+  .drug-cols .master-row-open,
+  .set-cols .master-row-open,
+  .phrase-cols .master-row-open,
+  .staff-cols .master-row-open {
+    padding-right: 56px;
+  }
 }

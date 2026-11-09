@@ -3,33 +3,30 @@
 import Link from "next/link";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useEyeApi, useEyeFileTransfer } from "./eye-api";
-import { diffChips, diffItems, groupByCategory, itemSummary } from "../lib/billing-diff";
-import { addDays, ageOn, DIAGNOSIS_STATUS_LABELS, formatDate, SEX_LABELS, todayIso, VISIT_TYPE_LABELS } from "../lib/format";
+import { BILLING_TABS, billingRows, countByState, diffChips, diffItems, groupByCategory, itemSummary } from "../lib/billing-diff";
+import { addDays, ageOn, APPOINTMENT_STATUS_LABELS, DIAGNOSIS_STATUS_LABELS, formatDate, SEX_LABELS, todayIso, VISIT_TYPE_LABELS } from "../lib/format";
 
 const EYE = { od: "右", os: "左", ou: "両" };
-// 一覧のまとまり。人が見るべきもの（要再連携）を上に、済んだもの（連携済み）は畳む
-const GROUPS = [
-  { key: "changed", label: "要再連携" },
-  { key: "pending", label: "未連携" },
-  { key: "drafts", label: "修正中・未確定" },
-  { key: "handed_off", label: "連携済み" }
-];
 const MAX_CHIPS = 3;
 
-// 会計連携。確定済みカルテの実施内容を、レセコンに渡す CSV と会計連絡票にする。
-// 品目はここでは直さない（カルテで直す）。CSV は患者ごとの全品目で、差分だけの CSV は作らない。
+// 会計連携（デジカルの ORCA 連動版の会計と同じ流れ）。
+// 確定したカルテを 1 人ずつ［連携］→ 確認 → レセコンへ渡す（今はレセコンが取り込む CSV を保存する）→ 受付が会計待なら会計済。
+// 連携のあとでカルテを直すと「再計待」になり、前回との差分を見てからもう一度連携する。
+// まとめての連携（選んだ人の CSV）・全件 CSV・連携の記録は補助として残す。品目はここでは直さない（カルテで直す）。
 export function BillingWorkspace() {
   const api = useEyeApi();
   const transfer = useEyeFileTransfer();
   const [date, setDate] = useState(todayIso());
   const [day, setDay] = useState(null);
+  const [appointments, setAppointments] = useState([]);
   const [facilityName, setFacilityName] = useState("");
   const [selected, setSelected] = useState(new Set());
-  const [filter, setFilter] = useState(null);
+  const [tab, setTab] = useState(null);
   const [open, setOpen] = useState(new Set());
-  const [showHandedOff, setShowHandedOff] = useState(false);
   const [showLog, setShowLog] = useState(false);
   const [confirmAll, setConfirmAll] = useState(false);
+  const [sending, setSending] = useState(null); // 確認ダイアログを開いている行
+  const [failures, setFailures] = useState({}); // encounterId → 連携に失敗した理由
   const [error, setError] = useState("");
   const [notice, setNotice] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -37,36 +34,47 @@ export function BillingWorkspace() {
   const [printIds, setPrintIds] = useState(null);
   const requestRef = useRef(0);
 
-  // reselect: 未連携の全員を選び直す（日付を開いたときと連携の後）。それ以外は、選んでいた人のうち未連携のままの人だけ残す
-  const load = useCallback(async ({ reselect }) => {
+  // 選んでいた人のうち、未連携のままの人だけを残す
+  const load = useCallback(async () => {
     const ticket = ++requestRef.current;
-    const payload = await api(`/v1/eye/billing/day?date=${date}`);
+    const [payload, reception] = await Promise.all([
+      api(`/v1/eye/billing/day?date=${date}`),
+      // 受付の状態・受付番号は一覧の補助。読めなくても会計連携はできる
+      api(`/v1/eye/appointments?date=${date}`).catch(() => ({ appointments: [] }))
+    ]);
     if (ticket !== requestRef.current) return;
     setDay(payload);
-    const pending = payload.encounters.filter((item) => item.handoff.state === "pending").map((item) => item.encounterId);
-    setSelected((current) => new Set(reselect ? pending : pending.filter((id) => current.has(id))));
+    setAppointments(reception.appointments || []);
+    const pending = new Set(payload.encounters.filter((item) => item.handoff.state === "pending").map((item) => item.encounterId));
+    setSelected((current) => new Set([...current].filter((id) => pending.has(id))));
   }, [api, date]);
 
   useEffect(() => {
-    load({ reselect: true }).catch((nextError) => setError(nextError.message));
+    load().catch((nextError) => setError(nextError.message));
   }, [load]);
 
-  // 日付を変えたら、前の日の一覧・通知・エラーは同じ描画で消す（別の日の「連携済みにしました」を残さない）
+  // 日付を変えたら、前の日の一覧・通知・エラーは同じ描画で消す（別の日の「連携しました」を残さない）
   function changeDate(next) {
     if (next === date) return;
     setDate(next);
     setDay(null);
+    setAppointments([]);
     setError("");
     setNotice(null);
     setLastRun(null);
     setOpen(new Set());
-    setFilter(null);
+    setTab(null);
     setSelected(new Set());
+    setFailures({});
+    setSending(null);
   }
 
   useEffect(() => {
     api("/v1/eye/bootstrap")
-      .then((payload) => setFacilityName((payload.facilities || []).find((item) => item.status === "active")?.displayName || payload.facilities?.[0]?.displayName || ""))
+      .then((payload) => {
+        const facility = (payload.facilities || []).find((item) => item.status === "active") || payload.facilities?.[0];
+        setFacilityName(facility?.legalName || facility?.displayName || "");
+      })
       .catch(() => {});
   }, [api]);
 
@@ -95,7 +103,49 @@ export function BillingWorkspace() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  async function handoff(encounterIds, { again }) {
+  // 1 人分の連携（主な流れ）。受付が会計待なら API が会計済にする。
+  async function send(row) {
+    setBusy(true);
+    setError("");
+    setNotice(null);
+    const name = row.patient?.displayName || "";
+    const again = row.state === "changed";
+    try {
+      const payload = await api("/v1/eye/billing/send", {
+        method: "POST",
+        body: { date, encounterId: row.key, ...(row.appointment?.appointmentId ? { appointmentId: row.appointment.appointmentId } : {}) }
+      });
+      const file = `eye-billing-${date}-${payload.handoff.handoffId.slice(-6)}.csv`;
+      download(payload.csv, file);
+      setLastRun({ csv: payload.csv, name: file });
+      const reception = payload.appointmentMoved
+        ? "受付を会計済にしました。"
+        : payload.appointmentError
+          ? `受付の状態は変えていません（${payload.appointmentError.message}）。`
+          : "";
+      setNotice({
+        text: `${name}さんを${again ? "再連携" : "連携"}しました。${reception}${again ? "レセコン側の前回分を取り消してから取り込んでください。" : ""}`,
+        file
+      });
+      setFailures(({ [row.key]: _removed, ...rest }) => rest);
+      setSending(null);
+      setOpen((current) => {
+        const next = new Set(current);
+        next.delete(row.key);
+        return next;
+      });
+      await load();
+    } catch (nextError) {
+      setFailures((current) => ({ ...current, [row.key]: nextError.message }));
+      setError(`${name}さんの連携に失敗しました: ${nextError.message}`);
+      setSending(null);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // 選んだ人をまとめて連携（補助）。受付の状態は変えない。
+  async function handoffSelected(encounterIds) {
     setBusy(true);
     setError("");
     setNotice(null);
@@ -104,10 +154,9 @@ export function BillingWorkspace() {
       const name = `eye-billing-${date}-${payload.handoff.handoffId.slice(-6)}.csv`;
       download(payload.csv, name);
       setLastRun({ csv: payload.csv, name });
-      const count = payload.handoff.encounters.length;
-      setNotice({ text: again ? "再連携しました。レセコン側の前回分を直してから、この CSV を取り込んでください。" : `${count}人を連携済みにしました。`, file: name });
-      if (again) setOpen(new Set());
-      await load({ reselect: !again });
+      setNotice({ text: `${payload.handoff.encounters.length}人をまとめて連携しました。受付の状態は変えていません。`, file: name });
+      setSelected(new Set());
+      await load();
     } catch (nextError) {
       setError(nextError.message);
     } finally {
@@ -139,119 +188,139 @@ export function BillingWorkspace() {
     }
   }
 
-  const toggleOpen = (id) => {
-    const next = new Set(open);
+  const toggle = (setter) => (id) => setter((current) => {
+    const next = new Set(current);
     if (next.has(id)) next.delete(id);
     else next.add(id);
-    setOpen(next);
-  };
-
-  const toggleSelected = (id) => {
-    const next = new Set(selected);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setSelected(next);
-  };
+    return next;
+  });
+  const toggleOpen = toggle(setOpen);
+  const toggleSelected = toggle(setSelected);
 
   const isToday = date === todayIso();
+  const rows = billingRows(day, appointments);
+  const counts = countByState(rows);
+  const shown = tab ? rows.filter((row) => row.state === tab) : rows;
   const encounters = day?.encounters || [];
-  const drafts = day?.drafts || [];
-  const byFinalized = (left, right) => String(right.finalizedAt || "").localeCompare(String(left.finalizedAt || ""));
-  const grouped = {
-    changed: encounters.filter((item) => item.handoff.state === "changed").sort(byFinalized),
-    pending: encounters.filter((item) => item.handoff.state === "pending").sort(byFinalized),
-    // 修正中（連携済みのあとで医師が開いた）を先に、その後に新規の未確定
-    drafts: [...drafts].sort((left, right) => Number(right.amending) - Number(left.amending) || String(left.updatedAt).localeCompare(String(right.updatedAt))),
-    handed_off: encounters.filter((item) => item.handoff.state === "handed_off").sort(byFinalized)
-  };
-  const total = encounters.length + drafts.length;
-  const selectedItems = grouped.pending.filter((item) => selected.has(item.encounterId));
+  const pendingRows = rows.filter((row) => row.state === "pending");
+  const selectedRows = pendingRows.filter((row) => selected.has(row.key));
+  const allPendingSelected = pendingRows.length > 0 && selectedRows.length === pendingRows.length;
   const latestRun = day?.handoffs?.[0];
   const printTargets = printIds ? encounters.filter((item) => printIds.includes(item.encounterId)) : [];
-  const allPendingSelected = grouped.pending.length > 0 && selectedItems.length === grouped.pending.length;
+  const closeMenu = (event) => event.currentTarget.closest("details")?.removeAttribute("open");
 
-  function renderPatient(patient) {
+  function renderAction(row) {
+    const name = row.patient?.displayName || "";
+    if (row.state === "draft") {
+      return <Link aria-label={`${name} のカルテを開く`} className="btn btn-ghost btn-sm" href={`/encounters/${row.key}`}>カルテ</Link>;
+    }
+    if (failures[row.key]) {
+      return <button aria-label={`${name} の連携をやり直す`} className="btn btn-primary btn-sm" disabled={busy} onClick={() => setSending(row)} type="button">再試行</button>;
+    }
+    if (row.state === "pending") {
+      return <button aria-label={`${name} を連携`} className="btn btn-primary btn-sm" disabled={busy} onClick={() => setSending(row)} type="button">連携</button>;
+    }
+    if (row.state === "changed") {
+      return <button aria-label={`${name} を再連携`} className="btn btn-primary btn-sm" disabled={busy} onClick={() => setSending(row)} type="button">再連携</button>;
+    }
     return (
-      <>
-        <span className="bill-number mono">{patient?.primaryPatientNumber || "—"}</span>
-        <span className="bill-name">
-          <strong>{patient?.displayName}</strong>
-          {patient?.displayNameKana ? <span className="flow-kana">{patient.displayNameKana}</span> : null}
-        </span>
-      </>
+      <details className="more-menu">
+        <summary aria-label={`${name} のその他の操作`} className="btn btn-chip">…</summary>
+        <div className="more-menu-list">
+          <Link className="btn btn-ghost" href={`/encounters/${row.key}`}>カルテを開く</Link>
+          <button className="btn btn-ghost" onClick={(event) => { closeMenu(event); setPrintIds([row.key]); }} type="button">この人の連絡票を印刷</button>
+        </div>
+      </details>
     );
   }
 
-  // 年齢・性別、初再診、確定の時刻と医師
-  function renderMeta(patient, encounterDate, visitType, finalized) {
-    const age = ageOn(patient?.birthDate, encounterDate);
+  function renderState(row) {
+    if (failures[row.key]) return <span className="bill-state is-failed" title={failures[row.key]}>失敗</span>;
+    if (row.state === "draft") return <span className="bill-state is-draft">{row.item.amending ? "修正中" : "未確定"}</span>;
+    if (row.state === "handed_off") return <span className="bill-state is-handed_off">連携済<span className="bill-state-time">{formatClock(row.item.handoff.at)}</span></span>;
+    if (row.state === "changed") return <span className="bill-state is-changed">再計待</span>;
+    return <span className="bill-state is-pending">未連携</span>;
+  }
+
+  function renderExtra(row) {
+    const { item } = row;
+    if (row.state === "draft") {
+      return (
+        <span className="bill-extra-text">
+          {item.amending ? (
+            <>
+              {item.handoff?.state === "handed_off" ? <span className="muted">{formatClock(item.handoff.at)} 連携済 v{item.handoff.version} のあと修正中</span> : <span>修正中</span>}
+              {item.amendmentReason ? <span className="bill-reason" title={item.amendmentReason}>理由: {item.amendmentReason}</span> : null}
+            </>
+          ) : <span className="muted">診察中・確定待ち</span>}
+        </span>
+      );
+    }
+    if (row.state === "changed") {
+      if (!item.handoff.previousItems) return <span className="bill-chip">前回の品目の記録なし</span>;
+      const chips = diffChips(diffItems(item.handoff.previousItems, item.items));
+      if (!chips.length) return <span className="muted">品目の違いなし</span>;
+      return (
+        <>
+          {chips.slice(0, MAX_CHIPS).map((chip, index) => <span className={`bill-chip is-${chip.kind}`} key={index}>{chip.label}</span>)}
+          {chips.length > MAX_CHIPS ? <span className="bill-chip">ほか{chips.length - MAX_CHIPS}件</span> : null}
+        </>
+      );
+    }
+    return <span className={`bill-summary${item.items.length ? "" : " is-empty"}`}>{itemSummary(item.items) || "受診のみ"}</span>;
+  }
+
+  function renderRow(row) {
+    const { item, patient, appointment } = row;
+    const isOpen = open.has(row.key);
+    const name = patient?.displayName || "";
+    const age = ageOn(patient?.birthDate, item.encounterDate);
     const sex = patient?.sex && patient.sex !== "unknown" ? SEX_LABELS[patient.sex] : "";
+    const reception = appointment ? APPOINTMENT_STATUS_LABELS[appointment.displayStatus || appointment.status] || "" : "";
     return (
-      <span className="bill-meta">
-        <span className="bill-age">{age !== null ? `${age}${sex}` : sex}</span>
-        <span className="bill-visit">
-          {visitType === "initial" ? <span className="flow-new">初</span> : null}
-          {VISIT_TYPE_LABELS[visitType] || ""}
-        </span>
-        {finalized?.at ? <span className="bill-final">{formatClock(finalized.at)}確定{finalized.by ? ` ${finalized.by}` : ""}</span> : null}
-      </span>
-    );
-  }
-
-  function renderRow(item, group) {
-    const isOpen = open.has(item.encounterId);
-    const summary = itemSummary(item.items) || "受診のみ";
-    const rows = group === "changed" && item.handoff.previousItems ? diffItems(item.handoff.previousItems, item.items) : null;
-    const chips = rows ? diffChips(rows) : [];
-    const name = item.patient?.displayName || "";
-    return (
-      <li className={`bill-row-wrap${isOpen ? " is-open" : ""}`} key={item.encounterId}>
-        <div className="bill-row">
-          <button aria-expanded={isOpen} aria-label={`${name} の品目を${isOpen ? "閉じる" : "開く"}`} className="flow-row-open" onClick={() => toggleOpen(item.encounterId)} type="button" />
+      <li className={`bill-row-wrap${isOpen ? " is-open" : ""}`} data-state={failures[row.key] ? "failed" : row.state} key={row.key}>
+        <div className={`bill-row is-${row.state}`}>
+          {row.state !== "draft" ? (
+            <button aria-expanded={isOpen} aria-label={`${name} の品目を${isOpen ? "閉じる" : "開く"}`} className="flow-row-open" onClick={() => toggleOpen(row.key)} type="button" />
+          ) : null}
           <span className="bill-check">
-            {group === "pending" ? (
+            {row.state === "pending" ? (
               <label className="bill-check-hit">
-                <input checked={selected.has(item.encounterId)} onChange={() => toggleSelected(item.encounterId)} type="checkbox" />
-                <span className="sr-only">{name} を CSV 出力の対象にする</span>
+                <input checked={selected.has(row.key)} onChange={() => toggleSelected(row.key)} type="checkbox" />
+                <span className="sr-only">{name} をまとめて連携する対象にする</span>
               </label>
             ) : null}
           </span>
-          {renderPatient(item.patient)}
-          {renderMeta(item.patient, item.encounterDate, item.visitType, { at: item.finalizedAt, by: item.finalizedBy?.displayName })}
-          <span className={`bill-summary${item.items.length ? "" : " is-empty"}`}>{summary}</span>
-          <span className="bill-extra">
-            {group === "changed" ? (
-              item.handoff.previousItems ? (
-                chips.length ? (
-                  <>
-                    {chips.slice(0, MAX_CHIPS).map((chip, index) => <span className={`bill-chip is-${chip.kind}`} key={index}>{chip.label}</span>)}
-                    {chips.length > MAX_CHIPS ? <span className="bill-chip">ほか{chips.length - MAX_CHIPS}件</span> : null}
-                  </>
-                ) : <span className="muted">品目の並び・内容に違いなし</span>
-              ) : <span className="bill-chip">前回の品目の記録なし</span>
-            ) : item.diagnoses.length ? <span className="bill-dx-first">{diagnosisLabel(item.diagnoses[0])}{item.diagnoses.length > 1 ? ` ほか${item.diagnoses.length - 1}` : ""}</span> : null}
+          <span className="bill-queue mono">
+            {appointment?.queueNumber ? <strong>{appointment.queueNumber}</strong> : <span className="muted">—</span>}
+            {appointment?.checkedInAt ? <span className="bill-queue-time">{formatClock(appointment.checkedInAt)}</span> : null}
           </span>
-          <span className="bill-version mono">{group === "changed" ? `v${item.handoff.version}→v${item.version}` : ""}</span>
-          <span className="bill-actions">
-            {group === "changed" ? (
-              <button aria-expanded={isOpen} className={`btn btn-sm ${isOpen ? "btn-ghost" : "btn-primary"}`} onClick={() => toggleOpen(item.encounterId)} type="button">{isOpen ? "閉じる" : "差分を見る"}</button>
-            ) : (
-              <details className="more-menu">
-                <summary aria-label={`${name} のその他の操作`} className="btn btn-chip">…</summary>
-                <div className="more-menu-list">
-                  <Link className="btn btn-ghost" href={`/encounters/${item.encounterId}`}>カルテを開く</Link>
-                  <button className="btn btn-ghost" onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); setPrintIds([item.encounterId]); }} type="button">この人の連絡票を印刷</button>
-                </div>
-              </details>
-            )}
+          <span className="bill-number mono">{patient?.primaryPatientNumber || "—"}</span>
+          <span className="bill-name">
+            <strong>{name}</strong>
+            {patient?.displayNameKana ? <span className="flow-kana">{patient.displayNameKana}</span> : null}
           </span>
+          <span className="bill-meta" data-number={patient?.primaryPatientNumber ? `No.${patient.primaryPatientNumber}` : ""}>
+            <span className="bill-age">{age !== null ? `${age}${sex}` : sex}</span>
+            <span className="bill-visit">{item.visitType === "initial" ? <span className="flow-new">初</span> : null}{VISIT_TYPE_LABELS[item.visitType] || ""}</span>
+          </span>
+          <span className="bill-reception">{reception ? <span className={`bill-reception-tag status-${appointment.displayStatus || appointment.status}`}>{reception}</span> : <span className="muted">受付なし</span>}</span>
+          <span className="bill-final">
+            {item.finalizedAt ? <>{formatClock(item.finalizedAt)}<span className="muted"> {item.finalizedBy?.displayName || ""}</span></> : <span className="muted">—</span>}
+            {row.state === "changed" ? <span className="bill-version mono">v{item.handoff.version}→v{item.version}</span> : null}
+          </span>
+          <span className="bill-extra">{renderExtra(row)}</span>
+          <span className="bill-state-cell">{renderState(row)}</span>
+          <span className="bill-actions">{renderAction(row)}</span>
         </div>
-        {isOpen ? renderDetail(item, group, rows) : null}
+        {isOpen && row.state !== "draft" ? renderDetail(row) : null}
       </li>
     );
   }
 
-  function renderDetail(item, group, rows) {
+  function renderDetail(row) {
+    const { item } = row;
+    const diff = row.state === "changed" && item.handoff.previousItems ? diffItems(item.handoff.previousItems, item.items) : null;
     return (
       <div className="bill-detail">
         {item.diagnoses.length ? (
@@ -263,90 +332,43 @@ export function BillingWorkspace() {
             </span>
           </div>
         ) : null}
-        {group === "changed" ? (
+        {row.state === "changed" ? (
           <>
             <div className="bill-diff-head">
               <span>前回 v{item.handoff.version}（{formatDateTime(item.handoff.at)} {item.handoff.by?.displayName || ""} が連携）</span>
               <span>今回 v{item.version}（{item.finalizedAt ? `${formatDateTime(item.finalizedAt)} 確定` : ""}{item.finalizedBy?.displayName ? ` ${item.finalizedBy.displayName}` : ""}）{item.amendmentReason ? <> 修正理由: {item.amendmentReason}</> : null}</span>
             </div>
-            {rows ? (
-              <div className="bill-diff" role="table" aria-label="前回連携との差分">
-                <div className="bill-diff-row bill-diff-labels" role="row">
-                  <span role="columnheader">前回</span><span role="columnheader">今回</span><span role="columnheader">変更</span>
-                </div>
-                {rows.map((row, index) => (
-                  <div className={`bill-diff-row is-${row.kind}`} key={index} role="row">
-                    <span data-label="前回" role="cell">{row.previous ? <ItemLine item={row.previous} withCategory /> : null}</span>
-                    <span data-label="今回" role="cell">{row.current ? <ItemLine item={row.current} withCategory /> : null}</span>
-                    <span className="bill-diff-kind" role="cell">{{ same: "変更なし", changed: "~変更", added: "+追加", removed: "−削除" }[row.kind]}</span>
-                  </div>
-                ))}
-                {rows.length === 0 ? <p className="muted small">前回も今回も品目はありません（受診のみ）。</p> : null}
-              </div>
-            ) : (
+            {diff ? <DiffTable rows={diff} /> : (
               <>
                 <p className="bill-note">前回の品目は記録されていません（この機能の導入前の連携）。今回の品目だけを示します。</p>
                 <ItemGroups items={item.items} />
               </>
             )}
-            <p className="bill-warning">この CSV はこの患者の全品目を含みます。レセコン側で前回分（v{item.handoff.version}）を取り消すか直してから取り込んでください。</p>
-            <div className="bill-detail-actions">
-              <Link className="btn btn-ghost btn-sm" href={`/encounters/${item.encounterId}`}>カルテを開く</Link>
-              <button className="btn btn-ghost btn-sm" onClick={() => setPrintIds([item.encounterId])} type="button">この人の連絡票を印刷</button>
-              <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => handoff([item.encounterId], { again: true })} type="button">この人だけ CSV を出力して再連携</button>
-            </div>
+            <p className="bill-warning">連携する CSV はこの患者の全品目を含みます。レセコン側で前回分（v{item.handoff.version}）を取り消すか直してから取り込んでください。</p>
           </>
-        ) : (
-          <>
-            <ItemGroups items={item.items} />
-            <div className="bill-detail-actions">
-              <span className="muted small">カルテ v{item.version}{group === "handed_off" && item.handoff.at ? ` ・ ${formatDateTime(item.handoff.at)} ${item.handoff.by?.displayName || ""} が連携` : ""}</span>
-              <Link className="btn btn-ghost btn-sm" href={`/encounters/${item.encounterId}`}>カルテを開く</Link>
-              <button className="btn btn-ghost btn-sm" onClick={() => setPrintIds([item.encounterId])} type="button">この人の連絡票を印刷</button>
-            </div>
-          </>
-        )}
+        ) : <ItemGroups items={item.items} />}
+        {failures[row.key] ? <p className="alert alert-danger" role="alert">連携に失敗しました: {failures[row.key]}</p> : null}
+        <div className="bill-detail-actions">
+          <span className="muted small">カルテ v{item.version}{row.state === "handed_off" && item.handoff.at ? ` ・ ${formatDateTime(item.handoff.at)} ${item.handoff.by?.displayName || ""} が連携` : ""}</span>
+          <Link className="btn btn-ghost btn-sm" href={`/encounters/${row.key}`}>カルテを開く</Link>
+          <button className="btn btn-ghost btn-sm" onClick={() => setPrintIds([row.key])} type="button">この人の連絡票を印刷</button>
+          {row.state === "pending" || row.state === "changed" ? (
+            <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => setSending(row)} type="button">{row.state === "changed" ? "この人を再連携" : "この人を連携"}</button>
+          ) : null}
+        </div>
       </div>
     );
   }
 
-  function renderDraft(item) {
-    const handed = item.handoff?.state === "handed_off";
-    const name = item.patientSnapshot?.displayName || "";
-    return (
-      <li className="bill-row-wrap" key={item.encounterId}>
-        <div className="bill-row is-draft">
-          <span className="bill-check" />
-          {renderPatient(item.patientSnapshot)}
-          {renderMeta(item.patientSnapshot, item.encounterDate, item.visitType, null)}
-          <span className="bill-draft-state">
-            {item.amending ? (
-              <>
-                <strong>修正中</strong>
-                {handed ? <span className="muted">（{formatClock(item.handoff.at)} 連携済み v{item.handoff.version}）</span> : null}
-                {item.amendmentReason ? <span className="bill-reason" title={item.amendmentReason}>理由: {item.amendmentReason}</span> : null}
-              </>
-            ) : <span>未確定（診察中・確定待ち）</span>}
-          </span>
-          <span className="bill-actions">
-            <Link aria-label={`${name} のカルテを開く`} className="btn btn-ghost btn-sm" href={`/encounters/${item.encounterId}`}>カルテを開く</Link>
-          </span>
-        </div>
-      </li>
-    );
-  }
-
-  const visibleGroups = filter ? [filter] : GROUPS.map((group) => group.key);
-
   return (
-    <main className={`eye-page billing-page${selectedItems.length ? " has-selbar" : ""}`}>
+    <main className={`eye-page billing-page${selectedRows.length ? " has-selbar" : ""}`}>
       <div className="no-print">
         <header className="page-head bill-head">
           <div className="bill-title">
             <h1>会計連携</h1>
             <details className="bill-help">
               <summary aria-label="この画面について" className="btn btn-chip">?</summary>
-              <p>確定済みカルテの「実施した検査・処置」「今回出した処方」「発行した文書」を、レセコンへ渡す CSV と会計連絡票にします。点数の計算はレセコンで行います。品目を直すときはカルテを修正してください。</p>
+              <p>確定したカルテの「実施した検査・処置」「今回出した処方」「発行した文書」を、1 人ずつレセコンへ渡します（今はレセコンが取り込む CSV を保存します）。受付が会計待なら会計済にします。連携のあとでカルテを直すと「再計待」になるので、差分を見てからもう一度連携してください。点数の計算はレセコンで行います。</p>
             </details>
           </div>
           <div className="head-actions">
@@ -359,8 +381,9 @@ export function BillingWorkspace() {
             <details className="more-menu">
               <summary aria-label="会計連携のその他の操作" className="btn btn-ghost">…</summary>
               <div className="more-menu-list bill-menu">
-                <button className="btn btn-ghost" disabled={!encounters.length} onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); setPrintIds(encounters.map((item) => item.encounterId)); }} type="button">この日の全員の連絡票を印刷</button>
-                <button className="btn btn-ghost" disabled={busy || !encounters.length} onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); setConfirmAll(true); }} type="button">全件 CSV（確認用）…</button>
+                <button className="btn btn-ghost" disabled={!encounters.length} onClick={(event) => { closeMenu(event); setPrintIds(encounters.map((item) => item.encounterId)); }} type="button">この日の全員の連絡票を印刷</button>
+                <button className="btn btn-ghost" disabled={!pendingRows.length} onClick={(event) => { closeMenu(event); setTab("pending"); setSelected(new Set(pendingRows.map((row) => row.key))); }} type="button">未連携の全員を選んでまとめて連携…</button>
+                <button className="btn btn-ghost" disabled={busy || !encounters.length} onClick={(event) => { closeMenu(event); setConfirmAll(true); }} type="button">全件 CSV（確認用）…</button>
                 <p className="bill-menu-note">全件 CSV は連携済みも含みます。レセコンへの取込には使わないでください。</p>
               </div>
             </details>
@@ -380,52 +403,46 @@ export function BillingWorkspace() {
         {!day ? <p className="loading">読み込み中…</p> : (
           <>
             <div className="bill-chips-row">
-              <div aria-label="状態ごとの人数（押すとその状態だけを表示）" className="flow-chips" role="group">
-                <button aria-pressed={filter === null} className="flow-chip flow-chip-all" onClick={() => setFilter(null)} type="button">
-                  すべて<strong>{total}</strong>
-                </button>
-                {GROUPS.map((group) => (
-                  <button aria-pressed={filter === group.key} className={`flow-chip bill-status-${group.key}`} key={group.key} onClick={() => setFilter(filter === group.key ? null : group.key)} type="button">
-                    <span className="flow-dot" aria-hidden="true" />{group.label}<strong>{grouped[group.key].length}</strong>
+              <div aria-label="会計の状態で絞り込む" className="flow-chips" role="group">
+                <button aria-pressed={tab === null} className="flow-chip flow-chip-all" onClick={() => setTab(null)} type="button">すべて<strong>{counts.all}</strong></button>
+                {BILLING_TABS.map((item) => (
+                  <button aria-pressed={tab === item.key} className={`flow-chip bill-tab-${item.key}`} key={item.key} onClick={() => setTab(tab === item.key ? null : item.key)} type="button">
+                    {item.label}<strong>{counts[item.key]}</strong>
                   </button>
                 ))}
               </div>
-              {latestRun ? <span className="muted small bill-last">最終連携 {formatClock(latestRun.createdAt)} {latestRun.createdBy?.displayName || ""}</span> : null}
+              <span className="muted small bill-last">
+                連携先: レセコン（CSV 取込）{latestRun ? ` ・ 最終連携 ${formatClock(latestRun.createdAt)} ${latestRun.createdBy?.displayName || ""}` : ""}
+              </span>
             </div>
+            {counts.changed ? <p className="bill-rebill-note" role="note">再計待 {counts.changed}人: 連携のあとでカルテが修正されました。行を開いて差分を確かめ、［再連携］してください。</p> : null}
 
-            {total === 0 ? (
+            {rows.length === 0 ? (
               <div className="empty-state">
                 <p><strong>この日のカルテはありません。</strong></p>
-                <p className="muted small">医師がカルテを確定すると、実施した検査・処置、処方、文書がここに並び、レセコンへ渡す CSV と会計連絡票を作れます。</p>
+                <p className="muted small">医師がカルテを確定すると、ここに 1 人ずつ並び、［連携］でレセコンへ渡せます。</p>
               </div>
             ) : (
-              <section aria-label="会計連携の一覧" className="panel flow-list bill-list">
-                {visibleGroups.map((key) => {
-                  const group = GROUPS.find((item) => item.key === key);
-                  const items = grouped[key];
-                  if (!items.length && !filter) return null;
-                  const collapsed = key === "handed_off" && !showHandedOff && !filter;
-                  return (
-                    <section aria-label={group.label} className={`flow-group bill-group bill-status-${key}`} key={key}>
-                      <h2 className="flow-group-head">
-                        {key === "handed_off" ? (
-                          <button aria-expanded={!collapsed} className="flow-group-toggle" onClick={() => setShowHandedOff(!showHandedOff)} type="button">{collapsed ? "▶" : "▼"} {group.label}</button>
-                        ) : <span>{group.label}</span>}
-                        <span className="count">{items.length}</span>
-                        {key === "changed" && items.length ? <span className="bill-group-note">連携した後にカルテが修正されました。差分を見て、1人ずつ再連携してください。</span> : null}
-                        {key === "pending" && items.length ? (
-                          <label className="bill-select-all">
-                            <input checked={allPendingSelected} onChange={() => setSelected(new Set(allPendingSelected ? [] : items.map((item) => item.encounterId)))} type="checkbox" />
-                            {items.length}人すべて
-                          </label>
-                        ) : null}
-                      </h2>
-                      {collapsed ? null : items.length === 0 ? <p className="empty">該当する患者はいません。</p> : (
-                        <ul className="flow-rows">{items.map((item) => (key === "drafts" ? renderDraft(item) : renderRow(item, key)))}</ul>
-                      )}
-                    </section>
-                  );
-                })}
+              <section aria-label="会計連携の一覧" className="panel bill-list">
+                <div className="bill-row bill-head-row">
+                  <span className="bill-check">
+                    {pendingRows.length && (tab === null || tab === "pending") ? (
+                      <label className="bill-check-hit" title="未連携の全員を選ぶ">
+                        <input aria-label="未連携の全員を選ぶ" checked={allPendingSelected} onChange={() => setSelected(new Set(allPendingSelected ? [] : pendingRows.map((row) => row.key)))} type="checkbox" />
+                      </label>
+                    ) : null}
+                  </span>
+                  <span aria-hidden="true" className="bill-queue">受付</span>
+                  <span aria-hidden="true" className="bill-number">患者番号</span>
+                  <span aria-hidden="true" className="bill-name">氏名</span>
+                  <span aria-hidden="true" className="bill-meta">年齢・初再</span>
+                  <span aria-hidden="true" className="bill-reception">受付状態</span>
+                  <span aria-hidden="true" className="bill-final">確定</span>
+                  <span aria-hidden="true" className="bill-extra">品目・変更</span>
+                  <span aria-hidden="true" className="bill-state-cell">会計</span>
+                  <span aria-hidden="true" className="bill-actions">操作</span>
+                </div>
+                {shown.length ? <ul className="flow-rows bill-rows">{shown.map(renderRow)}</ul> : <p className="empty">該当する患者はいません。</p>}
               </section>
             )}
 
@@ -452,14 +469,17 @@ export function BillingWorkspace() {
           </>
         )}
 
-        {selectedItems.length ? (
+        {selectedRows.length ? (
           <div className="bill-selbar" role="region" aria-label="選択した患者の操作">
-            <span className="bill-selbar-count"><strong>{selectedItems.length}人</strong>を選択中<span className="muted">（{itemSummary(selectedItems.flatMap((item) => item.items)) || "受診のみ"}）</span></span>
-            <button className="btn btn-ghost" onClick={() => setPrintIds(selectedItems.map((item) => item.encounterId))} type="button">連絡票を印刷</button>
-            <button className="btn btn-primary" disabled={busy} onClick={() => handoff(selectedItems.map((item) => item.encounterId), { again: false })} type="button">CSV を出力して連携済みにする</button>
+            <span className="bill-selbar-count"><strong>{selectedRows.length}人</strong>を選択中<span className="muted">（{itemSummary(selectedRows.flatMap((row) => row.item.items)) || "受診のみ"}）</span></span>
+            <button className="btn btn-ghost" onClick={() => setSelected(new Set())} type="button">選択を解除</button>
+            <button className="btn btn-ghost" onClick={() => setPrintIds(selectedRows.map((row) => row.key))} type="button">連絡票を印刷</button>
+            <button className="btn btn-primary" disabled={busy} onClick={() => handoffSelected(selectedRows.map((row) => row.key))} type="button">まとめて連携（CSV）</button>
           </div>
         ) : null}
       </div>
+
+      {sending ? <SendDialog busy={busy} onCancel={() => setSending(null)} onConfirm={() => send(sending)} row={sending} /> : null}
 
       {confirmAll ? (
         <div className="dialog-backdrop no-print" role="presentation">
@@ -481,6 +501,69 @@ export function BillingWorkspace() {
         </div>
       ) : null}
     </main>
+  );
+}
+
+// 連携の確認（デジカルの「送信しますか？」にあたる 2 択）。誰の・何を渡すかと、受付がどうなるかを見せる。
+function SendDialog({ row, busy, onCancel, onConfirm }) {
+  const { item, patient, appointment } = row;
+  const again = row.state === "changed";
+  const chips = again && item.handoff.previousItems ? diffChips(diffItems(item.handoff.previousItems, item.items)) : null;
+  const toDone = appointment?.status === "checkout";
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.key === "Escape" && !busy) onCancel();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [busy, onCancel]);
+  return (
+    <div className="dialog-backdrop no-print" role="presentation">
+      <div aria-describedby="bill-send-who" aria-labelledby="bill-send-heading" aria-modal="true" className="dialog bill-send-dialog" role="dialog">
+        <h2 id="bill-send-heading">{again ? "会計情報をもう一度レセコンへ渡しますか？" : "会計情報をレセコンへ渡しますか？"}</h2>
+        <p className="bill-send-who" id="bill-send-who">
+          <strong>{patient?.displayName}</strong>
+          <span className="mono">{patient?.primaryPatientNumber || ""}</span>
+          <span>{VISIT_TYPE_LABELS[item.visitType] || ""}</span>
+          <span className="muted">カルテ v{item.version}</span>
+        </p>
+        <div className="bill-send-items">
+          <ItemGroups items={item.items} />
+        </div>
+        {again ? (
+          <p className="bill-warning">
+            前回（v{item.handoff.version}）からの変更: {chips ? (chips.length ? chips.map((chip) => chip.label).join(" ") : "品目の違いなし") : "前回の品目の記録なし"}。
+            レセコン側で前回分を取り消してから取り込んでください。
+          </p>
+        ) : null}
+        <p className="muted small">
+          レセコンが取り込む CSV を保存します。
+          {toDone ? "受付を「会計済」にします。" : appointment ? `受付の状態（${APPOINTMENT_STATUS_LABELS[appointment.displayStatus || appointment.status] || ""}）は変えません。` : "この日の受付はありません。"}
+        </p>
+        <div className="dialog-actions">
+          <button className="btn btn-ghost" disabled={busy} onClick={onCancel} type="button">やめる</button>
+          <button autoFocus className="btn btn-primary" disabled={busy} onClick={onConfirm} type="button">{busy ? "連携中…" : again ? "再連携する" : "連携する"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DiffTable({ rows }) {
+  return (
+    <div className="bill-diff" role="table" aria-label="前回連携との差分">
+      <div className="bill-diff-row bill-diff-labels" role="row">
+        <span role="columnheader">前回</span><span role="columnheader">今回</span><span role="columnheader">変更</span>
+      </div>
+      {rows.map((row, index) => (
+        <div className={`bill-diff-row is-${row.kind}`} key={index} role="row">
+          <span data-label="前回" role="cell">{row.previous ? <ItemLine item={row.previous} withCategory /> : null}</span>
+          <span data-label="今回" role="cell">{row.current ? <ItemLine item={row.current} withCategory /> : null}</span>
+          <span className="bill-diff-kind" role="cell">{{ same: "変更なし", changed: "~変更", added: "+追加", removed: "−削除" }[row.kind]}</span>
+        </div>
+      ))}
+      {rows.length === 0 ? <p className="muted small">前回も今回も品目はありません（受診のみ）。</p> : null}
+    </div>
   );
 }
 
@@ -554,7 +637,7 @@ function ItemLine({ item, withCategory = false }) {
 }
 
 function diagnosisLabel(dx) {
-  const status = DIAGNOSIS_STATUS_LABELS[dx.status] ? `（${DIAGNOSIS_STATUS_LABELS[dx.status]}）` : "";
+  const status = dx.suspected ? "（疑い）" : DIAGNOSIS_STATUS_LABELS[dx.status] ? `（${DIAGNOSIS_STATUS_LABELS[dx.status]}）` : "";
   return `${EYE[dx.eye] ? `${EYE[dx.eye]} ` : ""}${dx.name}${status}`;
 }
 

@@ -94,6 +94,7 @@ import {
   summarizeRecipients
 } from "./documents.js";
 import { japanDate } from "./dates.js";
+import { buildFacilitySettings, effectiveFacility, facilitiesWithSettings, facilitySettingsView, pickFacility, validateFacilitySettingsInput } from "./facility.js";
 import { invalidateLearningCache, learningList } from "./learning.js";
 import { defaultMasterIndex, MASTER_SEARCH_LIMIT } from "./masters.js";
 import { createId } from "./ids.js";
@@ -211,17 +212,24 @@ async function routeEyeApiRequest(input = {}) {
   }
 
   if (method === "GET" && matches(parts, ["v1", "eye", "bootstrap"])) {
-    const [facilities, drugPresets, orderSets, setFolders, phrases, staff] = await Promise.all([
+    const [facilities, drugPresets, orderSets, setFolders, phrases, staff, facilitySettings] = await Promise.all([
       platformStore.listFacilities(orgId),
       eyeStore.listDrugPresets(orgId),
       Promise.resolve(eyeStore.listOrderSets(orgId)).then(sortSets),
       Promise.resolve(eyeStore.listSetFolders(orgId)).then(sortSets),
       eyeStore.listPhrases(orgId),
       // 紙に載せる氏名（memberId → 氏名）。読めなくても起動は止めない（画面側は表示名から括弧を除いて出す）。
-      loadEyeStaff(platformStore, eyeStore, orgId).catch(() => [])
+      loadEyeStaff(platformStore, eyeStore, orgId).catch(() => []),
+      // 医療機関情報（設定）。読めなくても起動は止めず、基本の施設情報で紙を作る。
+      loadFacilitySettings(eyeStore, orgId)
     ]);
     const printNames = Object.fromEntries(staff.map((item) => [item.memberId, item.resolvedName]));
-    return ok({ context: contextView(context), facilities, drugPresets, orderSets, setFolders, phrases, orderCatalog: DEFAULT_ORDER_CATALOG, printNames });
+    return ok({
+      context: contextView(context),
+      // 紙（印刷・紹介状）が読む facilities は、医療機関情報で入れた値を重ねたもの（形は従来どおり）
+      facilities: facilitiesWithSettings(facilities, facilitySettings),
+      facilitySettings: facilitySettingsView(facilitySettings),
+      drugPresets, orderSets, setFolders, phrases, orderCatalog: DEFAULT_ORDER_CATALOG, printNames });
   }
 
   // 公開マスター（医薬品・傷病名・修飾語・診療行為）の検索。語は患者の情報ではないので URL で受け取る。
@@ -298,9 +306,9 @@ async function routeEyeApiRequest(input = {}) {
     const patients = await platformStore.listPatients(orgId);
     const bundles = [];
     for (const patient of patients) bundles.push(await exportPatient(eyeStore, orgId, patient));
-    const [drugPresets, orderSets, setFolders, phrases] = await Promise.all([eyeStore.listDrugPresets(orgId), eyeStore.listOrderSets(orgId), eyeStore.listSetFolders(orgId), eyeStore.listPhrases(orgId)]);
+    const [drugPresets, orderSets, setFolders, phrases, facilitySettings] = await Promise.all([eyeStore.listDrugPresets(orgId), eyeStore.listOrderSets(orgId), eyeStore.listSetFolders(orgId), eyeStore.listPhrases(orgId), loadFacilitySettings(eyeStore, orgId)]);
     await audit({ eventType: "eye.clinic_exported", targetType: "organization", targetId: orgId, safePayload: { patientCount: bundles.length } });
-    return ok({ format: "halunasu-eye-export-v1", exportedAt: now, orgId, settings: { drugPresets, orderSets, setFolders, phrases }, patients: bundles });
+    return ok({ format: "halunasu-eye-export-v1", exportedAt: now, orgId, settings: { drugPresets, orderSets, setFolders, phrases, ...(facilitySettings ? { facilitySettings: facilitySettingsView(facilitySettings) } : {}) }, patients: bundles });
   }
 
   if (method === "POST" && matches(parts, ["v1", "eye", "patients"])) {
@@ -782,10 +790,11 @@ async function routeEyeApiRequest(input = {}) {
       ? history.find((item) => item.encounterId === validated.encounterId)
       : history.filter((item) => item.status === "finalized").at(-1) || null;
     if (validated.encounterId && !encounter) throw notFoundError("encounter not found");
-    const [profile, facilities, staffProfile] = await Promise.all([
+    const [profile, facilities, staffProfile, facilitySettings] = await Promise.all([
       loadProfile(eyeStore, orgId, patient.patientId, history),
       platformStore.listFacilities(orgId),
-      Promise.resolve().then(() => eyeStore.getStaffProfile(orgId, actor.memberId)).catch(() => null)
+      Promise.resolve().then(() => eyeStore.getStaffProfile(orgId, actor.memberId)).catch(() => null),
+      loadFacilitySettings(eyeStore, orgId)
     ]);
     const document = buildDocumentDraft({
       documentId: createId("edoc"),
@@ -793,7 +802,7 @@ async function routeEyeApiRequest(input = {}) {
       patientSnapshot: patientSnapshot(patient, new Date(now)),
       encounter,
       profile,
-      facility: facilities.find((item) => item.status === "active") || facilities[0] || null,
+      facility: effectiveFacility(pickFacility(facilities), facilitySettings),
       type: validated.type,
       actor,
       senderName: printableStaffName(actor.displayName, staffProfile?.printName),
@@ -1086,7 +1095,11 @@ async function routeEyeApiRequest(input = {}) {
     requirePlatformCsrf(input.headers || {}, context.session);
     const validated = validateOrderSetInput(input.body || {});
     if (validated.folderId) await requireSetFolder(eyeStore, orgId, validated.folderId);
-    const orderSet = await eyeStore.upsertOrderSet(orgId, { ...validated, setId: validated.setId || createId("eset") });
+    // 送らなかった項目は元の値が残る。送って空にした項目（フォルダから出す・病名や主訴所見を消す）は空にする。
+    const cleared = Object.fromEntries(Object.entries(SET_CLEARABLE_FIELDS)
+      .filter(([field]) => Object.hasOwn(input.body || {}, field) && validated[field] === undefined)
+      .map(([field, empty]) => [field, empty()]));
+    const orderSet = await eyeStore.upsertOrderSet(orgId, { ...validated, ...cleared, setId: validated.setId || createId("eset") });
     await audit({ eventType: "eye.order_set_saved", targetType: "order_set", targetId: orderSet.setId });
     return ok({ orderSet });
   }
@@ -1157,6 +1170,24 @@ async function routeEyeApiRequest(input = {}) {
     const phrase = await eyeStore.upsertPhrase(orgId, { ...validated, phraseId: validated.phraseId || createId("ephr") });
     await audit({ eventType: "eye.phrase_saved", targetType: "phrase", targetId: phrase.phraseId });
     return ok({ phrase });
+  }
+
+  // 医療機関情報。紙に載せる医院の名前・住所・電話など。見るのは眼科の役割を持つ全員、直すのは管理者。
+  // 返す facility は、基本の施設情報に入力した値を重ねたもの（紙に出る値）。
+  if (matches(parts, ["v1", "eye", "facility-settings"]) && (method === "GET" || method === "PUT")) {
+    if (method === "PUT") {
+      requireAccess(context, EYE_SETTINGS_ROLES, "Eye settings access is required");
+      requirePlatformCsrf(input.headers || {}, context.session);
+      const { expectedRevision, values } = validateFacilitySettingsInput(input.body || {});
+      const current = await eyeStore.getFacilitySettings(orgId);
+      const saved = await eyeStore.saveFacilitySettings(orgId, buildFacilitySettings(current, values, { actor, now }), expectedRevision);
+      const changedFields = Object.keys(values).filter((field) => (current?.[field] || "") !== values[field]);
+      await audit({ eventType: "eye.facility_settings_saved", targetType: "facility_settings", targetId: orgId, safePayload: { changedFields } });
+      const facilities = await platformStore.listFacilities(orgId);
+      return ok({ facilitySettings: facilitySettingsView(saved), facility: effectiveFacility(pickFacility(facilities), saved), baseFacility: pickFacility(facilities) });
+    }
+    const [facilities, settings] = await Promise.all([platformStore.listFacilities(orgId), eyeStore.getFacilitySettings(orgId)]);
+    return ok({ facilitySettings: facilitySettingsView(settings), facility: effectiveFacility(pickFacility(facilities), settings), baseFacility: pickFacility(facilities) });
   }
 
   // 印刷用の氏名。眼科の役割を持つ職員の一覧と、紙に載せる氏名（未設定なら空）を返す。
@@ -1367,6 +1398,13 @@ async function buildWorklist(eyeStore, platformStore, orgId) {
 }
 
 // 眼科の役割を持つ職員と、その印刷用の氏名。
+// セットの保存で「送って空にした」ときに空へ戻す項目
+const SET_CLEARABLE_FIELDS = Object.freeze({ folderId: () => "", diagnoses: () => [], findingsText: () => "" });
+
+async function loadFacilitySettings(eyeStore, orgId) {
+  return Promise.resolve().then(() => eyeStore.getFacilitySettings?.(orgId) ?? null).catch(() => null);
+}
+
 async function loadEyeStaff(platformStore, eyeStore, orgId) {
   const [members, profiles] = await Promise.all([
     Promise.resolve().then(() => platformStore.listMembers(orgId)),

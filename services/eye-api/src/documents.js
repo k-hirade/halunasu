@@ -168,6 +168,7 @@ function senderFromFacility(facility, actor, senderName) {
       .filter(Boolean)
       .join(" "),
     phone: facility?.phone || "",
+    fax: facility?.fax || "",
     // 紙の署名に使う氏名（印刷用の氏名、なければ表示名から役割の括弧を除いたもの）。memberId は後で印刷用の氏名を引き直すため。
     doctorName: senderName || actor.displayName || "",
     memberId: actor.memberId || ""
@@ -179,7 +180,11 @@ function renderTemplate(type, { encounter, profile }) {
   const diagnoses = documentDiagnoses(profile, content).map(documentDiagnosisText);
   const allergies = documentAllergyText(profile);
   const exam = content.exam || {};
-  const findings = documentFindingLines(content.findings).map((item) => item.text);
+  // 部位別の所見のあとに、主訴・所見の自由記載（1B 以降のカルテ）を入れる
+  const findings = [
+    ...documentFindingLines(content.findings).map((item) => item.text),
+    ...(String(content.findingsText || "").trim() ? [String(content.findingsText).trim()] : [])
+  ];
   const prescriptions = (content.prescriptions || []).filter((item) => item.name).map(prescriptionLabel);
   const examBlock = encounter
     ? [

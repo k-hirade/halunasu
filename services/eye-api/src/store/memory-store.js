@@ -16,6 +16,7 @@ export class MemoryEyeStore {
     this.setFolders = new Map();
     this.phrases = new Map();
     this.staffProfiles = new Map();
+    this.facilitySettings = new Map();
     this.documents = new Map();
     this.files = new Map();
     this.billingHandoffs = new Map();
@@ -132,6 +133,19 @@ export class MemoryEyeStore {
     const current = records.get(profile.memberId);
     const saved = { ...current, ...profile, orgId, createdAt: current?.createdAt || this.timestamp(), updatedAt: this.timestamp() };
     records.set(profile.memberId, clone(saved));
+    return clone(saved);
+  }
+
+  getFacilitySettings(orgId) {
+    return cloneOrNull(this.facilitySettings.get(orgId));
+  }
+
+  // 医療機関情報は医院ごとに 1 件。expectedRevision（まだ無いときは 0）が今の版と違えば 409。
+  saveFacilitySettings(orgId, settings, expectedRevision) {
+    const current = this.facilitySettings.get(orgId);
+    if ((current?.revision || 0) !== expectedRevision) throw storeError("ConflictError", 409, "facility settings were updated by someone else; reload and try again");
+    const saved = { ...settings, orgId };
+    this.facilitySettings.set(orgId, clone(saved));
     return clone(saved);
   }
 
