@@ -566,29 +566,54 @@ async function runReceptionFlow(browser) {
   await page.goto(`${baseUrl}/reception`);
   await page.getByRole("heading", { name: "受付", exact: true }).waitFor();
 
-  // 予約済みの再診患者
+  // デジカルの受付一覧: フラットな 1 枚の表（段階ごとのまとまり・人数チップはない）。列の順はデジカルと同じ
+  const table = page.getByRole("table", { name: "受付一覧" });
+  await table.waitFor();
+  assert.equal(await page.locator(".flow-chips, .flow-group").count(), 0, "no grouped list and no count chips");
+  const headers = await table.locator("thead .rc-sort").allInnerTexts();
+  assert.deepEqual(headers.map((text) => text.replace(/[▲▼↕]/gu, "").trim()).slice(0, 8), ["番号", "予約時間", "受付時間", "ステータス", "患者番号", "氏名", "生年月日", "年齢"]);
+  assert.deepEqual(headers.map((text) => text.replace(/[▲▼↕]/gu, "").trim()).slice(-4), ["会計", "進捗", "散瞳", "待ち時間"]);
+  await page.getByText("全 0件").waitFor();
+
+  // 予約（2 列のダイアログ）: 予約状況の枠を押すと予約日・予約時間に入る。医師・診療科を選ぶ
   await page.getByRole("button", { name: "予約を追加" }).click();
-  await page.getByLabel("患者を検索").fill("試験");
-  await page.getByRole("button", { name: /試験 一郎/ }).click();
-  await page.locator('input[type="time"]').fill("09:30");
-  await page.getByRole("button", { name: "予約する" }).click();
-  const row = page.locator(".flow-row").filter({ hasText: "試験 一郎" });
-  await page.locator(".flow-group.status-booked .flow-row").filter({ hasText: "試験 一郎" }).waitFor();
-  await row.getByRole("button", { name: "受付する" }).click();
-  await page.locator(".flow-group.status-checked_in .flow-row").filter({ hasText: "試験 一郎" }).waitFor();
+  const booking = page.getByRole("dialog", { name: "予約登録" });
+  await booking.getByText("患者を選ぶと、その人の予約が出ます。").waitFor();
+  await booking.getByLabel("患者を検索").fill("試験");
+  await booking.getByRole("button", { name: /試験 一郎/ }).click();
+  await booking.getByText("予約はありません。").waitFor();
+  await booking.getByRole("button", { name: "予約状況" }).click();
+  const jst = new Date(Date.now() + 9 * 3600000);
+  await booking.getByRole("button", { name: new RegExp(`^${jst.getUTCMonth() + 1}月${jst.getUTCDate()}日\\(.\\) 9:30 予約0件$`, "u") }).click();
+  assert.equal(await booking.getByLabel("予約時間").inputValue(), "09:30", "a slot in the booking grid fills the time");
+  await booking.getByLabel("医師").selectOption({ label: "医師" });
+  await booking.getByLabel("診療科").fill("眼科");
+  await booking.getByRole("button", { name: "登録", exact: true }).click();
+  const row = page.locator(".rc-row").filter({ hasText: "試験 一郎" });
+  await row.waitFor();
+  assert.equal(await statusOf(row), "booked");
+  assert.equal((await row.locator(".rc-col-no").innerText()).trim(), "-");
+  assert.equal((await row.locator(".rc-col-time").innerText()).trim(), "09:30");
+  await row.locator(".rc-col-doctor").getByText("医師").waitFor();
+  // 予約済をステータスのプルダウンで受付中にすると受付になる（番号 001）
+  await row.getByLabel("試験 一郎 のステータス").selectOption("checked_in");
+  await waitForStatus(row, "checked_in");
+  assert.equal((await row.locator(".rc-col-no").innerText()).trim(), "001");
 
   // 予約なし・未登録の当日受付 → 患者登録（行の「…」メニューから）
   await page.getByRole("button", { name: "当日受付" }).click();
   await page.getByLabel("患者を検索").fill("飛込 花子");
-  await page.getByRole("button", { name: "受け付ける" }).click();
-  const walkIn = page.locator(".flow-row").filter({ hasText: "飛込 花子" });
+  await page.getByRole("dialog", { name: "当日受付" }).getByRole("button", { name: "登録", exact: true }).click();
+  const walkIn = page.locator(".rc-row").filter({ hasText: "飛込 花子" });
   await walkIn.waitFor();
-  assert.equal((await walkIn.locator(".flow-slot").innerText()).trim(), "#2");
+  assert.equal((await walkIn.locator(".rc-col-no").innerText()).trim(), "002");
   await walkIn.locator("summary").click();
   await walkIn.getByRole("button", { name: "患者登録" }).click();
-  // 共通の登録ダイアログ: フリガナは必須で、ひらがなはカタカナにそろえる
+  // 共通の登録ダイアログ: 項目はデジカルの順（患者番号が先頭）。フリガナは必須で、ひらがなはカタカナにそろえる
   const registerDialog = page.getByRole("dialog", { name: /患者登録/u });
+  assert.equal(await registerDialog.evaluate((node) => document.activeElement === node.querySelector("#reg-number")), true, "the patient number comes first");
   assert.equal(await registerDialog.getByRole("button", { name: "登録して受付に紐づける" }).isDisabled(), true, "kana is required");
+  assert.equal(await registerDialog.getByRole("button", { name: "登録して受付", exact: true }).count(), 0, "linking an existing reception has no second reception button");
   await registerDialog.getByLabel("フリガナ").fill("とびこみ はなこ");
   await registerDialog.getByLabel("フリガナ").blur();
   assert.equal(await registerDialog.getByLabel("フリガナ").inputValue(), "トビコミ ハナコ");
@@ -596,20 +621,48 @@ async function runReceptionFlow(browser) {
   await registerDialog.getByRole("button", { name: "登録して受付に紐づける" }).click();
   await walkIn.getByText("未登録").waitFor({ state: "detached" });
 
-  // 追加した状態（処置中・不在）。不在から予約に戻して受け付け直しても、受付番号は最初のまま
-  await walkIn.locator("summary").click();
-  await walkIn.getByRole("button", { name: "処置中にする" }).click();
-  await page.locator(".flow-group.status-in_treatment .flow-row").filter({ hasText: "飛込 花子" }).waitFor();
-  await walkIn.locator("summary").click();
-  await walkIn.getByRole("button", { name: "不在（呼んでもいない）" }).click();
-  await page.locator(".flow-group.status-finished").getByRole("button", { name: /終了・キャンセル/u }).click();
-  await page.locator(".flow-group.status-finished .flow-row").filter({ hasText: "飛込 花子" }).getByText("不在").waitFor();
-  await walkIn.locator("summary").click();
-  await walkIn.getByRole("button", { name: "予約に戻す" }).click();
-  await page.locator(".flow-group.status-booked .flow-row").filter({ hasText: "飛込 花子" }).waitFor();
-  await walkIn.getByRole("button", { name: "受付する" }).click();
-  await page.locator(".flow-group.status-checked_in .flow-row").filter({ hasText: "飛込 花子" }).waitFor();
-  assert.equal((await walkIn.locator(".flow-slot").innerText()).trim(), "#2", "the queue number stays from the first check-in");
+  // ステータスはプルダウンでどこへでも（処置中・不在・予約済へ戻す）。受付し直しても番号は最初のまま
+  const menu = await walkIn.locator("select.rc-status option").allInnerTexts();
+  assert.deepEqual(menu, ["予約済", "受付中", "診察待", "診察中", "検査中", "処置中", "会計待", "会計済", "再計待", "不在", "取消"]);
+  for (const status of ["in_treatment", "absent", "booked", "checked_in"]) {
+    await walkIn.getByLabel("飛込 花子 のステータス").selectOption(status);
+    await waitForStatus(walkIn, status);
+  }
+  assert.equal((await walkIn.locator(".rc-col-no").innerText()).trim(), "002", "the queue number stays from the first check-in");
+
+  // 受付メモ・患者メモ: セルを押すと小さなダイアログ
+  await row.getByRole("button", { name: /試験 一郎 の受付メモ/u }).click();
+  await page.getByRole("dialog", { name: /受付メモ/u }).getByLabel("受付メモ").fill("保険証確認");
+  await page.getByRole("dialog", { name: /受付メモ/u }).getByRole("button", { name: "登録" }).click();
+  await row.locator(".rc-col-receptionMemo").getByText("保険証確認").waitFor();
+  await row.getByRole("button", { name: /試験 一郎 の患者メモ/u }).click();
+  await page.getByRole("dialog", { name: /患者メモ/u }).getByLabel("患者メモ").fill("耳が遠い");
+  await page.getByRole("dialog", { name: /患者メモ/u }).getByRole("button", { name: "登録" }).click();
+  await row.locator(".rc-col-patientMemo").getByText("耳が遠い").waitFor();
+  assert.equal((await row.locator(".rc-col-previous").innerText()).trim(), "初");
+
+  // 絞り込み: ステータスを外すと「表示数 / 全数件」、表示する列は端末に記憶する。×で解除
+  await page.getByRole("button", { name: "▼ 絞り込み" }).click();
+  const filter = page.getByRole("dialog", { name: "絞り込み" });
+  await filter.getByRole("checkbox", { name: /受付中/u }).uncheck();
+  await page.getByText("0 / 2件").waitFor();
+  await filter.getByRole("checkbox", { name: "待ち時間" }).uncheck();
+  assert.equal(await table.locator("th.rc-col-wait").count(), 0);
+  assert.deepEqual(JSON.parse(await page.evaluate(() => window.localStorage.getItem("halunasu-eye-reception-columns"))), ["wait"]);
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "絞り込みを解除" }).click();
+  await page.getByText("全 2件").waitFor();
+  await page.reload();
+  await row.waitFor();
+  assert.equal(await table.locator("th.rc-col-wait").count(), 0, "hidden columns are remembered on this device");
+  await page.getByRole("button", { name: "▼ 絞り込み" }).click();
+  await filter.getByRole("checkbox", { name: "待ち時間" }).check();
+  await page.keyboard.press("Escape");
+  // 見出しで並べ替え（氏名はカナ順）
+  await table.getByRole("button", { name: /^氏名/u }).click();
+  assert.equal(await table.locator("th.rc-col-name").getAttribute("aria-sort"), "ascending");
+  assert.deepEqual((await table.locator("tbody .rc-kana").allInnerTexts()).map((text) => text.trim()), ["シケン イチロウ", "トビコミ ハナコ"]);
+  await table.getByRole("button", { name: /^番号/u }).click();
 
   // ヘッダー検索から新規登録: 入力した語が登録欄に入り、似た患者があれば警告が出る
   await page.getByLabel("患者検索").fill("しけん");
@@ -622,15 +675,68 @@ async function runReceptionFlow(browser) {
   await page.keyboard.press("Escape");
   await headerDialog.waitFor({ state: "detached" });
 
-  // 段階を進める（行の右端のボタンは 1 つだけ）。人数チップで絞り込める
-  await row.getByRole("button", { name: "検査開始" }).click();
-  await page.locator(".flow-group.status-in_exam .flow-row").filter({ hasText: "試験 一郎" }).waitFor();
-  await row.getByRole("button", { name: "検査終了" }).click();
-  await page.locator(".flow-group.status-waiting_doctor .flow-row").filter({ hasText: "試験 一郎" }).waitFor();
-  await page.getByRole("button", { name: /^診察待ち/u }).click();
-  assert.equal(await page.locator(".flow-row").count(), 1, "the count chip filters the list to one stage");
-  await page.getByRole("button", { name: /^すべて/u }).click();
-  assert.equal(await page.getByRole("button", { name: /^すべて/u }).getAttribute("aria-pressed"), "true");
+  // 患者検索のモーダル（ヘッダーの虫めがね）: 行に［表示］［編集］［受付］［予約］、右上に［新規患者登録］
+  await page.getByRole("button", { name: "詳しく検索（受付・予約・編集）", exact: true }).click();
+  const search = page.getByRole("dialog", { name: "患者検索" });
+  await search.getByLabel("検索する語").fill("しけん");
+  const found = search.locator(".ps-row").filter({ hasText: "試験 一郎" });
+  await found.waitFor();
+  await found.getByText("耳が遠い").waitFor();
+  for (const name of ["表示", "編集", "受付", "予約"]) await found.getByRole("button", { name, exact: true }).waitFor();
+  // 新規患者登録 → ［登録して受付］で受付登録へ続け、受付一覧に行が増える
+  await search.getByLabel("検索する語").fill("とうろく たろう");
+  await search.getByRole("button", { name: "新規患者登録" }).click();
+  const newPatient = page.getByRole("dialog", { name: "新規患者を登録" });
+  assert.equal(await newPatient.getByLabel("フリガナ").inputValue(), "トウロク タロウ");
+  await newPatient.getByLabel("氏名").fill("登録 太郎");
+  await newPatient.getByLabel("都道府県").selectOption("東京都");
+  await newPatient.getByLabel("電話番号1").fill("03-1234-5678");
+  await newPatient.getByRole("button", { name: "登録して受付", exact: true }).click();
+  const receive = page.getByRole("dialog", { name: "受付登録" });
+  await receive.getByRole("button", { name: "登録", exact: true }).click();
+  await search.waitFor({ state: "detached" });
+  const added = page.locator(".rc-row").filter({ hasText: "登録 太郎" });
+  await added.waitFor();
+  assert.equal((await added.locator(".rc-col-no").innerText()).trim(), "003");
+
+  // 状態を進める（検査中 → 診察待）
+  await row.getByLabel("試験 一郎 のステータス").selectOption("in_exam");
+  await waitForStatus(row, "in_exam");
+  await row.getByLabel("試験 一郎 のステータス").selectOption("waiting_doctor");
+  await waitForStatus(row, "waiting_doctor");
+  // 予約状況の画面（受付の［予約状況］から）: 週 × 時間の表に件数が出る
+  await page.getByRole("link", { name: "予約状況" }).click();
+  await page.getByRole("heading", { name: "予約状況", exact: true }).waitFor();
+  await page.getByRole("button", { name: new RegExp(`^${jst.getUTCMonth() + 1}月${jst.getUTCDate()}日\\(.\\) 9:30 予約1件$`, "u") }).waitFor();
+  await page.getByRole("link", { name: "受付一覧へ" }).click();
+  await row.waitFor();
+
+  // 会計: 会計待で確定済みの行に［会計］。確認 → 1 人分の連携（POST /billing/send）→ CSV を保存（一覧と応答を差し替えて確かめる）
+  await page.route(/\/v1\/eye\/appointments\?date=/u, async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    const target = body.appointments.find((item) => item.patientName === "飛込 花子");
+    if (target) {
+      target.status = "checkout";
+      target.displayStatus = "checkout";
+      body.encountersByPatient[target.patientId] = { encounterId: "enc_smoke", status: "finalized", exam: {}, orders: [] };
+    }
+    await route.fulfill({ response, json: body });
+  });
+  let sent = null;
+  await page.route(/\/v1\/eye\/billing\/send$/u, async (route) => {
+    sent = route.request().postDataJSON();
+    await route.fulfill({ status: 201, json: { handoff: { handoffId: "ebh_smoke1" }, csv: "区分,名称\n", appointment: null, appointmentMoved: true, appointmentError: null } });
+  });
+  await page.reload();
+  await walkIn.getByRole("button", { name: "会計", exact: true }).click();
+  await page.getByRole("alertdialog", { name: /レセコンへ会計情報を渡しますか/u }).waitFor();
+  const [handoffCsv] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "渡す", exact: true }).click()]);
+  assert.match(handoffCsv.suggestedFilename(), /^eye-billing-\d{4}-\d{2}-\d{2}-smoke1\.csv$/u);
+  assert.equal(sent.encounterId, "enc_smoke");
+  assert.ok(sent.appointmentId, "the reception is sent so the API can mark it paid");
+  await page.getByText(/会計情報を渡しました/u).waitFor();
+  await page.unrouteAll({ behavior: "wait" });
 
   // 会計連携: 状態ごとの一覧。未連携だけを下のバーから一括で CSV にして連携済みにする
   await page.getByRole("link", { name: "会計連携" }).click();
@@ -755,8 +861,8 @@ async function runOrthoptistFlow(browser) {
   await page.getByRole("button", { name: "当日受付" }).click();
   await page.getByLabel("患者を検索").fill("試験");
   await page.getByRole("dialog").getByRole("button", { name: /試験 一郎/u }).click();
-  await page.getByRole("button", { name: "受け付ける" }).click();
-  await page.locator(".flow-group.status-checked_in .flow-row").filter({ hasText: "試験 一郎" }).waitFor();
+  await page.getByRole("dialog", { name: "当日受付" }).getByRole("button", { name: "登録", exact: true }).click();
+  await waitForRowStatuses(page, "試験 一郎", (values) => values.includes("checked_in"));
 
   // 検査入力: 記録の行（検査日・時刻・検者・登録）→ 大タブ 11 個 → 本文。下は「確定系 … キャンセル … 保存して戻る … 保存して次へ」
   await page.goto(`${encounterUrl}/exam`);
@@ -867,8 +973,7 @@ async function runOrthoptistFlow(browser) {
   await finish.waitFor();
   await finish.click();
   await page.waitForURL(/\/reception$/u);
-  await page.locator(".flow-group.status-waiting_doctor .flow-row").filter({ hasText: "試験 一郎" }).first().waitFor();
-  assert.equal(await page.locator(".flow-group.status-checked_in .flow-row").filter({ hasText: "試験 一郎" }).count(), 0);
+  await waitForRowStatuses(page, "試験 一郎", (values) => values.includes("waiting_doctor") && !values.includes("checked_in"));
   await page.goto(`${encounterUrl}/exam`);
   await page.locator(".exam-bar-eye.is-done").filter({ hasText: "R" }).waitFor();
   assert.equal(await page.locator(".exam-bar-eye.is-empty").filter({ hasText: "L" }).count(), 1, "an eye without values is not confirmed");
@@ -902,6 +1007,28 @@ async function login(page, loginId) {
   await page.getByRole("button", { name: "ログイン", exact: true }).click();
   await page.getByLabel("6桁コード").fill(currentLocalTotp());
   await page.getByRole("button", { name: "確認" }).click();
+}
+
+// 受付一覧の行のステータス（プルダウンの値）
+async function statusOf(row) {
+  return row.locator("select.rc-status").inputValue();
+}
+
+async function waitForStatus(row, status) {
+  await row.locator(`select.rc-status.is-${status}`).waitFor();
+  assert.equal(await statusOf(row), status);
+}
+
+// 同じ氏名の行（同じ患者の複数の受付）のステータスが条件を満たすまで待つ
+async function waitForRowStatuses(page, name, predicate, timeoutMs = 10_000) {
+  const started = Date.now();
+  let values = [];
+  while (Date.now() - started < timeoutMs) {
+    values = await page.locator(".rc-row").filter({ hasText: name }).locator("select.rc-status").evaluateAll((nodes) => nodes.map((node) => node.value));
+    if (predicate(values)) return values;
+    await page.waitForTimeout(200);
+  }
+  throw new Error(`${name}: statuses ${values.join(",")} did not reach the expected state`);
 }
 
 // 768〜1180px でヘッダーの項目が検索欄の下に隠れないこと（各リンクが検索欄と重ならない）

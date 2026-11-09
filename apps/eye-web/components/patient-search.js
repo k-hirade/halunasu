@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { parseBirthDateQuery } from "@halunasu/eye-contracts";
 import { useEyeApi } from "./eye-api";
+import { PatientSearchModal, registerInitial } from "./patient-search-modal";
 import { patientBirthLine } from "../lib/format";
 
 const SHOWN = 10;
@@ -11,6 +12,7 @@ const SHOWN = 10;
 // ヘッダーの患者検索。どの画面からでも「/」で入力でき、↑↓ と Enter で患者を開く。
 // 氏名・カナ（ひらがなでも可）・名だけ・患者番号・生年月日（1950/3/4、S25.3.4 など）で探せる。
 // onRegister を渡すと、結果の下に「新規患者を登録」を出す（入力した語を登録欄に入れて開く）。
+// 右の虫めがねと候補の下の「詳しく検索」で、デジカルと同じ患者検索のモーダル（受付・予約・編集のボタン付き）を開く。
 export function PatientSearch({ onNavigate, onRegister }) {
   const api = useEyeApi();
   const router = useRouter();
@@ -19,6 +21,7 @@ export function PatientSearch({ onNavigate, onRegister }) {
   const [open, setOpen] = useState(false);
   const [result, setResult] = useState({ query: null, patients: [] });
   const [active, setActive] = useState(0);
+  const [modal, setModal] = useState(null);
 
   useEffect(() => {
     function onKeyDown(event) {
@@ -70,11 +73,13 @@ export function PatientSearch({ onNavigate, onRegister }) {
   function register() {
     const text = trimmed;
     close();
-    const birthDate = parseBirthDateQuery(text);
-    if (birthDate) onRegister({ birthDate });
-    else if (/^[\p{Script=Hiragana}\p{Script=Katakana}ー\s]+$/u.test(text)) onRegister({ displayNameKana: text });
-    else if (/^[0-9A-Za-z-]+$/u.test(text)) onRegister({ primaryPatientNumber: text });
-    else onRegister({ displayName: text });
+    onRegister(registerInitial(text));
+  }
+
+  function openModal() {
+    const text = trimmed;
+    close();
+    setModal({ query: text });
   }
 
   function onKeyDown(event) {
@@ -117,6 +122,9 @@ export function PatientSearch({ onNavigate, onRegister }) {
         value={query}
       />
       <kbd className="nav-search-key" aria-hidden="true">/</kbd>
+      <button aria-label="詳しく検索（受付・予約・編集）" className="nav-search-open" onClick={openModal} title="詳しく検索" type="button">
+        <svg aria-hidden="true" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeWidth="2" viewBox="0 0 24 24" width="18"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.5 15.5 5 5" /></svg>
+      </button>
       {open ? (
         // 押した瞬間に入力欄からフォーカスが外れて一覧が閉じないよう、mousedown の既定動作を止める
         <div className="nav-search-panel" onMouseDown={(event) => event.preventDefault()}>
@@ -151,9 +159,13 @@ export function PatientSearch({ onNavigate, onRegister }) {
               ＋ {trimmed ? `「${trimmed}」で新規患者を登録` : "新規患者を登録"}
             </button>
           ) : null}
+          <button className="nav-search-register nav-search-detail" onClick={openModal} tabIndex={-1} type="button">
+            詳しく検索（受付・予約・編集）…
+          </button>
           <p className="nav-search-hint muted" aria-hidden="true">↑↓ 選択　Enter 開く　Esc 閉じる</p>
         </div>
       ) : null}
+      {modal ? <PatientSearchModal initialQuery={modal.query} onClose={() => setModal(null)} /> : null}
     </div>
   );
 }

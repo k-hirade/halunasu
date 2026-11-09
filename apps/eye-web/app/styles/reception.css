@@ -1,0 +1,1255 @@
+/*
+ * 受付（/reception）・予約状況（/reception/schedule）・予約登録・患者検索のモーダル・患者登録。
+ * 形はデジカルの受付一覧（画面幅いっぱいのフラットな表、2 行目のツールバー）。色は眼科のトークンだけを使う。
+ */
+
+.rc-page.eye-page {
+  max-width: none;
+  padding: 12px 16px 48px;
+}
+
+/* 2 行目のツールバー: 日付ナビ・件数・絞り込み … 右寄せで予約状況・予約・当日受付・更新 */
+.rc-toolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  margin-bottom: 10px;
+}
+
+.rc-title {
+  font-size: var(--fs-lg);
+  margin: 0 6px 0 0;
+}
+
+.rc-date-nav {
+  position: relative;
+}
+
+.rc-date-button.btn {
+  font-variant-numeric: tabular-nums;
+  min-width: 150px;
+}
+
+.rc-count {
+  color: var(--text-soft);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.rc-filter-wrap {
+  align-items: center;
+  display: flex;
+  gap: 4px;
+  position: relative;
+}
+
+.rc-filter-button.is-active.btn {
+  background: var(--teal-soft);
+  border-color: var(--teal);
+  color: var(--teal-dark);
+}
+
+.rc-toolbar-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.btn.btn-outline {
+  background: var(--surface);
+  border-color: var(--teal);
+  color: var(--teal-dark);
+}
+
+/* ポップオーバー（日付・絞り込み） */
+.rc-popover {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18);
+  left: 0;
+  padding: 12px;
+  position: absolute;
+  top: calc(100% + 6px);
+  z-index: 30;
+}
+
+.rc-date-popover {
+  width: 300px;
+}
+
+.rc-popover-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.rc-filter {
+  max-width: calc(100vw - 32px);
+  width: min(880px, 80vw);
+}
+
+.rc-filter-columns {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 1.5fr);
+}
+
+.rc-filter-group {
+  border: 0;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.rc-filter-group legend {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  margin-bottom: 4px;
+  padding: 0;
+}
+
+.rc-filter-columns-list {
+  border-left: 1px solid var(--line);
+  column-gap: 12px;
+  columns: 2;
+  padding-left: 12px;
+}
+
+.rc-filter-columns-list .rc-check {
+  break-inside: avoid;
+}
+
+.rc-filter-columns-list p {
+  margin: 0 0 4px;
+}
+
+.rc-filter-bulk {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.rc-check {
+  align-items: center;
+  display: flex;
+  font-size: var(--fs-sm);
+  gap: 6px;
+  min-height: 30px;
+}
+
+.rc-check input {
+  height: 16px;
+  margin: 0;
+  width: 16px;
+}
+
+.rc-check .muted {
+  margin-left: auto;
+}
+
+.rc-filter-text {
+  align-items: flex-end;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.rc-filter-text label {
+  display: grid;
+  flex: 1 1 200px;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  gap: 4px;
+}
+
+/* 状態の点（絞り込みのチェックリスト）とプルダウンの色。どちらも同じトークン */
+.rc-dot {
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  display: inline-block;
+  height: 10px;
+  width: 10px;
+}
+
+.rc-status {
+  appearance: none;
+  background: var(--surface-muted) linear-gradient(transparent, transparent);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  color: var(--text-soft);
+  cursor: pointer;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  min-height: 30px;
+  padding: 2px 24px 2px 12px;
+  position: relative;
+}
+
+.rc-status:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.rc-col-status {
+  position: relative;
+}
+
+.rc-col-status::after {
+  color: var(--muted);
+  content: "▾";
+  font-size: var(--fs-xs);
+  pointer-events: none;
+  position: absolute;
+  right: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+th.rc-col-status::after {
+  content: none;
+}
+
+.rc-status.is-checked_in,
+.rc-dot.is-checked_in {
+  background-color: var(--blue-soft);
+  border-color: var(--blue-line);
+  color: var(--blue-ink);
+}
+
+.rc-status.is-waiting_doctor,
+.rc-dot.is-waiting_doctor {
+  background-color: var(--amber-soft);
+  border-color: var(--amber-line);
+  color: var(--amber);
+}
+
+.rc-status.is-in_consult,
+.rc-dot.is-in_consult {
+  background-color: var(--teal);
+  border-color: var(--teal);
+  color: var(--on-accent);
+}
+
+.rc-status.is-in_exam,
+.rc-status.is-in_treatment,
+.rc-dot.is-in_exam,
+.rc-dot.is-in_treatment {
+  background-color: var(--teal-soft);
+  border-color: var(--teal);
+  color: var(--teal-dark);
+}
+
+.rc-status.is-checkout,
+.rc-dot.is-checkout {
+  background-color: var(--blue-ink);
+  border-color: var(--blue-ink);
+  color: var(--surface);
+}
+
+.rc-status.is-done,
+.rc-dot.is-done {
+  background-color: var(--green-soft);
+  border-color: var(--green-line);
+  color: var(--green);
+}
+
+.rc-status.is-rebill_waiting,
+.rc-dot.is-rebill_waiting {
+  background-color: var(--red-soft);
+  border-color: var(--red-line);
+  color: var(--red);
+}
+
+.rc-status.is-absent,
+.rc-status.is-cancelled,
+.rc-dot.is-absent,
+.rc-dot.is-cancelled {
+  background-color: var(--surface);
+  border-style: dashed;
+  color: var(--muted);
+}
+
+.rc-status option {
+  background: var(--surface);
+  color: var(--text);
+}
+
+/* 表 */
+.rc-table-wrap {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: auto;
+}
+
+@media (min-width: 768px) {
+  .rc-table-wrap {
+    max-height: calc(100dvh - var(--nav-h) - 96px);
+  }
+}
+
+.rc-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--fs-sm);
+  min-width: 100%;
+}
+
+.rc-table th {
+  background: var(--surface-muted);
+  border-bottom: 1px solid var(--line-strong);
+  position: sticky;
+  text-align: left;
+  top: 0;
+  white-space: nowrap;
+  z-index: 2;
+}
+
+.rc-sort {
+  align-items: center;
+  background: none;
+  border: 0;
+  color: var(--text-soft);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  gap: 4px;
+  min-height: 36px;
+  padding: 4px 6px;
+  white-space: nowrap;
+}
+
+.rc-sort-mark {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+th[aria-sort] .rc-sort,
+th[aria-sort] .rc-sort-mark {
+  color: var(--teal-dark);
+}
+
+.rc-table td {
+  border-bottom: 1px solid var(--line);
+  height: 44px;
+  padding: 2px 6px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.rc-row {
+  cursor: pointer;
+}
+
+.rc-row:hover td {
+  background: var(--surface-muted);
+}
+
+.rc-row.status-done td,
+.rc-row.status-absent td,
+.rc-row.status-cancelled td {
+  color: var(--muted);
+}
+
+.rc-row.status-cancelled .rc-name strong {
+  text-decoration: line-through;
+}
+
+.rc-col-no,
+.rc-col-time,
+.rc-col-checkin {
+  font-variant-numeric: tabular-nums;
+}
+
+.rc-name {
+  align-items: flex-start;
+  background: none;
+  border: 0;
+  color: var(--text);
+  cursor: pointer;
+  display: grid;
+  gap: 0;
+  line-height: 1.25;
+  padding: 2px 0;
+  text-align: left;
+}
+
+.rc-name strong {
+  font-size: var(--fs-md);
+}
+
+.rc-name .tag {
+  justify-self: start;
+  margin-top: 2px;
+}
+
+.rc-kana {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+/* 性別は色ではなく位置で区別するので、氏名の色は変えない（年齢の列に「男」「女」を出す） */
+
+.rc-cell-edit {
+  align-items: center;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  gap: 6px;
+  max-width: 100%;
+  min-height: 32px;
+  padding: 2px 6px;
+  text-align: left;
+}
+
+.rc-cell-edit:hover,
+.rc-cell-edit:focus-visible {
+  border-color: var(--line-strong);
+}
+
+.rc-pencil {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  visibility: hidden;
+}
+
+.rc-cell-edit:hover .rc-pencil,
+.rc-cell-edit:focus-visible .rc-pencil {
+  visibility: visible;
+}
+
+@media (hover: none) {
+  .rc-pencil {
+    visibility: visible;
+  }
+}
+
+.rc-memo > span:first-child,
+span.rc-memo {
+  display: inline-block;
+  max-width: 12em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.rc-progress {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+
+.rc-billing {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.rc-billing .tag-danger {
+  background: var(--red-soft);
+  border-color: var(--red-line);
+  color: var(--red);
+}
+
+.rc-col-actions {
+  text-align: right;
+}
+
+td.rc-col-actions {
+  display: table-cell;
+}
+
+td.rc-col-actions > * + * {
+  margin-left: 4px;
+}
+
+td.rc-col-actions .more-menu {
+  display: inline-block;
+  text-align: left;
+}
+
+.rc-empty {
+  margin: 0;
+  padding: 14px 12px;
+}
+
+.rc-memo-dialog textarea {
+  width: 100%;
+}
+
+/* 予約登録（2 列: 左に予約一覧、右にフォーム） */
+.dialog.ap-dialog {
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  position: relative;
+}
+
+.dialog.ap-dialog.is-two-pane {
+  max-width: 820px;
+}
+
+.ap-body {
+  display: grid;
+  gap: 16px;
+}
+
+.ap-dialog.is-two-pane .ap-body {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+}
+
+.ap-list {
+  border-right: 1px solid var(--line);
+  padding-right: 14px;
+}
+
+.ap-list-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.ap-list-rows {
+  display: grid;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  max-height: 360px;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.ap-list-row {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  padding: 6px 8px;
+}
+
+.ap-list-row.is-past {
+  background: var(--surface-muted);
+}
+
+.ap-list-row.is-selected {
+  border-color: var(--teal);
+  box-shadow: inset 3px 0 0 var(--teal);
+}
+
+.ap-list-main {
+  display: grid;
+  font-size: var(--fs-sm);
+}
+
+.ap-list-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.ap-form {
+  display: grid;
+  gap: 10px;
+}
+
+.ap-row {
+  align-items: start;
+  display: grid;
+  gap: 4px 12px;
+  grid-template-columns: 84px minmax(0, 1fr);
+}
+
+.ap-label {
+  color: var(--text-soft);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  padding-top: 9px;
+}
+
+.ap-value {
+  min-width: 0;
+}
+
+span.ap-value {
+  padding-top: 8px;
+}
+
+.ap-date,
+.ap-time {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* 予約状況を開いている間は、週の表が読める幅まで広げる */
+.dialog.ap-dialog.is-calendar {
+  max-width: min(1200px, 96vw);
+  min-height: min(720px, calc(100dvh - 32px));
+}
+
+.ap-date .input,
+.ap-time .input {
+  flex: 1 1 160px;
+  min-width: 0;
+  width: auto;
+}
+
+.ap-calendar {
+  background: var(--surface);
+  border-radius: 12px;
+  inset: 0;
+  overflow: auto;
+  padding: 16px;
+  position: absolute;
+  z-index: 3;
+}
+
+.ap-calendar-head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.ap-calendar-head .btn {
+  margin-left: auto;
+}
+
+.ap-confirm {
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.2);
+  left: 50%;
+  padding: 16px;
+  position: absolute;
+  top: 30%;
+  transform: translateX(-50%);
+  width: min(360px, calc(100% - 32px));
+  z-index: 4;
+}
+
+.ap-confirm p {
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  .ap-dialog.is-two-pane .ap-body {
+    grid-template-columns: 1fr;
+  }
+
+  .ap-list {
+    border-bottom: 1px solid var(--line);
+    border-right: 0;
+    order: 2;
+    padding: 10px 0 0;
+  }
+
+  .ap-row {
+    grid-template-columns: 1fr;
+  }
+
+  .ap-label {
+    padding-top: 0;
+  }
+}
+
+/* 月の小さなカレンダー */
+.mcal-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.mcal-title {
+  font-size: var(--fs-sm);
+}
+
+.mcal-grid {
+  display: grid;
+  gap: 2px;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.mcal-weekday {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  text-align: center;
+}
+
+.mcal-weekday.is-sun {
+  color: var(--red);
+}
+
+.mcal-weekday.is-sat {
+  color: var(--blue-ink);
+}
+
+.mcal-day {
+  align-items: center;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  display: grid;
+  font-size: var(--fs-sm);
+  justify-items: center;
+  min-height: 36px;
+  padding: 2px 0;
+}
+
+.mcal-day:hover {
+  border-color: var(--line-strong);
+}
+
+.mcal-day.is-outside {
+  color: var(--muted);
+}
+
+.mcal-day.is-week {
+  background: var(--surface-muted);
+}
+
+.mcal-day.is-today {
+  border-color: var(--teal);
+  font-weight: 700;
+}
+
+.mcal-day.is-selected {
+  background: var(--teal);
+  color: var(--on-accent);
+}
+
+.mcal-count {
+  font-size: 10px;
+  line-height: 1.1;
+}
+
+/* 予約状況（左に月、右に週 × 時間） */
+.bk-cal {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(240px, 1fr) minmax(0, 3fr);
+}
+
+.bk-cal-side {
+  align-content: start;
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+
+.bk-cal-side .mcal {
+  width: 100%;
+}
+
+.bk-doctors {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.bk-doctors-label {
+  color: var(--text-soft);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  width: 100%;
+}
+
+.bk-week {
+  min-width: 0;
+}
+
+.bk-week-head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.bk-week-title {
+  font-size: var(--fs-md);
+  margin-left: 6px;
+}
+
+.bk-grid-scroll {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: auto;
+}
+
+.ap-calendar .bk-grid-scroll {
+  max-height: 60dvh;
+}
+
+.bk-grid {
+  background: var(--surface);
+  display: grid;
+  grid-template-columns: 56px repeat(7, minmax(72px, 1fr));
+  min-width: 560px;
+}
+
+.bk-corner,
+.bk-day-head {
+  background: var(--surface-muted);
+  border-bottom: 1px solid var(--line-strong);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.bk-day-head {
+  border-left: 1px solid var(--line);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  padding: 6px 4px;
+  text-align: center;
+}
+
+.bk-day-head.is-today {
+  color: var(--teal-dark);
+}
+
+.bk-day-head.is-focus {
+  box-shadow: inset 0 -3px 0 var(--teal);
+}
+
+.bk-hour {
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  padding: 2px 6px;
+  text-align: right;
+}
+
+.bk-allday {
+  align-self: stretch;
+  font-weight: 700;
+}
+
+.bk-slot {
+  background: var(--surface);
+  border: 0;
+  border-bottom: 1px dashed var(--line);
+  border-left: 1px solid var(--line);
+  cursor: pointer;
+  min-height: 24px;
+  padding: 1px 3px;
+  text-align: left;
+}
+
+.bk-slot.is-half {
+  border-bottom-style: solid;
+}
+
+.bk-slot:hover,
+.bk-slot:focus-visible {
+  background: var(--teal-soft);
+}
+
+.bk-slot.is-past {
+  background: var(--surface-muted);
+}
+
+.bk-count {
+  background: var(--blue-soft);
+  border: 1px solid var(--blue-line);
+  border-radius: 4px;
+  color: var(--blue-ink);
+  display: block;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  overflow: hidden;
+  padding: 0 4px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 患者検索のモーダル */
+.dialog.ps-dialog {
+  display: grid;
+  gap: 8px;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  max-height: calc(100dvh - 32px);
+  max-width: min(1200px, 92vw);
+  padding: 16px 18px;
+}
+
+.ps-head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.ps-head h2 {
+  font-size: var(--fs-lg);
+  margin: 0;
+}
+
+.ps-input {
+  align-items: center;
+  display: flex;
+  flex: 1 1 320px;
+  gap: 4px;
+}
+
+.ps-input .input {
+  flex: 1;
+}
+
+.ps-register {
+  margin-left: auto;
+}
+
+.ps-caption,
+.ps-notice {
+  margin: 0;
+}
+
+.ps-table-wrap {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-height: 120px;
+  overflow: auto;
+}
+
+.ps-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--fs-sm);
+  width: 100%;
+}
+
+.ps-table th {
+  background: var(--surface-muted);
+  border-bottom: 1px solid var(--line-strong);
+  color: var(--text-soft);
+  padding: 8px;
+  position: sticky;
+  text-align: left;
+  top: 0;
+  white-space: nowrap;
+}
+
+.ps-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+
+.ps-row:hover td {
+  background: var(--surface-muted);
+}
+
+.ps-kana {
+  color: var(--text-soft);
+}
+
+.ps-memo {
+  max-width: 16em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ps-actions {
+  text-align: right;
+}
+
+.ps-actions .btn + .btn {
+  margin-left: 4px;
+}
+
+/* ヘッダーの虫めがね（患者検索のモーダルを開く） */
+.nav-search-open {
+  align-items: center;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text-soft);
+  cursor: pointer;
+  display: inline-flex;
+  height: 34px;
+  justify-content: center;
+  position: absolute;
+  right: 3px;
+  top: 20px;
+  transform: translateY(-50%);
+  width: 34px;
+}
+
+.nav-search .input.nav-search-input {
+  padding-right: 72px;
+}
+
+.nav-search .nav-search-key {
+  right: 42px;
+}
+
+@media (max-width: 899px) {
+  .nav-search .input.nav-search-input {
+    padding-right: 44px;
+  }
+
+  .nav-search-open {
+    top: 22px;
+  }
+}
+
+.nav-search-open:hover,
+.nav-search-open:focus-visible {
+  border-color: var(--line-strong);
+  color: var(--teal-dark);
+}
+
+.nav-search-detail {
+  border-top: 1px solid var(--line);
+}
+
+/* 患者登録（左に入力、右に似た患者） */
+.dialog.register-dialog.has-side {
+  max-width: 860px;
+}
+
+.register-body {
+  display: grid;
+  gap: 16px;
+}
+
+.register-dialog.has-side .register-body {
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+}
+
+.register-form {
+  display: grid;
+  gap: 10px;
+}
+
+.register-row {
+  align-items: start;
+  display: grid;
+  gap: 4px 12px;
+  grid-template-columns: 96px minmax(0, 1fr);
+}
+
+.register-row > label,
+.register-row > span,
+.register-row > legend {
+  color: var(--text-soft);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  padding-top: 9px;
+}
+
+.register-row em {
+  color: var(--red);
+  font-size: var(--fs-xs);
+  font-style: normal;
+  margin-left: 4px;
+}
+
+.register-row small {
+  display: block;
+  font-size: var(--fs-xs);
+  margin-top: 2px;
+}
+
+fieldset.register-row {
+  border: 0;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+fieldset.register-row > legend {
+  float: left;
+  width: 96px;
+}
+
+.register-address-fields {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.register-address-fields > :nth-child(n + 3) {
+  grid-column: 1 / -1;
+}
+
+.register-similar {
+  align-self: start;
+}
+
+@media (max-width: 720px) {
+  .register-dialog.has-side .register-body {
+    grid-template-columns: 1fr;
+  }
+
+  .register-row {
+    grid-template-columns: 1fr;
+  }
+
+  .register-row > label,
+  .register-row > span,
+  .register-row > legend {
+    padding-top: 0;
+  }
+
+  fieldset.register-row > legend {
+    float: none;
+    width: auto;
+  }
+}
+
+/* 狭い画面 */
+@media (max-width: 1100px) {
+  .bk-cal {
+    grid-template-columns: 1fr;
+  }
+
+  .bk-cal-side {
+    align-items: start;
+    grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+  }
+
+  .bk-cal-side .mcal {
+    grid-row: 1 / span 2;
+  }
+
+  /* 狭い週の表では時刻を省き、件数だけを出す（時刻は左の列で分かる） */
+  .bk-count-time {
+    display: none;
+  }
+
+  .rc-filter-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* 絞り込みは画面の左右いっぱいに出す（ボタンの下に置くと右にはみ出る） */
+  .rc-filter {
+    left: 16px;
+    max-height: calc(100dvh - var(--nav-h) - 24px);
+    overflow-y: auto;
+    position: fixed;
+    right: 16px;
+    top: calc(var(--nav-h) + 8px);
+    width: auto;
+  }
+
+  .rc-filter-columns-list {
+    border-left: 0;
+    padding-left: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .rc-page.eye-page {
+    padding: 10px 12px 40px;
+  }
+
+  .rc-toolbar-actions {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .rc-filter {
+    left: 12px;
+    right: 12px;
+  }
+
+  .rc-date-popover {
+    width: min(300px, calc(100vw - 32px));
+  }
+
+  .rc-filter-columns-list {
+    columns: 1;
+  }
+
+  .bk-cal-side {
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+  }
+
+  .bk-cal-side .mcal {
+    grid-row: auto;
+  }
+
+  .ps-head h2 {
+    width: 100%;
+  }
+
+  .ps-register {
+    margin-left: 0;
+  }
+
+  /* 検索結果は 1 人 1 枚のカードにする */
+  .ps-table thead {
+    display: none;
+  }
+
+  .ps-table,
+  .ps-table tbody,
+  .ps-table tr,
+  .ps-table td {
+    display: block;
+  }
+
+  .ps-table tr {
+    border-bottom: 1px solid var(--line);
+    display: grid;
+    gap: 2px 10px;
+    grid-template-columns: auto minmax(0, 1fr);
+    padding: 8px 10px;
+  }
+
+  .ps-table td {
+    border: 0;
+    padding: 0;
+    white-space: normal;
+  }
+
+  .ps-table td[data-label]::before {
+    color: var(--muted);
+    content: attr(data-label) " ";
+    font-size: var(--fs-xs);
+  }
+
+  .ps-table td.ps-name,
+  .ps-table td.ps-actions,
+  .ps-table td.ps-memo {
+    grid-column: 1 / -1;
+  }
+
+  .ps-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    text-align: left;
+  }
+
+  .ps-actions .btn + .btn {
+    margin-left: 0;
+  }
+}
