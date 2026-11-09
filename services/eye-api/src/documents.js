@@ -179,7 +179,11 @@ function renderTemplate(type, { encounter, profile }) {
   const diagnoses = documentDiagnoses(profile, content).map(documentDiagnosisText);
   const allergies = documentAllergyText(profile);
   const exam = content.exam || {};
-  const findings = documentFindingLines(content.findings).map((item) => item.text);
+  // 部位別の所見のあとに、主訴・所見の自由記載（1B 以降のカルテ）を入れる
+  const findings = [
+    ...documentFindingLines(content.findings).map((item) => item.text),
+    ...(String(content.findingsText || "").trim() ? [String(content.findingsText).trim()] : [])
+  ];
   const prescriptions = (content.prescriptions || []).filter((item) => item.name).map(prescriptionLabel);
   const examBlock = encounter
     ? [

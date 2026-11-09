@@ -14,6 +14,7 @@ import {
   eyePhrasePath,
   eyeSetFolderPath,
   eyeStaffProfilePath,
+  eyeFacilitySettingsPath,
   organizationPath
 } from "../../../../packages/firestore-schema/src/index.js";
 import { sortByDate } from "../../../../packages/eye-core/src/index.js";
@@ -253,6 +254,21 @@ export class FirestoreEyeStore {
     const saved = { ...current, ...profile, orgId, createdAt: current?.createdAt || this.timestamp(), updatedAt: this.timestamp() };
     await ref.set(saved);
     return saved;
+  }
+
+  async getFacilitySettings(orgId) {
+    return dataOrNull(await this.doc(eyeFacilitySettingsPath(orgId)).get());
+  }
+
+  async saveFacilitySettings(orgId, settings, expectedRevision) {
+    return this.db.runTransaction(async (transaction) => {
+      const ref = this.doc(eyeFacilitySettingsPath(orgId));
+      const current = dataOrNull(await transaction.get(ref));
+      if ((current?.revision || 0) !== expectedRevision) throw storeError("ConflictError", 409, "facility settings were updated by someone else; reload and try again");
+      const saved = { ...settings, orgId };
+      transaction.set(ref, saved);
+      return saved;
+    });
   }
 
   async upsertNamed(path, orgId, item) {

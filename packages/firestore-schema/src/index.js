@@ -50,6 +50,7 @@ export const collections = Object.freeze({
   eyeBillingHandoffs: "eye_billing_handoffs",
   eyePhrases: "eye_phrases",
   eyeStaffProfiles: "eye_staff_profiles",
+  eyeFacilitySettings: "eye_facility_settings",
   eyeDailyCounters: "eye_daily_counters",
   referrals: "referrals"
 });
@@ -281,6 +282,11 @@ export function eyePhrasePath(orgId, phraseId) {
 
 export function eyeStaffProfilePath(orgId, memberId) {
   return orgDocPath(orgId, collections.eyeStaffProfiles, memberId, "memberId");
+}
+
+// 医療機関情報（眼科カルテの設定）。医院ごとに 1 件。
+export function eyeFacilitySettingsPath(orgId) {
+  return orgDocPath(orgId, collections.eyeFacilitySettings, "default", "settingsId");
 }
 
 export function eyePatientProfilePath(orgId, patientId) {
