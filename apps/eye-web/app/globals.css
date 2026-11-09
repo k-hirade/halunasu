@@ -2133,18 +2133,28 @@ fieldset:disabled .input::placeholder {
 }
 
 .upcoming-row.is-cancelled,
+.upcoming-row.is-absent,
 .upcoming-row.is-no_show {
   opacity: 0.7;
 }
 
 .upcoming-row.is-cancelled .upcoming-patient a,
+.upcoming-row.is-absent .upcoming-patient a,
 .upcoming-row.is-no_show .upcoming-patient a {
   text-decoration: line-through;
 }
 
 .tag.appointment-cancelled,
+.tag.appointment-absent,
 .tag.appointment-no_show {
   color: var(--muted);
+}
+
+/* 再計待: 会計連携のあとでカルテの品目が変わった受付 */
+.tag.appointment-rebill_waiting {
+  background: var(--amber-soft);
+  border-color: var(--amber-line);
+  color: var(--amber);
 }
 
 .list-panel .encounter-row {
@@ -2191,6 +2201,7 @@ kbd {
   --st-booked: #94a3b8;
   --st-checked_in: #64748b;
   --st-in_exam: #2563eb;
+  --st-in_treatment: #4f46e5;
   --st-dilating: #7c3aed;
   --st-waiting_doctor: #d97706;
   --st-in_consult: #0f766e;
@@ -2202,6 +2213,7 @@ kbd {
   --st-booked: #64748b;
   --st-checked_in: #94a3b8;
   --st-in_exam: #60a5fa;
+  --st-in_treatment: #818cf8;
   --st-dilating: #a78bfa;
   --st-waiting_doctor: #fbbf24;
   --st-in_consult: #2dd4bf;
@@ -2212,6 +2224,7 @@ kbd {
 .status-booked { --st: var(--st-booked); }
 .status-checked_in { --st: var(--st-checked_in); }
 .status-in_exam { --st: var(--st-in_exam); }
+.status-in_treatment { --st: var(--st-in_treatment); }
 .status-dilating { --st: var(--st-dilating); }
 .status-waiting_doctor { --st: var(--st-waiting_doctor); }
 .status-in_consult { --st: var(--st-in_consult); }

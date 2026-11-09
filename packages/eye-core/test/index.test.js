@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  appointmentDisplayStatus,
+  countAppointmentSlots,
+  datesBetween,
+  enteredStatusAt,
+  pickNextWaitingAppointment,
+  summarizeBillingState,
   buildTrend,
   evaluateFinalizeReadiness,
   evaluateOpticalPrescription,
@@ -240,4 +246,45 @@ test("finalize readiness adds no blockers for the added fields", () => {
     adherence: { status: "unknown" }
   }, { examConfirmations: { od: null, os: null } });
   assert.deepEqual(blockers, []);
+});
+
+test("derives 再計待 and the legacy absent status for the reception list", () => {
+  assert.equal(appointmentDisplayStatus({ status: "done" }, "changed"), "rebill_waiting");
+  assert.equal(appointmentDisplayStatus({ status: "checkout" }, "changed"), "rebill_waiting");
+  assert.equal(appointmentDisplayStatus({ status: "done" }, "handed_off"), "done");
+  assert.equal(appointmentDisplayStatus({ status: "in_consult" }, "changed"), "in_consult");
+  assert.equal(appointmentDisplayStatus({ status: "no_show" }), "absent");
+  assert.equal(summarizeBillingState(["handed_off", "changed", "pending"]), "changed");
+  assert.equal(summarizeBillingState(["handed_off", "draft"]), "draft");
+  assert.equal(summarizeBillingState(["handed_off"]), "handed_off");
+  assert.equal(summarizeBillingState([]), "none");
+});
+
+test("picks the patient who has waited longest for the doctor", () => {
+  const appointments = [
+    { appointmentId: "a", patientId: "p1", status: "waiting_doctor", queueNumber: 1, statusHistory: [{ status: "waiting_doctor", at: "2026-11-09T01:20:00Z" }] },
+    { appointmentId: "b", patientId: "p2", status: "waiting_doctor", queueNumber: 2, statusHistory: [{ status: "waiting_doctor", at: "2026-11-09T01:05:00Z" }, { status: "in_exam", at: "2026-11-09T01:06:00Z" }, { status: "waiting_doctor", at: "2026-11-09T01:10:00Z" }] },
+    { appointmentId: "c", patientId: "p3", status: "in_consult", queueNumber: 3, statusHistory: [{ status: "waiting_doctor", at: "2026-11-09T00:00:00Z" }] },
+    { appointmentId: "d", patientId: "p4", status: "waiting_doctor", queueNumber: 4, checkedInAt: "2026-11-09T01:10:00Z" }
+  ];
+  assert.equal(enteredStatusAt(appointments[1]), "2026-11-09T01:10:00Z", "the last time it entered the status counts");
+  assert.equal(pickNextWaitingAppointment(appointments).appointmentId, "b", "same time: smaller queue number first");
+  assert.equal(pickNextWaitingAppointment(appointments, { excludePatientId: "p2" }).appointmentId, "d");
+  assert.equal(pickNextWaitingAppointment([]), null);
+});
+
+test("counts appointments per day, hour and half hour for the booking grid", () => {
+  assert.deepEqual(datesBetween("2026-10-30", "2026-11-02"), ["2026-10-30", "2026-10-31", "2026-11-01", "2026-11-02"]);
+  const days = countAppointmentSlots([
+    { date: "2026-11-02", time: "09:00", status: "booked" },
+    { date: "2026-11-02", time: "09:59", status: "checked_in" },
+    { date: "2026-11-02", time: "", status: "booked" },
+    { date: "2026-11-02", time: "10:00", status: "cancelled" },
+    { date: "2026-11-02", time: "10:00", status: "no_show" },
+    { date: "2026-11-05", time: "10:00", status: "booked" }
+  ], { from: "2026-11-02", to: "2026-11-03" });
+  assert.deepEqual(days, [
+    { date: "2026-11-02", total: 3, untimed: 1, slots: { "09": 2 }, halfSlots: { "09:00": 1, "09:30": 1 } },
+    { date: "2026-11-03", total: 0, untimed: 0, slots: {}, halfSlots: {} }
+  ]);
 });

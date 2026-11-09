@@ -1,4 +1,4 @@
-import { formatBirthDateJp } from "@halunasu/eye-contracts";
+import { APPOINTMENT_STATUS_LABELS as CONTRACT_APPOINTMENT_STATUS_LABELS, formatBirthDateJp } from "@halunasu/eye-contracts";
 
 export const EYE_LABELS = { od: "右眼", os: "左眼", ou: "両眼" };
 export const EYE_SHORT = { od: "R", os: "L", ou: "両" };
@@ -136,17 +136,8 @@ export const APPOINTMENT_PURPOSE_LABELS = {
   contact_lens: "コンタクト",
   other: "その他"
 };
-export const APPOINTMENT_STATUS_LABELS = {
-  booked: "予約",
-  checked_in: "受付済",
-  in_exam: "検査中",
-  waiting_doctor: "診察待ち",
-  in_consult: "診察中",
-  checkout: "会計待ち",
-  done: "終了",
-  cancelled: "キャンセル",
-  no_show: "来院なし"
-};
+// 受付の状態の表示名はデジカルに合わせた契約側の名前を使う（予約済・受付中・診察待…・再計待・不在・取消）
+export const APPOINTMENT_STATUS_LABELS = CONTRACT_APPOINTMENT_STATUS_LABELS;
 
 export function minutesSince(iso, now = Date.now()) {
   if (!iso) return null;

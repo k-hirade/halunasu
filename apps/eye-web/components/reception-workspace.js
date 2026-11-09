@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { APPOINTMENT_TRANSITIONS } from "@halunasu/eye-contracts";
 import { useEyeApi } from "./eye-api";
 import { AppointmentDialog } from "./appointment-dialog";
 import { linkAppointmentToPatient, PatientRegisterDialog } from "./patient-register-dialog";
@@ -18,33 +17,44 @@ import {
 } from "../lib/format";
 
 const REFRESH_MS = 15000;
-const IN_CLINIC = ["checked_in", "in_exam", "waiting_doctor", "in_consult", "checkout"];
-const FINISHED = ["done", "cancelled", "no_show"];
+const IN_CLINIC = ["checked_in", "in_exam", "in_treatment", "waiting_doctor", "in_consult", "checkout"];
+// 会計済・取消・不在（古い「来院なし」を含む）。画面の作り直し（段階 2）までは「終了・キャンセル」にまとめる
+const FINISHED = ["done", "cancelled", "absent", "no_show"];
 // 散瞳の点眼から診察できるまでの目安（分）
 const DILATION_READY_MINUTES = 20;
 // 段階ごとの待ち時間の目安（分）。超えたら数字だけを黄 → 赤にする
-const WAIT_THRESHOLDS = { checked_in: [15, 30], in_exam: [20, 40], dilating: [30, 45], waiting_doctor: [30, 60], checkout: [10, 20] };
+const WAIT_THRESHOLDS = { checked_in: [15, 30], in_exam: [20, 40], in_treatment: [20, 40], dilating: [30, 45], waiting_doctor: [30, 60], checkout: [10, 20] };
 // 一覧のまとまり。上の人数チップと同じ順に並べる
 const GROUPS = [
   { key: "booked", label: "来院予定" },
   { key: "checked_in", label: "受付済" },
   { key: "in_exam", label: "検査中" },
+  { key: "in_treatment", label: "処置中" },
   { key: "dilating", label: "散瞳中" },
   { key: "waiting_doctor", label: "診察待ち" },
   { key: "in_consult", label: "診察中" },
   { key: "checkout", label: "会計待ち" },
   { key: "finished", label: "終了・キャンセル" }
 ];
-const LIST_ORDER = ["checked_in", "in_exam", "dilating", "waiting_doctor", "in_consult", "checkout", "booked", "finished"];
+const LIST_ORDER = ["checked_in", "in_exam", "in_treatment", "dilating", "waiting_doctor", "in_consult", "checkout", "booked", "finished"];
 const UPCOMING_WINDOW_MINUTES = 60;
 // 次へ進める操作。受付から会計までを1つずつ進める
 const NEXT_ACTIONS = {
   booked: { status: "checked_in", label: "受付する" },
   checked_in: { status: "in_exam", label: "検査開始" },
   in_exam: { status: "waiting_doctor", label: "検査終了" },
+  in_treatment: { status: "waiting_doctor", label: "処置終了" },
   waiting_doctor: { status: "in_consult", label: "診察開始" },
   in_consult: { status: "checkout", label: "診察終了" },
   checkout: { status: "done", label: "会計済み" }
+};
+// 1 段戻す操作（取り違えの直し）。状態は API ではどこへでも移れるが、プルダウンは段階 2 で作る
+const PREVIOUS = {
+  in_exam: "checked_in",
+  in_treatment: "in_exam",
+  waiting_doctor: "in_exam",
+  in_consult: "waiting_doctor",
+  checkout: "in_consult"
 };
 
 export function ReceptionWorkspace() {
@@ -155,18 +165,22 @@ export function ReceptionWorkspace() {
 
   function rowMenu(item) {
     const encounter = data.encountersByPatient[item.patientId];
-    const previous = (APPOINTMENT_TRANSITIONS[item.status] || []).find((status) => IN_CLINIC.includes(status) && IN_CLINIC.indexOf(status) < IN_CLINIC.indexOf(item.status));
+    const previous = PREVIOUS[item.status];
     const entries = [];
-    if (item.patientId && ["checked_in", "in_exam"].includes(item.status)) entries.push(["検査入力", () => openChart(item, "exam")]);
+    if (item.patientId && ["checked_in", "in_exam", "in_treatment"].includes(item.status)) entries.push(["検査入力", () => openChart(item, "exam")]);
     if (item.patientId && IN_CLINIC.includes(item.status)) entries.push([encounter ? "カルテを開く" : "カルテ作成", () => openChart(item)]);
     if (item.patientId) entries.push(["患者のページ", () => router.push(`/patients/${item.patientId}`)]);
     if (!item.patientId && canReceive) entries.push(["患者登録", () => setRegistering(item)]);
     if (canReceive && previous) entries.push([`${APPOINTMENT_STATUS_LABELS[previous]}に戻す`, () => move(item, previous)]);
     if (canReceive && item.status === "booked") {
       entries.push(["キャンセル", () => move(item, "cancelled")]);
-      if (isToday) entries.push(["来院なし", () => move(item, "no_show")]);
+      if (isToday) entries.push(["不在", () => move(item, "absent")]);
     }
-    if (canReceive && ["cancelled", "no_show"].includes(item.status)) entries.push(["予約に戻す", () => move(item, "booked")]);
+    if (canReceive && ["checked_in", "in_exam", "in_treatment", "waiting_doctor"].includes(item.status)) {
+      if (item.status !== "in_treatment") entries.push(["処置中にする", () => move(item, "in_treatment")]);
+      entries.push(["不在（呼んでもいない）", () => move(item, "absent")]);
+    }
+    if (canReceive && ["cancelled", "absent", "no_show"].includes(item.status)) entries.push(["予約に戻す", () => move(item, "booked")]);
     return entries;
   }
 
@@ -190,6 +204,9 @@ export function ReceptionWorkspace() {
           <strong>{item.patientName}</strong>
           {snapshot.displayNameKana ? <span className="flow-kana">{snapshot.displayNameKana}</span> : null}
           {!item.patientId ? <span className="tag tag-warn">未登録</span> : null}
+          {FINISHED.includes(item.status) || item.displayStatus === "rebill_waiting" ? (
+            <span className={`tag appointment-${item.displayStatus || item.status}`}>{APPOINTMENT_STATUS_LABELS[item.displayStatus || item.status]}</span>
+          ) : null}
         </span>
         <span className="flow-age">{age !== null ? `${age}${SEX_LABELS[snapshot.sex] && snapshot.sex !== "unknown" ? SEX_LABELS[snapshot.sex] : ""}` : ""}</span>
         <span className="flow-purpose">

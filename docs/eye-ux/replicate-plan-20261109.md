@@ -44,3 +44,31 @@
 
 ### 段階 3: まとめ
 - 全体の通しテスト、全画面のスクリーンショット確認、STG へ反映、オーナーへ報告。
+
+## 1A の実装メモ（データと API。画面は段階 2A・2D で作る）
+
+受付の状態
+- 保存する値: booked 予約済 / checked_in 受付中 / waiting_doctor 診察待 / in_consult 診察中 / in_exam 検査中 / in_treatment 処置中（新）/ checkout 会計待 / done 会計済 / absent 不在（新）/ cancelled 取消。並び順は `APPOINTMENT_STATUS_MENU`、表示名は `APPOINTMENT_STATUS_LABELS`（eye-contracts）。
+- 再計待（rebill_waiting）は保存しない。会計待・会計済で、会計連携のあとにカルテの品目が変わったもの（billing の handoff が changed）を一覧で派生させる。
+- 古い no_show は読める（表示は「不在」）。状態の API に no_show を送ると absent として保存する。
+- `POST /v1/eye/appointments/:id/status` はどこからどこへでも移れる。拒むのは、名前の誤り（再計待を含む: 400）と、その日にこの患者のカルテがある受付の取消（409）だけ。同じ状態への変更は保存しない。変更は statusHistory と操作記録に残る。
+- 受付番号と受付時刻は、来院した状態（受付中・診察待・診察中・検査中・処置中・会計待・会計済）に初めて入ったときに付ける。予約済から診察待へ直接移しても受付になる。
+
+予約・受付の項目
+- `doctorMemberId`（この医院の眼科で doctor の役割を持つ有効な職員だけ）、`department`（40 字まで）。古い予約では空文字で返す。
+- 受付メモ: 保存する欄は従来の `note` のまま（古いデータがそのまま受付メモとして読める）。入力は `receptionMemo` でも `note` でもよく、両方あれば `receptionMemo`。返すときは `note` と同じ値を `receptionMemo` でも返す。長さは 1000 字まで。
+- 患者メモ: 患者プロファイルの `patientMemo`。プロファイルの保存で送らなかったときは前の値を残す。受付からは `PUT /v1/eye/patients/:id/memo {expectedRevision, patientMemo}`（受付の役割）でメモだけを保存できる。まだ保存していない（カルテから組み立てた）プロファイルにメモを保存すると、その時点の病名も保存される（プロファイルの保存と同じ動き）。
+
+一覧と予約状況
+- `GET /v1/eye/appointments?date=` の各受付に `billingState`（none / draft / pending / handed_off / changed）と `displayStatus`（再計待・不在を反映した表示用の状態）を付ける。連携の記録がない日は品目を組み立てない。
+- `GET /v1/eye/appointments/range?from=&to=[&doctorMemberId=]`（両端を含み最大 42 日）: 予約の一覧と、日ごとの件数（total・時刻なし untimed・1 時間ごと slots・30 分ごと halfSlots。取消・不在は数えない）。Firestore は `date` だけの範囲条件なので単一フィールドの自動索引で足り、複合索引は追加していない（医師の絞り込みは取り出したあと）。
+
+診察終了 `POST /v1/eye/encounters/:id/close {expectedRevision, nextStatus=checkout, appointmentId?}`（医師・CSRF）
+- 未確定なら確定と同じ処理で確定する（止まるのは確定が出すエラーだけ。1B でブロックが警告になれば、そのまま warnings に出る）。確定済みなら版は作らず受付だけ動かす。
+- 受付は、指定があればそれ（同じ患者・同じ日でなければ確定前に 400）、なければその日の有効な受付がちょうど 1 件のとき。0 件・複数件は動かさず `appointmentError`（no_appointment / multiple_appointments）で知らせる。
+- 受付の更新に失敗しても確定は取り消さない。`appointmentMoved: false` と `appointmentError {code, message}` を返す。
+- 返す値: `{ encounter, version, alreadyFinalized, warnings, appointment, appointmentMoved, appointmentError, nextPatient }`。nextPatient は診察待のうち、診察待になったのがいちばん早い人（同時なら受付番号順）。
+
+1 人分の会計連携 `POST /v1/eye/billing/send {date, encounterId, appointmentId?}`（受付の役割・CSRF）
+- その人のカルテだけで連携の記録と CSV を作る（まとめての連携と同じ処理）。受付が会計待なら会計済にする。受付の更新に失敗しても連携は残し、`appointmentError` で知らせる。
+- まとめての連携（`POST /v1/eye/billing/handoffs`）はそのまま。受付の状態は変えない。

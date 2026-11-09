@@ -363,3 +363,4 @@ export function printableStaffName(displayName = "", printName = "") {
 }
 
 export * from "./document-text.js";
+export * from "./reception.js";

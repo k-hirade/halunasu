@@ -279,6 +279,11 @@ export class MemoryEyeStore {
     return sortAppointments([...this.forOrg(this.appointments, orgId).values()].filter((item) => item.patientId === patientId)).map(clone);
   }
 
+  // 両端を含む期間の予約（予約状況の週 × 時間）。
+  listAppointmentsInRange(orgId, from, to) {
+    return sortAppointments([...this.forOrg(this.appointments, orgId).values()].filter((item) => item.date >= from && item.date <= to)).map(clone);
+  }
+
   replaceAppointment(orgId, appointment, expectedRevision, { assignQueueNumber = false } = {}) {
     const records = this.forOrg(this.appointments, orgId);
     const current = records.get(appointment.appointmentId);

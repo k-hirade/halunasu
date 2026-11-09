@@ -1,6 +1,20 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  APPOINTMENT_STATUS_LABELS,
+  APPOINTMENT_STATUS_MENU,
+  APPOINTMENT_STATUSES,
+  APPOINTMENT_TRANSITIONS,
+  assertAppointmentTransition,
+  isActiveAppointmentStatus,
+  normalizeAppointmentStatus,
+  validateAppointmentRangeInput,
+  validateAppointmentStatusInput,
+  validateBillingSendInput,
+  validateCloseEncounterInput,
+  validateCreateAppointmentInput,
+  validatePatientProfileInput,
+  validateUpdateAppointmentInput,
   validateCreateEncounterInput,
   validateDrugPresetInput,
   validateEncounterContent,
@@ -230,4 +244,74 @@ test("accepts the new phrase targets", async () => {
   }
   assert.ok(PER_EYE_PHRASE_TARGETS.includes("findings.other"));
   assert.ok(!PER_EYE_PHRASE_TARGETS.includes("findings.general"));
+});
+
+test("lists the eleven DigiKar reception statuses with labels and keeps no_show as a legacy alias of absent", () => {
+  assert.deepEqual(APPOINTMENT_STATUS_MENU.map((status) => APPOINTMENT_STATUS_LABELS[status]), [
+    "予約済", "受付中", "診察待", "診察中", "検査中", "処置中", "会計待", "会計済", "再計待", "不在", "取消"
+  ]);
+  assert.equal(APPOINTMENT_STATUS_LABELS.no_show, "不在");
+  assert.ok(APPOINTMENT_STATUSES.includes("no_show"), "old data stays valid");
+  assert.ok(!APPOINTMENT_STATUSES.includes("rebill_waiting"), "再計待 is derived, never stored");
+  assert.equal(normalizeAppointmentStatus("no_show"), "absent");
+  assert.equal(normalizeAppointmentStatus("checkout"), "checkout");
+  assert.equal(isActiveAppointmentStatus("absent"), false);
+  assert.equal(isActiveAppointmentStatus("no_show"), false);
+  assert.equal(isActiveAppointmentStatus("done"), true);
+  // どこからどこへでも移れる（自分自身と古い値 no_show へは移らない）
+  assert.equal(APPOINTMENT_TRANSITIONS.done.length, 9);
+  assert.ok(APPOINTMENT_TRANSITIONS.done.includes("checked_in"));
+  assert.ok(!APPOINTMENT_TRANSITIONS.booked.includes("no_show"));
+  assert.ok(!APPOINTMENT_TRANSITIONS.no_show.includes("absent"));
+  assert.doesNotThrow(() => assertAppointmentTransition("done", "booked"));
+  assert.doesNotThrow(() => assertAppointmentTransition("no_show", "absent"));
+  assert.throws(() => assertAppointmentTransition("booked", "rebill_waiting"), { statusCode: 409 });
+});
+
+test("validates status changes and normalizes the legacy value", () => {
+  assert.deepEqual(validateAppointmentStatusInput({ expectedRevision: 2, status: "in_treatment" }), { expectedRevision: 2, status: "in_treatment" });
+  assert.equal(validateAppointmentStatusInput({ expectedRevision: 2, status: "no_show" }).status, "absent");
+  assert.throws(() => validateAppointmentStatusInput({ expectedRevision: 2, status: "rebill_waiting" }), { field: "status", message: /derived/u });
+  assert.throws(() => validateAppointmentStatusInput({ expectedRevision: 2, status: "away" }), { field: "status" });
+  assert.throws(() => validateAppointmentStatusInput({ expectedRevision: 0, status: "booked" }), { field: "expectedRevision" });
+});
+
+test("accepts the doctor, department and reception memo (stored as note) on appointments", () => {
+  const created = validateCreateAppointmentInput({ date: "2026-11-09", patientName: "x", doctorMemberId: "mem_1", department: "眼科", receptionMemo: "  紹介状あり\n" });
+  assert.equal(created.note, "紹介状あり");
+  assert.equal(created.doctorMemberId, "mem_1");
+  assert.equal(created.department, "眼科");
+  assert.equal(validateCreateAppointmentInput({ date: "2026-11-09", patientName: "x", note: "古い形" }).note, "古い形");
+  assert.equal(validateCreateAppointmentInput({ date: "2026-11-09", patientName: "x", note: "a", receptionMemo: "b" }).note, "b", "receptionMemo wins");
+  assert.equal(validateCreateAppointmentInput({ date: "2026-11-09", patientName: "x" }).note, "");
+  assert.throws(() => validateCreateAppointmentInput({ date: "2026-11-09", patientName: "x", department: "a".repeat(41) }), { field: "department" });
+  assert.throws(() => validateCreateAppointmentInput({ date: "2026-11-09", patientName: "x", receptionMemo: "a".repeat(1001) }), { field: "receptionMemo" });
+  const update = validateUpdateAppointmentInput({ expectedRevision: 1 });
+  assert.equal(update.note, undefined, "an update without a memo leaves it alone");
+  assert.equal(update.doctorMemberId, undefined);
+  assert.equal(validateUpdateAppointmentInput({ expectedRevision: 1, receptionMemo: "" }).note, "");
+});
+
+test("validates the close, single billing and range inputs", () => {
+  assert.deepEqual(validateCloseEncounterInput({ expectedRevision: 3 }), { expectedRevision: 3, nextStatus: "checkout", appointmentId: "" });
+  assert.equal(validateCloseEncounterInput({ expectedRevision: 3, nextStatus: "in_exam" }).nextStatus, "in_exam");
+  assert.throws(() => validateCloseEncounterInput({ expectedRevision: 3, nextStatus: "cancelled" }), { field: "nextStatus" });
+  assert.throws(() => validateCloseEncounterInput({ expectedRevision: 3, nextStatus: "rebill_waiting" }), { field: "nextStatus" });
+  assert.throws(() => validateCloseEncounterInput({}), { field: "expectedRevision" });
+
+  assert.deepEqual(validateBillingSendInput({ date: "2026-11-09", encounterId: "eenc_1" }), { date: "2026-11-09", encounterId: "eenc_1", appointmentId: "" });
+  assert.throws(() => validateBillingSendInput({ date: "2026-11-09" }), { field: "encounterId" });
+  assert.throws(() => validateBillingSendInput({ date: "11/09", encounterId: "x" }), { field: "date" });
+
+  assert.equal(validateAppointmentRangeInput({ from: "2026-11-01", to: "2026-11-07" }).days, 7);
+  assert.equal(validateAppointmentRangeInput({ from: "2026-11-01", to: "2026-12-12" }).days, 42);
+  assert.throws(() => validateAppointmentRangeInput({ from: "2026-11-01", to: "2026-12-13" }), { field: "to" });
+  assert.throws(() => validateAppointmentRangeInput({ from: "2026-11-07", to: "2026-11-01" }), { field: "to" });
+  assert.throws(() => validateAppointmentRangeInput({ to: "2026-11-01" }), { field: "from" });
+});
+
+test("keeps the patient memo optional on the profile input", () => {
+  assert.equal(validatePatientProfileInput({ expectedRevision: 0 }).patientMemo, undefined);
+  assert.equal(validatePatientProfileInput({ expectedRevision: 0, patientMemo: "耳が遠い\r\n" }).patientMemo, "耳が遠い");
+  assert.throws(() => validatePatientProfileInput({ expectedRevision: 0, patientMemo: 1 }), { field: "patientMemo" });
 });

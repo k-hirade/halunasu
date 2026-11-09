@@ -464,8 +464,6 @@ test("books, checks in with sequential queue numbers, and walks the visit throug
   const checkedIn = await request(stores, "POST", `/v1/eye/appointments/${id}/status`, { expectedRevision: 1, status: "checked_in" }, clerk);
   assert.equal(checkedIn.body.appointment.queueNumber, 2);
 
-  const skip = await request(stores, "POST", `/v1/eye/appointments/${id}/status`, { expectedRevision: 2, status: "done" }, clerk);
-  assert.equal(skip.statusCode, 409);
   const stale = await request(stores, "POST", `/v1/eye/appointments/${id}/status`, { expectedRevision: 1, status: "in_exam" }, clerk);
   assert.equal(stale.statusCode, 409);
 
@@ -476,9 +474,10 @@ test("books, checks in with sequential queue numbers, and walks the visit throug
     revision = moved.body.appointment.revision;
   }
 
-  const back = await request(stores, "POST", `/v1/eye/appointments/${id}/status`, { expectedRevision: revision, status: "checkout" }, clerk);
-  const recheck = await request(stores, "POST", `/v1/eye/appointments/${id}/status`, { expectedRevision: back.body.appointment.revision, status: "checked_in" }, clerk);
-  assert.equal(recheck.statusCode, 409, "a finished visit cannot jump back to reception");
+  // デジカルと同じく、どの状態からでも選んだ状態へ移れる（会計済から受付中へ戻すことも）
+  const recheck = await request(stores, "POST", `/v1/eye/appointments/${id}/status`, { expectedRevision: revision, status: "checked_in" }, clerk);
+  assert.equal(recheck.statusCode, 200);
+  assert.equal(recheck.body.appointment.queueNumber, 2, "the queue number stays from the first check-in");
 
   const list = await request(stores, "GET", "/v1/eye/appointments?date=2026-10-27", undefined, clerk);
   assert.deepEqual(list.body.appointments.map((item) => item.time || "walk-in"), ["09:30", "walk-in"]);
@@ -1305,4 +1304,383 @@ test("accepts phrases for the added free-text fields", async () => {
     assert.equal(response.statusCode, 200, JSON.stringify(response.body));
     assert.equal(response.body.phrase.target, target);
   }
+});
+
+// ---- 段階 1A: 受付の 11 状態・担当医・受付メモ・予約状況・診察終了・1 人ずつの会計連携 ----
+
+async function contextOf(stores, headers) {
+  return (await request(stores, "GET", "/v1/eye/context", undefined, headers)).body.context;
+}
+
+async function book(stores, headers, body) {
+  const response = await request(stores, "POST", "/v1/eye/appointments", { date: "2026-10-27", ...body }, headers);
+  assert.equal(response.statusCode, 201, JSON.stringify(response.body));
+  return response.body.appointment;
+}
+
+async function moveTo(stores, headers, appointment, status) {
+  const response = await request(stores, "POST", `/v1/eye/appointments/${appointment.appointmentId}/status`, { expectedRevision: appointment.revision, status }, headers);
+  assert.equal(response.statusCode, 200, JSON.stringify(response.body));
+  return response.body.appointment;
+}
+
+// 確定できる（止まる条件のない）カルテの中身
+function closableContent() {
+  return { chiefComplaint: "定期", plan: "経過観察", diagnoses: [{ name: "結膜炎", eye: "od" }] };
+}
+
+function withoutCsrf(headers) {
+  return Object.fromEntries(Object.entries(headers).filter(([key]) => key !== "x-csrf-token"));
+}
+
+test("moves between all DigiKar statuses freely, keeps the first queue number, and reads the old no-show as absent", async () => {
+  const stores = createStores();
+  const clerk = await signedHeaders(stores.platformStore, "clerk");
+  const patient = await createPatient(stores, clerk);
+  let appointment = await book(stores, clerk, { time: "10:00", patientId: patient.patientId });
+
+  // 予約済から診察待へ直接移すと受付になる（受付番号と受付時刻が付く）
+  appointment = await moveTo(stores, clerk, appointment, "waiting_doctor");
+  assert.equal(appointment.queueNumber, 1);
+  assert.equal(appointment.checkedInAt, NOW.toISOString());
+  for (const status of ["in_treatment", "in_exam", "absent", "booked", "in_consult", "checkout", "done", "checked_in"]) {
+    appointment = await moveTo(stores, clerk, appointment, status);
+    assert.equal(appointment.status, status);
+  }
+  assert.equal(appointment.queueNumber, 1, "the queue number is assigned once");
+  assert.deepEqual(appointment.statusHistory.map((item) => item.status).slice(-3), ["checkout", "done", "checked_in"]);
+
+  // 同じ状態への変更は保存しない
+  const same = await request(stores, "POST", `/v1/eye/appointments/${appointment.appointmentId}/status`, { expectedRevision: appointment.revision, status: "checked_in" }, clerk);
+  assert.equal(same.statusCode, 200);
+  assert.equal(same.body.appointment.revision, appointment.revision);
+
+  // 名前の検証。再計待は派生なので選べない
+  for (const status of ["rebill_waiting", "unknown", ""]) {
+    const invalid = await request(stores, "POST", `/v1/eye/appointments/${appointment.appointmentId}/status`, { expectedRevision: appointment.revision, status }, clerk);
+    assert.equal(invalid.statusCode, 400, status);
+  }
+
+  // 古い no_show は入力でも受け付け、不在（absent）として保存する
+  const legacy = await request(stores, "POST", `/v1/eye/appointments/${appointment.appointmentId}/status`, { expectedRevision: appointment.revision, status: "no_show" }, clerk);
+  assert.equal(legacy.body.appointment.status, "absent");
+
+  // 保存済みの no_show はそのまま読め、一覧では不在として出る
+  const old = await book(stores, clerk, { time: "11:00", patientName: "旧 データ" });
+  const { orgId } = await contextOf(stores, clerk);
+  const records = stores.eyeStore.appointments.get(orgId);
+  records.set(old.appointmentId, { ...records.get(old.appointmentId), status: "no_show" });
+  const list = await request(stores, "GET", "/v1/eye/appointments?date=2026-10-27", undefined, clerk);
+  const shown = list.body.appointments.find((item) => item.appointmentId === old.appointmentId);
+  assert.equal(shown.status, "no_show");
+  assert.equal(shown.displayStatus, "absent");
+  const revived = await request(stores, "POST", `/v1/eye/appointments/${old.appointmentId}/status`, { expectedRevision: old.revision, status: "booked" }, clerk);
+  assert.equal(revived.statusCode, 200);
+
+  // 受付は受付の役割、変更には CSRF が要る
+  const viewer = await signedHeaders(stores.platformStore, "viewer");
+  assert.equal((await request(stores, "POST", `/v1/eye/appointments/${old.appointmentId}/status`, { expectedRevision: 2, status: "checked_in" }, viewer)).statusCode, 403);
+  assert.equal((await request(stores, "POST", `/v1/eye/appointments/${old.appointmentId}/status`, { expectedRevision: 2, status: "checked_in" }, withoutCsrf(clerk))).statusCode, 403);
+});
+
+test("refuses to cancel a reception whose patient already has a chart that day", async () => {
+  const stores = createStores();
+  const doctor = await signedHeaders(stores.platformStore, "doctor");
+  const clerk = await signedHeaders(stores.platformStore, "clerk");
+  const patient = await createPatient(stores, doctor);
+  const other = await createPatient(stores, doctor, { displayName: "別 患者", primaryPatientNumber: "000999" });
+  const withChart = await book(stores, clerk, { patientId: patient.patientId, walkIn: true });
+  const withoutChart = await book(stores, clerk, { patientId: other.patientId, walkIn: true });
+  await request(stores, "POST", "/v1/eye/encounters", { patientId: patient.patientId, encounterDate: "2026-10-27" }, doctor);
+
+  const refused = await request(stores, "POST", `/v1/eye/appointments/${withChart.appointmentId}/status`, { expectedRevision: withChart.revision, status: "cancelled" }, clerk);
+  assert.equal(refused.statusCode, 409);
+  assert.match(refused.body.message, /カルテ/u);
+  const cancelled = await moveTo(stores, clerk, withoutChart, "cancelled");
+  assert.equal(cancelled.status, "cancelled");
+  // 取消から戻すことはできる
+  assert.equal((await moveTo(stores, clerk, cancelled, "booked")).status, "booked");
+});
+
+test("stores the doctor, department and reception memo on appointments and keeps the old note readable", async () => {
+  const stores = createStores();
+  const clerk = await signedHeaders(stores.platformStore, "clerk");
+  const doctorContext = await contextOf(stores, await signedHeaders(stores.platformStore, "doctor"));
+  const clerkContext = await contextOf(stores, clerk);
+  const patient = await createPatient(stores, clerk);
+
+  const booked = await book(stores, clerk, { time: "09:00", patientId: patient.patientId, doctorMemberId: doctorContext.memberId, department: "眼科", receptionMemo: "保険証確認\n駐車券" });
+  assert.equal(booked.doctorMemberId, doctorContext.memberId);
+  assert.equal(booked.department, "眼科");
+  assert.equal(booked.receptionMemo, "保険証確認\n駐車券");
+  assert.equal(booked.note, "保険証確認\n駐車券", "the reception memo is stored in the existing note field");
+
+  const legacy = await book(stores, clerk, { time: "09:30", patientName: "古い 形", note: "メモ" });
+  assert.equal(legacy.receptionMemo, "メモ");
+  assert.equal(legacy.doctorMemberId, "");
+  assert.equal(legacy.department, "");
+
+  for (const doctorMemberId of [clerkContext.memberId, "emem_missing"]) {
+    const invalid = await request(stores, "POST", "/v1/eye/appointments", { date: "2026-10-27", patientName: "x", doctorMemberId }, clerk);
+    assert.equal(invalid.statusCode, 400, doctorMemberId);
+    assert.equal(invalid.body.field, "doctorMemberId");
+  }
+  const tooLong = await request(stores, "POST", "/v1/eye/appointments", { date: "2026-10-27", patientName: "x", department: "あ".repeat(41) }, clerk);
+  assert.equal(tooLong.statusCode, 400);
+
+  const patched = await request(stores, "PATCH", `/v1/eye/appointments/${legacy.appointmentId}`, { expectedRevision: 1, receptionMemo: "新しいメモ", doctorMemberId: doctorContext.memberId }, clerk);
+  assert.equal(patched.statusCode, 200);
+  assert.equal(patched.body.appointment.note, "新しいメモ");
+  assert.equal(patched.body.appointment.receptionMemo, "新しいメモ");
+  const untouched = await request(stores, "PATCH", `/v1/eye/appointments/${legacy.appointmentId}`, { expectedRevision: 2, time: "10:00" }, clerk);
+  assert.equal(untouched.body.appointment.receptionMemo, "新しいメモ", "a patch without the memo keeps it");
+  assert.equal(untouched.body.appointment.doctorMemberId, doctorContext.memberId);
+
+  const list = await request(stores, "GET", "/v1/eye/appointments?date=2026-10-27", undefined, clerk);
+  assert.equal(list.body.appointments.find((item) => item.appointmentId === booked.appointmentId).receptionMemo, "保険証確認\n駐車券");
+});
+
+test("keeps a patient memo on the profile, saved from reception without touching the rest", async () => {
+  const stores = createStores();
+  const doctor = await signedHeaders(stores.platformStore, "doctor");
+  const clerk = await signedHeaders(stores.platformStore, "clerk");
+  const patient = await createPatient(stores, doctor);
+  const initial = await request(stores, "GET", `/v1/eye/patients/${patient.patientId}/profile`, undefined, clerk);
+  assert.equal(initial.body.profile.patientMemo, "");
+
+  const saved = await request(stores, "PUT", `/v1/eye/patients/${patient.patientId}/profile`, {
+    expectedRevision: 0, allergies: [{ substance: "ペニシリン" }], patientMemo: "耳が遠い"
+  }, doctor);
+  assert.equal(saved.body.profile.patientMemo, "耳が遠い");
+  // 患者メモを送らない古い画面の保存では消えない
+  const older = await request(stores, "PUT", `/v1/eye/patients/${patient.patientId}/profile`, { expectedRevision: 1, allergies: [{ substance: "ペニシリン" }], contactLensUser: true }, doctor);
+  assert.equal(older.body.profile.patientMemo, "耳が遠い");
+
+  const memo = await request(stores, "PUT", `/v1/eye/patients/${patient.patientId}/memo`, { expectedRevision: 2, patientMemo: "車いす" }, clerk);
+  assert.equal(memo.statusCode, 200, JSON.stringify(memo.body));
+  assert.equal(memo.body.profile.patientMemo, "車いす");
+  assert.equal(memo.body.profile.allergies[0].substance, "ペニシリン");
+  assert.equal(memo.body.profile.contactLensUser, true);
+  assert.equal((await request(stores, "PUT", `/v1/eye/patients/${patient.patientId}/memo`, { expectedRevision: 2, patientMemo: "x" }, clerk)).statusCode, 409);
+  assert.equal((await request(stores, "PUT", `/v1/eye/patients/${patient.patientId}/memo`, { expectedRevision: 3, patientMemo: "x" }, await signedHeaders(stores.platformStore, "viewer"))).statusCode, 403);
+});
+
+test("lists appointments in a date range with per-day and per-hour counts for the booking grid", async () => {
+  const stores = createStores();
+  const clerk = await signedHeaders(stores.platformStore, "clerk");
+  const doctorContext = await contextOf(stores, await signedHeaders(stores.platformStore, "doctor"));
+  await book(stores, clerk, { date: "2026-11-02", time: "09:00", patientName: "A", doctorMemberId: doctorContext.memberId });
+  await book(stores, clerk, { date: "2026-11-02", time: "09:45", patientName: "B" });
+  await book(stores, clerk, { date: "2026-11-02", patientName: "C" });
+  const cancelled = await book(stores, clerk, { date: "2026-11-03", time: "13:00", patientName: "D" });
+  await moveTo(stores, clerk, cancelled, "cancelled");
+  await book(stores, clerk, { date: "2026-11-08", time: "13:10", patientName: "E" });
+  await book(stores, clerk, { date: "2026-11-09", time: "13:10", patientName: "outside" });
+
+  const week = await request(stores, "GET", "/v1/eye/appointments/range?from=2026-11-02&to=2026-11-08", undefined, clerk);
+  assert.equal(week.statusCode, 200, JSON.stringify(week.body));
+  assert.equal(week.body.days.length, 7);
+  assert.deepEqual(week.body.appointments.map((item) => item.patientName), ["A", "B", "C", "D", "E"]);
+  const monday = week.body.days[0];
+  assert.deepEqual({ total: monday.total, untimed: monday.untimed, slots: monday.slots, halfSlots: monday.halfSlots }, {
+    total: 3, untimed: 1, slots: { "09": 2 }, halfSlots: { "09:00": 1, "09:30": 1 }
+  });
+  assert.equal(week.body.days[1].total, 0, "cancelled appointments are not counted");
+  assert.deepEqual(week.body.days[6].slots, { 13: 1 });
+
+  const byDoctor = await request(stores, "GET", `/v1/eye/appointments/range?from=2026-11-02&to=2026-11-08&doctorMemberId=${doctorContext.memberId}`, undefined, clerk);
+  assert.deepEqual(byDoctor.body.appointments.map((item) => item.patientName), ["A"]);
+  assert.equal(byDoctor.body.days[0].total, 1);
+
+  assert.equal((await request(stores, "GET", "/v1/eye/appointments/range?from=2026-11-02&to=2026-12-14", undefined, clerk)).statusCode, 400, "at most 42 days");
+  assert.equal((await request(stores, "GET", "/v1/eye/appointments/range?from=2026-11-02&to=2026-12-13", undefined, clerk)).statusCode, 200);
+  assert.equal((await request(stores, "GET", "/v1/eye/appointments/range?from=2026-11-08&to=2026-11-02", undefined, clerk)).statusCode, 400);
+  assert.equal((await request(stores, "GET", "/v1/eye/appointments/range?from=2026-11-02", undefined, clerk)).statusCode, 400);
+});
+
+test("closes a visit: finalizes, moves the reception to checkout, and returns the next waiting patient", async () => {
+  const stores = createStores();
+  const doctor = await signedHeaders(stores.platformStore, "doctor");
+  const clerk = await signedHeaders(stores.platformStore, "clerk");
+  const patient = await createPatient(stores, doctor);
+  const second = await createPatient(stores, doctor, { displayName: "二番 次郎", primaryPatientNumber: "000200" });
+  const third = await createPatient(stores, doctor, { displayName: "三番 三郎", primaryPatientNumber: "000300" });
+  let mine = await book(stores, clerk, { patientId: patient.patientId, walkIn: true });
+  mine = await moveTo(stores, clerk, mine, "in_consult");
+  // 三番が先に診察待になり、二番があとから。次は三番。
+  let later = await book(stores, clerk, { patientId: second.patientId, walkIn: true });
+  let earlier = await book(stores, clerk, { patientId: third.patientId, walkIn: true });
+  earlier = await moveTo(stores, clerk, earlier, "waiting_doctor");
+  const { orgId } = await contextOf(stores, clerk);
+  const records = stores.eyeStore.appointments.get(orgId);
+  records.set(earlier.appointmentId, { ...records.get(earlier.appointmentId), statusHistory: [{ status: "waiting_doctor", at: "2026-10-27T00:10:00.000Z" }] });
+  later = await moveTo(stores, clerk, later, "waiting_doctor");
+  const thirdChart = await request(stores, "POST", "/v1/eye/encounters", { patientId: third.patientId, encounterDate: "2026-10-27" }, doctor);
+
+  const draft = await request(stores, "POST", "/v1/eye/encounters", { patientId: patient.patientId, encounterDate: "2026-10-27", visitType: "initial", content: closableContent() }, doctor);
+  const id = draft.body.encounter.encounterId;
+
+  // 医師だけが使える。CSRF も要る
+  assert.equal((await request(stores, "POST", `/v1/eye/encounters/${id}/close`, { expectedRevision: 1 }, await signedHeaders(stores.platformStore, "orthoptist"))).statusCode, 403);
+  assert.equal((await request(stores, "POST", `/v1/eye/encounters/${id}/close`, { expectedRevision: 1 }, withoutCsrf(doctor))).statusCode, 403);
+  assert.equal((await request(stores, "POST", `/v1/eye/encounters/${id}/close`, { expectedRevision: 1, nextStatus: "cancelled" }, doctor)).statusCode, 400);
+  assert.equal((await request(stores, "POST", `/v1/eye/encounters/${id}/close`, { expectedRevision: 1, appointmentId: later.appointmentId }, doctor)).statusCode, 400);
+  assert.equal((await request(stores, "GET", `/v1/eye/encounters/${id}`, undefined, doctor)).body.encounter.status, "draft", "a wrong appointment is rejected before finalizing");
+
+  const closed = await request(stores, "POST", `/v1/eye/encounters/${id}/close`, { expectedRevision: 1 }, doctor);
+  assert.equal(closed.statusCode, 200, JSON.stringify(closed.body));
+  assert.equal(closed.body.encounter.status, "finalized");
+  assert.equal(closed.body.version.version, 1);
+  assert.equal(closed.body.alreadyFinalized, false);
+  assert.deepEqual(closed.body.warnings, []);
+  assert.equal(closed.body.appointment.appointmentId, mine.appointmentId);
+  assert.equal(closed.body.appointment.status, "checkout");
+  assert.equal(closed.body.appointmentMoved, true);
+  assert.equal(closed.body.appointmentError, null);
+  assert.deepEqual(closed.body.nextPatient, {
+    appointmentId: earlier.appointmentId,
+    patientId: third.patientId,
+    patientName: "三番 三郎",
+    queueNumber: earlier.queueNumber,
+    waitingSince: "2026-10-27T00:10:00.000Z",
+    encounterId: thirdChart.body.encounter.encounterId
+  });
+
+  // すでに確定したカルテでも、受付を別の状態へ動かせる（版は作らない）
+  const again = await request(stores, "POST", `/v1/eye/encounters/${id}/close`, { expectedRevision: closed.body.encounter.revision, nextStatus: "in_exam" }, doctor);
+  assert.equal(again.statusCode, 200);
+  assert.equal(again.body.alreadyFinalized, true);
+  assert.equal(again.body.version, null);
+  assert.equal(again.body.appointment.status, "in_exam");
+  assert.equal((await request(stores, "POST", `/v1/eye/encounters/${id}/close`, { expectedRevision: 1 }, doctor)).statusCode, 409);
+});
+
+test("close returns warnings, stops only on finalize errors, and reports when the reception cannot be moved", async () => {
+  const stores = createStores();
+  const doctor = await signedHeaders(stores.platformStore, "doctor");
+  const clerk = await signedHeaders(stores.platformStore, "clerk");
+  const patient = await createPatient(stores, doctor);
+  const appointment = await book(stores, clerk, { patientId: patient.patientId, walkIn: true });
+
+  // 確定そのものが止めるエラー: 何も変えない
+  const blocked = await request(stores, "POST", "/v1/eye/encounters", { patientId: patient.patientId, encounterDate: "2026-10-27", content: { prescriptions: [{ kind: "eye_drop", name: "" }] } }, doctor);
+  const refused = await request(stores, "POST", `/v1/eye/encounters/${blocked.body.encounter.encounterId}/close`, { expectedRevision: 1 }, doctor);
+  assert.equal(refused.statusCode, 400);
+  assert.equal(refused.body.details.blockers[0].code, "prescription_name_missing");
+  assert.equal((await request(stores, "GET", "/v1/eye/appointments?date=2026-10-27", undefined, clerk)).body.appointments[0].status, "checked_in");
+  await request(stores, "POST", `/v1/eye/encounters/${blocked.body.encounter.encounterId}/discard`, { expectedRevision: 1 }, doctor);
+
+  // 警告（主訴・方針が空）は止めずに返す
+  const draft = await request(stores, "POST", "/v1/eye/encounters", { patientId: patient.patientId, encounterDate: "2026-10-27", visitType: "initial" }, doctor);
+  const id = draft.body.encounter.encounterId;
+  // 受付の保存が失敗する（ほかの人が同時に変えた）ようにする
+  const original = stores.eyeStore.replaceAppointment;
+  stores.eyeStore.replaceAppointment = () => {
+    const error = new Error("appointment was updated by someone else; reload and try again");
+    error.name = "ConflictError";
+    error.statusCode = 409;
+    throw error;
+  };
+  const closed = await request(stores, "POST", `/v1/eye/encounters/${id}/close`, { expectedRevision: 1, nextStatus: "in_treatment" }, doctor);
+  stores.eyeStore.replaceAppointment = original;
+  assert.equal(closed.statusCode, 200, JSON.stringify(closed.body));
+  assert.equal(closed.body.encounter.status, "finalized", "the finalize is not rolled back");
+  assert.deepEqual(closed.body.warnings.map((item) => item.code), ["chief_complaint_empty", "plan_empty"]);
+  assert.equal(closed.body.appointmentMoved, false);
+  assert.equal(closed.body.appointmentError.code, "conflict");
+  assert.match(closed.body.appointmentError.message, /updated by someone else/u);
+  assert.equal(closed.body.appointment.status, "checked_in");
+  assert.equal((await request(stores, "GET", `/v1/eye/encounters/${id}`, undefined, doctor)).body.encounter.status, "finalized");
+
+  // 受付がない・複数あるときは動かさずに知らせる
+  const other = await createPatient(stores, doctor, { displayName: "受付 なし", primaryPatientNumber: "000777" });
+  const lonely = await request(stores, "POST", "/v1/eye/encounters", { patientId: other.patientId, encounterDate: "2026-10-27", content: closableContent() }, doctor);
+  const none = await request(stores, "POST", `/v1/eye/encounters/${lonely.body.encounter.encounterId}/close`, { expectedRevision: 1 }, doctor);
+  assert.equal(none.statusCode, 200);
+  assert.equal(none.body.appointment, null);
+  assert.equal(none.body.appointmentError.code, "no_appointment");
+  await book(stores, clerk, { patientId: patient.patientId, walkIn: true });
+  const twice = await request(stores, "POST", "/v1/eye/encounters", { patientId: patient.patientId, encounterDate: "2026-10-27", content: closableContent() }, doctor);
+  const multiple = await request(stores, "POST", `/v1/eye/encounters/${twice.body.encounter.encounterId}/close`, { expectedRevision: 1 }, doctor);
+  assert.equal(multiple.body.appointmentError.code, "multiple_appointments");
+  assert.equal(multiple.body.appointmentError.appointmentIds.length, 2);
+  const chosen = await request(stores, "POST", `/v1/eye/encounters/${twice.body.encounter.encounterId}/close`, { expectedRevision: multiple.body.encounter.revision, appointmentId: appointment.appointmentId }, doctor);
+  assert.equal(chosen.body.appointment.status, "checkout");
+});
+
+test("sends one patient's billing, marks the reception paid, and shows 再計待 after the chart changes", async () => {
+  const stores = createStores();
+  const doctor = await signedHeaders(stores.platformStore, "doctor");
+  const clerk = await signedHeaders(stores.platformStore, "clerk");
+  const patient = await createPatient(stores, doctor);
+  const other = await createPatient(stores, doctor, { displayName: "別 患者", primaryPatientNumber: "000999" });
+  await book(stores, clerk, { patientId: patient.patientId, walkIn: true });
+  const otherAppointment = await book(stores, clerk, { patientId: other.patientId, walkIn: true });
+  const content = { ...closableContent(), orders: [{ orderId: "o1", code: "vf_static", name: "静的視野検査", kind: "exam", eye: "ou", status: "performed" }] };
+  const draft = await request(stores, "POST", "/v1/eye/encounters", { patientId: patient.patientId, encounterDate: "2026-10-27", content }, doctor);
+  const id = draft.body.encounter.encounterId;
+  const otherDraft = await request(stores, "POST", "/v1/eye/encounters", { patientId: other.patientId, encounterDate: "2026-10-27", content: closableContent() }, doctor);
+
+  const listBefore = (await request(stores, "GET", "/v1/eye/appointments?date=2026-10-27", undefined, clerk)).body.appointments;
+  assert.deepEqual(listBefore.map((item) => item.billingState), ["draft", "draft"]);
+  const notYet = await request(stores, "POST", "/v1/eye/billing/send", { date: "2026-10-27", encounterId: id }, clerk);
+  assert.equal(notYet.statusCode, 400, "an unfinalized chart cannot be sent");
+
+  const closed = await request(stores, "POST", `/v1/eye/encounters/${id}/close`, { expectedRevision: 1 }, doctor);
+  assert.equal(closed.body.appointment.status, "checkout");
+  await request(stores, "POST", `/v1/eye/encounters/${otherDraft.body.encounter.encounterId}/close`, { expectedRevision: 1 }, doctor);
+  const pending = (await request(stores, "GET", "/v1/eye/appointments?date=2026-10-27", undefined, clerk)).body.appointments;
+  assert.deepEqual(pending.map((item) => [item.billingState, item.displayStatus]), [["pending", "checkout"], ["pending", "checkout"]]);
+
+  assert.equal((await request(stores, "POST", "/v1/eye/billing/send", { date: "2026-10-27", encounterId: id }, await signedHeaders(stores.platformStore, "viewer"))).statusCode, 403);
+  const sent = await request(stores, "POST", "/v1/eye/billing/send", { date: "2026-10-27", encounterId: id }, clerk);
+  assert.equal(sent.statusCode, 201, JSON.stringify(sent.body));
+  assert.equal(sent.body.handoff.encounters.length, 1);
+  assert.equal(sent.body.handoff.encounters[0].encounterId, id);
+  assert.match(sent.body.csv, /静的視野検査/u);
+  assert.doesNotMatch(sent.body.csv, /別 患者/u, "only this patient is handed off");
+  assert.equal(sent.body.appointment.status, "done");
+  assert.equal(sent.body.appointmentMoved, true);
+
+  const afterSend = (await request(stores, "GET", "/v1/eye/appointments?date=2026-10-27", undefined, clerk)).body.appointments;
+  assert.deepEqual(afterSend.map((item) => [item.billingState, item.displayStatus]), [["handed_off", "done"], ["pending", "checkout"]]);
+
+  // カルテを直して品目が変わると、会計済の受付は「再計待」と出る
+  await request(stores, "POST", `/v1/eye/encounters/${id}/amend`, { expectedRevision: closed.body.encounter.revision, reason: "検査の追記" }, doctor);
+  const reopened = (await request(stores, "GET", `/v1/eye/encounters/${id}`, undefined, doctor)).body.encounter;
+  const patched = await request(stores, "PATCH", `/v1/eye/encounters/${id}`, {
+    expectedRevision: reopened.revision,
+    sections: { orders: [...reopened.content.orders, { orderId: "o2", code: "iop", name: "眼圧検査", kind: "exam", eye: "ou", status: "performed" }] }
+  }, doctor);
+  const refinalized = await request(stores, "POST", `/v1/eye/encounters/${id}/finalize`, { expectedRevision: patched.body.encounter.revision }, doctor);
+  assert.equal(refinalized.statusCode, 200);
+  const rebill = (await request(stores, "GET", "/v1/eye/appointments?date=2026-10-27", undefined, clerk)).body.appointments[0];
+  assert.equal(rebill.status, "done");
+  assert.equal(rebill.billingState, "changed");
+  assert.equal(rebill.displayStatus, "rebill_waiting");
+
+  // もう一度送ると連携済に戻る（受付は会計済のまま）。テストの時計は止まっているので、前回の連携を少し前にずらす。
+  const handoffs = stores.eyeStore.billingHandoffs.get((await contextOf(stores, clerk)).orgId);
+  handoffs.set(sent.body.handoff.handoffId, { ...handoffs.get(sent.body.handoff.handoffId), createdAt: "2026-10-27T00:30:00.000Z" });
+  const resent = await request(stores, "POST", "/v1/eye/billing/send", { date: "2026-10-27", encounterId: id }, clerk);
+  assert.equal(resent.statusCode, 201);
+  assert.equal(resent.body.appointmentMoved, false);
+  const settled = (await request(stores, "GET", "/v1/eye/appointments?date=2026-10-27", undefined, clerk)).body.appointments[0];
+  assert.deepEqual([settled.status, settled.billingState, settled.displayStatus], ["done", "handed_off", "done"]);
+
+  // 受付の更新に失敗しても連携は残し、失敗を知らせる
+  const original = stores.eyeStore.replaceAppointment;
+  stores.eyeStore.replaceAppointment = () => { throw Object.assign(new Error("store unavailable"), { statusCode: 500 }); };
+  const partial = await request(stores, "POST", "/v1/eye/billing/send", { date: "2026-10-27", encounterId: otherDraft.body.encounter.encounterId, appointmentId: otherAppointment.appointmentId }, clerk);
+  stores.eyeStore.replaceAppointment = original;
+  assert.equal(partial.statusCode, 201);
+  assert.equal(partial.body.appointmentMoved, false);
+  assert.equal(partial.body.appointmentError.message, "store unavailable");
+  const day = (await request(stores, "GET", "/v1/eye/billing/day?date=2026-10-27", undefined, clerk)).body;
+  assert.equal(day.encounters.find((item) => item.encounterId === otherDraft.body.encounter.encounterId).handoff.state, "handed_off");
+
+  // まとめての連携も従来どおり使える
+  const bulk = await request(stores, "POST", "/v1/eye/billing/handoffs", { date: "2026-10-27", encounterIds: [id, otherDraft.body.encounter.encounterId] }, clerk);
+  assert.equal(bulk.statusCode, 201);
+  assert.equal(bulk.body.handoff.encounters.length, 2);
 });

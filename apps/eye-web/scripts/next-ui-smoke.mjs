@@ -566,6 +566,21 @@ async function runReceptionFlow(browser) {
   await registerDialog.getByRole("button", { name: "登録して受付に紐づける" }).click();
   await walkIn.getByText("未登録").waitFor({ state: "detached" });
 
+  // 追加した状態（処置中・不在）。不在から予約に戻して受け付け直しても、受付番号は最初のまま
+  await walkIn.locator("summary").click();
+  await walkIn.getByRole("button", { name: "処置中にする" }).click();
+  await page.locator(".flow-group.status-in_treatment .flow-row").filter({ hasText: "飛込 花子" }).waitFor();
+  await walkIn.locator("summary").click();
+  await walkIn.getByRole("button", { name: "不在（呼んでもいない）" }).click();
+  await page.locator(".flow-group.status-finished").getByRole("button", { name: /終了・キャンセル/u }).click();
+  await page.locator(".flow-group.status-finished .flow-row").filter({ hasText: "飛込 花子" }).getByText("不在").waitFor();
+  await walkIn.locator("summary").click();
+  await walkIn.getByRole("button", { name: "予約に戻す" }).click();
+  await page.locator(".flow-group.status-booked .flow-row").filter({ hasText: "飛込 花子" }).waitFor();
+  await walkIn.getByRole("button", { name: "受付する" }).click();
+  await page.locator(".flow-group.status-checked_in .flow-row").filter({ hasText: "飛込 花子" }).waitFor();
+  assert.equal((await walkIn.locator(".flow-slot").innerText()).trim(), "#2", "the queue number stays from the first check-in");
+
   // ヘッダー検索から新規登録: 入力した語が登録欄に入り、似た患者があれば警告が出る
   await page.getByLabel("患者検索").fill("しけん");
   await page.locator(".patient-row").filter({ hasText: "試験 一郎" }).waitFor();

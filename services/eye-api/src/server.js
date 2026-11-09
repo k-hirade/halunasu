@@ -19,9 +19,13 @@ import {
   EYE_RECEPTION_ROLES,
   EYE_SETTINGS_ROLES,
   EYE_WRITE_ROLES,
+  isActiveAppointmentStatus,
   patientSearchVariants,
   validateAmendEncounterInput,
+  validateAppointmentRangeInput,
   validateAppointmentStatusInput,
+  validateBillingSendInput,
+  validateCloseEncounterInput,
   validateCreateAppointmentInput,
   validateCreateDocumentInput,
   validateCreateFileInput,
@@ -39,11 +43,16 @@ import {
   validateUpdateEncounterInput
 } from "../../../packages/eye-contracts/src/index.js";
 import {
+  appointmentDisplayStatus,
   buildTrend,
+  countAppointmentSlots,
   diffEncounterContent,
+  enteredStatusAt,
   evaluateFinalizeReadiness,
+  pickNextWaitingAppointment,
   printableStaffName,
-  suggestNextVisit
+  suggestNextVisit,
+  summarizeBillingState
 } from "../../../packages/eye-core/src/index.js";
 import { patientSnapshot } from "../../../packages/platform-contracts/src/index.js";
 import { createPlatformStoreFromEnv } from "../../platform-api/src/store/create-store.js";
@@ -60,6 +69,7 @@ import {
 import {
   applyAppointmentStatus,
   applyAppointmentUpdate,
+  appointmentView,
   buildAppointment,
   isActiveAppointment
 } from "./appointments.js";
@@ -309,6 +319,22 @@ async function routeEyeApiRequest(input = {}) {
     }
   }
 
+  // 患者メモだけを保存する（受付から使う）。ほかのプロファイルの項目は変えない。
+  if (method === "PUT" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "eye", "patients"]) && parts[4] === "memo") {
+    requireAccess(context, EYE_RECEPTION_ROLES, "Reception access is required");
+    requirePlatformCsrf(input.headers || {}, context.session);
+    const patient = await requirePatient(platformStore, orgId, parts[3]);
+    const expectedRevision = Number(input.body?.expectedRevision);
+    if (!Number.isInteger(expectedRevision) || expectedRevision < 0) throw badRequest("expectedRevision must be zero or a positive integer", "expectedRevision");
+    const encounters = await eyeStore.listPatientEncounters(orgId, patient.patientId);
+    const current = await loadProfile(eyeStore, orgId, patient.patientId, encounters);
+    const validated = validatePatientProfileInput({ ...current, expectedRevision, patientMemo: input.body?.patientMemo ?? "" });
+    const profile = applyProfileUpdate({ current: current.derived ? null : current, validated, orgId, patientId: patient.patientId, actor, now });
+    await eyeStore.savePatientProfile(orgId, profile, expectedRevision);
+    await audit({ eventType: "eye.patient_memo_updated", targetType: "patient", targetId: patient.patientId, patientId: patient.patientId, safePayload: { revision: profile.revision } });
+    return ok({ profile });
+  }
+
   if (method === "GET" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "eye", "patients"]) && parts[4] === "chart") {
     const patient = await requirePatient(platformStore, orgId, parts[3]);
     const [encounters, appointments] = await Promise.all([
@@ -421,24 +447,63 @@ async function routeEyeApiRequest(input = {}) {
       requirePlatformCsrf(input.headers || {}, context.session);
       const { expectedRevision } = validateFinalizeEncounterInput(input.body || {});
       const current = await requireEncounter(eyeStore, orgId, encounterId);
-      const history = await eyeStore.listPatientEncounters(orgId, current.patientId);
-      const profile = await loadProfile(eyeStore, orgId, current.patientId, history);
-      const diagnoses = profile.derived && current.content.diagnoses?.length
-        ? current.content.diagnoses
-        : diagnosesForEncounter(profile, current.encounterDate);
-      const { encounter, version } = finalizeEncounter(
-        { ...current, content: { ...current.content, diagnoses } },
-        { actor, now }
-      );
-      await eyeStore.replaceEncounter(orgId, encounter, expectedRevision, version);
-      await audit({
-        eventType: "eye.encounter_finalized",
-        targetType: "encounter",
-        targetId: encounterId,
-        patientId: encounter.patientId,
-        safePayload: { version: version.version, contentHash: version.contentHash }
-      });
+      const { encounter, version } = await finalizeAndSave({ eyeStore, orgId, current, expectedRevision, actor, now, audit });
       return ok({ encounter, version: versionSummary(version) });
+    }
+
+    // 診察終了（デジカルの［次へ］）: 確定 → その日の受付を選んだ状態へ → 次の診察待の患者を返す。
+    // 確定はカルテの確定と同じ処理を使う（止まるのは確定そのものが出すエラーだけ。警告は warnings で返す）。
+    // 受付の更新に失敗しても確定は取り消さず、appointmentError で知らせる（受付は一覧から直せる）。
+    if (method === "POST" && action === "close" && parts.length === 5) {
+      requireAccess(context, EYE_FINALIZE_ROLES, "Only a doctor can close a visit");
+      requirePlatformCsrf(input.headers || {}, context.session);
+      const validated = validateCloseEncounterInput(input.body || {});
+      const current = await requireEncounter(eyeStore, orgId, encounterId);
+      // 受付の指定の誤りは、確定する前に 400 で返す
+      const dayAppointments = await eyeStore.listAppointmentsByDate(orgId, current.encounterDate);
+      const target = closeTargetAppointment(dayAppointments, current, validated.appointmentId);
+      let encounter = current;
+      let version = null;
+      if (current.status === "draft") {
+        ({ encounter, version } = await finalizeAndSave({ eyeStore, orgId, current, expectedRevision: validated.expectedRevision, actor, now, audit }));
+      } else if (current.revision !== validated.expectedRevision) {
+        throw conflictError("encounter was updated by someone else; reload and try again");
+      }
+      const readiness = evaluateFinalizeReadiness(encounter.content, { examConfirmations: encounter.examConfirmations });
+      let appointment = target.appointment;
+      let appointmentError = target.error;
+      let appointmentMoved = false;
+      if (appointment) {
+        try {
+          const saved = await moveAppointmentStatus({ eyeStore, orgId, current: appointment, status: validated.nextStatus, expectedRevision: appointment.revision, actor, now, audit });
+          appointmentMoved = saved.changed;
+          appointment = saved.appointment;
+        } catch (error) {
+          appointmentError = { code: toErrorCode(error.name || "Error"), message: error.message || "受付の状態を変えられませんでした。" };
+        }
+      }
+      const others = dayAppointments.map((item) => (appointment && item.appointmentId === appointment.appointmentId ? appointment : item));
+      const next = pickNextWaitingAppointment(others, { excludeAppointmentId: appointment?.appointmentId || "", excludePatientId: encounter.patientId });
+      const nextEncounter = next?.patientId
+        ? (await eyeStore.listEncountersByDate(orgId, encounter.encounterDate)).find((item) => item.patientId === next.patientId) || null
+        : null;
+      return ok({
+        encounter,
+        version: version ? versionSummary(version) : null,
+        alreadyFinalized: !version,
+        warnings: [...readiness.blockers, ...readiness.warnings].map(({ code, field, message }) => ({ code, field: field || "", message })),
+        appointment: appointment ? appointmentView(appointment) : null,
+        appointmentMoved,
+        appointmentError,
+        nextPatient: next ? {
+          appointmentId: next.appointmentId,
+          patientId: next.patientId || "",
+          patientName: next.patientName || next.patientSnapshot?.displayName || "",
+          queueNumber: next.queueNumber ?? null,
+          waitingSince: enteredStatusAt(next, "waiting_doctor"),
+          encounterId: nextEncounter?.encounterId || ""
+        } : null
+      });
     }
 
     if (method === "POST" && action === "amend" && parts.length === 5) {
@@ -488,7 +553,34 @@ async function routeEyeApiRequest(input = {}) {
       exam: examProgress(encounter.content?.exam),
       orders: (encounter.content?.orders || []).filter((order) => order.status !== "cancelled").map((order) => ({ name: order.name, status: order.status }))
     }]));
-    return ok({ date, appointments, encountersByPatient });
+    // 会計連携の状態（billingState）と、それを踏まえた表示用の状態（displayStatus: 再計待など）を付ける。
+    const billingStates = await billingStatesByPatient(eyeStore, platformStore, orgId, date, encounters);
+    return ok({
+      date,
+      appointments: appointments.map((item) => {
+        const billingState = item.patientId ? billingStates.get(item.patientId) || "none" : "none";
+        return appointmentView(item, { billingState, displayStatus: appointmentDisplayStatus(item, billingState) });
+      }),
+      encountersByPatient
+    });
+  }
+
+  // 予約状況（週 × 時間）。期間の予約と、日ごと・時間ごとの件数（取消・不在は数えない）。
+  if (method === "GET" && matches(parts, ["v1", "eye", "appointments", "range"])) {
+    const range = validateAppointmentRangeInput({
+      from: url.searchParams.get("from"),
+      to: url.searchParams.get("to"),
+      doctorMemberId: url.searchParams.get("doctorMemberId") || ""
+    });
+    const all = await eyeStore.listAppointmentsInRange(orgId, range.from, range.to);
+    const appointments = range.doctorMemberId ? all.filter((item) => item.doctorMemberId === range.doctorMemberId) : all;
+    return ok({
+      from: range.from,
+      to: range.to,
+      doctorMemberId: range.doctorMemberId,
+      appointments: appointments.map((item) => appointmentView(item, { displayStatus: appointmentDisplayStatus(item) })),
+      days: countAppointmentSlots(appointments, range)
+    });
   }
 
   if (method === "POST" && matches(parts, ["v1", "eye", "appointments"])) {
@@ -496,6 +588,7 @@ async function routeEyeApiRequest(input = {}) {
     requirePlatformCsrf(input.headers || {}, context.session);
     const validated = validateCreateAppointmentInput(input.body || {});
     const patient = validated.patientId ? await requirePatient(platformStore, orgId, validated.patientId) : null;
+    if (validated.doctorMemberId) await requireDoctorMember(platformStore, orgId, validated.doctorMemberId);
     const appointment = buildAppointment({
       appointmentId: createId("eapt"),
       orgId,
@@ -506,7 +599,7 @@ async function routeEyeApiRequest(input = {}) {
     });
     const saved = await eyeStore.createAppointment(orgId, appointment, { assignQueueNumber: appointment.status === "checked_in" });
     await audit({ eventType: "eye.appointment_created", targetType: "appointment", targetId: saved.appointmentId, patientId: saved.patientId, safePayload: { status: saved.status } });
-    return created({ appointment: saved });
+    return created({ appointment: appointmentView(saved) });
   }
 
   if (parts.length >= 4 && matches(parts.slice(0, 3), ["v1", "eye", "appointments"])) {
@@ -517,6 +610,9 @@ async function routeEyeApiRequest(input = {}) {
       const validated = validateUpdateAppointmentInput(input.body || {});
       const current = await requireAppointment(eyeStore, orgId, appointmentId);
       const patient = validated.patientId ? await requirePatient(platformStore, orgId, validated.patientId) : null;
+      if (validated.doctorMemberId && validated.doctorMemberId !== current.doctorMemberId) {
+        await requireDoctorMember(platformStore, orgId, validated.doctorMemberId);
+      }
       const updated = applyAppointmentUpdate(current, validated, {
         patientSnapshot: patient ? patientSnapshot(patient, new Date(now)) : null,
         actor,
@@ -524,17 +620,15 @@ async function routeEyeApiRequest(input = {}) {
       });
       const saved = await eyeStore.replaceAppointment(orgId, updated, validated.expectedRevision);
       await audit({ eventType: "eye.appointment_updated", targetType: "appointment", targetId: appointmentId, patientId: saved.patientId });
-      return ok({ appointment: saved });
+      return ok({ appointment: appointmentView(saved) });
     }
     if (method === "POST" && parts.length === 5 && parts[4] === "status") {
       requireAccess(context, EYE_RECEPTION_ROLES, "Reception access is required");
       requirePlatformCsrf(input.headers || {}, context.session);
       const { expectedRevision, status } = validateAppointmentStatusInput(input.body || {});
       const current = await requireAppointment(eyeStore, orgId, appointmentId);
-      const { appointment, assignQueueNumber } = applyAppointmentStatus(current, status, { actor, now });
-      const saved = await eyeStore.replaceAppointment(orgId, appointment, expectedRevision, { assignQueueNumber });
-      await audit({ eventType: "eye.appointment_status_changed", targetType: "appointment", targetId: appointmentId, patientId: saved.patientId, safePayload: { from: current.status, to: status } });
-      return ok({ appointment: saved });
+      const { appointment } = await moveAppointmentStatus({ eyeStore, orgId, current, status, expectedRevision, actor, now, audit });
+      return ok({ appointment: appointmentView(appointment) });
     }
   }
 
@@ -780,19 +874,49 @@ async function routeEyeApiRequest(input = {}) {
     const day = await billingDay(eyeStore, platformStore, orgId, date);
     const selected = day.encounters.filter((item) => requested.has(item.encounterId));
     if (selected.length !== requested.size) throw badRequest("確定済みでないカルテ、または別の日のカルテが含まれています。", "encounterIds");
-    const csv = billingCsv(selected);
-    const handoff = {
-      handoffId: createId("ebh"),
-      orgId,
-      date,
-      encounters: selected.map(handoffSnapshotOf),
-      csvSha256: createHashHex(csv),
-      createdBy: actor,
-      createdAt: now
-    };
-    await eyeStore.createBillingHandoff(orgId, handoff);
-    await audit({ eventType: "eye.billing_handed_off", targetType: "billing_handoff", targetId: handoff.handoffId, safePayload: { date, encounterCount: selected.length } });
+    const { handoff, csv } = await createHandoff({ eyeStore, orgId, date, selected, actor, now, audit });
     return created({ handoff, csv });
+  }
+
+  // 1 人分の会計連携（デジカルの受付一覧の［会計］）。その人のカルテだけの CSV を作り、
+  // 受付が会計待なら会計済にする。受付の更新に失敗しても連携は取り消さず、appointmentError で知らせる。
+  if (method === "POST" && matches(parts, ["v1", "eye", "billing", "send"])) {
+    requireAccess(context, EYE_RECEPTION_ROLES, "Billing access is required");
+    requirePlatformCsrf(input.headers || {}, context.session);
+    const validated = validateBillingSendInput(input.body || {});
+    const day = await billingDay(eyeStore, platformStore, orgId, validated.date);
+    const target = day.encounters.find((item) => item.encounterId === validated.encounterId);
+    if (!target) throw badRequest("確定済みでないカルテ、または別の日のカルテです。", "encounterId");
+    const { handoff, csv } = await createHandoff({ eyeStore, orgId, date: validated.date, selected: [target], actor, now, audit });
+    const encounter = await requireEncounter(eyeStore, orgId, validated.encounterId);
+    const dayAppointments = await eyeStore.listAppointmentsByDate(orgId, validated.date);
+    let appointment = null;
+    let appointmentMoved = false;
+    let appointmentError = null;
+    if (validated.appointmentId) {
+      appointment = dayAppointments.find((item) => item.appointmentId === validated.appointmentId && item.patientId === encounter.patientId) || null;
+      if (!appointment) appointmentError = { code: "appointment_not_found", message: "この患者のこの日の受付が見つかりません。" };
+    } else {
+      const candidates = dayAppointments.filter((item) => item.patientId === encounter.patientId && item.status === "checkout");
+      appointment = candidates.length === 1 ? candidates[0] : null;
+      if (candidates.length > 1) appointmentError = { code: "multiple_appointments", message: "会計待の受付が複数あるため、受付の状態は変えていません。" };
+    }
+    if (appointment && appointment.status === "checkout") {
+      try {
+        const saved = await moveAppointmentStatus({ eyeStore, orgId, current: appointment, status: "done", expectedRevision: appointment.revision, actor, now, audit });
+        appointment = saved.appointment;
+        appointmentMoved = saved.changed;
+      } catch (error) {
+        appointmentError = { code: toErrorCode(error.name || "Error"), message: error.message || "受付の状態を変えられませんでした。" };
+      }
+    }
+    return created({
+      handoff,
+      csv,
+      appointment: appointment ? appointmentView(appointment, { billingState: "handed_off", displayStatus: appointmentDisplayStatus(appointment, "handed_off") }) : null,
+      appointmentMoved,
+      appointmentError
+    });
   }
 
   // 連携した回の CSV を取り直す。保存した品目の写しから作り直し、そのとき渡した CSV と一致するときだけ返す。
@@ -1166,8 +1290,109 @@ function createHashHex(text) {
 }
 
 async function loadProfile(eyeStore, orgId, patientId, encounters) {
-  return await eyeStore.getPatientProfile(orgId, patientId)
-    || deriveProfileFromHistory({ orgId, patientId, encounters });
+  const saved = await eyeStore.getPatientProfile(orgId, patientId);
+  // 患者メモより前に保存したプロファイルは patientMemo を持たない。空として返す。
+  return saved ? { ...saved, patientMemo: saved.patientMemo || "" } : deriveProfileFromHistory({ orgId, patientId, encounters });
+}
+
+// カルテを確定して保存する（確定の API と診察終了で共通）。止める条件は finalizeEncounter が決める。
+async function finalizeAndSave({ eyeStore, orgId, current, expectedRevision, actor, now, audit }) {
+  const history = await eyeStore.listPatientEncounters(orgId, current.patientId);
+  const profile = await loadProfile(eyeStore, orgId, current.patientId, history);
+  const diagnoses = profile.derived && current.content.diagnoses?.length
+    ? current.content.diagnoses
+    : diagnosesForEncounter(profile, current.encounterDate);
+  const { encounter, version } = finalizeEncounter(
+    { ...current, content: { ...current.content, diagnoses } },
+    { actor, now }
+  );
+  await eyeStore.replaceEncounter(orgId, encounter, expectedRevision, version);
+  await audit({
+    eventType: "eye.encounter_finalized",
+    targetType: "encounter",
+    targetId: encounter.encounterId,
+    patientId: encounter.patientId,
+    safePayload: { version: version.version, contentHash: version.contentHash }
+  });
+  return { encounter, version };
+}
+
+// 受付の状態を変えて保存する（状態の API・診察終了・会計連携で共通）。
+// その日にこの患者のカルテがある受付は取消にできない（デジカルと同じ）。同じ状態への変更は保存しない。
+async function moveAppointmentStatus({ eyeStore, orgId, current, status, expectedRevision, actor, now, audit }) {
+  if (status === "cancelled" && current.patientId && current.status !== "cancelled") {
+    const encounters = await eyeStore.listEncountersByDate(orgId, current.date);
+    if (encounters.some((item) => item.patientId === current.patientId)) {
+      throw conflictError("この日のカルテがある受付は取り消せません。");
+    }
+  }
+  const { appointment, assignQueueNumber, changed } = applyAppointmentStatus(current, status, { actor, now });
+  if (!changed) return { appointment: current, changed: false };
+  const saved = await eyeStore.replaceAppointment(orgId, appointment, expectedRevision, { assignQueueNumber });
+  await audit({ eventType: "eye.appointment_status_changed", targetType: "appointment", targetId: saved.appointmentId, patientId: saved.patientId, safePayload: { from: current.status, to: saved.status } });
+  return { appointment: saved, changed: true };
+}
+
+// 診察終了で動かす受付。指定があればそれ（同じ患者・同じ日に限る）、なければその日の有効な受付がちょうど 1 件のとき。
+function closeTargetAppointment(dayAppointments, encounter, appointmentId) {
+  if (appointmentId) {
+    const appointment = dayAppointments.find((item) => item.appointmentId === appointmentId);
+    if (!appointment || appointment.patientId !== encounter.patientId) {
+      throw badRequest("appointment must belong to the same patient and date as the encounter", "appointmentId");
+    }
+    return { appointment, error: null };
+  }
+  const candidates = dayAppointments.filter((item) => item.patientId === encounter.patientId && isActiveAppointmentStatus(item.status));
+  if (candidates.length === 1) return { appointment: candidates[0], error: null };
+  return {
+    appointment: null,
+    error: candidates.length === 0
+      ? { code: "no_appointment", message: "この日の受付がないため、受付の状態は変えていません。" }
+      : { code: "multiple_appointments", message: "この日の受付が複数あるため、受付の状態は変えていません。", appointmentIds: candidates.map((item) => item.appointmentId) }
+  };
+}
+
+// 担当医は、この医院の眼科で医師の役割を持つ有効な職員に限る。
+async function requireDoctorMember(platformStore, orgId, memberId) {
+  const member = await platformStore.getMember(orgId, memberId);
+  const roles = member?.productRoles?.[EYE_PRODUCT_ID] || [];
+  if (!member || (member.status && member.status !== "active") || !roles.includes("doctor")) {
+    throw badRequest("doctorMemberId must be an active doctor of this clinic", "doctorMemberId");
+  }
+  return member;
+}
+
+// 患者ごとの会計連携の状態（その日）。連携の記録がない日は、品目を組み立てずに確定の有無だけで決める。
+async function billingStatesByPatient(eyeStore, platformStore, orgId, date, encounters) {
+  const states = new Map();
+  const add = (patientId, state) => states.set(patientId, [...(states.get(patientId) || []), state]);
+  const handoffs = await eyeStore.listBillingHandoffsByDate(orgId, date);
+  if (handoffs.length === 0) {
+    for (const encounter of encounters) add(encounter.patientId, encounter.status === "finalized" ? "pending" : "draft");
+  } else {
+    const day = await billingDay(eyeStore, platformStore, orgId, date);
+    const finalizedPatients = new Map(encounters.map((item) => [item.encounterId, item.patientId]));
+    for (const item of day.encounters) add(finalizedPatients.get(item.encounterId) || item.patient?.patientId, item.handoff.state);
+    for (const item of day.drafts) add(item.patientId, "draft");
+  }
+  return new Map([...states].map(([patientId, list]) => [patientId, summarizeBillingState(list)]));
+}
+
+// 会計連携の記録を作る（まとめての連携と 1 人分の連携で共通）。
+async function createHandoff({ eyeStore, orgId, date, selected, actor, now, audit }) {
+  const csv = billingCsv(selected);
+  const handoff = {
+    handoffId: createId("ebh"),
+    orgId,
+    date,
+    encounters: selected.map(handoffSnapshotOf),
+    csvSha256: createHashHex(csv),
+    createdBy: actor,
+    createdAt: now
+  };
+  await eyeStore.createBillingHandoff(orgId, handoff);
+  await audit({ eventType: "eye.billing_handed_off", targetType: "billing_handoff", targetId: handoff.handoffId, safePayload: { date, encounterCount: selected.length } });
+  return { handoff, csv };
 }
 
 async function requireAppointment(eyeStore, orgId, appointmentId) {

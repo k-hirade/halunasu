@@ -170,9 +170,9 @@ export function HomeWorkspace() {
       ? (left, right) => String(left.time || "99").localeCompare(String(right.time || "99"))
       : (left, right) => (waitOf(right) ?? 0) - (waitOf(left) ?? 0));
   }
-  const linkedPatients = new Set(appointments.filter((item) => !["cancelled", "no_show"].includes(item.status)).map((item) => item.patientId).filter(Boolean));
+  const linkedPatients = new Set(appointments.filter((item) => !["cancelled", "absent", "no_show"].includes(item.status)).map((item) => item.patientId).filter(Boolean));
   const unlinked = encounters.filter((encounter) => !linkedPatients.has(encounter.patientId));
-  const inClinic = appointments.filter((item) => ["checked_in", "in_exam", "waiting_doctor", "in_consult", "checkout"].includes(item.status)).length;
+  const inClinic = appointments.filter((item) => ["checked_in", "in_exam", "in_treatment", "waiting_doctor", "in_consult", "checkout"].includes(item.status)).length;
 
   function rowMenu(item) {
     const encounter = data.encountersByPatient[item.patientId];
@@ -181,7 +181,7 @@ export function HomeWorkspace() {
       if (context?.canRegisterPatients && context?.canReceive) entries.push(["患者登録", () => setRegistering(item)]);
       return entries;
     }
-    if (canWrite && ["checked_in", "in_exam"].includes(item.status)) entries.push(["検査入力", () => run(() => openChart(item, "exam"))]);
+    if (canWrite && ["checked_in", "in_exam", "in_treatment"].includes(item.status)) entries.push(["検査入力", () => run(() => openChart(item, "exam"))]);
     if (encounter) entries.push(["カルテを開く", () => router.push(`/encounters/${encounter.encounterId}`)]);
     else if (canWrite && item.status !== "booked") entries.push(["カルテ作成", () => run(() => openChart(item))]);
     entries.push(["患者のページ", () => router.push(`/patients/${item.patientId}`)]);

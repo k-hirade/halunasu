@@ -70,6 +70,7 @@ for (const methodName of [
   "getAppointment",
   "listAppointmentsByDate",
   "listPatientAppointments",
+  "listAppointmentsInRange",
   "replaceAppointment",
   "recordAudit",
   "listAuditLogs",

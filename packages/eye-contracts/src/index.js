@@ -103,21 +103,57 @@ export const EYE_SETTINGS_ROLES = Object.freeze(["admin"]);
 export const EYE_RECEPTION_ROLES = Object.freeze(["admin", "doctor", "orthoptist", "nurse", "medical_clerk"]);
 
 export const APPOINTMENT_PURPOSES = Object.freeze(["revisit", "initial", "exam", "injection", "postop", "contact_lens", "other"]);
+// 受付の状態（デジカルの 11 種に合わせる）。保存する値はこの中のもの。
+// - 再計待（rebill_waiting）は保存しない。会計待・会計済のうち、会計連携のあとでカルテの品目が変わったものを一覧で派生させる。
+// - no_show（来院なし）は古いデータのための値。読むときは「不在」として扱い、新しく保存するときは absent にする。
 export const APPOINTMENT_STATUSES = Object.freeze([
-  "booked", "checked_in", "in_exam", "waiting_doctor", "in_consult", "checkout", "done", "cancelled", "no_show"
+  "booked", "checked_in", "waiting_doctor", "in_consult", "in_exam", "in_treatment", "checkout", "done", "absent", "cancelled", "no_show"
 ]);
-// 受付から会計までの順番。戻す操作（取り違え）も1段だけ許す。
-export const APPOINTMENT_TRANSITIONS = Object.freeze({
-  booked: ["checked_in", "cancelled", "no_show"],
-  checked_in: ["in_exam", "waiting_doctor", "booked", "cancelled"],
-  in_exam: ["waiting_doctor", "checked_in"],
-  waiting_doctor: ["in_consult", "in_exam"],
-  in_consult: ["checkout", "waiting_doctor"],
-  checkout: ["done", "in_consult"],
-  done: ["checkout"],
-  cancelled: ["booked"],
-  no_show: ["booked"]
+// プルダウンに並べる順（デジカルのメニュー順）。rebill_waiting は表示用の派生で、選んで保存はできない。
+export const APPOINTMENT_STATUS_MENU = Object.freeze([
+  "booked", "checked_in", "waiting_doctor", "in_consult", "in_exam", "in_treatment", "checkout", "done", "rebill_waiting", "absent", "cancelled"
+]);
+export const APPOINTMENT_DERIVED_STATUSES = Object.freeze(["rebill_waiting"]);
+export const APPOINTMENT_STATUS_LABELS = Object.freeze({
+  booked: "予約済",
+  checked_in: "受付中",
+  waiting_doctor: "診察待",
+  in_consult: "診察中",
+  in_exam: "検査中",
+  in_treatment: "処置中",
+  checkout: "会計待",
+  done: "会計済",
+  rebill_waiting: "再計待",
+  absent: "不在",
+  cancelled: "取消",
+  no_show: "不在"
 });
+// 古い値の読み替え。入力でも受け付け、保存は新しい値で行う。
+export const APPOINTMENT_STATUS_ALIASES = Object.freeze({ no_show: "absent" });
+// 来院している（受付を済ませた）状態。ここへ初めて入ったときに受付番号と受付時刻を付ける。
+export const APPOINTMENT_ARRIVED_STATUSES = Object.freeze(["checked_in", "waiting_doctor", "in_consult", "in_exam", "in_treatment", "checkout", "done"]);
+// 予約の件数や「診察終了」の対象に数えない状態。
+export const APPOINTMENT_INACTIVE_STATUSES = Object.freeze(["cancelled", "absent", "no_show"]);
+// 状態はプルダウンでどこからどこへでも移れる（デジカルと同じ）。変更は statusHistory と操作記録に残る。
+// 例外（その日のカルテがある受付は取消にできない）は、データを見て API が判断する。
+// 古い画面のために遷移表の形は残す（各状態から、自分以外の保存できる状態すべてへ）。
+const STORABLE_APPOINTMENT_STATUSES = APPOINTMENT_STATUSES.filter((status) => !APPOINTMENT_STATUS_ALIASES[status]);
+export const APPOINTMENT_TRANSITIONS = Object.freeze(Object.fromEntries(APPOINTMENT_STATUSES.map((from) => [
+  from,
+  Object.freeze(STORABLE_APPOINTMENT_STATUSES.filter((to) => to !== (APPOINTMENT_STATUS_ALIASES[from] || from)))
+])));
+// 予約・受付のメモと診療科の長さ
+export const MAX_APPOINTMENT_MEMO = 1000;
+export const MAX_APPOINTMENT_DEPARTMENT = 40;
+export const MAX_APPOINTMENT_RANGE_DAYS = 42;
+
+export function normalizeAppointmentStatus(status) {
+  return APPOINTMENT_STATUS_ALIASES[status] || status;
+}
+
+export function isActiveAppointmentStatus(status) {
+  return !APPOINTMENT_INACTIVE_STATUSES.includes(status);
+}
 
 // 操作記録の種類。画面の絞り込みチップと API の category 絞り込みで同じ分け方を使う。
 export const AUDIT_CATEGORIES = Object.freeze(["view", "change", "finalize", "export", "settings", "other"]);
@@ -690,7 +726,9 @@ export function validatePatientProfileInput(input = {}) {
     diagnoses,
     medicalHistory: optionalText(input.medicalHistory, "medicalHistory"),
     ophthalmicHistory: optionalText(input.ophthalmicHistory, "ophthalmicHistory"),
-    contactLensUser: Boolean(input.contactLensUser)
+    contactLensUser: Boolean(input.contactLensUser),
+    // 患者メモ（受付・カルテで共通に見るメモ）。送らなかったときは undefined にし、保存済みの値を残す。
+    patientMemo: input.patientMemo === undefined ? undefined : optionalText(input.patientMemo, "patientMemo")
   };
 }
 
@@ -706,10 +744,24 @@ export function validateCreateAppointmentInput(input = {}) {
     patientId,
     patientName,
     purpose: optionalEnum(input.purpose, APPOINTMENT_PURPOSES, "purpose") || "revisit",
-    note: optionalString(input.note, "note", MAX_SHORT_TEXT),
+    note: appointmentMemo(input) || "",
+    doctorMemberId: optionalString(input.doctorMemberId, "doctorMemberId", MAX_SHORT_TEXT),
+    department: optionalString(input.department, "department", MAX_APPOINTMENT_DEPARTMENT),
     walkIn: Boolean(input.walkIn),
     sourceEncounterId: optionalString(input.sourceEncounterId, "sourceEncounterId", MAX_SHORT_TEXT)
   };
+}
+
+// 受付メモ。保存する欄は従来の note のまま（古いデータがそのまま受付メモとして読める）。
+// 新しい名前 receptionMemo でも受け付け、両方あるときは receptionMemo を使う。未指定は undefined。
+function appointmentMemo(input) {
+  if (input.receptionMemo !== undefined) {
+    const memo = optionalText(input.receptionMemo === null ? "" : input.receptionMemo, "receptionMemo").trim();
+    if (memo.length > MAX_APPOINTMENT_MEMO) throw validationError(`receptionMemo must be at most ${MAX_APPOINTMENT_MEMO} characters`, "receptionMemo");
+    return memo;
+  }
+  if (input.note !== undefined) return optionalString(input.note, "note", MAX_APPOINTMENT_MEMO);
+  return undefined;
 }
 
 export function validateUpdateAppointmentInput(input = {}) {
@@ -724,7 +776,9 @@ export function validateUpdateAppointmentInput(input = {}) {
     patientId: input.patientId === undefined ? undefined : optionalString(input.patientId, "patientId", MAX_SHORT_TEXT),
     patientName: input.patientName === undefined ? undefined : optionalString(input.patientName, "patientName", MAX_SHORT_TEXT),
     purpose: input.purpose === undefined ? undefined : requiredEnum(input.purpose, APPOINTMENT_PURPOSES, "purpose"),
-    note: input.note === undefined ? undefined : optionalString(input.note, "note", MAX_SHORT_TEXT)
+    note: appointmentMemo(input),
+    doctorMemberId: input.doctorMemberId === undefined ? undefined : optionalString(input.doctorMemberId, "doctorMemberId", MAX_SHORT_TEXT),
+    department: input.department === undefined ? undefined : optionalString(input.department, "department", MAX_APPOINTMENT_DEPARTMENT)
   };
 }
 
@@ -735,17 +789,62 @@ export function validateAppointmentStatusInput(input = {}) {
   }
   return {
     expectedRevision,
-    status: requiredEnum(input.status, APPOINTMENT_STATUSES, "status")
+    status: requiredAppointmentStatus(input.status, "status")
   };
 }
 
+// 状態の名前を確かめ、古い値は新しい値に読み替える。再計待は派生なので選べない。
+function requiredAppointmentStatus(value, field) {
+  if (APPOINTMENT_DERIVED_STATUSES.includes(String(value ?? "").trim())) {
+    throw validationError(`${field} ${value} is derived from billing and cannot be set`, field);
+  }
+  return normalizeAppointmentStatus(requiredEnum(value, APPOINTMENT_STATUSES, field));
+}
+
+// どこからどこへでも移れる。保存できない値（派生・古い値）への変更だけを拒む。
 export function assertAppointmentTransition(from, to) {
-  if (!(APPOINTMENT_TRANSITIONS[from] || []).includes(to)) {
+  if (!(APPOINTMENT_TRANSITIONS[from] || STORABLE_APPOINTMENT_STATUSES).includes(to) && normalizeAppointmentStatus(from) !== to) {
     const error = validationError(`appointment cannot move from ${from} to ${to}`, "status");
     error.name = "ConflictError";
     error.statusCode = 409;
     throw error;
   }
+}
+
+// 診察終了（確定 → 受付の状態を進める → 次の患者）。nextStatus の既定は会計待。
+export function validateCloseEncounterInput(input = {}) {
+  const expectedRevision = Number(input.expectedRevision);
+  if (!Number.isInteger(expectedRevision) || expectedRevision < 1) {
+    throw validationError("expectedRevision must be a positive integer", "expectedRevision");
+  }
+  const nextStatus = input.nextStatus === undefined || input.nextStatus === null || input.nextStatus === ""
+    ? "checkout"
+    : requiredAppointmentStatus(input.nextStatus, "nextStatus");
+  if (nextStatus === "cancelled") throw validationError("a visit with a chart cannot be cancelled", "nextStatus");
+  return {
+    expectedRevision,
+    nextStatus,
+    appointmentId: optionalString(input.appointmentId, "appointmentId", MAX_SHORT_TEXT)
+  };
+}
+
+// 1 人分の会計連携。
+export function validateBillingSendInput(input = {}) {
+  return {
+    date: requiredDate(input.date, "date"),
+    encounterId: requiredString(input.encounterId, "encounterId", MAX_SHORT_TEXT),
+    appointmentId: optionalString(input.appointmentId, "appointmentId", MAX_SHORT_TEXT)
+  };
+}
+
+// 予約状況（週 × 時間）の期間。両端を含み、最大 MAX_APPOINTMENT_RANGE_DAYS 日。
+export function validateAppointmentRangeInput(input = {}) {
+  const from = requiredDate(input.from, "from");
+  const to = requiredDate(input.to, "to");
+  if (to < from) throw validationError("to must be on or after from", "to");
+  const days = Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000) + 1;
+  if (days > MAX_APPOINTMENT_RANGE_DAYS) throw validationError(`the range must be at most ${MAX_APPOINTMENT_RANGE_DAYS} days`, "to");
+  return { from, to, days, doctorMemberId: optionalString(input.doctorMemberId, "doctorMemberId", MAX_SHORT_TEXT) };
 }
 
 export function validationError(message, field) {

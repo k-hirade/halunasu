@@ -15,7 +15,7 @@ export const CONSULT_STAGES = [
 
 // 受付の段階（色の帯に使う）。受付の groupOf と同じ。
 export function flowGroupOf(item, encountersByPatient = {}, now = Date.now()) {
-  if (["done", "cancelled", "no_show"].includes(item.status)) return "finished";
+  if (["done", "cancelled", "absent", "no_show"].includes(item.status)) return "finished";
   const encounter = encountersByPatient[item.patientId];
   if (["checked_in", "in_exam", "waiting_doctor"].includes(item.status) && encounter?.dilationStartedAt
     && minutesSince(encounter.dilationStartedAt, now) < DILATION_READY_MINUTES) return "dilating";
@@ -26,7 +26,7 @@ export function consultStageOf(item, encountersByPatient = {}, now = Date.now())
   const group = flowGroupOf(item, encountersByPatient, now);
   if (group === "waiting_doctor") return "waiting";
   if (group === "in_consult") return "consult";
-  if (["checked_in", "in_exam", "dilating"].includes(group)) return "soon";
+  if (["checked_in", "in_exam", "in_treatment", "dilating"].includes(group)) return "soon";
   if (group === "booked") return "booked";
   return null;
 }
