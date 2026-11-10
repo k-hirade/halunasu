@@ -2160,3 +2160,198 @@
     padding: 6px;
   }
 }
+
+/* ==== 検査入力のレスポンシブの調整（C 領域） ==== */
+
+/* 横にスクロールする枠（大タブ・視力の表）: 右に続きがあるときだけ、右端に影を出す。
+ * 影は外側の枠の ::after に描く（スクロールする枠に mask を掛けると、中のテンキーのシートまで切れるため）。 */
+.rd-tabs-frame,
+.rd-grid-frame {
+  min-width: 0;
+  position: relative;
+}
+
+.rd-tabs-frame::after,
+.rd-grid-frame::after {
+  background: linear-gradient(to left, rgba(15, 23, 42, 0.16), transparent);
+  bottom: 0;
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  right: 0;
+  top: 0;
+  transition: opacity 0.15s;
+  width: 18px;
+  z-index: 2;
+}
+
+.rd-tabs-frame:has(> .rd-tabs[data-more-right])::after,
+.rd-grid-frame:has(> .rd-grid-scroll[data-more-right])::after {
+  opacity: 1;
+}
+
+/* 大タブ: 768px 以上は 11 個を 1 行に均等に並べる（8 個と 3 個、「その他」だけ 2 段目、にならない） */
+@media (min-width: 768px) {
+  .rd-tabs {
+    grid-auto-columns: minmax(0, 1fr);
+    grid-auto-flow: column;
+    grid-template-columns: none;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .rd-tab {
+    font-size: var(--fs-sm);
+    padding: 4px 2px;
+  }
+}
+
+/* 767px 以下は 1 行の横スクロール（3 段で 150px 以上を使っていた） */
+@media (max-width: 767px) {
+  .rd-tabs {
+    display: flex;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .rd-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .rd-tab {
+    flex: 0 0 auto;
+    min-width: 64px;
+    padding: 4px 12px;
+    white-space: nowrap;
+  }
+}
+
+/* 右側のカード（本日の検査・散瞳・申し送り）は 3 列のときも中身の高さにする */
+.rd-side {
+  align-items: start;
+}
+
+/* 検者: 名前が切れないよう広げる（全文は title でも見られる） */
+.input.rd-examiner {
+  width: 220px;
+}
+
+@media (max-width: 639px) {
+  .rd-record-field:has(> .rd-examiner) {
+    flex: 1 1 180px;
+    min-width: 0;
+  }
+
+  .rd-record-field > .input.rd-examiner {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: auto;
+  }
+}
+
+/* 下のバー: 1920 などの広い画面では、中身を本文と同じ 1440px の幅で中央に置く */
+@media (min-width: 1024px) {
+  .exam-bar.rd-bar {
+    padding-left: max(20px, calc((100% - 1440px) / 2));
+    padding-right: max(20px, calc((100% - 1440px) / 2));
+  }
+}
+
+/* テンキーの「キー入力」「クリア」を 1 行に収める（56px の列） */
+.num-pad .num-key.is-text {
+  font-size: var(--fs-xs);
+  padding: 0 2px;
+  white-space: nowrap;
+}
+
+/* スマホ: 視力の表は横にスクロールしても「遠見/近見」と R/L の列を左に残す */
+@media (max-width: 639px) {
+  .rd-grid-scroll .rd-grid thead th:first-child,
+  .rd-grid-scroll .rd-grid .rd-distance,
+  .rd-grid-scroll .rd-grid .rd-eye {
+    left: 0;
+    position: sticky;
+    z-index: 1;
+  }
+
+  .rd-grid-scroll .rd-grid .rd-eye {
+    background: var(--surface);
+    box-shadow: inset -1px 0 0 var(--line-strong);
+    left: 32px;
+  }
+
+  .rd-grid-scroll .rd-row.is-ou .rd-eye {
+    background: var(--surface-muted);
+  }
+
+  /* フォーカス・scrollIntoView で欄を送るとき、左に固定した 2 列（32 + 34px）の下に潜らせない */
+  .rd-grid-scroll {
+    scroll-padding-left: 70px;
+  }
+}
+
+/* 機器の値の ‹ › は、PC でも 32px 角を確保する */
+.rd-device-step .btn {
+  min-width: 32px;
+}
+
+/* シートのときは欄を手前に出さない（z-index があるとヘッダーより上に描かれ、メニューや検索を覆う）。
+ * シート自体は fixed・z-index 60 で、ヘッダーの下からバーの上までに収まる。 */
+@media (max-width: 639px), (pointer: coarse), (max-height: 600px) {
+  .num-field.is-pad-open {
+    z-index: auto;
+  }
+}
+
+/* 高さの低い画面（スマホ横）: 記録の行と大タブを詰め、入力欄を最初の画面に入れる */
+@media (max-height: 500px) {
+  .rd-record-row {
+    gap: 4px 12px;
+    padding: 2px 8px;
+  }
+
+  .rd-records {
+    margin-top: 4px;
+  }
+
+  .rd-layout {
+    margin-top: 6px;
+  }
+
+  .rd-tab {
+    min-height: 36px;
+  }
+
+  .rd-subtab {
+    min-height: 36px;
+  }
+
+  .rd-panel {
+    padding: 6px 10px 10px;
+  }
+
+  /* 小タブが 1 つだけ（視力の「自覚検査」など）のときは、小タブの行を省く（パネルの見出しと同じ文字） */
+  .rd-subtabs:has(> .rd-subtab:only-child) {
+    display: none;
+  }
+
+  .rd-panel-title {
+    font-size: var(--fs-md);
+    margin-bottom: 4px;
+  }
+}
+
+/* データ表示: 値が折り返したとき、2 行目以降を字下げして続きだと分かるようにする */
+.rd-data-block p {
+  padding-left: calc(6px + 4ch);
+  text-indent: -4ch;
+}
+
+/* 高さの低い画面: 下のバーを 1 段に保つため「…は未入力です」の注記は省く（同じことはバーの R/L の状態で分かる） */
+@media (max-height: 500px) {
+  .rd-page .exam-bar-hint {
+    display: none;
+  }
+}

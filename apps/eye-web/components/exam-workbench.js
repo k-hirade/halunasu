@@ -14,7 +14,7 @@ import {
 import { SaveIndicator } from "./encounter-dialogs";
 import { DilationFlags, hasExamValues, Orders } from "./encounter-sections";
 import { VaDatalist } from "./exam-inputs";
-import { copyDeviceValues, DevicePanels, EXAM_TABS, ExamTabBody, tabHasValues, writeValue } from "./exam-regdata";
+import { copyDeviceValues, DevicePanels, EXAM_TABS, ExamTabBody, tabHasValues, useScrollEdge, writeValue } from "./exam-regdata";
 import { PatientBanner } from "./patient-banner";
 import { useEncounterDraft } from "./use-encounter-draft";
 import { useMeasuredHeight } from "./use-measured-height";
@@ -49,6 +49,8 @@ export function ExamWorkbench({ encounterId }) {
   const coarse = useMediaQuery("(pointer: coarse)", false);
   // 下の固定バーの高さ（段数で変わる）を本文の下の余白に使う
   const examBarRef = useMeasuredHeight("--exam-bar-h");
+  // スマホでは大タブが 1 行の横スクロールになる。続きがあることを右端の影で知らせる
+  const tabsRef = useScrollEdge();
   const [now, setNow] = useState(Date.now());
   const [matches, setMatches] = useState(null);
   const [busy, setBusy] = useState("");
@@ -331,7 +333,7 @@ export function ExamWorkbench({ encounterId }) {
         </label>
         <label className="rd-record-field">
           <span className="rd-record-label">検者</span>
-          <input aria-label="検者" className="input rd-examiner" maxLength={100} onChange={(event) => setForm({ ...form, examinerName: event.target.value })} value={form.examinerName} />
+          <input aria-label="検者" className="input rd-examiner" maxLength={100} onChange={(event) => setForm({ ...form, examinerName: event.target.value })} title={form.examinerName || undefined} value={form.examinerName} />
         </label>
         <button className="btn btn-primary rd-register" disabled={!canRegister || busy !== ""} onClick={register} title={selectedId ? "選んでいる記録を更新します" : "この時刻の記録を1件追加します"} type="button">
           {busy === "register" ? "登録中…" : "登録"}
@@ -362,21 +364,23 @@ export function ExamWorkbench({ encounterId }) {
 
       <div className="rd-layout">
         <section className="rd-main" aria-label="検査">
-          <div aria-label="検査の種類" className="rd-tabs" role="tablist">
-            {EXAM_TABS.map((item) => (
-              <button
-                aria-controls="rd-panel"
-                aria-selected={item.key === activeTab.key}
-                className={`rd-tab${tabHasValues(item.key, form.values) ? " has-values" : ""}`}
-                id={`rd-tab-${item.key}`}
-                key={item.key}
-                onClick={() => setTab(item.key)}
-                role="tab"
-                type="button"
-              >
-                {item.label}
-              </button>
-            ))}
+          <div className="rd-tabs-frame">
+            <div aria-label="検査の種類" className="rd-tabs" ref={tabsRef} role="tablist">
+              {EXAM_TABS.map((item) => (
+                <button
+                  aria-controls="rd-panel"
+                  aria-selected={item.key === activeTab.key}
+                  className={`rd-tab${tabHasValues(item.key, form.values) ? " has-values" : ""}`}
+                  id={`rd-tab-${item.key}`}
+                  key={item.key}
+                  onClick={(event) => { setTab(item.key); event.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" }); }}
+                  role="tab"
+                  type="button"
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
           </div>
           {activeTab.subtabs ? (
             <div aria-label={`${activeTab.label}の検査`} className="rd-subtabs" role="tablist">

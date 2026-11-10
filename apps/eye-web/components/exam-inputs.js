@@ -50,10 +50,30 @@ export function moveToNextOnEnter(event) {
 // （シートのときは CSS で fixed になるので、usePopoverPlacement は何もしない）。
 export const KEYPAD_SHEET_QUERY = "(max-width: 639px), (pointer: coarse), (max-height: 600px)";
 
-// シートのときは入力欄が隠れないよう、欄を画面の上の方へ送る。
+// シートのときは入力欄が隠れないよう、欄をヘッダーとシートの間の中ほどへ送る。
+// シートが描かれてから（2 フレーム後）上端を測る。横にスクロールする表の中の欄は、横も見える位置へ送る。
 function revealAboveSheet(input) {
   if (!input || typeof window === "undefined" || !window.matchMedia(KEYPAD_SHEET_QUERY).matches) return;
-  requestAnimationFrame(() => input.scrollIntoView({ block: "start", behavior: "smooth" }));
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const sheet = input.closest(".num-field")?.querySelector(".num-pad, .va-picker");
+    const navHeight = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--nav-h")) || 0;
+    const top = navHeight + 8;
+    const bottom = (sheet ? sheet.getBoundingClientRect().top : window.innerHeight) - 8;
+    const scroller = input.closest(".rd-grid-scroll");
+    if (scroller && scroller.scrollWidth > scroller.clientWidth) {
+      // 左に固定した見出しの列（遠見/近見・R/L）の分だけ、左端をずらして見る
+      const sticky = scroller.querySelector(".rd-eye");
+      const stickyRight = sticky ? sticky.getBoundingClientRect().right : scroller.getBoundingClientRect().left;
+      const box = input.getBoundingClientRect();
+      const viewRight = scroller.getBoundingClientRect().right;
+      if (box.left < stickyRight) scroller.scrollLeft -= stickyRight - box.left + 4;
+      else if (box.right > viewRight) scroller.scrollLeft += box.right - viewRight + 4;
+    }
+    const rect = input.getBoundingClientRect();
+    if (rect.top >= top && rect.bottom <= bottom) return;
+    const target = top + Math.max(0, (bottom - top - rect.height) / 2);
+    window.scrollBy({ top: rect.top - target, behavior: "smooth" });
+  }));
 }
 
 // 数値の入力欄。value は保存値（数値または null）、onCommit で保存値を更新する。
