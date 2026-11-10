@@ -917,23 +917,35 @@ fieldset:disabled .input::placeholder {
   font-size: var(--fs-sm);
 }
 
-/* ダイアログ */
+/* ダイアログ
+ * 画面より高くならないよう、高さは画面の高さ（100dvh: スマホのツールバー・横向きも含めて見えている高さ）までにし、
+ * 中をスクロールさせる。下のボタン（.dialog-actions）はスクロール中も下端に残す。
+ * 背景の枠も、念のためスクロールできるようにする（safe center: 入りきらないときは上端からそろえ、上が切れない）。
+ * 余白を変えるダイアログは --dialog-pad-y / --dialog-pad-x を変える（.dialog-actions の下端の合わせに使う）。 */
 .dialog-backdrop {
   align-items: center;
+  align-items: safe center;
   background: rgba(15, 23, 42, 0.42);
   display: flex;
   inset: 0;
   justify-content: center;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 16px;
   position: fixed;
   z-index: 50;
 }
 
 .dialog {
+  --dialog-pad-x: 24px;
+  --dialog-pad-y: 22px;
   background: var(--surface);
   border-radius: 12px;
+  max-height: calc(100dvh - 32px);
   max-width: 520px;
-  padding: 22px 24px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--dialog-pad-y) var(--dialog-pad-x);
   width: 100%;
 }
 
@@ -941,11 +953,21 @@ fieldset:disabled .input::placeholder {
   margin-bottom: 12px;
 }
 
+/* 下の余白（--dialog-pad-y）の分だけ下へ伸ばして下端に貼り付ける。左右の余白は影で同じ色に塗り、
+ * スクロールした本文がボタンの横から透けないようにする（広い画面で収まっているときの見た目は変わらない）。 */
 .dialog-actions {
+  background: var(--surface);
+  bottom: calc(-1 * var(--dialog-pad-y, 22px));
+  box-shadow: calc(-1 * var(--dialog-pad-x, 24px)) 0 0 var(--surface), var(--dialog-pad-x, 24px) 0 0 var(--surface);
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
+  margin-bottom: calc(-1 * var(--dialog-pad-y, 22px));
   margin-top: 16px;
+  padding-bottom: var(--dialog-pad-y, 22px);
+  position: sticky;
+  z-index: 1;
 }
 
 /* 印刷（シェーマの並び。印刷画面の枠と紙面は styles/print.css） */
@@ -1265,7 +1287,7 @@ fieldset:disabled .input::placeholder {
 }
 
 .dialog.dialog-wide {
-  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
   max-width: 820px;
   overflow-y: auto;
 }
@@ -1543,7 +1565,7 @@ fieldset:disabled .input::placeholder {
 
 /* 画像・ファイル */
 .dialog.dialog-viewer {
-  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
   max-width: 1000px;
   overflow-y: auto;
 }

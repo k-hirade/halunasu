@@ -1936,7 +1936,7 @@
 .dialog.rd-data-dialog {
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - 48px);
+  max-height: calc(100dvh - 32px);
   max-width: 720px;
 }
 

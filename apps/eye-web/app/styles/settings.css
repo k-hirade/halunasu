@@ -361,7 +361,7 @@
   border-radius: var(--radius);
   box-shadow: 0 24px 48px rgba(15, 23, 42, 0.28);
   left: 50%;
-  max-height: calc(100vh - 48px);
+  max-height: calc(100dvh - 48px);
   overflow-y: auto;
   position: fixed;
   top: 24px;
