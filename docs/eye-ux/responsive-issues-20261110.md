@@ -746,3 +746,84 @@
 - 共通の原因 1〜6 は、領域ごとの担当が別々に直すと衝突します。共通の担当が先に直すか、`globals.css`・共有のダイアログ・メニューの部品を誰が直すかを先に決めてください。
 - 直した後は、同じコマンド（`--viewports responsive`）で撮り直し、`responsive-summary.txt` の件数と、この文書の各スクショ名に当たる画面を見比べてください。
 - 領域だけを撮り直すには、`--pages "editor*"` のように後ろに `*` を付けて、前方一致で指定します。
+
+## 共通部分の修正（済）
+
+ブランチ `feat/responsive-shared` で、共通の原因 1〜6 を共通の部分だけで直しました。各領域の担当は、下の部品と CSS 変数を使って、残りの画面ごとの項目を直してください。
+
+### 直したこと
+
+1. **ダイアログの高さの上限**（app/globals.css の「ダイアログ」）
+   - `.dialog`: `max-height:calc(100dvh - 32px)`、中をスクロール（`overflow-y:auto`）。
+   - `.dialog-backdrop`: `align-items:safe center`、`overflow-y:auto`。
+   - `.dialog-actions`: スクロール中も下端に残る（sticky）、折り返す（`flex-wrap:wrap`）。下端の合わせに `--dialog-pad-y` / `--dialog-pad-x`（既定 22px / 24px）を使います。余白を変えるダイアログは、`padding` ではなくこの 2 つの変数を変えてください（`.dialog.ps-dialog` はそうしました）。
+   - 100vh で上限を決めていたもの（`.dialog-wide`・`.dialog-viewer`・`.rd-data-dialog`・設定の `.master-panel`）は 100dvh に、概要シート `.cl-sheet` は `min(82vh, calc(100dvh - var(--nav-h)))` にしました。
+   - 引き出し（`.chart-left` / `.chart-right`）・ヘッダーのメニュー・受付の絞り込みは、もともと端までスクロールできるので変えていません。
+2. **チェックボックスとラジオの幅**（app/globals.css）
+   - `input:where([type=checkbox],[type=radio])` と `.field input:where(…)` を `width:auto; flex:0 0 auto; padding:0` にしました。packages/web-ui は変えていません。詳細度は共通 CSS と同じなので、各画面の `.xx input{width:18px}` などはそのまま効きます。
+   - chart-editor.css の `.chart-page input[type="checkbox"]` は、もう要りません（消しても同じ見た目です）。
+3. **下の固定バーの高さ**
+   - 新しいフック `useMeasuredHeight(変数名)`（components/use-measured-height.js）。返り値を `ref` に渡すと、その要素の高さ（枠線・安全領域の余白を含む）を `:root` の CSS 変数に書き込み、ResizeObserver で追いかけます。外れたときは変数を消します。
+   - `--actionbar-h`: カルテの操作帯（encounter-editor.js）。767px 以下の `.chart-page` の `padding-bottom: calc(var(--actionbar-h, 72px) + 8px)`。
+   - `--exam-bar-h`: 検査入力の下のバー（exam-workbench.js）。`.eye-page.rd-page` の `padding-bottom: calc(var(--exam-bar-h, 150px) + 16px)`。
+   - C-1 の原因（globals.css の `.eye-page{padding}` が後から効いて `.rd-page` の余白を消していた）は、選択子を `.eye-page.rd-page` にして直しました。ほかの画面で同じことをするときも、`.eye-page.xx-page` と 2 つ並べてください。
+   - 2 つのバーには `data-fixed-bar="bottom"` を付けました。下のポップオーバーの位置合わせが、この属性の付いた fixed の要素を避けます。患者ページの `.pt-actions` など、ほかの固定バーにも付けると同じように扱われます。
+4. **ポップオーバーの位置合わせ**（components/popover-placement.js）
+   - 開いたときに位置を測り、CSS の既定の位置で画面（とスクロール枠）に収まれば何もしません。収まらないときだけ、`position:fixed` にして親のスクロール枠の外へ出し、上下の向き・左右の寄せを切り替え、画面の中に寄せ、入らない高さは `max-height` にして中をスクロールさせます。幅は既定の位置での幅のままです。固定ヘッダーと `data-fixed-bar` のバーには重ねません。スクロール・画面の大きさの変化では置き直します。置いた向きは `data-placement="up|down"` で分かります。
+   - `<PopoverAutoPlacement />` を app/layout.js に 1 回だけ置きました。`details.more-menu > .more-menu-list` と `details[data-popover] > [data-popover-panel]` は、部品を変えなくても自動で合わせます。
+   - details 以外は `usePopoverPlacement(panelRef, open, { anchorRef, disabled })` を使います（テンキー・視力の選択で使用）。関数の `placePopover(panel, { anchor })` / `resetPopover(panel)` も使えます。
+   - CSS で `position:fixed` にしているもの（スマホの下のシートなど）には触りません。
+   - `.more-menu-list` は `white-space:normal` にし、表の td の nowrap を受け継がないようにしました（A-2 の横一列）。
+   - 会計連携の「?」（`.bill-help`）に `data-popover` / `data-popover-panel` を付けました。
+   - テンキー・視力の選択は、`(max-width:639px), (pointer:coarse), (max-height:600px)` で画面下のシートにします。条件は exam-inputs.js の `KEYPAD_SHEET_QUERY` と exam.css の末尾の @media でそろえています。シートは `max-height:calc(100dvh - var(--nav-h) - 16px)`、幅は最大 560px で中央です。`.rd-grid .input` にも `scroll-margin-top` を付けました（C-3 の前半）。
+5. **高さ 500px 以下（スマホ横）の詰め**（app/globals.css の末尾）
+   - 患者バナーは 1 行にしました（氏名とフラグを横に並べ、カナと生年月日の行は省きます）。
+   - カルテ・検査入力・患者ページの下のバーは余白とボタンの高さ（36px）を詰め、検査入力のバーは 1 段にしました。
+   - ページの見出しを `--fs-lg` に、設定の編集パネルの見出しと下のボタン、印刷の帯、ダイアログの余白も詰めました。
+   - ログインの説明の帯は約 48px にしました（キャッチコピーは隠します）。
+   - テンキーのキーは 36px にしました。
+6. **タッチ端末のタップ領域**（app/globals.css の末尾の `@media (pointer:coarse)`）
+   - 40px 以上にしたもの: `.btn-chip`・`.btn-sm`・`.segmented button`・`.segmented-option`・`.input`。チップと選択肢は、幅も 36px 以上にしました。
+   - 36px 以上にしたもの: `.col-tool`・`.num-pad-close`・`.master-panel-close`・すべての `summary`・`.link-button`・`.back-link`・`.eh-brand`。
+   - `:is(.x, #_)` で ID 1 個分の詳細度を足しているので、画面側の CSS の小さい `min-height` には負けません。逆に、画面側でこれより小さくしたいときは、同じ書き方が必要です。
+   - 入力欄の最小の高さは、タッチ端末で 44px から 40px にそろいました。
+
+### 確認
+
+- 撮影: `node scripts/ui-audit.mjs --viewports responsive --no-full --pages "<24 の状態>"`。対象は editor・editor-status・editor-rp・editor-rp-menu・editor-more・editor-print-menu・editor-dx-edit・editor-bottom・exam・exam-iop・exam-keypad・exam-bottom・reception・reception-rowmenu・billing・billing-help・password-error・patient-upload・login・settings-sets-edit・settings-audit・document・patient・header-help です。
+- 同じ状態・同じ幅で、修正前の件数と比べました。
+  - 画面外: 7 → 0
+  - スクロールできない枠: 8 → 0
+  - 覆われた操作: 122 → 0
+  - 小さいタップ領域: 5,238 → 1,948
+  - overflow による切れ（6）は変わっていません。
+- 1366x768・1024x768・768x1024・390x844・844x390 の画面を目で確認しました。1280 以上の PC の見た目（カルテ・受付）は変わっていません。
+- `node --test test/*.test.mjs`、`node scripts/next-ui-smoke.mjs`、`npx next build` はすべて通りました。smoke には、操作帯の「…」と印刷のメニューが 1024・390 で画面に収まること、844x390 でショートカットのダイアログとボタンが画面に収まることの確認を足しました。
+
+### 各項目の状態
+
+- **共通の修正だけで解決したもの**（画面ごとの作業は要りません）
+  - A-1、A-2、A-17
+  - B-1（ステータスを 2〜3 列の grid にする案は任意）、B-7、B-8、B-9
+  - C-1、C-2、C-19
+  - D-2
+- **一部が解決し、画面ごとの作業が残るもの**
+  - **B-6**: 位置（上向き・寄せ・切れ）は解決しました。残りは次の 2 点です。
+    - 回数のチップが 1 行ずつ縦に並ぶこと（`.usage-list .btn.btn-chip{width:auto}`）。
+    - `.usage-list{min-width:260px}` が globals.css の `.more-menu-list{min-width:160px}` に上書きされていること（読み込み順）。直すには `.more-menu-list.usage-list` にします。
+  - **B-11**: バナーの 1 行化とバーの詰めは済みました。残りは次の 2 点です。
+    - `@media (max-height:500px)` で、767px 以下と同じ「ページ全体のスクロール＋左右は引き出し」に切り替えること。
+    - シェーマのキャンバスの高さ。
+  - **B-12**: 下の余白は、操作帯の実際の高さで足りるようになりました。残りは、操作帯を 1 段にすること（送信を「…」へ移す）と、スマホのバナーを詰めることです。
+  - **C-3**: `scroll-margin-top` は付けました。残りは `.num-field.is-pad-open` の z-index（ヘッダーより上に出る）と、`block:"center"` にすることです。
+  - **C-4**: バーは 1 段（約 45px）になりました。残りは、上の記録の行と大タブの 2 段（C-12）、スマホのタブを横スクロールにすることです。
+  - **D-13**: 見出しと下のボタンの余白は詰めました。本文の高さが足りるかを、画面ごとに確認してください。
+  - **A-12・B-14・C-21・D-21**（タップ領域）: 共通の部品は直りました。次は画面ごとのクラスなので、各領域で直してください。
+    - (A) `select.rc-status`（`.input` が付いていない）、`.bk-slot`
+    - (B) `.rp-x`、`.drug-check`、`.exam-cell-button`、`summary.rp-badge` / `.usage-pill` の見た目（高さは 36px になりました）
+    - (C) 経過グラフの `g[role=button]`（透明の当たり判定）
+    - (D) `.audit-patient a`、`.flow-group-toggle`、`.set-tree-toggle`
+- **まだ手を付けていないもの**
+  - D-1（文書の「カルテから挿入」のシート）は共通の範囲の外です。シートの中を 1 つのスクロール領域にまとめる作業が要ります。
+  - A-15（検索モーダルの上寄せ）は、`.dialog-backdrop` の既定は変えずに、検索モーダルだけで直してください。
+  - そのほかの項目も、それぞれの領域で直してください。
