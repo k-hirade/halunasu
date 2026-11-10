@@ -2631,3 +2631,205 @@ kbd {
     text-align: right;
   }
 }
+
+/* ---- 高さの低い画面（スマホ横・高さ 500px 以下）: 上下の固定の帯を詰め、本文の高さを残す ----
+ * 患者バナーは 1 行（氏名＋フラグ。カナ・生年月日の行は省く）、操作の帯は余白を詰めて 1 段にし、見出しを小さくする。
+ * 画面ごとの配置の切り替え（カルテを縦スクロールにするなど）は各画面の CSS で行う。 */
+@media (max-height: 500px) {
+  .eye-page {
+    padding-top: 8px;
+  }
+
+  .page-head,
+  .patient-head {
+    margin-bottom: 8px;
+  }
+
+  .page-head h1,
+  .patient-head h1 {
+    font-size: var(--fs-lg);
+  }
+
+  .page-sub {
+    margin-top: 0;
+  }
+
+  /* 患者バナー（カルテ・検査入力・患者ページ） */
+  .patient-banner {
+    align-items: center;
+    gap: 8px;
+  }
+
+  .patient-banner-main {
+    align-items: center;
+    column-gap: 12px;
+    display: flex;
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+
+  .patient-banner-name .kana,
+  .patient-banner-name .patient-banner-line {
+    display: none;
+  }
+
+  .patient-banner.is-compact h1 {
+    font-size: var(--fs-lg);
+  }
+
+  .chart-page .encounter-bar.chart-topbar,
+  .exam-page .exam-banner {
+    padding-bottom: 4px;
+    padding-top: 4px;
+  }
+
+  /* 下の操作帯（カルテ・検査入力・患者ページ） */
+  .chart-actionbar,
+  .exam-bar,
+  .pt-page .pt-actions {
+    padding-bottom: calc(4px + env(safe-area-inset-bottom));
+    padding-top: 4px;
+  }
+
+  .chart-actionbar .btn.btn,
+  .exam-bar .btn.btn,
+  .pt-page .pt-actions .btn.btn {
+    min-height: 36px;
+    padding-bottom: 4px;
+    padding-top: 4px;
+  }
+
+  /* 検査入力の下のバー: 状態の行とボタンの行を 1 段に並べる（広い画面と同じ並び） */
+  .rd-bar {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+  }
+
+  .rd-bar .exam-bar-row {
+    flex: 0 1 auto;
+    margin: 0;
+    order: 1;
+  }
+
+  .rd-bar .exam-bar-row .exam-bar-spacer {
+    display: none;
+  }
+
+  .rd-bar .rd-bar-buttons {
+    flex: 1;
+    margin: 0;
+    order: 2;
+  }
+
+  .rd-bar .rd-bar-buttons .btn.btn {
+    font-size: var(--fs-sm);
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  /* 設定の編集ダイアログの見出しと下のボタン、印刷の帯 */
+  .master-panel-head {
+    padding-bottom: 4px;
+    padding-top: 4px;
+  }
+
+  .master-panel-actions {
+    padding-bottom: 6px;
+    padding-top: 6px;
+  }
+
+  .print-bar {
+    padding-bottom: 4px;
+    padding-top: 4px;
+  }
+
+  /* ダイアログの余白を詰める */
+  .dialog {
+    --dialog-pad-x: 18px;
+    --dialog-pad-y: 12px;
+  }
+
+  .dialog-backdrop {
+    padding: 8px;
+  }
+
+  .dialog.dialog {
+    max-height: calc(100dvh - 16px);
+  }
+
+  .dialog h2 {
+    margin-bottom: 8px;
+  }
+
+  .dialog-actions {
+    margin-top: 10px;
+  }
+
+  /* ログイン（共通部品）: 説明の帯を 1 行にしてフォームを先に見せる */
+  .operator-gate-brand {
+    min-height: 0;
+    padding: 8px 24px;
+  }
+
+  .operator-gate-pitch {
+    display: none;
+  }
+
+  .operator-gate-mark {
+    height: 32px;
+    width: 32px;
+  }
+
+  .operator-gate-form-area {
+    padding: 12px 16px 24px;
+  }
+
+  .operator-gate-card {
+    gap: 12px;
+    padding: 18px 20px;
+  }
+}
+
+/* ---- タッチ端末の最小のタップ領域 ----
+ * 各画面の CSS が小さい高さ（28〜32px）を指定していても、指で押せる大きさを確保する。
+ * :is(…, #_) は ID 1 個分の詳細度を足すための書き方（#_ はどの要素にも当たらない）。画面側の
+ * .xx .btn.btn-chip { min-height:28px } などより確実に優先させるために使い、!important は使わない。
+ * 値は最小値なので、元から大きい部品は変わらない（入力欄だけは 44px → 40px にそろう）。 */
+@media (pointer: coarse) {
+  .input:is(.input, #_) {
+    min-height: 40px;
+  }
+
+  /* 1 文字のチップ（‹ › ? R L 両 など）は幅も確保する */
+  .btn.btn-chip:is(.btn-chip, #_),
+  .btn.btn-sm:is(.btn-sm, #_),
+  .segmented button:is(button, #_),
+  .segmented-option:is(.segmented-option, #_) {
+    min-height: 40px;
+    min-width: 36px;
+  }
+
+  .col-tool:is(.col-tool, #_),
+  .num-pad-close:is(.num-pad-close, #_),
+  .master-panel-close:is(.master-panel-close, #_) {
+    min-height: 36px;
+    min-width: 36px;
+  }
+
+  /* 開閉の summary・文字のボタン・戻るリンク・ロゴ: 高さだけ確保し、文字は上下の中央に置く */
+  summary:is(summary, #_),
+  .link-button:is(.link-button, #_),
+  .back-link:is(.back-link, #_),
+  .eh-brand:is(.eh-brand, #_) {
+    align-content: center;
+    min-height: 36px;
+  }
+
+  .link-button:is(.link-button, #_),
+  .back-link:is(.back-link, #_),
+  .eh-brand:is(.eh-brand, #_) {
+    min-width: 36px;
+    text-align: center;
+  }
+}
