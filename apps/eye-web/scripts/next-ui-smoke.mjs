@@ -1486,6 +1486,8 @@ async function runReceptionResponsiveChecks(browser) {
     return box;
   };
   await login(page, "clerk");
+  // 二段階認証の確認が済んでヘッダーが出るまで待ってから移る（すぐに移るとログイン画面に戻ることがある）
+  await page.locator("header.eh").waitFor();
   await page.goto(`${baseUrl}/reception`);
   const table = page.getByRole("table", { name: "受付一覧" });
   const firstRow = page.locator(".rc-row").first();
