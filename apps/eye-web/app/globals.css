@@ -164,6 +164,16 @@ table {
   font-variant-numeric: tabular-nums;
 }
 
+/* 共通 CSS（halunasu-ui.css）の input / .field input { width:100% } を、チェックボックスとラジオでは打ち消す。
+ * 幅 100% のままだと、横並びのラベルの中で文字の幅を奪い、ラベルが 1〜2 字ずつ縦に折り返す。
+ * :where で詳細度を input / .field input と同じにし、各画面の .xx input { width:18px } などは今まで通り効かせる。 */
+input:where([type="checkbox"], [type="radio"]),
+.field input:where([type="checkbox"], [type="radio"]) {
+  flex: 0 0 auto;
+  padding: 0;
+  width: auto;
+}
+
 h1,
 h2,
 h3 {
