@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useEyeApi } from "./eye-api";
+import { FACILITY_CHANGED_EVENT } from "./patient-search";
 import { SectionHead, SettingsDialog } from "./settings-master";
 import { formatDateTime } from "../lib/format";
 import { FACILITY_FIELDS, facilityBaseValue } from "../lib/settings";
@@ -39,6 +40,8 @@ export function FacilitySection({ canEdit }) {
       setData(payload);
       setEditing(null);
       setFlash("医療機関情報を保存しました。これから印刷する紙に反映されます。");
+      // ヘッダーの医療機関名を取り直させる
+      window.dispatchEvent(new CustomEvent(FACILITY_CHANGED_EVENT));
     } catch (nextError) {
       const field = FACILITY_FIELDS.find((item) => item.key === nextError.field);
       setError(field ? `「${field.label}」: ${nextError.message}` : nextError.message);

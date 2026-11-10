@@ -54,7 +54,7 @@
   --fs-md: 14px;
   --fs-lg: 16px;
   --fs-xl: 20px;
-  --nav-h: 56px;
+  --nav-h: 40px;
   --font: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", "Meiryo", sans-serif;
 
   /* 共通 CSS のトークンも眼科側に揃える（ログイン画面などの共通部品も同じ色・暗室表示になる） */
@@ -70,6 +70,13 @@
   --accent-soft: var(--teal-soft);
   --neutral-soft: var(--surface-muted);
   --site-nav-h: var(--nav-h);
+}
+
+/* 電話の幅ではヘッダーのボタンを指で押せる大きさにする（ヘッダーの高さもそれに合わせる） */
+@media (max-width: 767px) {
+  :root {
+    --nav-h: 48px;
+  }
 }
 
 /* 暗室表示（散瞳後の診察や暗い検査室向け） */
@@ -959,7 +966,7 @@ fieldset:disabled .input::placeholder {
 
 @media print {
   .no-print,
-  .site-nav-wrap {
+  .eh {
     display: none !important;
   }
 

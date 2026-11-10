@@ -2,6 +2,7 @@
 // 主要画面を 5 つの画面幅で撮影して、文字サイズ・コントラスト・タップ領域・横あふれを計測する。
 // 診察（/）関連: home（診察）・home-summary（行を選んで概要）・home-tasks（要対応の一覧）・home-dark・search（検索）・register（新規患者登録）・menu
 // 検査入力: exam・exam-dark・exam-iop・exam-gaze・exam-worth。患者: patient・patient-vaiop・patient-dark・images・images-ou・images-series
+// ヘッダー: header・header-editor・header-dark・header-menu（--viewports 1713x900,1440x900 で幅を指定）
 // 受付関連: reception・reception-dark・reception-filter・reception-booking・reception-booking-calendar(-dark)・reception-search・reception-register・reception-schedule(-dark)
 //
 //   node scripts/ui-audit.mjs [--out DIR] [--pages editor,reception]
@@ -22,7 +23,10 @@ const metricsScript = readFileSync(join(root, "scripts/ui-audit-metrics.js"), "u
 const args = parseArgs(process.argv.slice(2));
 const outDir = resolve(args.get("out") || join(tmpdir(), "eye-ui-audit"));
 const onlyPages = args.get("pages") ? new Set(args.get("pages").split(",")) : null;
-const VIEWPORTS = [[1440, 900], [1280, 800], [1024, 768], [768, 1024], [390, 844]];
+// --viewports 1713x900,1440x900 で画面幅を指定できる（既定は下の 5 つ）
+const VIEWPORTS = args.get("viewports")
+  ? args.get("viewports").split(",").map((item) => item.split("x").map(Number))
+  : [[1440, 900], [1280, 800], [1024, 768], [768, 1024], [390, 844]];
 mkdirSync(outDir, { recursive: true });
 
 const [platformPort, eyePort, webPort] = await Promise.all([findOpenPort(), findOpenPort(), findOpenPort()]);
@@ -64,14 +68,16 @@ try {
         await page.goto(baseUrl + path, { waitUntil: "networkidle" }).catch(() => null);
         await page.waitForTimeout(name === "login" ? 1500 : 2500);
         await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
-        // 899px 以下は「メニュー」、それより広い画面は利用者メニュー（暗室表示・ログアウト）を開いて撮る
-        if (name === "menu") await (width < 900 ? page.getByRole("button", { name: "メニュー" }) : page.locator(".nav-user-button")).click();
+        // 767px 以下はヘッダーの「メニュー」、それより広い画面は利用者メニュー（施設管理・暗室表示・ログアウト）を開いて撮る
+        if (name === "menu" || name === "header-menu") await page.locator(width < 768 ? ".eh-menu-button" : ".eh-user-button").click();
+        // 患者検索はヘッダーの虫めがねで開くモーダル
         if (name === "search" || name === "register") {
-          await page.getByLabel("患者検索").fill(name === "register" ? "もぎ" : "模");
+          await page.getByRole("button", { name: "患者検索（/）" }).click();
+          await page.getByRole("dialog", { name: "患者検索" }).getByLabel("検索する語").fill(name === "register" ? "もぎ" : "模");
           await page.waitForTimeout(800);
         }
         if (name === "register") {
-          await page.getByRole("button", { name: /新規患者を登録/u }).click();
+          await page.getByRole("dialog", { name: "患者検索" }).getByRole("button", { name: "新規患者登録" }).click();
           await page.waitForTimeout(800);
         }
         // 診察の一覧: 最初の行を 1 回押して概要を出す（1024px 未満は下からのシート）
@@ -101,7 +107,7 @@ try {
           if (name.startsWith("reception-booking-calendar")) await page.getByRole("dialog", { name: "予約登録" }).getByRole("button", { name: "予約状況" }).click();
         }
         if (name === "reception-search" || name === "reception-register") {
-          await page.getByRole("button", { name: "詳しく検索（受付・予約・編集）", exact: true }).click();
+          await page.getByRole("button", { name: "患者検索（/）" }).click();
           await page.waitForTimeout(800);
           if (name === "reception-register") await page.getByRole("button", { name: "新規患者登録" }).click();
         }
@@ -194,7 +200,7 @@ async function prepare(browser) {
   await page.getByRole("button", { name: "ログイン", exact: true }).click();
   await page.getByLabel("6桁コード").fill(currentLocalTotp());
   await page.getByRole("button", { name: "確認" }).click();
-  await page.getByRole("link", { name: "受付", exact: true }).click();
+  await page.getByRole("link", { name: "受付画面", exact: true }).click();
   // 過去カルテのあるデモ患者で撮る。未受付なら受付してからカルテを開く。
   const row = page.locator(".rc-row", { hasText: "模擬 和子" });
   await row.waitFor();
@@ -320,6 +326,11 @@ async function prepare(browser) {
       "reception-schedule": "/reception/schedule",
       "reception-schedule-dark": "/reception/schedule",
       menu: "/reception",
+      // ヘッダーだけを見る（受付・カルテ・暗室表示・メニューを開いた状態）
+      header: "/reception",
+      "header-editor": encounterPath,
+      "header-dark": "/reception",
+      "header-menu": "/reception",
       images: `${patientHref}/images`,
       "encounter-print": `${encounterPath}/print`,
       "document-print": `${documentPath}/print`,

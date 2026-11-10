@@ -21,6 +21,7 @@ import { getIn, hasExamValues, setIn } from "./encounter-sections";
 import { UploadDialog } from "./files-panel";
 import { StatusTag } from "./home-workspace";
 import { CommonDiagnosesList, PatientBanner, ProfileDialog } from "./patient-banner";
+import { openPatientSearch, SHORTCUT_HELP_EVENT } from "./patient-search";
 import { useEncounterDraft } from "./use-encounter-draft";
 import { useMediaQuery } from "./use-media-query";
 import { addDays, formatDate, formatDateTime, phraseTargetPath, VISIT_TYPE_LABELS } from "../lib/format";
@@ -168,11 +169,9 @@ export function EncounterEditor({ encounterId }) {
         return;
       }
       if (key === "f") {
-        const search = document.querySelector('input[aria-label="患者検索"]');
-        if (search) {
-          event.preventDefault();
-          search.focus();
-        }
+        // ヘッダーの患者検索（モーダル）を開く
+        event.preventDefault();
+        openPatientSearch();
         return;
       }
       if (key === "l" || key === "u") {
@@ -190,6 +189,15 @@ export function EncounterEditor({ encounterId }) {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [openCategory, openLeft, router]);
+  // ヘッダーの［ヘルプ］はこの画面のショートカット一覧を出す
+  useEffect(() => {
+    function onHelp(event) {
+      event.preventDefault();
+      keyActions.current.help();
+    }
+    window.addEventListener(SHORTCUT_HELP_EVENT, onHelp);
+    return () => window.removeEventListener(SHORTCUT_HELP_EVENT, onHelp);
+  }, []);
 
   if (error && !detail) return <main className="eye-page"><p className="alert alert-danger" role="alert">{error}</p></main>;
   if (!detail || !content) return <main className="eye-page"><p className="loading">読み込み中…</p></main>;

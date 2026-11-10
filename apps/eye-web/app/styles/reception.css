@@ -981,52 +981,6 @@ span.ap-value {
   margin-left: 4px;
 }
 
-/* ヘッダーの虫めがね（患者検索のモーダルを開く） */
-.nav-search-open {
-  align-items: center;
-  background: none;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  color: var(--text-soft);
-  cursor: pointer;
-  display: inline-flex;
-  height: 34px;
-  justify-content: center;
-  position: absolute;
-  right: 3px;
-  top: 20px;
-  transform: translateY(-50%);
-  width: 34px;
-}
-
-.nav-search .input.nav-search-input {
-  padding-right: 72px;
-}
-
-.nav-search .nav-search-key {
-  right: 42px;
-}
-
-@media (max-width: 899px) {
-  .nav-search .input.nav-search-input {
-    padding-right: 44px;
-  }
-
-  .nav-search-open {
-    top: 22px;
-  }
-}
-
-.nav-search-open:hover,
-.nav-search-open:focus-visible {
-  border-color: var(--line-strong);
-  color: var(--teal-dark);
-}
-
-.nav-search-detail {
-  border-top: 1px solid var(--line);
-}
-
 /* 患者登録（左に入力、右に似た患者） */
 .dialog.register-dialog.has-side {
   max-width: 860px;

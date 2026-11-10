@@ -1,310 +1,176 @@
 /*
- * ヘッダー（ナビ・患者検索・利用者メニュー）、新規患者登録ダイアログ、ログイン画面の眼科側の指定。
- * 900px 以上: [ブランド] [受付 診察 会計連携 設定] [患者検索 ……] [利用者 ▾]
- * 899px 以下: [ブランド] [患者検索 ……] [メニュー]（項目・暗室表示・ログアウトはメニューの中）
+ * ヘッダー（デジカルと同じ 1 行・高さ 40px・画面の幅いっぱい）と、新規患者登録ダイアログ、ログイン画面の眼科側の指定。
+ * 左: [ロゴ] [画面名] [医療機関名]　右: [受付画面] [患者リスト(診察待の数)] [会計連携] [検索] [ヘルプ] [姓名 ▾]
+ * 1023px 以下はアイコンだけ（文字はツールチップと読み上げ）。767px 以下は [ロゴ] [画面名] …… [検索] [メニュー]
  */
-.site-nav-wrap {
-  /* 共通 CSS の backdrop-filter を消す（残すと中の position: fixed（ダイアログ・検索結果）がヘッダー基準になる） */
-  backdrop-filter: none;
+.eh {
   background: var(--surface);
   border-bottom: 1px solid var(--line);
-  padding: 0;
   position: sticky;
   top: 0;
   z-index: 30;
 }
 
-.site-nav {
+.eh-bar {
   align-items: center;
   display: flex;
-  gap: 16px;
+  gap: 12px;
   height: var(--nav-h);
-  justify-content: flex-start;
-  margin: 0 auto;
-  max-width: 1480px;
-  padding: 0 20px;
-  width: auto;
+  padding: 0 12px;
 }
 
-.site-brand {
+.eh-left {
+  align-items: center;
+  display: flex;
+  flex: 1 1 auto;
+  gap: 10px;
+  min-width: 0;
+}
+
+.eh-brand {
   align-items: center;
   color: inherit;
   display: flex;
   flex: 0 0 auto;
-  gap: 10px;
+  gap: 6px;
   text-decoration: none;
 }
 
-.site-brand-wordmark {
-  font-size: 18px;
-  font-weight: 800;
+.eh-brand-mark {
+  display: block;
+  height: 24px;
+  width: 24px;
 }
 
-.site-nav-product {
-  border-left: 1px solid var(--line);
-  color: var(--text-soft);
+.eh-brand-word {
   font-size: var(--fs-md);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.eh-screen {
+  border-left: 1px solid var(--line);
+  color: var(--text);
+  flex: 0 0 auto;
+  font-size: var(--fs-lg);
   font-weight: 700;
   padding-left: 10px;
   white-space: nowrap;
 }
 
-.site-nav-menu {
+.eh-clinic {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.eh-right,
+.eh-tools {
   align-items: center;
   display: flex;
   flex: 0 0 auto;
+  gap: 2px;
 }
 
-/* 主ナビは縮めない（縮むと検索欄の下に隠れて押せなくなる） */
-.eye-nav-links {
-  display: flex;
-  flex: 0 0 auto;
-  gap: 4px;
-}
-
-.eye-nav-link {
+.eh-tool {
   align-items: center;
-  border-radius: 8px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
   color: var(--text-soft);
+  cursor: pointer;
   display: inline-flex;
-  font-size: 15px;
+  font: inherit;
+  font-size: var(--fs-sm);
   font-weight: 700;
-  gap: 6px;
-  min-height: 40px;
-  padding: 6px 12px;
+  gap: 5px;
+  height: 32px;
+  justify-content: center;
+  min-width: 32px;
+  padding: 0 8px;
+  position: relative;
   text-decoration: none;
   white-space: nowrap;
 }
 
-.eye-nav-link:hover {
-  background: var(--surface-muted);
+.eh-tool svg {
+  flex: 0 0 auto;
 }
 
-.eye-nav-link[aria-current="page"] {
+.eh-tool:hover,
+.eh-user-button:hover,
+.eh-user[open] > .eh-user-button {
+  background: var(--surface-muted);
+  border-color: var(--line);
+}
+
+.eh-tool[aria-current="page"] {
   background: var(--teal-soft);
+  border-color: transparent;
   color: var(--teal-dark);
 }
 
 /* 診察待ちの人数（診察待ちの段階と同じ色） */
-.nav-badge {
+.eh-badge {
   background: var(--amber-soft);
   border: 1px solid var(--amber-line);
   border-radius: 999px;
   color: var(--amber);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-xs);
   font-variant-numeric: tabular-nums;
   font-weight: 800;
-  line-height: 18px;
-  min-width: 22px;
-  padding: 0 6px;
+  line-height: 16px;
+  min-width: 20px;
+  padding: 0 5px;
   text-align: center;
 }
 
-.nav-menu-user,
-.nav-menu-button {
+.eh-menu-button {
   display: none;
 }
 
-.nav-command {
-  background: transparent;
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  color: var(--text-soft);
-  font-size: var(--fs-md);
-  font-weight: 600;
-  min-height: 44px;
-  padding: 6px 12px;
-}
-
-/* 患者検索 */
-.nav-search {
-  flex: 1 1 320px;
-  margin-left: auto;
-  max-width: 440px;
-  min-width: 180px;
-  position: relative;
-}
-
-.input.nav-search-input {
-  background: var(--surface-muted);
-  min-height: 40px;
-  padding-right: 32px;
-}
-
-.nav-search-key {
-  border: 1px solid var(--line-strong);
-  border-radius: 4px;
-  color: var(--muted);
-  font-family: inherit;
-  font-size: var(--fs-xs);
-  line-height: 1;
-  padding: 3px 6px;
-  position: absolute;
-  right: 8px;
-  top: 20px;
-  transform: translateY(-50%);
-}
-
-.nav-search-input:focus + .nav-search-key {
-  display: none;
-}
-
-.nav-search-panel {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
-  max-height: min(560px, calc(100dvh - var(--nav-h) - 16px));
-  overflow-y: auto;
-  padding: 4px;
-  position: absolute;
-  right: 0;
-  top: calc(100% + 6px);
-  width: max(100%, min(600px, calc(100vw - 32px)));
-  z-index: 40;
-}
-
-.nav-search-caption {
-  color: var(--muted);
-  font-size: var(--fs-sm);
-  font-weight: 700;
-  margin: 0;
-  padding: 6px 8px 4px;
-}
-
-.nav-search-results {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.nav-search-results .patient-row {
-  align-items: baseline;
-  background: none;
-  border: 0;
-  border-radius: 8px;
-  color: inherit;
-  cursor: pointer;
-  display: grid;
-  font: inherit;
-  gap: 2px 12px;
-  grid-template-columns: 64px minmax(0, max-content) minmax(0, 1fr) auto;
-  min-height: 40px;
-  padding: 8px;
-  text-align: left;
-  width: 100%;
-}
-
-.nav-search-results .patient-row.is-active {
-  background: var(--teal-soft);
-}
-
-.patient-row-number {
-  color: var(--muted);
-  font-size: var(--fs-sm);
-  font-weight: 700;
-}
-
-.patient-row-name {
-  font-size: var(--fs-lg);
-  white-space: nowrap;
-}
-
-.patient-row-kana {
-  color: var(--muted);
-  font-size: var(--fs-sm);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.patient-row-birth {
-  color: var(--text-soft);
-  font-size: var(--fs-sm);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.nav-search-empty {
-  color: var(--muted);
-  padding: 10px 8px;
-}
-
-.nav-search-more {
-  margin: 0;
-  padding: 4px 8px;
-}
-
-.nav-search-register {
-  background: none;
-  border: 0;
-  border-radius: 8px;
-  border-top: 1px solid var(--line);
-  color: var(--teal-dark);
-  cursor: pointer;
-  display: block;
-  font: inherit;
-  font-weight: 700;
-  min-height: 44px;
-  padding: 8px;
-  text-align: left;
-  width: 100%;
-}
-
-.nav-search-register:hover {
-  background: var(--surface-muted);
-}
-
-.nav-search-hint {
-  font-size: var(--fs-xs);
-  margin: 0;
-  padding: 4px 8px 2px;
-}
-
-/* 利用者メニュー（暗室表示・ログアウト） */
-.nav-user-menu {
+/* 利用者メニュー（施設管理・暗室表示・ログアウト） */
+.eh-user {
   flex: 0 0 auto;
+  margin-left: 6px;
   position: relative;
 }
 
-.nav-user-button {
+.eh-user-button {
   align-items: center;
   border: 1px solid transparent;
-  border-radius: 8px;
-  color: var(--text-soft);
+  border-radius: 6px;
+  color: var(--text);
   cursor: pointer;
   display: flex;
   font-size: var(--fs-md);
   font-weight: 700;
   gap: 6px;
+  height: 32px;
   list-style: none;
-  min-height: 44px;
-  padding: 6px 8px 6px 10px;
+  padding: 0 8px;
 }
 
-.nav-user-button::-webkit-details-marker {
+.eh-user-button::-webkit-details-marker {
   display: none;
 }
 
-.nav-user-button:hover,
-.nav-user-menu[open] > .nav-user-button {
-  background: var(--surface-muted);
-  border-color: var(--line);
-}
-
-.nav-user-name {
-  max-width: 140px;
+.eh-user-name {
+  max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.nav-user-caret {
+.eh-user-caret {
   color: var(--muted);
   font-size: var(--fs-xs);
 }
 
-.nav-user-list {
+.eh-user-list {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -318,7 +184,7 @@
   z-index: 40;
 }
 
-.nav-user-who {
+.eh-user-who {
   border-bottom: 1px solid var(--line);
   display: grid;
   font-size: var(--fs-sm);
@@ -327,11 +193,11 @@
   padding: 6px 8px 10px;
 }
 
-.nav-user-who strong {
+.eh-user-who strong {
   font-size: var(--fs-md);
 }
 
-.nav-user-item {
+.eh-user-item {
   align-items: center;
   background: none;
   border: 0;
@@ -341,107 +207,142 @@
   display: flex;
   font: inherit;
   justify-content: space-between;
-  min-height: 44px;
+  min-height: 40px;
   padding: 6px 8px;
   text-align: left;
+  text-decoration: none;
 }
 
-.nav-user-item:hover {
+.eh-user-item:hover {
   background: var(--surface-muted);
 }
 
-.nav-user-state {
+.eh-user-item[aria-current="page"] {
+  color: var(--teal-dark);
+  font-weight: 700;
+}
+
+.eh-user-state {
   color: var(--muted);
   font-size: var(--fs-sm);
 }
 
-@media (max-width: 1180px) {
-  .site-nav-product {
-    display: none;
-  }
+/* ヘルプ（カルテ以外の画面の共通キー一覧） */
+.dialog.eh-help {
+  display: grid;
+  gap: 12px;
+  max-width: 440px;
 }
 
+.eh-help h2 {
+  font-size: var(--fs-lg);
+  margin: 0;
+}
+
+/* 患者検索のモーダルのキー案内と、↑↓ で選んだ行 */
+.ps-keys {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  margin-left: 12px;
+}
+
+.ps-row.is-active td {
+  background: var(--teal-soft);
+}
+
+/* 入力欄の右の［×］は自前のものだけにする（ブラウザの消去ボタンと二重にしない） */
+.ps-input input[type="search"]::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  display: none;
+}
+
+/* 1023px 以下: アイコンだけ（文字はツールチップと読み上げ） */
 @media (max-width: 1023px) {
-  .site-nav {
-    gap: 12px;
+  .eh-tool:not(.eh-menu-item) .eh-tool-label {
+    display: none;
   }
 
-  .eye-nav-link {
-    padding: 6px 10px;
+  .eh-tool:not(.eh-menu-item) .eh-badge {
+    position: absolute;
+    right: -4px;
+    top: -3px;
   }
 
-  .nav-user-name {
-    max-width: 96px;
+  .eh-user-name {
+    max-width: 120px;
   }
 }
 
-/* 899px 以下: 主ナビは「メニュー」の中へ。検索は常にヘッダーに出す */
-@media (max-width: 899px) {
-  .site-nav {
+/* 767px 以下: [ロゴ] [画面名] …… [検索] [メニュー]。行き先・ヘルプ・利用者の操作はメニューの中 */
+@media (max-width: 767px) {
+  .eh-bar {
     gap: 8px;
-    padding: 0 12px;
   }
 
-  .site-brand-wordmark {
-    font-size: 16px;
-  }
-
-  .nav-menu-button {
-    align-items: center;
-    background: transparent;
-    border: 1px solid var(--line-strong);
-    border-radius: 8px;
-    color: var(--text);
-    display: inline-flex;
-    flex: 0 0 auto;
-    font-weight: 700;
-    gap: 6px;
-    min-height: 44px;
-    padding: 6px 12px;
-  }
-
-  .nav-user-menu,
-  .site-nav-menu {
+  .eh-brand-word,
+  .eh-clinic,
+  .eh-tools,
+  .eh-tool-help,
+  .eh-user {
     display: none;
   }
 
-  .nav-search {
-    max-width: none;
+  .eh-left {
+    flex: 1 1 0;
+  }
+
+  .eh-screen {
+    flex: 0 1 auto;
     min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
-  .input.nav-search-input {
-    min-height: 44px;
+  .eh-tool {
+    height: 40px;
+    min-width: 40px;
   }
 
-  .nav-search-key {
-    display: none;
+  .eh-menu-button {
+    display: inline-flex;
   }
 
-  .site-nav-wrap.is-menu-open .site-nav-menu {
-    align-items: stretch;
+  .eh-menu {
     background: var(--surface);
     border-bottom: 1px solid var(--line);
     border-top: 1px solid var(--line);
+    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
     display: grid;
     gap: 12px;
     left: 0;
+    max-height: calc(100dvh - var(--nav-h));
+    overflow-y: auto;
     padding: 8px 12px 12px;
     position: absolute;
     right: 0;
-    top: var(--nav-h);
+    top: 100%;
   }
 
-  .site-nav-wrap.is-menu-open .eye-nav-links {
+  .eh-menu-list {
     display: grid;
+    gap: 2px;
   }
 
-  .site-nav-wrap.is-menu-open .eye-nav-link {
-    justify-content: space-between;
+  .eh-tool.eh-menu-item {
+    font-size: var(--fs-md);
+    gap: 10px;
+    height: auto;
+    justify-content: flex-start;
     min-height: 44px;
+    padding: 6px 10px;
+    width: 100%;
   }
 
-  .site-nav-wrap.is-menu-open .nav-menu-user {
+  .eh-menu-item .eh-badge {
+    margin-left: auto;
+  }
+
+  .eh-menu-user {
     border-top: 1px solid var(--line);
     display: grid;
     gap: 8px;
@@ -449,34 +350,48 @@
     padding-top: 12px;
   }
 
-  .nav-menu-user-name {
+  .eh-menu-user-name {
+    display: grid;
     font-weight: 700;
+    gap: 2px;
     grid-column: 1 / -1;
     margin: 0;
   }
 
-  /* 結果は画面の幅いっぱいに出す */
-  .nav-search-panel {
-    left: 8px;
-    position: fixed;
-    right: 8px;
-    top: calc(var(--nav-h) + 4px);
-    width: auto;
+  .eh-menu-clinic {
+    font-size: var(--fs-sm);
+    font-weight: 400;
+  }
+
+  .eh-command {
+    align-items: center;
+    background: transparent;
+    border: 1px solid var(--line-strong);
+    border-radius: 8px;
+    color: var(--text-soft);
+    display: inline-flex;
+    font: inherit;
+    font-size: var(--fs-md);
+    font-weight: 600;
+    justify-content: center;
+    min-height: 44px;
+    padding: 6px 12px;
+    text-decoration: none;
+  }
+
+  .eh-command[aria-current="page"] {
+    background: var(--teal-soft);
+    color: var(--teal-dark);
+  }
+
+  .ps-keys {
+    display: none;
   }
 }
 
-@media (max-width: 599px) {
-  .site-brand-wordmark {
+@media (min-width: 768px) {
+  .eh-menu {
     display: none;
-  }
-
-  .nav-search-results .patient-row {
-    grid-template-columns: 56px minmax(0, 1fr);
-  }
-
-  .patient-row-kana,
-  .patient-row-birth {
-    grid-column: 2;
   }
 }
 

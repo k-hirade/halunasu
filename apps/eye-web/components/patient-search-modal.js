@@ -9,9 +9,11 @@ import { useEyeApi } from "./eye-api";
 import { PatientRegisterDialog, RECEPTION_CHANGED_EVENT } from "./patient-register-dialog";
 import { ageOn, SEX_LABELS, todayIso } from "../lib/format";
 import { birthWithEra } from "../lib/reception-table";
+import { rankPatients } from "./patient-search";
 
 // 患者検索のモーダル（デジカルの患者検索）。1 行の入力で番号・カナ・氏名・生年月日を探し、
 // 結果の行から［表示］（患者のカルテ）［編集］［受付］［予約］。右上に［新規患者登録］。
+// キーボードだけで使える: 開くと入力欄にカーソル、↑↓ で行を選び Enter で開く、Esc で閉じる（日本語入力の確定中は動かない）。
 // 傷病名・受診期間・電話番号の条件は検索 API が対応していないので出さない。
 export function PatientSearchModal({ initialQuery = "", onClose }) {
   const api = useEyeApi();
@@ -24,6 +26,7 @@ export function PatientSearchModal({ initialQuery = "", onClose }) {
   const [sub, setSub] = useState(null);
   const [notice, setNotice] = useState("");
   const [refresh, setRefresh] = useState(0);
+  const [active, setActive] = useState(0);
 
   useEffect(() => {
     api("/v1/eye/context").then((payload) => setContext(payload.context)).catch(() => setContext(null));
@@ -47,7 +50,11 @@ export function PatientSearchModal({ initialQuery = "", onClose }) {
     const birthDate = parseBirthDateQuery(trimmed);
     const handle = setTimeout(() => {
       api("/v1/eye/patients/search", { method: "POST", body: { ...(birthDate ? { q: "", birthDate } : { q: trimmed }), details: true } })
-        .then((payload) => { if (!cancelled) setResult({ query: trimmed, patients: payload.patients, limit: payload.limit || 50, error: "" }); })
+        .then((payload) => {
+          if (cancelled) return;
+          setResult({ query: trimmed, patients: rankPatients(payload.patients, trimmed), limit: payload.limit || 50, error: "" });
+          setActive(0);
+        })
         .catch((error) => { if (!cancelled) setResult({ query: trimmed, patients: [], limit: 50, error: error.message }); });
     }, 250);
     return () => { cancelled = true; clearTimeout(handle); };
@@ -61,11 +68,23 @@ export function PatientSearchModal({ initialQuery = "", onClose }) {
     router.push(`/patients/${patient.patientId}`);
   }
 
+  // 選んだ行が見えるようにスクロールする
+  useEffect(() => {
+    document.getElementById(`ps-row-${active}`)?.scrollIntoView?.({ block: "nearest" });
+  }, [active]);
+
   function onKeyDown(event) {
+    // 日本語入力の変換確定の Enter・↑↓ では動かない（別の患者を開く事故を防ぐ）
     if (event.nativeEvent.isComposing || event.keyCode === 229) return;
-    if (event.key === "Enter") {
+    if (event.key === "ArrowDown") {
       event.preventDefault();
-      if (!loading && patients.length === 1) show(patients[0]);
+      setActive((index) => Math.min(index + 1, Math.max(patients.length - 1, 0)));
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActive((index) => Math.max(index - 1, 0));
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      if (!loading && patients[active]) show(patients[active]);
     }
   }
 
@@ -128,6 +147,9 @@ export function PatientSearchModal({ initialQuery = "", onClose }) {
             <h2 id="ps-heading">患者検索</h2>
             <div className="ps-input">
               <input
+                aria-activedescendant={!loading && patients[active] ? `ps-row-${active}` : undefined}
+                aria-controls="ps-results"
+                aria-expanded={patients.length > 0}
                 aria-label="検索する語"
                 autoComplete="off"
                 className="input"
@@ -136,6 +158,7 @@ export function PatientSearchModal({ initialQuery = "", onClose }) {
                 onKeyDown={onKeyDown}
                 placeholder="患者番号・フリガナ・氏名・生年月日（1950/3/4 または S25.3.4）"
                 ref={inputRef}
+                role="combobox"
                 type="search"
                 value={query}
               />
@@ -150,9 +173,10 @@ export function PatientSearchModal({ initialQuery = "", onClose }) {
           {result.error ? <p className="alert alert-danger" role="alert">{result.error}</p> : null}
           <p className="ps-caption muted small" aria-live="polite">
             {loading ? "検索中…" : trimmed ? (patients.length >= result.limit ? `${result.limit}件以上あります。番号・生年月日を足して絞ってください。` : `${patients.length}件`) : "最近更新された患者"}
+            <span className="ps-keys" aria-hidden="true">↑↓ 選択　Enter 開く　Esc 閉じる</span>
           </p>
           <div className="ps-table-wrap">
-            <table className="ps-table">
+            <table aria-label="検索結果" className="ps-table" id="ps-results" role="grid">
               <thead>
                 <tr>
                   <th scope="col">患者番号</th>
@@ -167,10 +191,10 @@ export function PatientSearchModal({ initialQuery = "", onClose }) {
                 </tr>
               </thead>
               <tbody>
-                {patients.map((patient) => {
+                {patients.map((patient, index) => {
                   const age = ageOn(patient.birthDate);
                   return (
-                    <tr className="ps-row" key={patient.patientId}>
+                    <tr aria-selected={index === active} className={`ps-row${index === active ? " is-active" : ""}`} id={`ps-row-${index}`} key={patient.patientId} onMouseEnter={() => setActive(index)}>
                       <td className="mono" data-label="患者番号">{patient.primaryPatientNumber || "—"}</td>
                       <td className="ps-kana" data-label="フリガナ">{patient.displayNameKana}</td>
                       <td className="ps-name" data-label="名前"><strong>{patient.displayName}</strong></td>
