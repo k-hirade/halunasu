@@ -673,8 +673,18 @@
   padding: 2px 6px;
 }
 
+/* 見出しの列は一番長い見出し（性別・生年月日）の幅にそろえ、見出しは折り返さない */
+.ps-dl {
+  column-gap: 8px;
+  grid-template-columns: max-content minmax(0, 1fr);
+}
+
 .ps-dl > div {
-  grid-template-columns: 5.5em minmax(0, 1fr);
+  display: contents;
+}
+
+.ps-dl dt {
+  white-space: nowrap;
 }
 
 @media (min-width: 1024px) {
@@ -696,5 +706,127 @@
 @media (min-width: 1440px) {
   .cl-layout {
     grid-template-columns: minmax(0, 1fr) 36%;
+  }
+}
+
+/* ==== 診察（患者一覧・概要）のレスポンシブの調整（C 領域） ==== */
+
+/* 概要: 値は区切り（components/patient-summary-pane.js の Breakable）でだけ折り返す。カナはまとめて次の行へ */
+.ps-nw {
+  white-space: nowrap;
+}
+
+.ps-kana {
+  display: inline-block;
+  margin-left: 0;
+  white-space: nowrap;
+}
+
+.ps-lines p {
+  overflow-wrap: normal;
+}
+
+/* ペインが狭い（400px 未満: 概要シート・患者ページの狭い列）ときは 1 列にする */
+.ps-pane {
+  container-type: inline-size;
+}
+
+@container (max-width: 399px) {
+  .ps-grid {
+    grid-template-areas: "info" "plan" "va" "iop" "rx" "dx" "memo";
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ps-plan,
+  .ps-rx,
+  .ps-dx {
+    border-left: 0;
+  }
+
+  .ps-dx {
+    border-bottom: 1px solid var(--line);
+  }
+}
+
+/* 患者名は途中で折り返さない（「未登録」などのタグは入らなければ 2 行目へ） */
+.cl-name-main {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+
+.cl-name-main strong {
+  white-space: nowrap;
+}
+
+/* 場所のタブ: 1023px 以下と高さの低い画面は 1 行の横スクロール（スマホで 4 段・約 170px を使っていた） */
+@media (max-width: 1023px), (max-height: 500px) {
+  .cl-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .cl-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .cl-tab {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .cl-tab-divider {
+    flex: 0 0 1px;
+  }
+}
+
+/* 未確定カルテ・文書の下書き: 「最終保存 …」は省かずに出し、入らないときだけ省略記号（全文は title） */
+.flow-row.status-task .flow-note {
+  display: block;
+  flex: 0 1 auto;
+  max-width: none;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flow-row.status-task .consult-chart-state {
+  flex: 0 0 auto;
+}
+
+/* 要対応の行には進み具合・待ち時間がないので、目的の欄をその分まで広げる */
+.flow-row.status-task {
+  grid-template-areas: "slot time name age purpose purpose purpose actions";
+}
+
+.flow-row.status-task > .flow-progress,
+.flow-row.status-task > .flow-wait {
+  display: none;
+}
+
+@media (max-width: 1100px) {
+  .flow-row.status-task {
+    grid-template-areas:
+      "slot time name name name actions"
+      ". . purpose purpose purpose purpose";
+  }
+}
+
+/* スマホ: 状態（修正中・下書き）と最終保存を 2 段目に出す（一覧の行では隠している目的の欄を使う） */
+@media (max-width: 767px) {
+  .flow-row.status-task {
+    grid-template-areas:
+      "slot name name"
+      "time purpose actions";
+  }
+
+  .flow-row.status-task > .flow-purpose {
+    display: flex;
+  }
+
+  .flow-row.status-task > .flow-age {
+    display: none;
   }
 }

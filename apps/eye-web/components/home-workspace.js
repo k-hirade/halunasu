@@ -338,9 +338,9 @@ export function HomeWorkspace() {
         <Link aria-label={`${name} の${action}`} className="flow-row-open" href={href} />
         <span className="flow-slot" />
         <span className="flow-time mono">{rowDate ? shortDate(rowDate) : "—"}</span>
-        <span className="flow-name"><strong>{name || "（氏名なし）"}</strong>{kana ? <span className="flow-kana">{kana}</span> : null}</span>
+        <span className="flow-name"><strong>{name || "（氏名なし）"}</strong>{kana ? <span className="flow-kana" title={kana}>{kana}</span> : null}</span>
         <span className="flow-age" />
-        <span className="flow-purpose"><span className="consult-chart-state">{state}</span>{detail ? <span className="flow-note">{detail}</span> : null}</span>
+        <span className="flow-purpose"><span className="consult-chart-state">{state}</span>{detail ? <span className="flow-note" title={detail}>{detail}</span> : null}</span>
         <span className="flow-progress" />
         <span className="flow-wait" />
         <span className="flow-actions"><Link className="btn btn-ghost btn-sm" href={href}>{action}</Link></span>
