@@ -772,10 +772,13 @@
     margin: 0 8px 0 0;
   }
 
+  /* 群の区切りは線ではなく広めの間隔で示す（折り返した 2 段目の先頭に線が残らないように） */
+  .settings-nav {
+    column-gap: 22px;
+  }
+
   .settings-nav-group + .settings-nav-group {
-    border-left: 1px solid var(--line);
     margin-top: 0;
-    padding-left: 14px;
   }
 
   .settings-nav-label {
@@ -914,8 +917,54 @@
     padding-left: 8px;
   }
 
+  /* 編集の入力欄は 1 列（説明の placeholder が切れないように） */
   .master-panel-body .field-row {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* 検査の行: 検査・眼・削除を 1 行に */
+  .set-line.set-line-order {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+
+  .set-line-order > select:first-child {
+    width: 100%;
+  }
+
+  /* 小さい編集ダイアログ（項目の少ないフォルダなど）は全画面にせず中央に出す */
+  .master-panel.settings-dialog:not(.is-wide) {
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: 0 24px 48px rgba(15, 23, 42, 0.28);
+    height: auto;
+    left: 50%;
+    max-height: calc(100dvh - 32px);
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: calc(100vw - 32px);
+  }
+
+  .master-panel.settings-dialog:not(.is-wide) .btn.btn-ghost.master-panel-back {
+    display: none;
+  }
+
+  .master-panel.settings-dialog:not(.is-wide) .master-panel-close {
+    display: inline-block;
+  }
+
+  .master-panel.settings-dialog:not(.is-wide) .master-panel-head {
+    padding-left: 18px;
+  }
+
+  /* 薬剤名は省略せず折り返す（濃度だけが違う薬剤を見分けられるように） */
+  .drug-cols .master-name {
+    align-items: flex-start;
+  }
+
+  .drug-cols .master-name strong {
+    overflow-wrap: anywhere;
+    white-space: normal;
   }
 
   .master-panel-actions .btn-primary {
@@ -1233,8 +1282,14 @@
   display: flex;
   font-size: var(--fs-sm);
   font-weight: 700;
+  gap: 8px;
   justify-content: space-between;
   padding: 0 10px 6px 14px;
+  white-space: nowrap;
+}
+
+.set-tree-head > .btn {
+  flex: none;
 }
 
 .set-tree-list {
@@ -1422,9 +1477,13 @@ span.set-tree-toggle {
   color: var(--muted);
 }
 
+.user-cell-label {
+  display: none;
+}
+
 @media (max-width: 1100px) {
   .set-browser {
-    grid-template-columns: 200px minmax(0, 1fr);
+    grid-template-columns: 220px minmax(0, 1fr);
   }
 
   .user-cols .master-row-open,
@@ -1473,6 +1532,12 @@ span.set-tree-toggle {
   .user-cols .user-print { grid-area: print; font-size: var(--fs-sm); }
   .user-cols .user-admin { grid-area: admin; text-align: right; }
 
+  .user-cols .user-cell-label {
+    color: var(--muted);
+    display: inline;
+    margin-right: 4px;
+  }
+
   .set-cols .master-row-open {
     grid-template-columns: minmax(0, 1fr) auto;
   }
@@ -1499,5 +1564,37 @@ span.set-tree-toggle {
   .phrase-cols .master-row-open,
   .staff-cols .master-row-open {
     padding-right: 56px;
+  }
+}
+
+/* 高さ 500px 以下（スマホ横）: 編集ダイアログを上下いっぱいに使い、本文の高さを空ける */
+@media (max-height: 500px) {
+  .master-panel {
+    max-height: calc(100dvh - 16px);
+    top: 8px;
+  }
+
+  .master-panel-body {
+    padding-top: 8px;
+  }
+
+  .master-panel-title {
+    font-size: var(--fs-md);
+  }
+}
+
+/* タッチ端末: 一覧の小さい操作を指で押せる大きさに */
+@media (pointer: coarse) {
+  /* 操作記録の患者名: 行の高さは変えず、上下の余白で押せる範囲を広げる */
+  .audit-table .audit-patient a {
+    display: inline-block;
+    margin: -8px 0;
+    padding: 8px 0;
+  }
+
+  .set-tree-toggle,
+  .set-tree-edit {
+    min-height: 36px;
+    min-width: 36px;
   }
 }

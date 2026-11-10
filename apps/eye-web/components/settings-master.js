@@ -275,6 +275,7 @@ export function SettingsDialog({ title, busy = false, error = "", onClose, onSub
           }}
         >
           <header className="master-panel-head">
+            <button aria-label="閉じて一覧に戻る" className="btn btn-ghost master-panel-back" disabled={busy} onClick={onClose} type="button">‹ 戻る</button>
             <h2 className="master-panel-title" id={titleId}>{title}</h2>
             <button aria-label="閉じる" className="master-panel-close" disabled={busy} onClick={onClose} type="button">×</button>
           </header>

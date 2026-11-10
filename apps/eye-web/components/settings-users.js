@@ -54,11 +54,12 @@ export function UsersSection({ onDirtyChange }) {
   const hiddenCount = staff.filter((item) => !isActive(item)).length;
   const renderRow = (item) => (
     <>
-      <span className="user-login mono">{item.loginId}</span>
-      <span className="master-name"><strong>{item.displayName}</strong></span>
+      <span className="user-login mono" title={item.loginId}>{item.loginId}</span>
+      <span className="master-name"><strong title={item.displayName}>{item.displayName}</strong></span>
       <span className="user-role">{memberRoleText(item.eyeRoles)}</span>
-      <span className="user-admin">{item.eyeRoles.includes("admin") ? "あり" : <span className="muted">なし</span>}</span>
-      <span className="user-print">{item.printName ? item.printName : <span className="muted">{printableStaffName(item.displayName)}（自動）</span>}</span>
+      {/* スマホは見出しの行がないので「設定権限」を前に付ける */}
+      <span className="user-admin"><span className="user-cell-label">設定権限</span>{item.eyeRoles.includes("admin") ? "あり" : <span className="muted">なし</span>}</span>
+      <span className="user-print" title={item.printName || `${printableStaffName(item.displayName)}（自動）`}>{item.printName ? item.printName : <span className="muted">{printableStaffName(item.displayName)}（自動）</span>}</span>
       <span className={`user-status${isActive(item) ? "" : " is-off"}`}>{MEMBER_STATUS_LABELS[item.status] || item.status || "有効"}</span>
     </>
   );

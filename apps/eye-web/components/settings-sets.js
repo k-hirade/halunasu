@@ -112,10 +112,10 @@ export function OrderSetsSection({ orderSets, setFolders, presets, catalog, canE
   const renderRow = (item) => (
     <>
       <span className="master-name">
-        <strong>{item.name}</strong>
-        {item.description ? <span className="master-desc">{item.description}</span> : null}
+        <strong title={item.name}>{item.name}</strong>
+        {item.description ? <span className="master-desc" title={item.description}>{item.description}</span> : null}
       </span>
-      <span className="master-default">{setContentText(item) || <span className="muted">空</span>}</span>
+      <span className="master-default" title={setContentText(item) || undefined}>{setContentText(item) || <span className="muted">空</span>}</span>
       <span className="master-kind">{current === ALL ? folderName(item.folderId) || <span className="muted">フォルダなし</span> : ""}</span>
     </>
   );
