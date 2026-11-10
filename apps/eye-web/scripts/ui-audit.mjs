@@ -418,8 +418,8 @@ try {
       const viewports = name.endsWith("-dark") && DARK_VIEWPORTS ? DARK_VIEWPORTS : VIEWPORTS;
       for (const [width, height] of viewports) jobs.push({ name, state, width, height });
     }
-    // タッチの有無が違う画面を同時に開くと、Chrome の (pointer: coarse) の判定が混ざる（タッチの幅でマウス扱いになる）。
-    // そのため端末の種類ごとにまとめ、種類ごとに順に走らせる（同じ種類の中だけ並列にする）。
+    // 端末の種類ごとにまとめ、種類ごとに順に走らせる（同じ種類の中だけ並列にする）。
+    // ページ全体のスクショは端末の設定を一度外すので、種類の違う画面を同時に開くと (pointer: coarse) の判定が混ざる。
     const groups = new Map();
     for (const job of jobs) {
       const device = deviceOf(job.width, job.height);
@@ -487,9 +487,10 @@ async function runJob(browser, storageState, paths, { name, state, width, height
     }
     await page.waitForTimeout(300);
     const tag = `${name}-${width}x${height}`;
+    // 先に測る（ページ全体のスクショは端末の設定を一度外すので、そのあとはタッチの判定が外れる）
+    const metrics = await page.evaluate(metricsScript);
     await page.screenshot({ path: join(outDir, `${tag}.png`) });
     if (FULL) await page.screenshot({ path: join(outDir, `${tag}-full.png`), fullPage: true });
-    const metrics = await page.evaluate(metricsScript);
     metrics.errors = errors;
     metrics.setupError = setupError;
     metrics.device = device;
