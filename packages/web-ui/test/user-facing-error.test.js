@@ -13,6 +13,21 @@ test("maps known auth/credential errors", () => {
   assert.equal(toUserFacingErrorMessage({ status: 403 }), "この操作を行う権限がありません。");
 });
 
+test("maps self-service password change errors", () => {
+  assert.equal(
+    toUserFacingErrorMessage({ code: "invalid_current_password", message: "Current password is incorrect", status: 400 }),
+    "現在のパスワードが正しくありません。"
+  );
+  assert.equal(
+    toUserFacingErrorMessage({ code: "password_unchanged", message: "New password must differ from the current password", status: 400 }),
+    "新しいパスワードには、現在と違うものを入力してください。"
+  );
+  assert.equal(
+    toUserFacingErrorMessage({ code: "validation", message: "password must be at least 12 characters", status: 400 }),
+    "ログイン用パスワードは12文字以上で入力してください。"
+  );
+});
+
 test("maps network and server errors", () => {
   assert.equal(toUserFacingErrorMessage("Failed to fetch"), "通信に失敗しました。接続を確認して、もう一度お試しください。");
   assert.equal(toUserFacingErrorMessage({ status: 500 }), "処理中に問題が発生しました。時間を置いてもう一度お試しください。");

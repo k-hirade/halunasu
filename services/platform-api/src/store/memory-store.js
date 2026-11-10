@@ -467,6 +467,26 @@ export class MemoryPlatformStore {
     return this.loginIdentities.get(current.identityKey);
   }
 
+  // 本人によるパスワード変更。読んだ時点のハッシュから変わっていれば（同時に別の変更があれば）競合にする。
+  // tokenVersion を上げて、ほかの端末のセッションを無効にする。
+  changeLoginPassword(identity, input = {}) {
+    const current = this.requireLoginIdentity(identity);
+    assertPasswordUnchangedSince(current, input.expectedPasswordHash);
+    const now = this.timestamp();
+    const updated = compactObject({
+      ...current,
+      passwordHash: hashPassword(input.password),
+      passwordUpdatedAt: now,
+      tokenVersion: Number(current.tokenVersion || 0) + 1,
+      failedLoginCount: 0,
+      lockedUntil: undefined,
+      updatedAt: now
+    });
+
+    this.loginIdentities.set(current.identityKey, updated);
+    return updated;
+  }
+
   revokeMemberSessions(identity) {
     const current = this.requireLoginIdentity(identity);
     const updated = {
@@ -1474,6 +1494,12 @@ function createLoginIdentity({ organization, member, password, now }) {
     updatedAt: now,
     schemaVersion: 1
   };
+}
+
+function assertPasswordUnchangedSince(identity, expectedPasswordHash) {
+  if (expectedPasswordHash !== undefined && identity.passwordHash !== expectedPasswordHash) {
+    throw conflictError("password was changed concurrently");
+  }
 }
 
 function activeIdentityStatus(currentStatus) {

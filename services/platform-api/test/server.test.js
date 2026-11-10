@@ -1248,6 +1248,254 @@ test("rate limits login attempts", async () => {
   assert.equal(second.body.error, "rate_limit");
 });
 
+const STAFF_PASSWORD = "correct horse battery staple";
+const NEW_STAFF_PASSWORD = "new horse battery staple 2026";
+
+function createStaffMember(store, organizationCode = "Clinic Password") {
+  const organization = store.createOrganization({ organizationCode, displayName: organizationCode });
+  store.createMember(organization.orgId, {
+    loginId: "clerk",
+    displayName: "Clerk",
+    globalRoles: ["staff"],
+    productRoles: { fee: ["clerk"] },
+    password: STAFF_PASSWORD
+  });
+  return organization;
+}
+
+async function loginStaff(store, organization, password = STAFF_PASSWORD, headers = {}) {
+  const login = await request(store, "POST", "/v1/auth/login", {
+    organizationCode: organization.organizationCode,
+    loginId: "clerk",
+    password
+  }, headers);
+  return {
+    login,
+    headers: login.statusCode === 200
+      ? { cookie: cookieHeaderFromSetCookie(login.headers["set-cookie"]), "x-csrf-token": login.body.csrfToken }
+      : {}
+  };
+}
+
+test("changes the signed-in user's password, keeps this session and revokes other sessions", async () => {
+  const store = createTestStore();
+  const organization = createStaffMember(store);
+  const thisDevice = await loginStaff(store, organization);
+  const otherDevice = await loginStaff(store, organization);
+  const before = store.getLoginIdentity(organization.organizationCode, "clerk");
+
+  const changed = await request(store, "POST", "/v1/auth/password", {
+    currentPassword: STAFF_PASSWORD,
+    newPassword: NEW_STAFF_PASSWORD
+  }, thisDevice.headers);
+  const renewedCookie = cookieHeaderFromSetCookie(changed.headers["set-cookie"]);
+  const oldCookieSession = await request(store, "GET", "/v1/auth/session", undefined, { cookie: thisDevice.headers.cookie });
+  const otherCookieSession = await request(store, "GET", "/v1/auth/session", undefined, { cookie: otherDevice.headers.cookie });
+  const otherBearerSession = await request(store, "GET", "/v1/auth/session", undefined, {
+    authorization: `Bearer ${otherDevice.login.body.accessToken}`
+  });
+  const renewedSession = await request(store, "GET", "/v1/auth/session", undefined, { cookie: renewedCookie });
+  const renewedBearer = await request(store, "GET", "/v1/auth/session", undefined, {
+    authorization: `Bearer ${changed.body.accessToken}`
+  });
+  const renewedMutation = await request(store, "POST", "/v1/auth/logout", {}, {
+    cookie: renewedCookie,
+    "x-csrf-token": changed.body.csrfToken
+  });
+  const oldPasswordLogin = await loginStaff(store, organization, STAFF_PASSWORD);
+  const newPasswordLogin = await loginStaff(store, organization, NEW_STAFF_PASSWORD);
+  const after = store.getLoginIdentity(organization.organizationCode, "clerk");
+  const events = store.listAuditEvents(organization.orgId);
+  const audit = events.find((event) => event.eventType === "auth.password_changed");
+
+  assert.equal(changed.statusCode, 200);
+  assert.equal(changed.body.passwordChanged, true);
+  assert.equal(changed.body.session.loginId, "clerk");
+  assert.match(changed.body.accessToken, /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
+  assert.ok(changed.body.csrfToken);
+  assert.notEqual(changed.body.csrfToken, thisDevice.login.body.csrfToken);
+  assert.equal(changed.headers["set-cookie"].length, 2);
+  assert.equal(changed.body.session.expiresAt, thisDevice.login.body.session.expiresAt, "re-issued session keeps the remaining lifetime");
+  assert.equal(after.tokenVersion, before.tokenVersion + 2, "password change and the later logout each bump tokenVersion");
+  assert.notEqual(after.passwordHash, before.passwordHash);
+  assert.equal(oldCookieSession.statusCode, 401);
+  assert.equal(otherCookieSession.statusCode, 401);
+  assert.equal(otherBearerSession.statusCode, 401);
+  assert.equal(renewedSession.statusCode, 200);
+  assert.equal(renewedBearer.statusCode, 200);
+  assert.equal(renewedMutation.statusCode, 200, "the re-issued CSRF token works for later mutations");
+  assert.equal(oldPasswordLogin.login.statusCode, 401);
+  assert.equal(newPasswordLogin.login.statusCode, 200);
+  assert.ok(audit);
+  assert.equal(audit.actorLoginId, "clerk");
+  assert.deepEqual(audit.safePayload, { status: "changed" });
+  assert.equal(JSON.stringify(events).includes(NEW_STAFF_PASSWORD), false);
+  assert.equal(JSON.stringify(events).includes(STAFF_PASSWORD), false);
+});
+
+test("password change rejects a wrong current password without changing anything", async () => {
+  const store = createTestStore();
+  const organization = createStaffMember(store);
+  const { headers } = await loginStaff(store, organization);
+  const before = store.getLoginIdentity(organization.organizationCode, "clerk");
+
+  const wrong = await request(store, "POST", "/v1/auth/password", {
+    currentPassword: "wrong horse battery staple",
+    newPassword: NEW_STAFF_PASSWORD
+  }, headers);
+  const shortCurrent = await request(store, "POST", "/v1/auth/password", {
+    currentPassword: "short",
+    newPassword: NEW_STAFF_PASSWORD
+  }, headers);
+  const after = store.getLoginIdentity(organization.organizationCode, "clerk");
+  const stillSignedIn = await request(store, "GET", "/v1/auth/session", undefined, { cookie: headers.cookie });
+
+  assert.equal(wrong.statusCode, 400);
+  assert.equal(wrong.body.error, "invalid_current_password");
+  assert.equal(wrong.body.field, "currentPassword");
+  assert.equal(shortCurrent.statusCode, 400);
+  assert.equal(shortCurrent.body.error, "invalid_current_password");
+  assert.equal(after.passwordHash, before.passwordHash);
+  assert.equal(after.tokenVersion, before.tokenVersion);
+  assert.equal(after.failedLoginCount, 2);
+  assert.equal(stillSignedIn.statusCode, 200);
+  assert.ok(store.listAuditEvents(organization.orgId).some((event) => (
+    event.eventType === "auth.password_change_failed" && event.safePayload.status === "invalid_current_password"
+  )));
+});
+
+test("password change enforces the shared password policy and rejects the same password", async () => {
+  const store = createTestStore();
+  const organization = createStaffMember(store);
+  const { headers } = await loginStaff(store, organization);
+  const before = store.getLoginIdentity(organization.organizationCode, "clerk");
+
+  const tooShort = await request(store, "POST", "/v1/auth/password", {
+    currentPassword: STAFF_PASSWORD,
+    newPassword: "short-pass"
+  }, headers);
+  const blank = await request(store, "POST", "/v1/auth/password", {
+    currentPassword: STAFF_PASSWORD,
+    newPassword: "            "
+  }, headers);
+  const missingCurrent = await request(store, "POST", "/v1/auth/password", {
+    newPassword: NEW_STAFF_PASSWORD
+  }, headers);
+  const same = await request(store, "POST", "/v1/auth/password", {
+    currentPassword: STAFF_PASSWORD,
+    newPassword: STAFF_PASSWORD
+  }, headers);
+  const after = store.getLoginIdentity(organization.organizationCode, "clerk");
+
+  assert.equal(tooShort.statusCode, 400);
+  assert.equal(tooShort.body.error, "validation");
+  assert.equal(tooShort.body.field, "newPassword");
+  assert.match(tooShort.body.message, /at least 12 characters/u);
+  assert.equal(blank.statusCode, 400);
+  assert.equal(blank.body.field, "newPassword");
+  assert.equal(missingCurrent.statusCode, 400);
+  assert.equal(missingCurrent.body.field, "currentPassword");
+  assert.equal(same.statusCode, 400);
+  assert.equal(same.body.error, "password_unchanged");
+  assert.equal(same.body.field, "newPassword");
+  assert.equal(after.passwordHash, before.passwordHash);
+  assert.equal(after.tokenVersion, before.tokenVersion);
+});
+
+test("password change requires a session, CSRF for cookie sessions and verified MFA", async () => {
+  const store = createTestStore();
+  const organization = createStaffMember(store);
+  const { login, headers } = await loginStaff(store, organization);
+  const body = { currentPassword: STAFF_PASSWORD, newPassword: NEW_STAFF_PASSWORD };
+
+  const anonymous = await request(store, "POST", "/v1/auth/password", body);
+  const noCsrf = await request(store, "POST", "/v1/auth/password", body, { cookie: headers.cookie });
+  const wrongCsrf = await request(store, "POST", "/v1/auth/password", body, { cookie: headers.cookie, "x-csrf-token": "nope" });
+
+  const adminOrg = store.createOrganization({ organizationCode: "Clinic Password Admin", displayName: "Admin" });
+  store.createMember(adminOrg.orgId, {
+    loginId: "admin",
+    displayName: "Admin",
+    globalRoles: ["org_admin"],
+    password: STAFF_PASSWORD
+  });
+  const pendingMfa = await request(store, "POST", "/v1/auth/login", {
+    organizationCode: adminOrg.organizationCode,
+    loginId: "admin",
+    password: STAFF_PASSWORD
+  });
+  const pendingChange = await request(store, "POST", "/v1/auth/password", body, {
+    cookie: cookieHeaderFromSetCookie(pendingMfa.headers["set-cookie"]),
+    "x-csrf-token": pendingMfa.body.csrfToken
+  });
+  const unchanged = store.getLoginIdentity(organization.organizationCode, "clerk");
+  const bearer = await request(store, "POST", "/v1/auth/password", body, {
+    authorization: `Bearer ${login.body.accessToken}`
+  });
+
+  assert.equal(anonymous.statusCode, 401);
+  assert.equal(noCsrf.statusCode, 403);
+  assert.match(noCsrf.body.message, /CSRF/u);
+  assert.equal(wrongCsrf.statusCode, 403);
+  assert.equal(pendingChange.statusCode, 403);
+  assert.equal(pendingChange.body.error, "mfa_enrollment_required");
+  assert.equal(unchanged.tokenVersion, 1);
+  assert.equal(bearer.statusCode, 200, "bearer sessions are CSRF-exempt like other mutating auth routes");
+});
+
+test("password change keeps MFA enrolment and the verified MFA state", async () => {
+  const store = createTestStore();
+  const { organization, headers } = await createAuthenticatedMember(store, {
+    organizationCode: "Clinic Password MFA",
+    globalRoles: ["org_admin"]
+  });
+
+  const changed = await request(store, "POST", "/v1/auth/password", {
+    currentPassword: "correct horse battery staple",
+    newPassword: NEW_STAFF_PASSWORD
+  }, headers);
+  const renewedCookie = cookieHeaderFromSetCookie(changed.headers["set-cookie"]);
+  const protectedRead = await request(store, "GET", `/v1/organizations/${organization.orgId}`, undefined, { cookie: renewedCookie });
+  const loginWithoutCode = await request(store, "POST", "/v1/auth/login", {
+    organizationCode: organization.organizationCode,
+    loginId: "admin",
+    password: NEW_STAFF_PASSWORD
+  });
+  const identity = store.getLoginIdentity(organization.organizationCode, "admin");
+
+  assert.equal(changed.statusCode, 200);
+  assert.equal(changed.body.session.mfaRequired, true);
+  assert.equal(changed.body.session.mfaEnrolled, true);
+  assert.equal(changed.body.session.mfaVerified, true);
+  assert.equal(protectedRead.statusCode, 200);
+  assert.equal(identity.mfaEnrolled, true);
+  assert.ok(identity.mfaSecretEncrypted);
+  assert.equal(loginWithoutCode.statusCode, 401);
+  assert.equal(loginWithoutCode.body.error, "mfa_required", "the new password is accepted and MFA is still asked");
+});
+
+test("rate limits password change attempts per identity", async () => {
+  const store = createTestStore();
+  const organization = createStaffMember(store);
+  const { headers } = await loginStaff(store, organization);
+  const options = { passwordChangeRateLimit: { limit: 2, windowSeconds: 60 } };
+  const wrongBody = { currentPassword: "wrong horse battery staple", newPassword: NEW_STAFF_PASSWORD };
+
+  const first = await request(store, "POST", "/v1/auth/password", wrongBody, { ...headers, "x-forwarded-for": "203.0.113.30" }, options);
+  const second = await request(store, "POST", "/v1/auth/password", wrongBody, { ...headers, "x-forwarded-for": "203.0.113.31" }, options);
+  const third = await request(store, "POST", "/v1/auth/password", {
+    currentPassword: STAFF_PASSWORD,
+    newPassword: NEW_STAFF_PASSWORD
+  }, { ...headers, "x-forwarded-for": "203.0.113.32" }, options);
+  const identity = store.getLoginIdentity(organization.organizationCode, "clerk");
+
+  assert.equal(first.statusCode, 400);
+  assert.equal(second.statusCode, 400);
+  assert.equal(third.statusCode, 429, "the limit is per identity, not per client address");
+  assert.equal(third.body.error, "rate_limit");
+  assert.equal(identity.tokenVersion, 1);
+});
+
 test("requires Platform session and org admin role for Core resources", async () => {
   const store = createTestStore();
   const { organization, headers: adminHeaders } = await createAuthenticatedMember(store, {
@@ -1873,6 +2121,7 @@ function request(store, method, path, body, headers = {}, options = {}) {
     csrfCookieName: options.csrfCookieName,
     mfaRateLimit: options.mfaRateLimit,
     loginRateLimit: options.loginRateLimit,
+    passwordChangeRateLimit: options.passwordChangeRateLimit,
     signupRateLimit: options.signupRateLimit,
     stripeClient: options.stripeClient,
     stripeWebhookSecret: options.stripeWebhookSecret,

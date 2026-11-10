@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { verifyPassword } from "../src/auth/password.js";
+import { handlePlatformApiRequest } from "../src/server.js";
 import { FirestorePlatformStore } from "../src/store/firestore-store.js";
 
 test("stores organizations with organization code uniqueness", async () => {
@@ -356,6 +357,99 @@ test("updates login identity auth state", async () => {
   assert.match(verified.mfaSecretEncrypted, /^(plain:|v1:)/);
   assert.equal(verified.tokenVersion, 2);
   assert.equal(revoked.tokenVersion, 3);
+});
+
+test("changes a login password transactionally and rejects a concurrent change", async () => {
+  const store = createTestStore();
+  const organization = await store.createOrganization({
+    organizationCode: "Clinic Password Store",
+    displayName: "Clinic Password Store"
+  });
+  await store.createMember(organization.orgId, {
+    loginId: "admin",
+    displayName: "Admin",
+    password: "correct horse battery staple"
+  });
+  const identity = await store.getLoginIdentity("clinic-password-store", "admin");
+
+  const changed = await store.changeLoginPassword(identity, {
+    password: "new horse battery staple 2026",
+    expectedPasswordHash: identity.passwordHash
+  });
+  const stored = await store.getLoginIdentity("clinic-password-store", "admin");
+
+  assert.equal(changed.tokenVersion, identity.tokenVersion + 1);
+  assert.equal(stored.tokenVersion, identity.tokenVersion + 1);
+  assert.equal(verifyPassword("new horse battery staple 2026", stored.passwordHash), true);
+  assert.equal(verifyPassword("correct horse battery staple", stored.passwordHash), false);
+  assert.equal(stored.failedLoginCount, 0);
+  await assert.rejects(
+    store.changeLoginPassword(identity, {
+      password: "third horse battery staple",
+      expectedPasswordHash: identity.passwordHash
+    }),
+    /changed concurrently/
+  );
+  assert.equal(verifyPassword("new horse battery staple 2026", (await store.getLoginIdentity("clinic-password-store", "admin")).passwordHash), true);
+});
+
+test("POST /v1/auth/password works against the Firestore store and revokes other sessions", async () => {
+  const store = createTestStore();
+  const organization = await store.createOrganization({
+    organizationCode: "Clinic Password Api",
+    displayName: "Clinic Password Api"
+  });
+  await store.createMember(organization.orgId, {
+    loginId: "clerk",
+    displayName: "Clerk",
+    globalRoles: ["staff"],
+    productRoles: { fee: ["clerk"] },
+    password: "correct horse battery staple"
+  });
+  const api = (method, path, body, headers = {}) => handlePlatformApiRequest({
+    method,
+    path,
+    body,
+    headers,
+    store,
+    env: "test",
+    now: new Date("2026-05-27T00:00:00.000Z"),
+    sessionSecret: "test-session-secret"
+  });
+  const cookieOf = (response) => response.headers["set-cookie"].map((header) => header.split(";")[0]).join("; ");
+  const loginBody = (password) => ({ organizationCode: "clinic-password-api", loginId: "clerk", password });
+
+  const thisDevice = await api("POST", "/v1/auth/login", loginBody("correct horse battery staple"));
+  const otherDevice = await api("POST", "/v1/auth/login", loginBody("correct horse battery staple"));
+  const wrong = await api("POST", "/v1/auth/password", {
+    currentPassword: "wrong horse battery staple",
+    newPassword: "new horse battery staple 2026"
+  }, { cookie: cookieOf(thisDevice), "x-csrf-token": thisDevice.body.csrfToken });
+  const noCsrf = await api("POST", "/v1/auth/password", {
+    currentPassword: "correct horse battery staple",
+    newPassword: "new horse battery staple 2026"
+  }, { cookie: cookieOf(thisDevice) });
+  const changed = await api("POST", "/v1/auth/password", {
+    currentPassword: "correct horse battery staple",
+    newPassword: "new horse battery staple 2026"
+  }, { cookie: cookieOf(thisDevice), "x-csrf-token": thisDevice.body.csrfToken });
+  const otherSession = await api("GET", "/v1/auth/session", undefined, { cookie: cookieOf(otherDevice) });
+  const renewedSession = await api("GET", "/v1/auth/session", undefined, { cookie: cookieOf(changed) });
+  const oldLogin = await api("POST", "/v1/auth/login", loginBody("correct horse battery staple"));
+  const newLogin = await api("POST", "/v1/auth/login", loginBody("new horse battery staple 2026"));
+  const events = await store.listAuditEvents(organization.orgId);
+
+  assert.equal(wrong.statusCode, 400);
+  assert.equal(wrong.body.error, "invalid_current_password");
+  assert.equal(noCsrf.statusCode, 403);
+  assert.equal(changed.statusCode, 200);
+  assert.ok(changed.body.accessToken);
+  assert.equal(otherSession.statusCode, 401);
+  assert.equal(renewedSession.statusCode, 200);
+  assert.equal(oldLogin.statusCode, 401);
+  assert.equal(newLogin.statusCode, 200);
+  assert.ok(events.some((event) => event.eventType === "auth.password_changed"));
+  assert.ok(events.some((event) => event.eventType === "auth.password_change_failed"));
 });
 
 test("updates platform resources and applies rate limits", async () => {

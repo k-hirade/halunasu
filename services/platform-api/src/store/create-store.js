@@ -111,6 +111,10 @@ export class LazyFirestorePlatformStore {
     return this.call("completeMfaEnrollment", identity);
   }
 
+  async changeLoginPassword(identity, input) {
+    return this.call("changeLoginPassword", identity, input);
+  }
+
   async revokeMemberSessions(identity) {
     return this.call("revokeMemberSessions", identity);
   }

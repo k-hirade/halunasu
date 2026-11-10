@@ -25,6 +25,7 @@ POST /v1/auth/logout
 GET /v1/auth/session
 POST /v1/auth/mfa/enroll
 POST /v1/auth/mfa/verify
+POST /v1/auth/password        # self-service change: {currentPassword, newPassword}; CSRF; revokes other sessions, re-issues this one
 
 GET /v1/signup/applications
 POST /v1/signup/applications

@@ -3,6 +3,7 @@
 // 診察（/）関連: home（診察）・home-summary（行を選んで概要）・home-tasks（要対応の一覧）・home-dark・search（検索）・register（新規患者登録）・menu
 // 検査入力: exam・exam-dark・exam-iop・exam-gaze・exam-worth。患者: patient・patient-vaiop・patient-dark・images・images-ou・images-series
 // ヘッダー: header・header-editor・header-dark・header-menu（--viewports 1713x900,1440x900 で幅を指定）
+// パスワード変更: password・password-error・password-dark
 // 受付関連: reception・reception-dark・reception-filter・reception-booking・reception-booking-calendar(-dark)・reception-search・reception-register・reception-schedule(-dark)
 //
 //   node scripts/ui-audit.mjs [--out DIR] [--pages editor,reception]
@@ -70,6 +71,19 @@ try {
         await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
         // 767px 以下はヘッダーの「メニュー」、それより広い画面は利用者メニュー（施設管理・暗室表示・ログアウト）を開いて撮る
         if (name === "menu" || name === "header-menu") await page.locator(width < 768 ? ".eh-menu-button" : ".eh-user-button").click();
+        if (name.startsWith("password")) {
+          await page.locator(width < 768 ? ".eh-menu-button" : ".eh-user-button").click();
+          await page.getByRole("button", { name: "パスワード変更" }).click();
+          const dialog = page.getByRole("dialog", { name: "パスワード変更" });
+          await dialog.waitFor();
+          if (name === "password-error") {
+            await dialog.getByLabel("現在のパスワード", { exact: true }).fill("wrong-password-2026");
+            await dialog.getByLabel("新しいパスワード", { exact: true }).fill("audit-new-password-2026");
+            await dialog.getByLabel("新しいパスワード（確認）", { exact: true }).fill("audit-new-password-2026");
+            await dialog.getByRole("button", { name: "変更する" }).click();
+            await dialog.getByRole("alert").waitFor();
+          }
+        }
         // 患者検索はヘッダーの虫めがねで開くモーダル
         if (name === "search" || name === "register") {
           await page.getByRole("button", { name: "患者検索（/）" }).click();
@@ -331,6 +345,10 @@ async function prepare(browser) {
       "header-editor": encounterPath,
       "header-dark": "/reception",
       "header-menu": "/reception",
+      // パスワード変更（利用者メニュー → ダイアログ。password-error は誤った現在のパスワードを送った状態）
+      password: "/reception",
+      "password-error": "/reception",
+      "password-dark": "/reception",
       images: `${patientHref}/images`,
       "encounter-print": `${encounterPath}/print`,
       "document-print": `${documentPath}/print`,

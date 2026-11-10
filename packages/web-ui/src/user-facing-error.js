@@ -21,6 +21,15 @@ export function toUserFacingErrorMessage(error, fallbackMessage = DEFAULT_ERROR_
   if (lower.includes("invalid mfa")) {
     return "2段階認証コードが正しくありません。";
   }
+  if (normalizedCode === "invalid_current_password") {
+    return "現在のパスワードが正しくありません。";
+  }
+  if (normalizedCode === "password_unchanged") {
+    return "新しいパスワードには、現在と違うものを入力してください。";
+  }
+  if (lower.includes("password must be at least 12 characters")) {
+    return "ログイン用パスワードは12文字以上で入力してください。";
+  }
   if (lower.includes("invalid credentials")) {
     return "病院コード、個人ID、またはログイン用パスワードが正しくありません。";
   }

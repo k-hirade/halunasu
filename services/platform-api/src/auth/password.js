@@ -52,6 +52,16 @@ export function verifyPassword(password, storedHash) {
   return expected.length === derived.length && crypto.timingSafeEqual(expected, derived);
 }
 
+// ログイン用パスワードの方針（初回設定・利用者作成・本人の変更で共通）。満たさないと ValidationError を投げる。
+export function assertPasswordPolicy(password, field = "password") {
+  try {
+    return requirePassword(password);
+  } catch (error) {
+    error.field = field;
+    throw error;
+  }
+}
+
 function requirePassword(value) {
   if (typeof value !== "string" || !value.trim()) {
     throw validationError("password is required", "password");

@@ -505,6 +505,41 @@ export class FirestorePlatformStore {
     return updated;
   }
 
+  // 本人によるパスワード変更。読んだ時点のハッシュから変わっていれば（同時に別の変更があれば）競合にする。
+  // tokenVersion を上げて、ほかの端末のセッションを無効にする。ハッシュ計算は重いのでトランザクションの外で行う。
+  async changeLoginPassword(identity, input = {}) {
+    if (!identity?.identityKey) {
+      throw notFoundError("login identity not found");
+    }
+    const passwordHash = hashPassword(input.password);
+    const identityRef = this.doc(loginIdentityPath(
+      normalizeOrganizationCode(identity.organizationCode),
+      normalizeLoginId(identity.loginId)
+    ));
+
+    return this.db.runTransaction(async (transaction) => {
+      const current = docDataOrNull(await transaction.get(identityRef));
+      if (!current) {
+        throw notFoundError("login identity not found");
+      }
+      if (input.expectedPasswordHash !== undefined && current.passwordHash !== input.expectedPasswordHash) {
+        throw conflictError("password was changed concurrently");
+      }
+      const now = this.timestamp();
+      const updated = compactObject({
+        ...current,
+        passwordHash,
+        passwordUpdatedAt: now,
+        tokenVersion: Number(current.tokenVersion || 0) + 1,
+        failedLoginCount: 0,
+        lockedUntil: undefined,
+        updatedAt: now
+      });
+      transaction.set(identityRef, updated);
+      return updated;
+    });
+  }
+
   async revokeMemberSessions(identity) {
     const current = await this.requireLoginIdentity(identity);
     const updated = compactObject({

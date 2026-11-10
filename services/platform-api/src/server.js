@@ -9,7 +9,7 @@ import {
   validateLoginInput
 } from "../../../packages/platform-contracts/src/index.js";
 import { createOtpAuthUrl, generateMfaSecret, verifyTotpCode } from "./auth/mfa.js";
-import { verifyPassword } from "./auth/password.js";
+import { assertPasswordPolicy, verifyPassword } from "./auth/password.js";
 import {
   buildCheckoutLineItemsForEntitlement,
   getBillingCatalog,
@@ -288,6 +288,10 @@ async function routePlatformApiRequest(input = {}) {
       { authenticated: false },
       { "set-cookie": clearSessionCookieHeaders(cookieOptions(input)) }
     );
+  }
+
+  if (method === "POST" && matches(parts, ["v1", "auth", "password"])) {
+    return changeOwnPassword(input, store);
   }
 
   if (method === "POST" && matches(parts, ["v1", "auth", "mfa", "enroll"])) {
@@ -853,6 +857,108 @@ async function login(input, store) {
     csrfToken: sessionResponse.csrfToken,
     accessToken: sessionResponse.accessToken
   }, sessionResponse.headers);
+}
+
+// 本人によるパスワード変更。ログイン中（2段階認証が必要な人は確認済み）で CSRF を確認し、
+// 今のパスワードを確かめてから変える。ほかの端末のセッションは tokenVersion を上げて無効にし、
+// この端末には新しいセッションを発行し直す（残りの有効期限は延ばさない）。
+async function changeOwnPassword(input, store) {
+  const context = await requireSession(input, store);
+  requireCsrf(input, context.session);
+  const body = input.body || {};
+  if (typeof body.currentPassword !== "string" || !body.currentPassword) {
+    throw passwordChangeError("currentPassword is required", "currentPassword");
+  }
+  const newPassword = assertPasswordPolicy(body.newPassword, "newPassword");
+  await consumePasswordChangeRateLimit(input, store, context.session);
+
+  const identity = await store.getLoginIdentity(context.session.organizationCode, context.session.loginId);
+  if (!identity || identity.status !== "active" || Number(identity.tokenVersion) !== Number(context.session.tokenVersion)) {
+    throw unauthorizedError("Session revoked");
+  }
+
+  if (!passwordMatches(body.currentPassword, identity.passwordHash)) {
+    await store.recordLoginFailure(identity);
+    await store.createAuditEvent(context.session.orgId, {
+      eventType: "auth.password_change_failed",
+      actorMemberId: context.session.memberId,
+      actorLoginId: context.session.loginId,
+      safePayload: { status: "invalid_current_password" }
+    });
+    throw passwordChangeError("Current password is incorrect", "currentPassword", "invalid_current_password");
+  }
+
+  if (newPassword === body.currentPassword || passwordMatches(newPassword, identity.passwordHash)) {
+    throw passwordChangeError("New password must differ from the current password", "newPassword", "password_unchanged");
+  }
+
+  const updatedIdentity = await store.changeLoginPassword(identity, {
+    password: newPassword,
+    expectedPasswordHash: identity.passwordHash
+  });
+  clearSessionContextCache();
+  await store.createAuditEvent(context.session.orgId, {
+    eventType: "auth.password_changed",
+    actorMemberId: context.session.memberId,
+    actorLoginId: context.session.loginId,
+    targetType: "member",
+    targetId: context.session.memberId,
+    safePayload: { status: "changed" }
+  });
+
+  const remainingSeconds = Math.floor((Date.parse(context.session.expiresAt) - sessionNow(input).getTime()) / 1000);
+  const sessionResponse = createSessionResponse({
+    input: {
+      ...input,
+      sessionTtlSeconds: Math.max(60, Math.min(Number(input.sessionTtlSeconds) || remainingSeconds, remainingSeconds))
+    },
+    identity: updatedIdentity,
+    member: context.member,
+    organizationCode: context.session.organizationCode,
+    mfaVerified: context.session.mfaVerified === true
+  });
+
+  return ok({
+    passwordChanged: true,
+    session: sessionResponse.sessionView,
+    csrfToken: sessionResponse.csrfToken,
+    accessToken: sessionResponse.accessToken
+  }, sessionResponse.headers);
+}
+
+function passwordMatches(password, passwordHash) {
+  try {
+    return verifyPassword(password, passwordHash);
+  } catch {
+    // 方針より短い入力は、いまのパスワードと一致しない
+    return false;
+  }
+}
+
+function passwordChangeError(message, field, code) {
+  const error = new Error(message);
+  error.name = "ValidationError";
+  error.statusCode = 400;
+  error.field = field;
+  if (code) {
+    error.code = code;
+  }
+  return error;
+}
+
+function sessionNow(input = {}) {
+  return input.now instanceof Date ? input.now : new Date(input.now || Date.now());
+}
+
+// 本人ごと（端末をまたいで）数える。成功・失敗とも 1 回に数える
+async function consumePasswordChangeRateLimit(input, store, session) {
+  await store.consumeRateLimit(
+    ["password-change", session.organizationCode, session.loginId].map((part) => String(part || "unknown")).join(":"),
+    {
+      limit: input.passwordChangeRateLimit?.limit || 5,
+      windowSeconds: input.passwordChangeRateLimit?.windowSeconds || 15 * 60
+    }
+  );
 }
 
 async function consumeLoginRateLimit(input, store, credentials) {

@@ -1208,15 +1208,99 @@ async function runOrthoptistFlow(browser) {
   await page.locator(".master-row").first().click();
   await page.getByRole("dialog", { name: "薬剤の編集" }).getByText("変更は管理者が行います。").waitFor();
   assert.equal(await page.getByRole("button", { name: "保存", exact: true }).count(), 0);
+  await page.keyboard.press("Escape");
+
+  // パスワード変更（利用者メニュー）。この流れの最後に行い、ほかの流れの利用者には影響させない。
+  // 2 つ目の端末（別のブラウザ）のログインは、変更のあと無効になる
+  const otherDevice = await browser.newContext({ viewport: { width: 1024, height: 768 } });
+  const otherPage = await otherDevice.newPage();
+  await login(otherPage, "orthoptist");
+  await otherPage.getByRole("heading", { name: "診察", exact: true }).waitFor();
+  const newPassword = "orthoptist-new-password-2026";
+  await page.goto(baseUrl);
+  await page.getByRole("heading", { name: "診察", exact: true }).waitFor();
+  await page.locator(".eh-user-button").click();
+  await page.locator(".eh-user-list").getByRole("button", { name: "パスワード変更" }).click();
+  const passwordDialog = page.getByRole("dialog", { name: "パスワード変更" });
+  await passwordDialog.waitFor();
+  assert.equal(await page.evaluate(() => document.activeElement?.id), "pw-currentPassword", "the current password field has focus on open");
+  await passwordDialog.getByText(/12文字以上/u).waitFor();
+  const currentField = passwordDialog.getByLabel("現在のパスワード", { exact: true });
+  const newField = passwordDialog.getByLabel("新しいパスワード", { exact: true });
+  const confirmField = passwordDialog.getByLabel("新しいパスワード（確認）", { exact: true });
+  // 空のまま押すと、欄の案内が role=alert で出る
+  await passwordDialog.getByRole("button", { name: "変更する" }).click();
+  await passwordDialog.getByRole("alert").getByText("現在のパスワードを入力してください。").waitFor();
+  assert.equal(await currentField.getAttribute("aria-invalid"), "true");
+  // 短い・確認が違う は送る前に止める
+  await currentField.fill(LOCAL_PASSWORD);
+  await newField.fill("short-pass");
+  await confirmField.fill("short-pass");
+  await passwordDialog.getByRole("button", { name: "変更する" }).click();
+  await passwordDialog.getByRole("alert").getByText(/12文字以上で入力してください/u).waitFor();
+  await newField.fill(newPassword);
+  await confirmField.fill(`${newPassword}x`);
+  await passwordDialog.getByRole("button", { name: "変更する" }).click();
+  await passwordDialog.getByRole("alert").getByText("確認のパスワードが一致しません。").waitFor();
+  // 表示・非表示の切り替え
+  assert.equal(await newField.getAttribute("type"), "password");
+  await passwordDialog.getByRole("button", { name: "新しいパスワードを表示" }).click();
+  assert.equal(await newField.getAttribute("type"), "text");
+  await passwordDialog.getByRole("button", { name: "新しいパスワードを隠す" }).click();
+  assert.equal(await newField.getAttribute("type"), "password");
+  // Caps Lock の案内
+  await currentField.focus();
+  await page.evaluate(() => {
+    document.getElementById("pw-currentPassword").dispatchEvent(new KeyboardEvent("keyup", { key: "A", bubbles: true, modifierCapsLock: true }));
+  });
+  await passwordDialog.getByText("Caps Lock がオンです").waitFor();
+  assert.match(await currentField.getAttribute("aria-describedby"), /pw-caps/u);
+  await newField.focus();
+  await passwordDialog.getByText("Caps Lock がオンです").waitFor({ state: "detached" });
+  // 現在のパスワードが違うとサーバーが断る（パスワードは変わらない）
+  await currentField.fill("wrong-password-2026");
+  await confirmField.fill(newPassword);
+  await passwordDialog.getByRole("button", { name: "変更する" }).click();
+  await passwordDialog.getByRole("alert").getByText("現在のパスワードが正しくありません。").waitFor();
+  assert.equal(await page.evaluate(() => document.activeElement?.id), "pw-currentPassword");
+  // 正しく入れると変わり、この端末はログインしたまま
+  await currentField.fill(LOCAL_PASSWORD);
+  await passwordDialog.getByRole("button", { name: "変更する" }).click();
+  await passwordDialog.getByRole("status").getByText(/パスワードを変更しました。この端末はログインしたままです/u).waitFor();
+  await passwordDialog.getByRole("button", { name: "閉じる" }).click();
+  await passwordDialog.waitFor({ state: "detached" });
+  // 新しいトークンで eye-api が読める（画面の移動）・再読み込みしてもログインしたまま（cookie も新しい）
+  await page.getByRole("link", { name: "受付画面", exact: true }).click();
+  await page.getByRole("heading", { name: "受付", exact: true }).waitFor();
+  await page.locator(".rc-row").filter({ hasText: "試験 一郎" }).first().waitFor();
+  await page.reload();
+  await page.locator(".rc-row").filter({ hasText: "試験 一郎" }).first().waitFor();
+  assert.equal(await page.getByLabel("個人ID").count(), 0, "still signed in after reload");
+  // ほかの端末は再読み込みでログイン画面に戻る
+  await otherPage.reload();
+  await otherPage.getByLabel("個人ID").waitFor();
+  await otherDevice.close();
+  // ログアウト → 古いパスワードでは入れず、新しいパスワードで入れる
+  await page.locator(".eh-user-button").click();
+  await page.locator(".eh-user-list").getByRole("button", { name: "ログアウト" }).click();
+  await page.getByLabel("個人ID").waitFor();
+  await page.getByLabel("個人ID").fill("orthoptist");
+  await page.getByLabel("ログイン用パスワード", { exact: true }).fill(LOCAL_PASSWORD);
+  await page.getByRole("button", { name: "ログイン", exact: true }).click();
+  await page.getByRole("alert").getByText(/ログイン用パスワードが正しくありません/u).waitFor();
+  await login(page, "orthoptist", newPassword);
+  await page.getByRole("heading", { name: "診察", exact: true }).waitFor();
   assert.deepEqual(pageErrors, []);
   await context.close();
 }
 
-async function login(page, loginId) {
+async function login(page, loginId, password = LOCAL_PASSWORD) {
   await page.goto(baseUrl);
-  await page.getByLabel("病院コード").fill(LOCAL_ORGANIZATION_CODE);
+  await page.getByLabel("個人ID").waitFor();
+  // 病院コードを端末に覚えているときは入力欄が出ない
+  if (await page.getByLabel("病院コード").count()) await page.getByLabel("病院コード").fill(LOCAL_ORGANIZATION_CODE);
   await page.getByLabel("個人ID").fill(loginId);
-  await page.getByLabel("ログイン用パスワード", { exact: true }).fill(LOCAL_PASSWORD);
+  await page.getByLabel("ログイン用パスワード", { exact: true }).fill(password);
   await page.getByRole("button", { name: "ログイン", exact: true }).click();
   await page.getByLabel("6桁コード").fill(currentLocalTotp());
   await page.getByRole("button", { name: "確認" }).click();

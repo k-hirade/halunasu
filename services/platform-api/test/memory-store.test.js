@@ -453,3 +453,28 @@ test("finds patients by given name and by exact birth date", () => {
   // 形の違う生年月日は無視して従来の一覧にする
   assert.equal(ids({ birthDate: "S25.3.4", limit: 10 }).length, 2);
 });
+
+test("changes a login password and rejects a concurrent change", () => {
+  let counter = 0;
+  const store = new MemoryPlatformStore({
+    now: () => new Date("2026-05-27T00:00:00.000Z"),
+    idFactory: (prefix) => `${prefix}_${++counter}`
+  });
+  const organization = store.createOrganization({ organizationCode: "Clinic Password Memory", displayName: "Clinic" });
+  store.createMember(organization.orgId, { loginId: "admin", displayName: "Admin", password: "correct horse battery staple" });
+  const identity = store.getLoginIdentity("clinic-password-memory", "admin");
+
+  const changed = store.changeLoginPassword(identity, {
+    password: "new horse battery staple 2026",
+    expectedPasswordHash: identity.passwordHash
+  });
+
+  assert.equal(changed.tokenVersion, identity.tokenVersion + 1);
+  assert.equal(verifyPassword("new horse battery staple 2026", changed.passwordHash), true);
+  assert.throws(() => store.changeLoginPassword(identity, {
+    password: "third horse battery staple",
+    expectedPasswordHash: identity.passwordHash
+  }), /changed concurrently/);
+  assert.throws(() => store.changeLoginPassword(changed, { password: "short" }), /at least 12 characters/);
+  assert.equal(store.getLoginIdentity("clinic-password-memory", "admin").passwordHash, changed.passwordHash);
+});

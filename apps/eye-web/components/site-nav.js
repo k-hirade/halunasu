@@ -10,6 +10,7 @@ import { todayIso } from "../lib/format";
 import { THEME_STORAGE_KEY } from "../lib/theme";
 import { useEyeApi } from "./eye-api";
 import { FACILITY_CHANGED_EVENT, OPEN_PATIENT_SEARCH_EVENT, SHORTCUT_HELP_EVENT } from "./patient-search";
+import { PasswordChangeDialog } from "./password-change-dialog";
 import { PatientSearchModal } from "./patient-search-modal";
 import { usePlatformAuth } from "./platform-auth";
 
@@ -80,6 +81,7 @@ export function SiteNav() {
   const [waiting, setWaiting] = useState(null);
   const [search, setSearch] = useState(null);
   const [help, setHelp] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
   const userMenuRef = useRef(null);
   const screen = screenName(pathname);
 
@@ -175,6 +177,12 @@ export function SiteNav() {
     if (window.dispatchEvent(event)) setHelp(true);
   }
 
+  function openPasswordChange() {
+    setMenuOpen(false);
+    userMenuRef.current?.removeAttribute("open");
+    setPasswordOpen(true);
+  }
+
   function toggleDark() {
     const next = !dark;
     setDark(next);
@@ -258,6 +266,7 @@ export function SiteNav() {
               <button aria-pressed={dark} className="eh-user-item" onClick={toggleDark} type="button">
                 暗室表示<span className="eh-user-state">{dark ? "オン" : "オフ"}</span>
               </button>
+              <button aria-haspopup="dialog" className="eh-user-item" onClick={openPasswordChange} type="button">パスワード変更</button>
               <button className="eh-user-item" onClick={logout} type="button">ログアウト</button>
             </div>
           </details>
@@ -279,12 +288,14 @@ export function SiteNav() {
             <p className="eh-menu-user-name">{userName}{roles ? <span className="muted">（{roles}）</span> : null}{clinicName ? <span className="muted eh-menu-clinic">{clinicName}</span> : null}</p>
             {settingsItem ? <Link aria-current={settingsOnPage ? "page" : undefined} className="eh-command" href={settingsItem.href}>{settingsItem.label}</Link> : null}
             <button aria-pressed={dark} className="eh-command" onClick={toggleDark} type="button">{dark ? "暗室表示をやめる" : "暗室表示にする"}</button>
+            <button aria-haspopup="dialog" className="eh-command" onClick={openPasswordChange} type="button">パスワード変更</button>
             <button className="eh-command" onClick={logout} type="button">ログアウト</button>
           </div>
         </div>
       ) : null}
       {search ? <PatientSearchModal initialQuery={search.query} onClose={() => setSearch(null)} /> : null}
       {help && typeof document !== "undefined" ? createPortal(<GlobalHelpDialog onClose={() => setHelp(false)} />, document.body) : null}
+      {passwordOpen && typeof document !== "undefined" ? createPortal(<PasswordChangeDialog onClose={() => setPasswordOpen(false)} />, document.body) : null}
     </header>
   );
 }

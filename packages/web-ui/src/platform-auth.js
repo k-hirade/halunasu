@@ -78,6 +78,7 @@ export function PlatformAuthProvider({ children, platformBaseUrl, brand }) {
       const error = new Error(payload.message || payload.error || `HTTP ${response.status}`);
       error.code = payload.error || payload.code || "";
       error.status = response.status;
+      if (payload.field) error.field = payload.field;
       throw error;
     }
     return payload;
@@ -355,11 +356,32 @@ export function PlatformAuthProvider({ children, platformBaseUrl, brand }) {
     setStatus("unauthenticated");
   }, [api, csrfToken, session]);
 
+  // 本人のパスワード変更(POST /v1/auth/password)。成功するとサーバーがこの端末のセッションを発行し直すので、
+  // 新しいトークンに差し替えてログインしたままにする(ほかの端末のセッションは無効になる)。
+  // 失敗時は error.code / error.field 付きの Error を投げる(画面側で表示する)。状態(status)は変えない。
+  const changePassword = useCallback(async ({ currentPassword, newPassword }) => {
+    const payload = await api("/v1/auth/password", {
+      method: "POST",
+      csrf: true,
+      body: { currentPassword, newPassword }
+    });
+    authMutationRef.current += 1;
+    const token = payload.accessToken || "";
+    if (payload.session) {
+      setSession(payload.session);
+    }
+    setCsrfToken(payload.csrfToken || readPlatformCsrfCookie());
+    setAccessToken(token);
+    writeAccessToken(token);
+    return payload;
+  }, [api]);
+
   const value = useMemo(() => ({
     api,
     accessToken,
     brand: normalizedBrand,
     cancelMfa,
+    changePassword,
     csrfToken,
     errorMessage,
     login,
@@ -374,6 +396,7 @@ export function PlatformAuthProvider({ children, platformBaseUrl, brand }) {
     accessToken,
     normalizedBrand,
     cancelMfa,
+    changePassword,
     csrfToken,
     errorMessage,
     login,
