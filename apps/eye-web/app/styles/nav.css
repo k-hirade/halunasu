@@ -316,6 +316,41 @@
   margin: 0;
 }
 
+/* キーの列は一番長いキーの幅に合わせる（7.5em 固定だと狭い画面で説明が 1 字だけ次の行に回る） */
+.eh-help .shortcut-list {
+  column-gap: 12px;
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.eh-help .shortcut-list > div {
+  display: contents;
+}
+
+/* タッチ端末の案内（キーの一覧はたたむ） */
+.eh-help-touch {
+  display: grid;
+  font-size: var(--fs-md);
+  gap: 6px;
+  margin: 0;
+  padding-left: 1.2em;
+}
+
+.eh-help-keys {
+  display: grid;
+  gap: 8px;
+}
+
+.eh-help-keys > summary {
+  color: var(--text-soft);
+  cursor: pointer;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.eh-help-keys[open] > summary {
+  margin-bottom: 8px;
+}
+
 /* 患者検索のモーダルのキー案内と、↑↓ で選んだ行 */
 .ps-keys {
   color: var(--muted);
@@ -630,5 +665,28 @@
   .operator-gate-form-area {
     align-items: start;
     padding: 24px 16px;
+  }
+}
+
+/* ログイン（横向きのスマホなど高さ 500px 以下）: 説明文を省き、ラベルと入力欄を横に並べて、
+ * スクロールしなくても［ログイン］まで見えるようにする（帯の高さは globals.css で詰めてある） */
+@media (max-height: 500px) {
+  .operator-gate-card > div:first-child > p {
+    display: none;
+  }
+
+  .operator-gate-card h1 {
+    font-size: var(--fs-xl);
+  }
+
+  .operator-gate-card .field:not(.operator-gate-remembered) {
+    align-items: center;
+    column-gap: 12px;
+    grid-template-columns: 10.5em minmax(0, 1fr);
+    margin-bottom: 0;
+  }
+
+  .operator-gate-card .field:not(.operator-gate-remembered) > :not(label) {
+    grid-column: 2;
   }
 }

@@ -21,6 +21,8 @@ export function BookingCalendar({ date = todayIso(), onPickSlot, onPickDay = nul
   const [focus, setFocus] = useState(date);
   const [month, setMonth] = useState(date.slice(0, 7));
   const [doctorMemberId, setDoctorMemberId] = useState("");
+  // 900px 以下は月のカレンダーをたたみ、週の表を先に見せる（広い画面では常に出す。CSS で切り替える）
+  const [monthOpen, setMonthOpen] = useState(false);
   const [monthDays, setMonthDays] = useState({});
   const [week, setWeek] = useState({ days: [], loading: true, error: "" });
   const weekStart = weekStartOf(focus);
@@ -73,9 +75,14 @@ export function BookingCalendar({ date = todayIso(), onPickSlot, onPickDay = nul
 
   return (
     <div className="bk-cal">
-      <aside className="bk-cal-side">
-        <MiniCalendar counts={monthDays} highlightWeekOf={focus} label="予約の件数（月）" month={month} onMonthChange={setMonth} onSelect={pickDay} selected={focus} />
-        <button className="btn btn-ghost btn-sm" onClick={() => pickDay(today)} type="button">今月</button>
+      <aside className={`bk-cal-side${monthOpen ? " is-open" : ""}`}>
+        <button aria-expanded={monthOpen} className="btn btn-ghost btn-sm bk-month-toggle" onClick={() => setMonthOpen(!monthOpen)} type="button">
+          月のカレンダー {monthOpen ? "▴" : "▾"}
+        </button>
+        <div className="bk-cal-month">
+          <MiniCalendar counts={monthDays} highlightWeekOf={focus} label="予約の件数（月）" month={month} onMonthChange={setMonth} onSelect={pickDay} selected={focus} />
+          <button className="btn btn-ghost btn-sm" onClick={() => pickDay(today)} type="button">今月</button>
+        </div>
         <div className="bk-doctors" role="group" aria-label="医師で絞り込む">
           <span className="bk-doctors-label">医師</span>
           <button aria-pressed={!doctorMemberId} className="btn btn-chip" onClick={() => setDoctorMemberId("")} type="button">全員</button>

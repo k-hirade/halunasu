@@ -40,6 +40,7 @@ try {
     await runDoctorFlow(browser);
     await runReceptionFlow(browser);
     await runOrthoptistFlow(browser);
+    await runReceptionResponsiveChecks(browser);
   } finally {
     await browser.close().catch(() => null);
   }
@@ -1468,4 +1469,85 @@ function findOpenPort() {
       probe.close(() => resolvePort(port));
     });
   });
+}
+
+// ---- 受付まわりのレスポンシブ（領域 A）----
+// 受付一覧の固定列・スマホのカード、絞り込みの［閉じる］、予約状況のダイアログ、患者検索のモーダルの位置を確かめる。
+// 受付の流れ（runReceptionFlow）で作った当日の受付を使う。
+async function runReceptionResponsiveChecks(browser) {
+  const context = await browser.newContext({ viewport: { width: 1024, height: 768 } });
+  const page = await context.newPage();
+  const pageErrors = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  const inside = async (locator, label) => {
+    const box = await locator.boundingBox();
+    const view = page.viewportSize();
+    assert.ok(box && box.x >= -1 && box.x + box.width <= view.width + 1 && box.y >= -1 && box.y + box.height <= view.height + 1, `${label} fits in ${view.width}x${view.height}: ${JSON.stringify(box)}`);
+    return box;
+  };
+  await login(page, "clerk");
+  // 二段階認証の確認が済んでヘッダーが出るまで待ってから移る（すぐに移るとログイン画面に戻ることがある）
+  await page.locator("header.eh").waitFor();
+  await page.goto(`${baseUrl}/reception`);
+  const table = page.getByRole("table", { name: "受付一覧" });
+  const firstRow = page.locator(".rc-row").first();
+  await firstRow.waitFor();
+
+  // 1024: 診療科・医師・患者メモの列は既定で隠れ、行の［予約］［…］は右端に固定されて画面の中にある
+  assert.equal(await table.locator("th.rc-col-doctor").count(), 0, "the doctor column is hidden by default below 1366px");
+  await inside(firstRow.locator(".rc-col-actions summary"), "the row … button");
+  // 横にスクロールしても氏名の列は左に残る
+  await page.locator(".rc-table-wrap").evaluate((element) => { element.scrollLeft = element.scrollWidth; });
+  const wrapBox = await page.locator(".rc-table-wrap").boundingBox();
+  const nameBox = await firstRow.locator("td.rc-col-name").boundingBox();
+  assert.ok(nameBox.x >= wrapBox.x - 1 && nameBox.x + nameBox.width <= wrapBox.x + wrapBox.width, `the name column stays visible while scrolled: ${JSON.stringify(nameBox)}`);
+
+  // 絞り込み: 1100px 以下は背景を暗くし、［閉じる］は見出しの行（画面の中）にある
+  await page.getByRole("button", { name: "▼ 絞り込み" }).click();
+  const filter = page.getByRole("dialog", { name: "絞り込み" });
+  await page.locator(".rc-filter-backdrop").waitFor();
+  await inside(filter.getByRole("button", { name: "閉じる" }), "the filter close button");
+  await filter.getByRole("button", { name: "閉じる" }).click();
+  await filter.waitFor({ state: "detached" });
+
+  // 横向きスマホの高さ: 予約状況はダイアログの中身と入れ替わり、週の表が画面の中でスクロールする
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.getByRole("button", { name: "予約を追加" }).click();
+  const booking = page.getByRole("dialog", { name: "予約登録" });
+  await booking.getByRole("button", { name: "予約状況" }).click();
+  const grid = booking.locator(".bk-grid-scroll");
+  const gridBox = await inside(grid, "the week grid");
+  assert.ok(gridBox.height >= 120, `the week grid has room: ${gridBox.height}px`);
+  await inside(booking, "the booking dialog");
+  await booking.getByRole("button", { name: "閉じる" }).click();
+  await inside(booking.getByRole("button", { name: "キャンセル" }), "the booking dialog buttons");
+  await booking.getByRole("button", { name: "キャンセル" }).click();
+
+  // スマホ縦: 受付一覧はカードになり、ページは横にはみ出さない。行の「…」メニューも画面の中
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => window.localStorage.removeItem("halunasu-eye-reception-columns"));
+  await page.reload();
+  await firstRow.waitFor();
+  assert.equal(await firstRow.evaluate((element) => getComputedStyle(element).display), "flex", "reception rows are cards on phones");
+  assert.ok(await page.evaluate(() => document.scrollingElement.scrollWidth <= window.innerWidth + 1), "no horizontal page scroll on phones");
+  await page.getByLabel("並べ替え").waitFor();
+  await firstRow.locator(".rc-col-actions summary").click();
+  await inside(firstRow.locator(".more-menu-list"), "the row menu on a phone");
+  await firstRow.locator(".rc-col-actions summary").click();
+
+  // 患者検索のモーダル: 上に寄せて出し、結果の件数が変わっても入力欄の位置は変わらない
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.getByRole("button", { name: "患者検索（/）" }).click();
+  const search = page.getByRole("dialog", { name: "患者検索" });
+  const input = search.getByLabel("検索する語");
+  await search.locator(".ps-row").first().waitFor();
+  const before = await input.boundingBox();
+  await input.fill("試験");
+  await search.locator(".ps-caption").filter({ hasText: /\d+件/u }).waitFor();
+  const after = await input.boundingBox();
+  assert.ok(Math.abs(after.y - before.y) <= 1, `the search input does not jump: ${before.y} -> ${after.y}`);
+  await page.keyboard.press("Escape");
+
+  assert.deepEqual(pageErrors, []);
+  await context.close();
 }
