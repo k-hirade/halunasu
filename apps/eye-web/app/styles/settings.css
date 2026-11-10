@@ -1585,11 +1585,11 @@ span.set-tree-toggle {
 
 /* タッチ端末: 一覧の小さい操作を指で押せる大きさに */
 @media (pointer: coarse) {
-  /* 操作記録の患者名: 行の高さは変えず、上下の余白で押せる範囲を広げる */
+  /* 操作記録の患者名: リンクを 36px の高さにして押しやすくする */
   .audit-table .audit-patient a {
-    display: inline-block;
-    margin: -8px 0;
-    padding: 8px 0;
+    align-items: center;
+    display: inline-flex;
+    min-height: 36px;
   }
 
   .set-tree-toggle,

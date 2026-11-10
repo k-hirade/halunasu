@@ -632,13 +632,16 @@ function ItemGroups({ items }) {
 function ItemLine({ item, withCategory = false }) {
   const quantity = item.quantity !== null && item.quantity !== undefined && item.quantity !== "" ? `${item.quantity}${item.unit || ""}` : "";
   const details = [quantity, item.days ? `${item.days}日` : "", item.route, item.usage, item.note].filter(Boolean).join(" ");
+  const chars = Array.from(String(item.name || ""));
+  const nameHead = chars.slice(0, -1).join("");
+  const nameTail = chars.slice(-1).join("");
   return (
     <span className="bill-item">
       {withCategory ? <span className="bill-item-cat">{item.category}</span> : null}
-      {/* 薬剤名と眼は 1 つにまとめ、眼だけが次の行に回らないようにする */}
-      <span className="bill-item-main">
-        <span className="bill-item-name">{item.name}</span>
-        {EYE[item.eye] ? <span className={`bill-eye eye-${item.eye}`}>{EYE[item.eye]}</span> : null}
+      <span className="bill-item-name">
+        {nameHead}
+        {/* 名前の最後の 1 字と眼を改行しない 1 かたまりにする（眼だけが次の行に回らないように） */}
+        <span className="bill-item-tail">{nameTail}{EYE[item.eye] ? <span className={`bill-eye eye-${item.eye}`}>{EYE[item.eye]}</span> : null}</span>
       </span>
       {details ? <span className="bill-item-detail">{details}</span> : null}
     </span>

@@ -478,18 +478,17 @@
   min-width: 2.5em;
 }
 
-/* 名前と眼の間では改行しない（改行の可否は共通の親の white-space で決まる）。名前の中では折り返せる */
-.bill-item-main {
+.bill-item-name {
+  font-weight: 700;
   min-width: 0;
+}
+
+/* 名前の最後の 1 字 + 眼（この中では改行しない） */
+.bill-item-tail {
   white-space: nowrap;
 }
 
-.bill-item-name {
-  font-weight: 700;
-  white-space: normal;
-}
-
-.bill-item-main > .bill-eye {
+.bill-item-tail > .bill-eye {
   margin-left: 6px;
 }
 
@@ -553,6 +552,7 @@
 .bill-diff-row.is-removed .bill-diff-kind { color: var(--red); }
 .bill-diff-row.is-removed > span:first-child .bill-item { color: var(--red); text-decoration: line-through; }
 .bill-diff-row.is-added > span:nth-child(2) .bill-item-name { color: var(--green); }
+.bill-diff-row.is-added > span:nth-child(2) .bill-eye.eye-ou { color: var(--text); }
 
 .bill-note {
   color: var(--muted);
