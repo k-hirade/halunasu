@@ -330,15 +330,26 @@
 
 .doc-insert-foot {
   border-top: 1px solid var(--line);
+  flex-wrap: wrap;
   justify-content: flex-end;
 }
 
-.doc-insert > .field,
-.doc-insert > .doc-insert-options,
-.doc-insert > .doc-insert-note,
-.doc-insert > .loading,
-.doc-insert > .empty,
-.doc-insert > .alert {
+/* 見出しと下のボタンの間（元のカルテ・選択肢・項目）。高さが足りないときはここだけがスクロールする */
+.doc-insert-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.doc-insert-body > .field,
+.doc-insert-body > .doc-insert-options,
+.doc-insert-body > .doc-insert-note,
+.doc-insert-body > .loading,
+.doc-insert-body > .empty,
+.doc-insert-body > .alert {
   margin: 10px 14px 0;
 }
 
@@ -362,11 +373,15 @@
 .doc-insert-options .check {
   align-items: center;
   display: inline-flex;
+  flex: none;
   gap: 6px;
+  white-space: nowrap;
 }
 
+/* 高い画面では項目の一覧だけがスクロールする（上の選択肢は残る）。最低の高さを取り、それより低い画面では外側の枠ごとスクロールする */
 .doc-insert-groups {
   flex: 1 1 auto;
+  min-height: min(160px, 40dvh);
   overflow: auto;
   padding: 4px 14px 12px;
 }
@@ -443,10 +458,37 @@
     bottom: 0;
     box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.2);
     left: 0;
-    max-height: 75vh;
+    max-height: 75dvh;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
     position: fixed;
     right: 0;
     z-index: 40;
+  }
+}
+
+/* 横向きのスマホなど低い画面: シートをヘッダーの下まで使い、項目は外側の枠ごとスクロールする（入れ子のスクロールにしない） */
+@media (max-width: 1099px) and (max-height: 500px) {
+  .doc-insert {
+    max-height: calc(100dvh - var(--nav-h) - 8px);
+  }
+
+  .doc-insert-head,
+  .doc-insert-foot {
+    padding-bottom: 6px;
+    padding-top: 6px;
+  }
+
+  .doc-insert-groups {
+    flex: none;
+    min-height: 0;
+    overflow: visible;
+  }
+}
+
+/* 1100〜1366px: 入力欄の列を詰めて、A4 の見本を読める大きさに保つ */
+@media (min-width: 1100px) and (max-width: 1366px) {
+  .doc-workspace:not(.is-readonly) {
+    grid-template-columns: minmax(380px, 420px) minmax(0, 1fr);
   }
 }
 
@@ -618,5 +660,13 @@
   .docs-table .docs-actions {
     grid-column: 2;
     grid-row: 2 / span 2;
+  }
+}
+
+/* タッチ端末: 挿入の「【見出し】を付ける」と項目の行を指で押せる高さに */
+@media (pointer: coarse) {
+  .doc-insert-options .check,
+  .doc-insert-item {
+    min-height: 40px;
   }
 }
