@@ -307,13 +307,35 @@ function GlobalHelpDialog({ onClose }) {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
+  // タッチ端末（キーボードがないことが多い）では、指での操作の案内を先に出し、キーの一覧はたたむ
+  const [touch, setTouch] = useState(false);
+  useEffect(() => { setTouch(window.matchMedia?.("(pointer: coarse)").matches || false); }, []);
   const keys = [["/", "患者検索を開く"], ["↑ ↓", "検索結果の行を選ぶ"], ["Enter", "選んだ患者のカルテを開く"], ["Esc", "検索・ダイアログを閉じる"], ["?", "カルテの画面のショートカット一覧"]];
+  const keyList = <dl className="shortcut-list">{keys.map(([key, label]) => <div key={key}><dt><kbd>{key}</kbd></dt><dd>{label}</dd></div>)}</dl>;
+  const keyNote = <p className="muted small">文字のキーは、入力欄にカーソルが無いときに効きます。カルテの画面では ? でその画面の一覧が出ます。</p>;
   return (
     <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }} role="presentation">
       <div aria-labelledby="eh-help-heading" aria-modal="true" className="dialog eh-help" role="dialog">
-        <h2 id="eh-help-heading">ショートカット</h2>
-        <dl className="shortcut-list">{keys.map(([key, label]) => <div key={key}><dt><kbd>{key}</kbd></dt><dd>{label}</dd></div>)}</dl>
-        <p className="muted small">文字のキーは、入力欄にカーソルが無いときに効きます。カルテの画面では ? でその画面の一覧が出ます。</p>
+        <h2 id="eh-help-heading">{touch ? "操作のヘルプ・ショートカット" : "ショートカット"}</h2>
+        {touch ? (
+          <>
+            <ul className="eh-help-touch">
+              <li>患者検索は、画面右上の虫めがねのボタン（またはメニューの「患者検索」）から開きます。</li>
+              <li>受付の行を押すとカルテ（または患者のページ）が開きます。「…」で検査入力・受付の編集などを選べます。</li>
+              <li>表が画面に入りきらないときは、表を左右になぞると続きが見えます。</li>
+            </ul>
+            <details className="eh-help-keys">
+              <summary>キーボードをつないだときのショートカット</summary>
+              {keyList}
+              {keyNote}
+            </details>
+          </>
+        ) : (
+          <>
+            {keyList}
+            {keyNote}
+          </>
+        )}
         <div className="dialog-actions">
           <button autoFocus className="btn btn-primary" onClick={onClose} type="button">閉じる</button>
         </div>
