@@ -141,7 +141,7 @@ export function PatientSearchModal({ initialQuery = "", onClose }) {
 
   return createPortal(
     <>
-      <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !sub) onClose(); }}>
+      <div className="dialog-backdrop ps-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !sub) onClose(); }}>
         <div aria-labelledby="ps-heading" aria-modal="true" className="dialog ps-dialog" role="dialog">
           <div className="ps-head">
             <h2 id="ps-heading">患者検索</h2>
@@ -156,7 +156,8 @@ export function PatientSearchModal({ initialQuery = "", onClose }) {
                 enterKeyHint="search"
                 onChange={(event) => { setQuery(event.target.value); setNotice(""); }}
                 onKeyDown={onKeyDown}
-                placeholder="患者番号・フリガナ・氏名・生年月日（1950/3/4 または S25.3.4）"
+                placeholder="患者番号・フリガナ・氏名・生年月日"
+                title="生年月日は 1950/3/4 または S25.3.4 の形で入れます"
                 ref={inputRef}
                 role="combobox"
                 type="search"
@@ -173,6 +174,7 @@ export function PatientSearchModal({ initialQuery = "", onClose }) {
           {result.error ? <p className="alert alert-danger" role="alert">{result.error}</p> : null}
           <p className="ps-caption muted small" aria-live="polite">
             {loading ? "検索中…" : trimmed ? (patients.length >= result.limit ? `${result.limit}件以上あります。番号・生年月日を足して絞ってください。` : `${patients.length}件`) : "最近更新された患者"}
+            <span className="ps-hint">生年月日は 1950/3/4・S25.3.4 の形でも探せます</span>
             <span className="ps-keys" aria-hidden="true">↑↓ 選択　Enter 開く　Esc 閉じる</span>
           </p>
           <div className="ps-table-wrap">

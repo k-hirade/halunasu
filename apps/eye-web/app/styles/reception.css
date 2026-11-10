@@ -291,7 +291,8 @@ th.rc-col-status::after {
   overflow: auto;
 }
 
-@media (min-width: 768px) {
+/* 表の枠の中だけを縦にスクロールさせるのは、十分な高さがあるときだけ（横向きのスマホでは枠が 4 行分になるので、ページごとスクロールする） */
+@media (min-width: 768px) and (min-height: 600px) {
   .rc-table-wrap {
     max-height: calc(100dvh - var(--nav-h) - 96px);
   }
@@ -448,10 +449,17 @@ span.rc-memo {
   white-space: nowrap;
 }
 
+/* 進捗のチップは折り返す（折り返さないと、オーダーの多い人の行で表の幅が大きく広がる） */
 .rc-progress {
   display: inline-flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 4px;
+  max-width: 18em;
+  white-space: normal;
+}
+
+.rc-progress:empty {
+  display: none;
 }
 
 .rc-billing {
@@ -610,14 +618,12 @@ span.ap-value {
   width: auto;
 }
 
+/* 予約状況はダイアログの中身と入れ替えて出す（下の「レスポンシブ」の .is-calendar） */
 .ap-calendar {
-  background: var(--surface);
-  border-radius: 12px;
-  inset: 0;
-  overflow: auto;
-  padding: 16px;
-  position: absolute;
-  z-index: 3;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .ap-calendar-head {
@@ -740,7 +746,7 @@ span.ap-value {
 }
 
 .mcal-count {
-  font-size: 10px;
+  font-size: var(--fs-xs);
   line-height: 1.1;
 }
 
@@ -797,10 +803,6 @@ span.ap-value {
   border: 1px solid var(--line);
   border-radius: 8px;
   overflow: auto;
-}
-
-.ap-calendar .bk-grid-scroll {
-  max-height: 60dvh;
 }
 
 .bk-grid {
@@ -904,7 +906,8 @@ span.ap-value {
   gap: 8px 12px;
 }
 
-.ps-head h2 {
+/* カルテ概要（consult.css）の .ps-head と同じクラス名なので、ダイアログに限定して上書きする */
+.ps-dialog .ps-head h2 {
   font-size: var(--fs-lg);
   margin: 0;
 }
@@ -927,6 +930,18 @@ span.ap-value {
 .ps-caption,
 .ps-notice {
   margin: 0;
+}
+
+/* 入力欄の placeholder を短くした分の補足（生年月日の書き方） */
+.ps-hint {
+  margin-left: 12px;
+}
+
+@media (max-width: 720px) {
+  .ps-hint {
+    display: block;
+    margin-left: 0;
+  }
 }
 
 .ps-table-wrap {
@@ -1079,20 +1094,6 @@ fieldset.register-row > legend {
 
 /* 狭い画面 */
 @media (max-width: 1100px) {
-  .bk-cal {
-    grid-template-columns: 1fr;
-  }
-
-  .bk-cal-side {
-    align-items: start;
-    grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
-    grid-template-rows: auto 1fr;
-  }
-
-  .bk-cal-side .mcal {
-    grid-row: 1 / span 2;
-  }
-
   /* 狭い週の表では時刻を省き、件数だけを出す（時刻は左の列で分かる） */
   .bk-count-time {
     display: none;
@@ -1140,15 +1141,6 @@ fieldset.register-row > legend {
 
   .rc-filter-columns-list {
     columns: 1;
-  }
-
-  .bk-cal-side {
-    grid-template-columns: 1fr;
-    grid-template-rows: none;
-  }
-
-  .bk-cal-side .mcal {
-    grid-row: auto;
   }
 
   .ps-head h2 {
@@ -1206,5 +1198,527 @@ fieldset.register-row > legend {
 
   .ps-actions .btn + .btn {
     margin-left: 0;
+  }
+}
+
+
+/* ---- レスポンシブ（受付・予約・検索） ----
+ * 共通の部分（ダイアログの高さ・下のボタン・ポップオーバーの位置・タッチのタップ領域）は globals.css。ここは受付の画面ごとの指定。 */
+
+/* 受付一覧: 横にスクロールしても誰の行か分かるよう氏名の列を左に、予約・「…」の列を右に固定する。
+ * 続きがある側の固定列に影を付ける（data-more-left / data-more-right は reception-workspace.js が付ける） */
+.rc-table th.rc-col-name,
+.rc-table td.rc-col-name,
+.rc-table th.rc-col-actions,
+.rc-table td.rc-col-actions {
+  position: sticky;
+  z-index: 1;
+}
+
+.rc-table th.rc-col-name,
+.rc-table td.rc-col-name {
+  left: 0;
+}
+
+.rc-table th.rc-col-actions,
+.rc-table td.rc-col-actions {
+  right: 0;
+}
+
+.rc-table td.rc-col-name,
+.rc-table td.rc-col-actions {
+  background: var(--surface);
+}
+
+.rc-table th.rc-col-name,
+.rc-table th.rc-col-actions {
+  background: var(--surface-muted);
+  z-index: 3;
+}
+
+.rc-row:hover td.rc-col-name,
+.rc-row:hover td.rc-col-actions {
+  background: var(--surface-muted);
+}
+
+/* 開いた「…」のメニューは、下の行の固定列より上に出す */
+.rc-table td.rc-col-actions:has(details[open]) {
+  z-index: 4;
+}
+
+.rc-table-wrap[data-more-left] .rc-col-name {
+  box-shadow: 8px 0 8px -6px rgba(15, 23, 42, 0.22);
+}
+
+.rc-table-wrap[data-more-right] .rc-col-actions {
+  box-shadow: -8px 0 8px -6px rgba(15, 23, 42, 0.22);
+}
+
+/* 並べ替え（900px 以下のカード表示のときだけ出す） */
+.rc-mobile-sort {
+  display: none;
+}
+
+/* 絞り込み: 見出しの行に［閉じる］。1100px 以下は背景を暗くする */
+.rc-filter-head {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.rc-filter-backdrop {
+  display: none;
+}
+
+/* 予約登録: 患者欄の補足、予約一覧の開閉（720px 以下だけ） */
+.ap-hint {
+  display: block;
+  margin-top: 4px;
+}
+
+.btn.btn.ap-list-toggle {
+  display: none;
+}
+
+/* 予約状況（ダイアログの中）: フォームを隠して（入力は残す）予約状況だけを出し、ダイアログを画面の高さにする。
+ * スクロールは週の表の 1 か所だけにする（以前は上に重ねた枠と週の表で 2 重になっていた） */
+.dialog.ap-dialog.is-calendar {
+  display: flex;
+  flex-direction: column;
+  height: min(880px, calc(100dvh - 32px));
+  min-height: 0;
+}
+
+.dialog.ap-dialog.is-calendar > :not(.ap-calendar) {
+  display: none;
+}
+
+.ap-calendar-head {
+  flex: 0 0 auto;
+}
+
+.ap-calendar .bk-cal {
+  flex: 1 1 auto;
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
+}
+
+.ap-calendar .bk-cal-side {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.ap-calendar .bk-week {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.ap-calendar .bk-week-head {
+  flex: 0 0 auto;
+}
+
+.ap-calendar .bk-grid-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* 月のカレンダーの開閉（900px 以下だけ） */
+.btn.btn.bk-month-toggle {
+  display: none;
+}
+
+.bk-cal-month {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+  justify-self: stretch;
+}
+
+.bk-day-head small {
+  font-size: var(--fs-xs);
+}
+
+/* 患者検索のモーダル: 結果の件数が変わっても入力欄が動かないよう、上に寄せる */
+.dialog-backdrop.ps-backdrop {
+  align-items: flex-start;
+  padding-top: min(8vh, 64px);
+}
+
+.ps-backdrop .dialog.ps-dialog {
+  max-height: calc(100dvh - min(8vh, 64px) - 16px);
+}
+
+/* 結果の行の操作（カルテ概要の .ps-actions{display:flex} が当たらないよう td に限定する）。右端に固定する */
+@media (min-width: 721px) {
+  .ps-table td.ps-actions {
+    background: var(--surface);
+    display: table-cell;
+    margin-left: 0;
+    position: sticky;
+    right: 0;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .ps-table th:last-child {
+    position: sticky;
+    right: 0;
+    z-index: 1;
+  }
+
+  .ps-table .ps-row:hover td.ps-actions {
+    background: var(--surface-muted);
+  }
+
+  .ps-table .ps-row.is-active td.ps-actions {
+    background: var(--teal-soft);
+  }
+}
+
+@media (max-width: 1100px) {
+  .rc-filter-backdrop {
+    background: rgba(15, 23, 42, 0.35);
+    display: block;
+    inset: var(--nav-h) 0 0 0;
+    position: fixed;
+    z-index: 29;
+  }
+
+  /* パネルの中をスクロールしても見出しと［閉じる］は上に残す（.rc-popover の余白 12px の分だけ外へ広げる） */
+  .rc-filter-head {
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+    margin: -12px -12px 10px;
+    padding: 8px 12px;
+    position: sticky;
+    top: -12px;
+    z-index: 1;
+  }
+
+  /* 左にステータス、その右に医師と診療科を縦に重ね、右に表示する列（医師の列の下に空白を作らない） */
+  .rc-filter-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(0, 2fr);
+    grid-template-rows: auto 1fr;
+  }
+
+  .rc-filter-columns > .rc-filter-group:nth-child(1) {
+    grid-row: 1 / span 2;
+  }
+
+  .rc-filter-columns > .rc-filter-group:nth-child(2),
+  .rc-filter-columns > .rc-filter-group:nth-child(3) {
+    grid-column: 2;
+  }
+
+  .rc-filter-columns > .rc-filter-columns-list {
+    border-left: 1px solid var(--line);
+    columns: 2;
+    grid-column: 3;
+    grid-row: 1 / span 2;
+    padding-left: 12px;
+  }
+}
+
+@media (max-width: 900px) {
+  .bk-cal {
+    grid-template-columns: 1fr;
+  }
+
+  .ap-calendar .bk-cal {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .bk-cal-side {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .ap-calendar .bk-cal-side {
+    max-height: 45dvh;
+  }
+
+  .btn.btn.bk-month-toggle {
+    display: inline-flex;
+  }
+
+  .bk-cal-side:not(.is-open) .bk-cal-month {
+    display: none;
+  }
+
+  .bk-cal-month {
+    flex: 1 1 100%;
+    max-width: 360px;
+    order: 1;
+  }
+
+  .bk-doctors {
+    flex: 1 1 auto;
+  }
+
+  .bk-doctors-label {
+    width: auto;
+  }
+}
+
+@media (max-width: 900px) {
+  /* 受付一覧: 1 人 1 枚のカード（タブレット縦・スマホ。タッチでは横スクロールに気づきにくいので表にしない）。1 段目に番号・氏名・ステータス、2 段目以降に残りの列（見出しを添える）、右下に操作 */
+  .rc-table-wrap {
+    background: none;
+    border: 0;
+    border-radius: 0;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .rc-table thead {
+    display: none;
+  }
+
+  .rc-table,
+  .rc-table tbody {
+    display: block;
+  }
+
+  .rc-table tr.rc-row {
+    align-items: center;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    margin-bottom: 8px;
+    padding: 8px 10px;
+  }
+
+  /* 1 段目（番号・氏名・ステータス）の後で必ず改行する */
+  .rc-table tr.rc-row::before {
+    content: "";
+    flex: 0 0 100%;
+    height: 0;
+    order: -1;
+  }
+
+  .rc-table td {
+    align-items: center;
+    border: 0;
+    display: flex;
+    gap: 4px;
+    height: auto;
+    padding: 0;
+    white-space: normal;
+  }
+
+  .rc-table td.rc-col-name,
+  .rc-table td.rc-col-actions {
+    background: none;
+    box-shadow: none;
+    position: static;
+  }
+
+  .rc-row:hover td,
+  .rc-row:hover td.rc-col-name,
+  .rc-row:hover td.rc-col-actions {
+    background: none;
+  }
+
+  .rc-table td.rc-col-no {
+    order: -4;
+  }
+
+  .rc-table td.rc-col-name {
+    flex: 1 1 0;
+    min-width: 0;
+    order: -3;
+  }
+
+  .rc-table td.rc-col-status {
+    order: -2;
+  }
+
+  .rc-table td.rc-col-actions {
+    margin-left: auto;
+    order: 1;
+  }
+
+  td.rc-col-actions > * + * {
+    margin-left: 0;
+  }
+
+  .rc-table td[data-label]:not(.rc-col-no, .rc-col-name, .rc-col-status)::before {
+    color: var(--muted);
+    content: attr(data-label);
+    font-size: var(--fs-xs);
+  }
+
+  .rc-table td:empty,
+  .rc-table td:has(> .rc-progress:empty) {
+    display: none;
+  }
+
+  .rc-cell-edit {
+    padding: 2px 4px;
+  }
+
+  .rc-mobile-sort {
+    align-items: center;
+    display: flex;
+    gap: 6px;
+    max-width: 420px;
+    width: 100%;
+  }
+
+  .rc-mobile-sort-label {
+    color: var(--text-soft);
+    font-size: var(--fs-sm);
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .rc-mobile-sort .input {
+    flex: 1 1 auto;
+    width: auto;
+  }
+
+  /* カードではステータスのプルダウンの幅が中身の幅になるので、▾ を右の余白に収める */
+  .rc-table td.rc-col-status::after {
+    right: 10px;
+  }
+}
+
+@media (max-width: 720px) {
+  /* 絞り込み: 左にステータス、右に医師と診療科、表示する列はその下の段に 2 列で */
+  .rc-filter-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .rc-filter-columns > .rc-filter-columns-list {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    columns: 2;
+    grid-column: 1 / -1;
+    grid-row: auto;
+    padding-left: 0;
+    padding-top: 8px;
+  }
+
+
+  /* 予約登録: 予約一覧はたたんでおき、フォームと［登録］を先に見せる */
+  .ap-list-title {
+    display: none;
+  }
+
+  .btn.btn.ap-list-toggle {
+    display: inline-flex;
+  }
+
+  .ap-list:not(.is-open) .ap-list-content {
+    display: none;
+  }
+
+  /* 患者検索のカード: 選んだ行は行ごと塗る（td ごとに塗ると縞になる）。名前を 1 段目に出し、空の欄は出さない */
+  .ps-table tr.ps-row.is-active {
+    background: var(--teal-soft);
+  }
+
+  .ps-table .ps-row.is-active td,
+  .ps-table .ps-row:hover td {
+    background: none;
+  }
+
+  .ps-table td.ps-name {
+    order: -2;
+  }
+
+  .ps-table td.ps-kana {
+    grid-column: 1 / -1;
+    order: -1;
+  }
+
+  .ps-table td.ps-name[data-label]::before,
+  .ps-table td.ps-kana[data-label]::before {
+    content: none;
+  }
+
+  .ps-table td:empty {
+    display: none;
+  }
+}
+
+/* 1366・1280 の PC: メモの列を少し詰めて、会計〜待ち時間の列まで横にスクロールせずに見えるようにする（全文は title） */
+@media (max-width: 1439px) {
+  .rc-memo > span:first-child,
+  span.rc-memo {
+    max-width: 9em;
+  }
+}
+
+/* スマホ縦: 週の表を横にスクロールせずに 7 日分見られるよう、列の最小幅を詰める（日付と曜日は 2 行にする） */
+@media (max-width: 480px) {
+  .bk-grid {
+    grid-template-columns: 40px repeat(7, minmax(36px, 1fr));
+    min-width: 0;
+  }
+
+  .bk-day-head {
+    line-height: 1.2;
+    padding: 4px 1px;
+  }
+
+  .bk-day-head small {
+    display: block;
+  }
+
+  .bk-hour {
+    padding: 2px 4px;
+  }
+
+  .bk-count {
+    padding: 0 2px;
+    text-align: center;
+  }
+
+  .ap-calendar-head .muted {
+    display: none;
+  }
+}
+
+/* 横向きのスマホ: 予約状況のダイアログの余白を詰める */
+@media (max-height: 500px) {
+  .dialog.ap-dialog.is-calendar {
+    height: calc(100dvh - 16px);
+  }
+
+  .ap-calendar-head {
+    margin-bottom: 6px;
+  }
+
+  .ap-calendar-head .muted {
+    display: none;
+  }
+
+  .bk-week-head {
+    margin-bottom: 4px;
+  }
+}
+
+/* タッチ端末: 受付のステータスのプルダウンと、予約状況の枠を指で押せる大きさにする（globals.css と同じ書き方で詳細度を足す） */
+@media (pointer: coarse) {
+  .rc-status:is(.rc-status, #_) {
+    min-height: 40px;
+  }
+
+  .bk-slot:is(.bk-slot, #_) {
+    min-height: 32px;
+  }
+
+  /* 絞り込みのチェック（ラベル全体が押せる） */
+  .rc-check:is(.rc-check, #_) {
+    min-height: 36px;
   }
 }

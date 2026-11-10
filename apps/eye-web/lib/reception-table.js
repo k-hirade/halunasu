@@ -27,6 +27,17 @@ export const RECEPTION_COLUMNS = Object.freeze([
 // スマホ幅の端末で、まだ列を選んでいないときに隠しておく列（氏名・状態・待ちを 1 画面に収める）
 export const NARROW_HIDDEN_COLUMNS = Object.freeze(["checkin", "number", "birth", "department", "doctor", "previous", "patientMemo"]);
 export const NARROW_MAX_WIDTH = 720;
+// 1366px 未満（1280 のノート PC・タブレット）で、まだ列を選んでいないときに隠しておく列。
+// 会計・進捗・行の操作が最初の表示で見えるよう、受付の操作に要らない列を外す（絞り込みの「表示する列」で戻せる）
+export const MEDIUM_HIDDEN_COLUMNS = Object.freeze(["department", "doctor", "patientMemo"]);
+export const MEDIUM_MAX_WIDTH = 1365;
+
+// 画面幅ごとの既定の隠す列（端末に記憶した列があればそちらを使う）
+export function defaultHiddenColumns(width) {
+  if (width <= NARROW_MAX_WIDTH) return [...NARROW_HIDDEN_COLUMNS];
+  if (width <= MEDIUM_MAX_WIDTH) return [...MEDIUM_HIDDEN_COLUMNS];
+  return [];
+}
 export const DEFAULT_SORT = Object.freeze({ key: "no", dir: "asc" });
 // 取消は既定で出さない（デジカルも取消した受付は一覧から消え、受付編集履歴で見る）
 export const DEFAULT_FILTERS = Object.freeze({ hiddenStatuses: ["cancelled"], hiddenDoctors: [], hiddenDepartments: [], patientMemo: "", receptionMemo: "" });

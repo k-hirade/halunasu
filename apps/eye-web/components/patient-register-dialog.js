@@ -264,7 +264,7 @@ export function PatientRegisterDialog({
             <fieldset className="register-row register-address" disabled={locked}>
               <legend>住所</legend>
               <div className="register-address-fields">
-                <input aria-label="郵便番号" autoComplete="postal-code" className="input" inputMode="numeric" maxLength={8} onChange={set("postalCode")} placeholder="郵便番号（ハイフンなし）" value={draft.postalCode} />
+                <input aria-label="郵便番号" autoComplete="postal-code" className="input" inputMode="numeric" maxLength={8} onChange={set("postalCode")} placeholder="郵便番号" title="郵便番号（ハイフンなしでも入力できます）" value={draft.postalCode} />
                 <select aria-label="都道府県" className="input" onChange={set("prefecture")} value={draft.prefecture}>
                   <option value="">都道府県</option>
                   {PREFECTURES.map((name) => <option key={name} value={name}>{name}</option>)}

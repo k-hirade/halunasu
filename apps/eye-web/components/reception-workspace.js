@@ -27,8 +27,7 @@ import {
   filterAppointments,
   isFiltered,
   kanaOf,
-  NARROW_HIDDEN_COLUMNS,
-  NARROW_MAX_WIDTH,
+  defaultHiddenColumns,
   queueLabel,
   readStored,
   RECEPTION_COLUMNS,
@@ -71,11 +70,11 @@ export function ReceptionWorkspace() {
   const [notice, setNotice] = useState("");
   const [now, setNow] = useState(Date.now());
   const [refreshing, setRefreshing] = useState(false);
+  const tableWrapRef = useRef(null);
 
   // 端末ごとに覚えた列と並べ替え、URL の ?date=
   useEffect(() => {
-    const narrowDefault = window.innerWidth <= NARROW_MAX_WIDTH ? [...NARROW_HIDDEN_COLUMNS] : [];
-    setHiddenColumns(sanitizeHiddenColumns(readStored(COLUMNS_STORAGE_KEY, narrowDefault)));
+    setHiddenColumns(sanitizeHiddenColumns(readStored(COLUMNS_STORAGE_KEY, defaultHiddenColumns(window.innerWidth))));
     setSort(sanitizeSort(readStored(SORT_STORAGE_KEY, DEFAULT_SORT)));
     const requested = new URLSearchParams(window.location.search).get("date");
     if (requested && /^\d{4}-\d{2}-\d{2}$/u.test(requested)) setDate(requested);
@@ -285,6 +284,7 @@ export function ReceptionWorkspace() {
   const filteredOn = isFiltered(filters);
   const totalShown = filterAppointments(baseRows, DEFAULT_FILTERS, details).length;
   const columns = RECEPTION_COLUMNS.filter((column) => !hiddenColumns.includes(column.key));
+  useScrollEdges(tableWrapRef, [columns.length, rows.length]);
 
   function renderCell(column, item) {
     const snapshot = item.patientSnapshot || {};
@@ -393,11 +393,19 @@ export function ReceptionWorkspace() {
           ) : null}
           <button aria-label="受付一覧を更新" className="btn btn-ghost btn-sm" disabled={refreshing} onClick={refresh} title="更新" type="button">↻</button>
         </div>
+        {/* 900px 以下は表をカードにして列の見出しを出さないので、並べ替えはここで選ぶ */}
+        <div className="rc-mobile-sort">
+          <label className="rc-mobile-sort-label" htmlFor="rc-mobile-sort">並べ替え</label>
+          <select className="input" id="rc-mobile-sort" onChange={(event) => { const next = { key: event.target.value, dir: "asc" }; setSort(next); writeStored(SORT_STORAGE_KEY, next); }} value={sort.key}>
+            {RECEPTION_COLUMNS.map((column) => <option key={column.key} value={column.key}>{column.label}</option>)}
+          </select>
+          <button aria-label={sort.dir === "asc" ? "降順にする" : "昇順にする"} className="btn btn-ghost btn-sm" onClick={() => toggleSort(sort.key)} type="button">{sort.dir === "asc" ? "▲" : "▼"}</button>
+        </div>
       </div>
       {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
       {notice ? <p className="alert alert-ok" role="status">{notice}</p> : null}
 
-      <div className="rc-table-wrap">
+      <div className="rc-table-wrap" ref={tableWrapRef}>
         <table aria-label="受付一覧" className="rc-table">
           <thead>
             <tr>
@@ -417,7 +425,7 @@ export function ReceptionWorkspace() {
               const menu = rowMenu(item);
               return (
                 <tr className={`rc-row status-${displayStatusOf(item)}`} key={item.appointmentId} onClick={(event) => onRowClick(event, item)}>
-                  {columns.map((column) => <td className={`rc-col-${column.key}`} key={column.key}>{renderCell(column, item)}</td>)}
+                  {columns.map((column) => <td className={`rc-col-${column.key}`} data-label={column.label} key={column.key}>{renderCell(column, item)}</td>)}
                   <td className="rc-col-actions">
                     {canReceive ? (
                       <button
@@ -492,6 +500,26 @@ export function ReceptionWorkspace() {
       ) : null}
     </main>
   );
+}
+
+// 表の枠が横にスクロールできるとき、左右のどちらに続きがあるかを data-more-left / data-more-right で示す（固定した列の影に使う）
+function useScrollEdges(ref, deps) {
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return undefined;
+    const update = () => {
+      const max = element.scrollWidth - element.clientWidth;
+      element.toggleAttribute("data-more-left", element.scrollLeft > 1);
+      element.toggleAttribute("data-more-right", max - element.scrollLeft > 1);
+    };
+    update();
+    element.addEventListener("scroll", update, { passive: true });
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
+    observer?.observe(element);
+    if (element.firstElementChild) observer?.observe(element.firstElementChild);
+    return () => { element.removeEventListener("scroll", update); observer?.disconnect(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ref, ...deps]);
 }
 
 function patientOf(item) {
@@ -582,7 +610,14 @@ function FilterPopover({ appointments, doctors, filters, hiddenColumns, onFilter
   const none = (field, values) => onFilters({ ...filters, [field]: values });
 
   return (
+    <>
+    {/* 1100px 以下は画面に固定して出すので、背景を暗くして範囲を分かるようにする（外を押すと閉じるのは上の mousedown） */}
+    <div aria-hidden="true" className="rc-filter-backdrop" />
     <div className="rc-popover rc-filter" ref={ref} role="dialog" aria-label="絞り込み">
+      <div className="rc-filter-head">
+        <strong>絞り込み</strong>
+        <button className="btn btn-ghost btn-sm" onClick={onClose} type="button">閉じる</button>
+      </div>
       <div className="rc-filter-columns">
         <fieldset className="rc-filter-group">
           <legend>ステータス</legend>
@@ -643,9 +678,9 @@ function FilterPopover({ appointments, doctors, filters, hiddenColumns, onFilter
           <span>受付メモ</span>
           <input className="input" onChange={(event) => onFilters({ ...filters, receptionMemo: event.target.value })} placeholder="含む文字" value={filters.receptionMemo} />
         </label>
-        <button className="btn btn-ghost btn-sm" onClick={onClose} type="button">閉じる</button>
       </div>
     </div>
+    </>
   );
 }
 

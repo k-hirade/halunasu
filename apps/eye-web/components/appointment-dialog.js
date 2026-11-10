@@ -23,6 +23,8 @@ export function AppointmentDialog({ title, initial = {}, fixedPatient = null, ap
   const [candidates, setCandidates] = useState([]);
   const [history, setHistory] = useState({ patientId: "", items: [], loading: false });
   const [calendarOpen, setCalendarOpen] = useState(false);
+  // 720px 以下で予約一覧を開いているか（広い画面では常に出す。CSS で切り替える）
+  const [listOpen, setListOpen] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -202,9 +204,10 @@ export function AppointmentDialog({ title, initial = {}, fixedPatient = null, ap
                 autoFocus
                 className="input"
                 onChange={(event) => { setQuery(event.target.value); setForm({ ...form, patientName: "" }); }}
-                placeholder="氏名・カナ・患者番号で検索（未登録なら氏名を入力）"
+                placeholder="氏名・カナ・患者番号"
                 value={query}
               />
+              {query.trim() ? null : <span className="muted small ap-hint">未登録の患者は、氏名を入れるとそのまま登録できます。</span>}
               {candidates.length ? (
                 <ul className="candidate-list">
                   {candidates.map((candidate) => (
@@ -262,11 +265,16 @@ export function AppointmentDialog({ title, initial = {}, fixedPatient = null, ap
         {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
         <div className="ap-body">
           {twoPane ? (
-            <section aria-label="この患者の予約" className="ap-list">
+            <section aria-label="この患者の予約" className={`ap-list${listOpen ? " is-open" : ""}`}>
               <div className="ap-list-head">
-                <strong>予約一覧</strong>
+                <strong className="ap-list-title">予約一覧</strong>
+                {/* 720px 以下は一覧をたたみ、フォームと［登録］を先に見せる */}
+                <button aria-expanded={listOpen} className="btn btn-ghost btn-sm ap-list-toggle" onClick={() => setListOpen(!listOpen)} type="button">
+                  予約一覧{patient && upcoming.length ? `（${upcoming.length}件）` : ""} {listOpen ? "▴" : "▾"}
+                </button>
                 {patient ? <button aria-label="新しい予約" className="btn btn-ghost btn-sm" disabled={!editingItem} onClick={startNew} type="button">＋</button> : null}
               </div>
+              <div className="ap-list-content">
               {!patient ? <p className="muted small">患者を選ぶと、その人の予約が出ます。</p>
                 : history.loading && history.patientId !== patientId ? <p className="muted small">読み込み中…</p>
                   : upcoming.length === 0 ? <p className="muted small">予約はありません。</p> : (
@@ -286,6 +294,7 @@ export function AppointmentDialog({ title, initial = {}, fixedPatient = null, ap
                       ))}
                     </ul>
                   )}
+              </div>
             </section>
           ) : null}
           <div className="ap-form">{formFields}</div>
