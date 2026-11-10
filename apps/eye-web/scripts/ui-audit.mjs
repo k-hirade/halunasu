@@ -418,21 +418,32 @@ try {
       const viewports = name.endsWith("-dark") && DARK_VIEWPORTS ? DARK_VIEWPORTS : VIEWPORTS;
       for (const [width, height] of viewports) jobs.push({ name, state, width, height });
     }
-    let next = 0;
+    // タッチの有無が違う画面を同時に開くと、Chrome の (pointer: coarse) の判定が混ざる（タッチの幅でマウス扱いになる）。
+    // そのため端末の種類ごとにまとめ、種類ごとに順に走らせる（同じ種類の中だけ並列にする）。
+    const groups = new Map();
+    for (const job of jobs) {
+      const device = deviceOf(job.width, job.height);
+      const key = `${device.hasTouch}-${device.isMobile}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(job);
+    }
     let done = 0;
     const started = Date.now();
-    const worker = async () => {
-      while (next < jobs.length) {
-        const job = jobs[next];
-        next += 1;
-        await runJob(browser, storageState, paths, job).catch((error) => {
-          results[`${job.name}-${job.width}x${job.height}`] = { setupError: `JOB ${error.message.slice(0, 300)}`, errors: [] };
-        });
-        done += 1;
-        if (done % 20 === 0) console.log(`${done}/${jobs.length} (${Math.round((Date.now() - started) / 1000)}s)`);
-      }
-    };
-    await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+    for (const group of groups.values()) {
+      let next = 0;
+      const worker = async () => {
+        while (next < group.length) {
+          const job = group[next];
+          next += 1;
+          await runJob(browser, storageState, paths, job).catch((error) => {
+            results[`${job.name}-${job.width}x${job.height}`] = { setupError: `JOB ${error.message.slice(0, 300)}`, errors: [] };
+          });
+          done += 1;
+          if (done % 20 === 0) console.log(`${done}/${jobs.length} (${Math.round((Date.now() - started) / 1000)}s)`);
+        }
+      };
+      await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+    }
   } finally {
     await browser.close().catch(() => null);
   }
