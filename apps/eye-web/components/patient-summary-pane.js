@@ -11,6 +11,7 @@ import {
   latestVision,
   todayPlan
 } from "../lib/patient-summary";
+import { splitAtBreaks } from "../lib/label-layout.mjs";
 import { diagnosisText, formatDate, IOP_METHOD_LABELS, prescriptionText, SEX_LABELS, todayIso } from "../lib/format";
 
 // 患者の概要（トプコンの「カルテ概要」に倣う 2 列 × 4 段）。
@@ -43,10 +44,10 @@ export function PatientSummaryPane({ summary = null, loading = false, error = ""
           {patient ? (
             <dl className="ps-dl">
               <div><dt>患者ID</dt><dd className="mono">{patient.primaryPatientNumber || "—"}</dd></div>
-              <div><dt>氏名</dt><dd><strong>{patient.displayName}</strong>{patient.displayNameKana ? <span className="ps-kana">{patient.displayNameKana}</span> : null}</dd></div>
-              <div><dt>性別・生年月日</dt><dd>{[SEX_LABELS[patient.sex] && patient.sex !== "unknown" ? SEX_LABELS[patient.sex] : "", patient.birthDate ? `${formatDate(patient.birthDate)}（${ageWithMonths(patient.birthDate, date)}）` : ""].filter(Boolean).join(" ") || "—"}</dd></div>
+              <div><dt>氏名</dt><dd><strong className="ps-nw">{patient.displayName}</strong>{patient.displayNameKana ? <> <span className="ps-kana">{patient.displayNameKana}</span></> : null}</dd></div>
+              <div><dt>性別・生年月日</dt><dd><Breakable parts={[SEX_LABELS[patient.sex] && patient.sex !== "unknown" ? SEX_LABELS[patient.sex] : "", patient.birthDate ? formatDate(patient.birthDate) : "", patient.birthDate ? `（${ageWithMonths(patient.birthDate, date)}）` : ""]} /></dd></div>
               <div><dt>担当医</dt><dd>{summary.doctorName || "—"}</dd></div>
-              <div><dt>前回来院</dt><dd>{lastVisit ? `${formatDate(lastVisit)}（${elapsedLabel(lastVisit, date)}経過）` : "初診"}</dd></div>
+              <div><dt>前回来院</dt><dd>{lastVisit ? <Breakable parts={[formatDate(lastVisit), `（${elapsedLabel(lastVisit, date)}経過）`]} /> : "初診"}</dd></div>
             </dl>
           ) : empty}
           {profile ? <div className="ps-allergy"><AllergyBadge profile={profile} /></div> : null}
@@ -68,13 +69,13 @@ export function PatientSummaryPane({ summary = null, loading = false, error = ""
           {vision ? (
             <div className="ps-lines mono">
               <p className="ps-sub">{vision.type} &lt;遠見&gt;</p>
-              <p>RV={vision.far.od || "—"}</p>
-              <p>LV={vision.far.os || "—"}</p>
+              <p><Breakable text={`RV=${vision.far.od || "—"}`} /></p>
+              <p><Breakable text={`LV=${vision.far.os || "—"}`} /></p>
               {vision.near ? (
                 <>
                   <p className="ps-sub">&lt;近見&gt;</p>
-                  <p>RV={vision.near.od || "—"}</p>
-                  <p>LV={vision.near.os || "—"}</p>
+                  <p><Breakable text={`RV=${vision.near.od || "—"}`} /></p>
+                  <p><Breakable text={`LV=${vision.near.os || "—"}`} /></p>
                 </>
               ) : null}
             </div>
@@ -114,6 +115,16 @@ export function PatientSummaryPane({ summary = null, loading = false, error = ""
       </div>
     </section>
   );
+}
+
+// 値の途中（「1.00D」「Ax180°」の中など）で折り返さないよう、区切りごとに nowrap の span にする。
+// text は lib/label-layout.mjs の splitAtBreaks で区切る（空白・「×」「=」の後と括弧の前）。parts を渡すと、その単位で区切る（空のものは省く）。
+function Breakable({ text = "", parts = null }) {
+  const pieces = parts ? parts.filter(Boolean) : splitAtBreaks(text);
+  if (!pieces.length) return "—";
+  return pieces.map((piece, index) => (
+    <span key={index}>{index ? <wbr /> : null}<span className="ps-nw">{parts && index && !/^[(（]/u.test(piece) ? ` ${piece}` : piece}</span></span>
+  ));
 }
 
 function whenText(item) {

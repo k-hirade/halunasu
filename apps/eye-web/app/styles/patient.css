@@ -43,7 +43,8 @@
   margin-top: 12px;
 }
 
-@media (max-width: 1279px) {
+/* 1024〜1279 も右の欄は 320px にする（280px ではサムネイルの見出し・文書名が切れていた） */
+@media (max-width: 1023px) {
   .pt-page .pt-grid {
     grid-template-columns: minmax(0, 1fr) 280px;
   }
@@ -1249,4 +1250,121 @@ a.visit-row:focus-visible {
   .pt-tab {
     padding: 4px 10px;
   }
+}
+
+/* ==== 患者ページ・画像比較のレスポンシブの調整（C 領域） ==== */
+
+/* 画像の比較: 600px 以上は 2 面を左右に並べたままにする（globals.css は 900px 以下で 1 列） */
+@media (min-width: 600px) {
+  .cmp-page .compare-grid.cmp-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+/* 面の画像の高さ: 一番上までスクロールしたとき面の下端が画面に収まる高さ（--cmp-preview-top は
+ * components/image-compare.js が測る）。面の幅（100cqi）より高くしない（縦長の画面で黒い余白ばかりにならない）。 */
+.cmp-page .cmp-pane {
+  container-type: inline-size;
+}
+
+.cmp-page .cmp-pane .file-preview {
+  height: min(clamp(200px, calc(100dvh - var(--cmp-preview-top, 420px) - 28px), 70vh), 100cqi);
+}
+
+/* スマホ（1 列）: 2 面が 1 画面にほぼ収まる高さにする */
+@media (max-width: 599px) {
+  .cmp-page .cmp-pane .file-preview {
+    height: min(clamp(160px, calc((100dvh - var(--nav-h)) / 2 - 100px), 60vh), 100cqi);
+  }
+}
+
+/* 高さの低い画面（スマホ横）: サムネイルの列と見出しを詰めて、画像を最初の画面に近づける */
+@media (max-height: 500px) {
+  .cmp-head {
+    margin: 0 0 6px;
+  }
+
+  .cmp-strip {
+    margin-bottom: 6px;
+    padding-bottom: 4px;
+  }
+
+  /* サムネイルは横長（小さな画像 + 日付）にして、列の高さを約 40px にする */
+  .cmp-strip li {
+    flex-basis: 104px;
+  }
+
+  .cmp-strip .cmp-thumb {
+    align-items: center;
+    grid-template-columns: 36px minmax(0, 1fr);
+  }
+
+  .cmp-strip .cmp-thumb .thumb-img {
+    height: 36px;
+    width: 36px;
+  }
+
+  .cmp-strip .cmp-thumb .thumb-caption {
+    padding: 2px 4px;
+  }
+
+  .cmp-page .cmp-pane {
+    padding: 6px 8px;
+  }
+
+  .cmp-ou-head {
+    margin: 4px 0;
+  }
+}
+
+/* ファイルの表示（ダイアログ）: 画像は画面の高さに合わせ、下の操作もスクロールせずに見えるようにする */
+.dialog.dialog-viewer .file-preview {
+  height: min(70vh, calc(100dvh - 160px));
+  min-height: 160px;
+}
+
+/* 視力の記録の表: 狭い画面では「種」と「遠近」を 1 列にまとめ、右眼・左眼の値は区切りで折り返す */
+.vi-dist-inline {
+  display: none;
+}
+
+@media (max-width: 480px) {
+  .vi-table .vi-dist {
+    display: none;
+  }
+
+  .vi-dist-inline {
+    display: inline;
+  }
+
+  .vi-table th,
+  .vi-table td {
+    padding: 4px 5px;
+  }
+
+  .vi-table td.vi-od,
+  .vi-table td.vi-os {
+    white-space: normal;
+  }
+}
+
+/* 戻るリンク（患者帯の中・patient-banner.js）と OU の日付送り: PC でも 32px 角を確保する
+ * （患者帯は B 領域の部品なので、患者ページ・画像比較の中だけで指定する） */
+.pt-page .back-link,
+.cmp-page .back-link {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+  min-height: 32px;
+  min-width: 32px;
+}
+
+.cmp-ou-head .btn.btn-chip {
+  min-width: 32px;
+}
+
+/* ファイルの表示の「このファイルを削除する」（開閉）: PC でも 32px の高さを確保する */
+.dialog.dialog-viewer .archive-box > summary {
+  align-content: center;
+  min-height: 32px;
 }

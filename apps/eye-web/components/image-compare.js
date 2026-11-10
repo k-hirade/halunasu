@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useEyeApi } from "./eye-api";
 import { byNewest, FILE_KIND_LABELS, FilePreview, isImageFile, shortDate, ThumbImage, UploadDialog, useFileUrls } from "./files-panel";
 import { PatientBanner } from "./patient-banner";
@@ -146,12 +146,36 @@ export function ImageCompare({ patientId }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [activePane, mode, step, uploading]);
 
+  // 比較・OU の面の画像の高さに使うため、画像の上端（ページの先頭から）を --cmp-preview-top に入れる。
+  // 一番上までスクロールした状態で、面の下端が画面に収まる高さにする（patient.css の .cmp-pane .file-preview）。
+  const pageRef = useRef(null);
+  useEffect(() => {
+    const page = pageRef.current;
+    if (!page || typeof ResizeObserver === "undefined") return undefined;
+    let frame = 0;
+    const measure = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        // 面ごとに見出しの段数が違う（題名の行がない面もある）ので、一番下にある画像の上端を使う
+        const previews = [...page.querySelectorAll(".cmp-grid .file-preview")];
+        if (!previews.length) return;
+        const top = Math.round(Math.max(...previews.map((preview) => preview.getBoundingClientRect().top)) + window.scrollY);
+        if (page.style.getPropertyValue("--cmp-preview-top") !== `${top}px`) page.style.setProperty("--cmp-preview-top", `${top}px`);
+      });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(page);
+    window.addEventListener("resize", measure);
+    return () => { cancelAnimationFrame(frame); observer.disconnect(); window.removeEventListener("resize", measure); };
+  }, []);
+
   const byId = new Map(candidates.map((item) => [item.fileId, item]));
   const canUpload = Boolean(context?.canWriteDocuments);
   const uploadButton = canUpload ? <button className="btn btn-ghost" onClick={() => setUploading(true)} type="button">＋取り込む</button> : null;
 
   return (
-    <main className="eye-page cmp-page">
+    <main className="eye-page cmp-page" ref={pageRef}>
       {patient ? (
         <div className="encounter-bar is-static">
           <PatientBanner
@@ -223,7 +247,7 @@ export function ImageCompare({ patientId }) {
                         {file ? <span className="cmp-pane-meta">{FILE_KIND_LABELS[file.kind]}</span> : null}
                       </span>
                     </div>
-                    {file ? <FilePreview file={file} url={urls[file.fileId]} /> : <div className="file-preview is-empty">この日の{label}の画像はありません</div>}
+                    {file ? <FilePreview failed={Boolean(failed[file.fileId])} file={file} url={urls[file.fileId]} /> : <div className="file-preview is-empty">この日の{label}の画像はありません</div>}
                   </section>
                 );
               })}
@@ -240,7 +264,7 @@ export function ImageCompare({ patientId }) {
                   <strong>{formatDate(item.takenOn)}</strong>
                   <span className="muted small">{item.eye ? EYE_LABELS[item.eye] : ""}{index === seriesFiles.length - 1 ? " ・ 最新" : ""}</span>
                 </div>
-                <FilePreview file={item} url={urls[item.fileId]} />
+                <FilePreview failed={Boolean(failed[item.fileId])} file={item} url={urls[item.fileId]} />
               </li>
             ))}
           </ol>
@@ -300,7 +324,7 @@ export function ImageCompare({ patientId }) {
                     </span>
                   </div>
                   {file && file.title !== FILE_KIND_LABELS[file.kind] ? <p className="cmp-pane-title" title={file.title}>{file.title}</p> : null}
-                  {file ? <FilePreview file={file} url={urls[file.fileId]} /> : (
+                  {file ? <FilePreview failed={Boolean(failed[file.fileId])} file={file} url={urls[file.fileId]} /> : (
                     <div className="file-preview is-empty">{candidates.length === 1 ? "比べる画像がもう 1 件ありません" : "サムネイルを選んでください"}</div>
                   )}
                 </section>

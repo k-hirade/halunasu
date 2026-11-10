@@ -1188,6 +1188,7 @@ async function runOrthoptistFlow(browser) {
   await page.goto(`${encounterUrl}/exam`);
   await page.locator(".exam-bar-eye.is-done").filter({ hasText: "R" }).waitFor();
   assert.equal(await page.locator(".exam-bar-eye.is-empty").filter({ hasText: "L" }).count(), 1, "an eye without values is not confirmed");
+  await assertExamLayoutFits(page);
   // 該当する受付がなければ、確認だけにして受付は動かさない
   await page.getByRole("button", { name: "検査値を確認する" }).waitFor();
   // 保存して次へ: 次に検査する患者（受付中・検査中）の検査入力へ。いなければ、その旨を出して留まる
@@ -1599,5 +1600,37 @@ async function assertEditorResponsiveB(page) {
     assert.ok(rows <= 2, `the usage times chips sit in a row (rows: ${rows})`);
     await usage.click();
   }
+  await page.setViewportSize(original);
+}
+
+// ---- 検査入力のレスポンシブ（C 領域）: 大タブ・視力の表・下のバー ----
+// 大タブは 768px 以上で 1 行、スマホは 1 行の横スクロール。スマホの視力の表は横に送っても R/L の列が残る。
+// 1920 では下のバーの中身が本文と同じ 1440px の幅に入り、スマホ横ではバーが 1 段。
+async function assertExamLayoutFits(page) {
+  const original = page.viewportSize();
+  const tabRows = () => page.locator(".rd-tab").evaluateAll((tabs) => new Set(tabs.map((tab) => Math.round(tab.getBoundingClientRect().top))).size);
+  for (const width of [1280, 1024, 768]) {
+    await page.setViewportSize({ width, height: 800 });
+    assert.equal(await tabRows(), 1, `exam tabs stay on one row at ${width}px`);
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await tabRows(), 1, "exam tabs scroll sideways on one row on phones");
+  assert.equal(await page.locator(".rd-tabs").evaluate((node) => node.scrollWidth > node.clientWidth), true, "the phone tab row can scroll");
+  const stuck = await page.locator(".rd-grid-scroll").evaluate((node) => {
+    node.scrollLeft = node.scrollWidth;
+    const eye = node.querySelector(".rd-eye").getBoundingClientRect();
+    const frame = node.getBoundingClientRect();
+    const result = eye.left >= frame.left - 1 && eye.right <= frame.right;
+    node.scrollLeft = 0;
+    return result;
+  });
+  assert.equal(stuck, true, "the R/L column stays visible while the vision grid scrolls");
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, "the exam page does not scroll sideways on phones");
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  const barLeft = await page.locator(".rd-bar .exam-bar-row").evaluate((node) => node.getBoundingClientRect().left);
+  assert.ok(barLeft >= (1920 - 1440) / 2 - 2, `the exam bar content is centered at 1920px (left ${barLeft})`);
+  await page.setViewportSize({ width: 844, height: 390 });
+  const barHeight = await page.locator(".rd-bar").evaluate((node) => node.getBoundingClientRect().height);
+  assert.ok(barHeight <= 64, `the exam bar is one row on landscape phones (${barHeight}px)`);
   await page.setViewportSize(original);
 }

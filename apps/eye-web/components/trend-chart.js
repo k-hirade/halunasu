@@ -7,6 +7,7 @@ import { iopAxis, thinLabels, vaAxis } from "../lib/trend-scale.mjs";
 // 視力（対数軸）と眼圧を同じ時間軸の上下 2 段に描き、間の「点眼」行に開始▲・中止▼・注射◆の印を置く。
 const BAND = 112;
 const MARK_ROW = 22;
+const MARK_HIT = 32;
 const GAP = 10;
 const AXIS_H = 20;
 const PAD = { left: 66, right: 44, top: 10 };
@@ -163,7 +164,8 @@ function TrendSvg({ points, marks, show, width, onActivate, active }) {
               tabIndex={0}
             >
               <title>{lines.join("\n")}</title>
-              <rect className="mark-hit" height={MARK_ROW} width={16} x={x - 8} y={markBand.top} />
+              {/* 透明の当たり判定。指で押せるよう 32×32 にする（点眼の段の上下に少しはみ出す） */}
+              <rect className="mark-hit" height={MARK_HIT} width={MARK_HIT} x={x - MARK_HIT / 2} y={cy - MARK_HIT / 2} />
               <path d={markPath(mark.kind, x, cy)} />
             </g>
           );

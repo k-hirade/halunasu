@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   averageOf,
   COVER_DIRECTION_LABELS,
@@ -95,7 +95,27 @@ export function ExamTabBody({ tab, subtab, values, set, touch, previous, deviceP
 
 // ---- 視力 > 自覚検査 ----
 
+// 横にスクロールする枠の右側に続きがあるとき data-more-right を付ける（CSS で右端に影を出して知らせる）。
+// 視力の表と、スマホの大タブ（exam-workbench.js）で使う。
+export function useScrollEdge() {
+  // 描かれるのが読み込みの後になる要素にも付けられるよう、コールバックの ref にする
+  const cleanupRef = useRef(null);
+  return useCallback((node) => {
+    cleanupRef.current?.();
+    cleanupRef.current = null;
+    if (!node) return;
+    const update = () => node.toggleAttribute("data-more-right", node.scrollLeft + node.clientWidth < node.scrollWidth - 2);
+    update();
+    node.addEventListener("scroll", update, { passive: true });
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
+    observer?.observe(node);
+    if (node.firstElementChild) observer?.observe(node.firstElementChild);
+    cleanupRef.current = () => { node.removeEventListener("scroll", update); observer?.disconnect(); };
+  }, []);
+}
+
 function VisionTab({ values, set, touch, previous, devicePanels }) {
+  const gridScrollRef = useScrollEdge();
   const [showPd, setShowPd] = useState(() => hasAnyValue(values.pd));
   const [forcePad, setForcePad] = useState(false);
   const usePad = touch || forcePad;
@@ -138,38 +158,40 @@ function VisionTab({ values, set, touch, previous, devicePanels }) {
       </div>
       {showPd ? <PdRow set={set} touch={usePad} values={values} /> : null}
       <div className="rd-grid-area">
-        <div className="rd-grid-scroll" data-enter-root="" onKeyDown={moveToNextOnEnter}>
-          <table className="rd-grid">
-            <thead>
-              <tr>
-                <th scope="col" colSpan={2}><span className="sr-only">区分</span></th>
-                <th scope="col">裸眼VA</th>
-                <th scope="col">IOL/CL</th>
-                <th scope="col">矯正VA</th>
-                <th scope="col">S</th>
-                <th scope="col">C</th>
-                <th scope="col">A</th>
-                <th scope="col">RG</th>
-              </tr>
-            </thead>
-            {["far", "near"].map((distance) => (
-              <tbody className={`rd-grid-${distance}`} key={distance}>
-                {GRID_ROWS.filter((row) => row.distance === distance).map((row, index) => (
-                  <VisionRow
-                    distance={distance}
-                    first={index === 0}
-                    key={row.side}
-                    label={row.label}
-                    previous={distance === "far" ? previous?.[row.side] : null}
-                    set={set}
-                    side={row.side}
-                    touch={usePad}
-                    values={values}
-                  />
-                ))}
-              </tbody>
-            ))}
-          </table>
+        <div className="rd-grid-frame">
+          <div className="rd-grid-scroll" data-enter-root="" onKeyDown={moveToNextOnEnter} ref={gridScrollRef}>
+            <table className="rd-grid">
+              <thead>
+                <tr>
+                  <th scope="col" colSpan={2}><span className="sr-only">区分</span></th>
+                  <th scope="col">裸眼VA</th>
+                  <th scope="col">IOL/CL</th>
+                  <th scope="col">矯正VA</th>
+                  <th scope="col">S</th>
+                  <th scope="col">C</th>
+                  <th scope="col">A</th>
+                  <th scope="col">RG</th>
+                </tr>
+              </thead>
+              {["far", "near"].map((distance) => (
+                <tbody className={`rd-grid-${distance}`} key={distance}>
+                  {GRID_ROWS.filter((row) => row.distance === distance).map((row, index) => (
+                    <VisionRow
+                      distance={distance}
+                      first={index === 0}
+                      key={row.side}
+                      label={row.label}
+                      previous={distance === "far" ? previous?.[row.side] : null}
+                      set={set}
+                      side={row.side}
+                      touch={usePad}
+                      values={values}
+                    />
+                  ))}
+                </tbody>
+              ))}
+            </table>
+          </div>
         </div>
         <label className="rd-comment">
           <span>コメント</span>

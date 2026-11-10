@@ -313,8 +313,10 @@ export function UploadDialog({ patientId, encounterId = "", defaultKind = "oct",
   );
 }
 
-export function FilePreview({ file, url }) {
-  if (!url) return <div className="file-preview is-empty">表示するファイルを選んでください</div>;
+// failed は読み込みに失敗したとき（「選んでください」と紛らわしくならないよう、別の文言にする）。
+// 読み込み中は「読み込み中…」を出す（file があって url がまだないとき）。
+export function FilePreview({ file, url, failed = false }) {
+  if (!url) return <div className="file-preview is-empty">{failed ? "画像を読み込めませんでした。開き直してください" : file ? "読み込み中…" : "表示するファイルを選んでください"}</div>;
   return file.contentType === "application/pdf"
     ? <iframe className="file-preview" src={url} title={file.title} />
     : <img alt={file.title} className="file-preview" src={url} />;
