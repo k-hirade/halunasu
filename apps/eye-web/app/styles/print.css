@@ -211,6 +211,14 @@
 }
 
 /* ===== カルテの印刷（診療録の写し） ===== */
+/* chart-editor.css のカード用の .chart-sheet（枠線・角丸・画面の背景色）を紙面では打ち消す。
+ * 紙面は .sheet の白地のまま（暗室表示でも暗くしない）。 */
+.sheet > .chart-sheet {
+  background: none;
+  border: 0;
+  border-radius: 0;
+}
+
 .chart-sheet .cs-facility {
   border-bottom: 1.5pt solid var(--paper-ink);
   color: var(--paper-muted);
@@ -219,6 +227,22 @@
   gap: 12px;
   justify-content: space-between;
   padding-bottom: 3px;
+}
+
+/* 施設名・郵便番号・住所・電話は項目ごとに改行しない（電話番号の途中で折れないように） */
+.chart-sheet .cs-facility-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1em;
+  min-width: 0;
+}
+
+.chart-sheet .cs-facility-info > span {
+  white-space: nowrap;
+}
+
+.chart-sheet .cs-facility-info > .cs-facility-address {
+  white-space: normal;
 }
 
 .chart-sheet .cs-kind {
@@ -746,19 +770,50 @@
   margin: 8px 0 0;
 }
 
-/* ===== 狭い画面: ツールバーを2段に、用紙は幅いっぱい ===== */
-@media (max-width: 719px) {
+/* ===== 狭い画面: ツールバーを2段に、用紙は幅いっぱい =====
+ * screen に限る: 印刷のとき Chrome は用紙の印字幅（A4 で約 703px、A5 で約 484px）でこの条件を評価するため、
+ * 限らないと処方箋の単位が消える・署名欄が縦に積まれるなどのスマホ用の指定が紙に当たる。 */
+@media screen and (max-width: 719px) {
+  /* 1 段目 戻る + 題名（下に状態）/ 2 段目 操作（用紙・印刷）。画面の上に貼り付けず、紙面の高さを空ける */
   .print-bar {
+    align-items: center;
+    display: grid;
+    gap: 4px 10px;
+    grid-template-areas: "back title" "back state" "actions actions";
+    grid-template-columns: auto minmax(0, 1fr);
     padding: 8px 12px;
+    position: static;
+  }
+
+  .print-back {
+    grid-area: back;
   }
 
   .print-bar-title {
-    flex-basis: calc(100% - 140px);
+    grid-area: title;
+  }
+
+  .print-bar-title strong {
+    font-size: var(--fs-md);
+  }
+
+  .print-bar-subject {
+    font-size: var(--fs-sm);
+  }
+
+  .print-state {
+    font-size: var(--fs-xs);
+    grid-area: state;
+    justify-self: start;
+    padding: 0 8px;
+    white-space: normal;
   }
 
   .print-bar-actions {
+    grid-area: actions;
     justify-content: flex-end;
-    width: 100%;
+    margin-left: 0;
+    margin-top: 2px;
   }
 
   .print-desk {
@@ -773,10 +828,22 @@
     width: 100%;
   }
 
+  /* 表の見出しは 9pt。語の途中で折らない（「プリズ/ム」にしない）。列の幅は値の長さに合わせて配る */
   .rx-values thead th {
-    font-size: 8pt;
-    padding: 2px;
+    font-size: 9pt;
+    letter-spacing: -0.04em;
+    padding: 2px 1px;
+    word-break: keep-all;
   }
+
+  .rx-values:not(.rx-values-cl) thead th:first-child { width: 6%; }
+  .rx-values:not(.rx-values-cl) thead th:nth-child(2),
+  .rx-values:not(.rx-values-cl) thead th:nth-child(3) { width: 14%; }
+  .rx-values:not(.rx-values-cl) thead th:nth-child(4) { width: 10%; }
+  .rx-values:not(.rx-values-cl) thead th:nth-child(5) { width: 13%; }
+  .rx-values:not(.rx-values-cl) thead th:nth-child(6),
+  .rx-values:not(.rx-values-cl) thead th:nth-child(7) { width: 15%; }
+  .rx-values:not(.rx-values-cl) thead th:nth-child(8) { width: 13%; }
 
   .rx-values td {
     font-size: 10pt;
@@ -804,8 +871,12 @@
     padding: 0 1mm;
   }
 
-  .rx-paren,
+  /* 括弧は前後をまとめて折る（「累進焦点（」で改行しない）。中の値だけは折り返せる */
   .rx-field {
+    white-space: normal;
+  }
+
+  .rx-fill {
     white-space: normal;
   }
 
@@ -884,5 +955,14 @@
   .sheet * {
     -webkit-print-color-adjust: economy;
     print-color-adjust: economy;
+  }
+}
+
+/* タッチ端末: 警告の帯の中のリンク（「カルテで確定する →」など）を指で押せる高さに。行の高さは変えない */
+@media screen and (pointer: coarse) {
+  .print-alert a {
+    display: inline-block;
+    margin: -10px 0 -10px 8px;
+    padding: 10px 0;
   }
 }

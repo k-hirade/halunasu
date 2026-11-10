@@ -249,11 +249,11 @@ function DrugsSection({ presets, canEdit, onSaved, onDirtyChange }) {
   const renderRow = (item) => (
     <>
       <span className="master-name">
-        <strong>{item.name}</strong>
+        <strong title={item.name}>{item.name}</strong>
         {item.route === "inside" ? <span className="tag master-tag">院内</span> : null}
       </span>
       <span className="master-kind">{PRESCRIPTION_KIND_LABELS[item.kind] || ""}</span>
-      <span className="master-default">{drugDefaultText(item) || <span className="muted">—</span>}</span>
+      <span className="master-default" title={drugDefaultText(item) || undefined}>{drugDefaultText(item) || <span className="muted">—</span>}</span>
       <span className="master-num">{drugBottleText(item)}</span>
     </>
   );
@@ -410,8 +410,8 @@ function PhrasesSection({ phrases, canEdit, onSaved, onDirtyChange }) {
   ];
   const renderRow = (item) => (
     <>
-      <span className="master-name"><strong>{item.label || <span className="muted">（表示名なし）</span>}</strong></span>
-      <span className="master-desc">{item.text}</span>
+      <span className="master-name"><strong title={item.label || undefined}>{item.label || <span className="muted">（表示名なし）</span>}</strong></span>
+      <span className="master-desc" title={item.text}>{item.text}</span>
       <span className="master-kind">{item.active === false ? PHRASE_TARGET_LABELS[item.target] : ""}</span>
     </>
   );

@@ -80,50 +80,53 @@ export function DocumentInsertPanel({ patientId, sourceEncounterId = "", onInser
         <h2 id="doc-insert-heading">カルテから挿入</h2>
         <button aria-label="閉じる" className="btn btn-chip" onClick={onClose} type="button">×</button>
       </header>
-      {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
-      {encounters === null && !error ? <p className="loading">読み込み中…</p> : null}
-      {encounters && !encounters.length ? <p className="empty">この患者のカルテはまだありません。</p> : null}
-      {encounters?.length ? (
-        <>
-          <label className="field doc-insert-source">
-            <span>元のカルテ</span>
-            <select className="input" onChange={(event) => setSelectedId(event.target.value)} value={selectedId}>
-              {encounters.map((item) => (
-                <option key={item.encounterId} value={item.encounterId}>
-                  {formatDate(item.encounterDate)}（{item.status === "finalized" ? "確定" : item.amending ? "修正中" : "下書き"}）
-                </option>
-              ))}
-            </select>
-          </label>
-          {selected && selected.status !== "finalized" ? (
-            <p className="doc-insert-note">確定前のカルテです。カルテを直した場合は、入れた文も見直してください。</p>
-          ) : null}
-          <div className="doc-insert-options">
-            <label className="check"><input checked={withHeadings} onChange={(event) => setWithHeadings(event.target.checked)} type="checkbox" /> 【見出し】を付ける</label>
-            <span aria-label="所見" className="doc-insert-seg" role="group">
-              <button aria-pressed={abnormalOnly} className="btn btn-chip" onClick={() => setAbnormalOnly(true)} type="button">所見は異常のみ</button>
-              <button aria-pressed={!abnormalOnly} className="btn btn-chip" onClick={() => setAbnormalOnly(false)} type="button">すべて</button>
-            </span>
-          </div>
-          {!detail && selectedId ? <p className="loading">読み込み中…</p> : null}
-          {detail ? (
-            <div className="doc-insert-groups">
-              {groups.map((group) => (
-                <fieldset className="doc-insert-group" key={group.key}>
-                  <legend>{group.label}</legend>
-                  {group.items.map((item) => (
-                    <label className="doc-insert-item" key={item.id}>
-                      <input checked={Boolean(checked[item.id])} onChange={(event) => setChecked((current) => ({ ...current, [item.id]: event.target.checked }))} type="checkbox" />
-                      <span>{item.label || item.text}</span>
-                    </label>
-                  ))}
-                </fieldset>
-              ))}
-              {!groups.length ? <p className="empty">このカルテには差し込める内容がありません。</p> : null}
+      {/* 見出しと下のボタンの間は 1 つのスクロール領域（低い画面でも項目の一覧まで届く） */}
+      <div className="doc-insert-body">
+        {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
+        {encounters === null && !error ? <p className="loading">読み込み中…</p> : null}
+        {encounters && !encounters.length ? <p className="empty">この患者のカルテはまだありません。</p> : null}
+        {encounters?.length ? (
+          <>
+            <label className="field doc-insert-source">
+              <span>元のカルテ</span>
+              <select className="input" onChange={(event) => setSelectedId(event.target.value)} value={selectedId}>
+                {encounters.map((item) => (
+                  <option key={item.encounterId} value={item.encounterId}>
+                    {formatDate(item.encounterDate)}（{item.status === "finalized" ? "確定" : item.amending ? "修正中" : "下書き"}）
+                  </option>
+                ))}
+              </select>
+            </label>
+            {selected && selected.status !== "finalized" ? (
+              <p className="doc-insert-note">確定前のカルテです。カルテを直した場合は、入れた文も見直してください。</p>
+            ) : null}
+            <div className="doc-insert-options">
+              <label className="check"><input checked={withHeadings} onChange={(event) => setWithHeadings(event.target.checked)} type="checkbox" /> 【見出し】を付ける</label>
+              <span aria-label="所見" className="doc-insert-seg" role="group">
+                <button aria-pressed={abnormalOnly} className="btn btn-chip" onClick={() => setAbnormalOnly(true)} type="button">所見は異常のみ</button>
+                <button aria-pressed={!abnormalOnly} className="btn btn-chip" onClick={() => setAbnormalOnly(false)} type="button">すべて</button>
+              </span>
             </div>
-          ) : null}
-        </>
-      ) : null}
+            {!detail && selectedId ? <p className="loading">読み込み中…</p> : null}
+            {detail ? (
+              <div className="doc-insert-groups">
+                {groups.map((group) => (
+                  <fieldset className="doc-insert-group" key={group.key}>
+                    <legend>{group.label}</legend>
+                    {group.items.map((item) => (
+                      <label className="doc-insert-item" key={item.id}>
+                        <input checked={Boolean(checked[item.id])} onChange={(event) => setChecked((current) => ({ ...current, [item.id]: event.target.checked }))} type="checkbox" />
+                        <span>{item.label || item.text}</span>
+                      </label>
+                    ))}
+                  </fieldset>
+                ))}
+                {!groups.length ? <p className="empty">このカルテには差し込める内容がありません。</p> : null}
+              </div>
+            ) : null}
+          </>
+        ) : null}
+      </div>
       <footer className="doc-insert-foot">
         <button className="btn btn-ghost" onClick={onClose} type="button">閉じる</button>
         <button className="btn btn-primary" disabled={!selectedCount} onClick={insert} type="button">選んだ {selectedCount} 件をカーソル位置に挿入</button>
