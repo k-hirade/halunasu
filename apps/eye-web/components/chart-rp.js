@@ -127,7 +127,8 @@ function RpBadgeMenu({ label, className = "", editable, children, title }) {
   if (!editable) return <span className={`rp-badge ${className}`} title={title}>{label}</span>;
   return (
     <details className={`more-menu rp-badge-menu`} onClick={(event) => event.stopPropagation()}>
-      <summary aria-label={`${label}の操作`} className={`rp-badge ${className}`} title={title}>{label}▾</summary>
+      {/* summary は押しやすい大きさ（タッチ端末で 36px）、見た目のバッジは中の span */}
+      <summary aria-label={`${label}の操作`} className={`rp-badge rp-badge-summary ${className}`} title={title}><span className={`rp-badge ${className}`}>{label}▾</span></summary>
       <div className="more-menu-list">{children}</div>
     </details>
   );
@@ -227,51 +228,59 @@ function RxGroup({ group, number, content, update, editable, drugPresets, nextDa
                 </span>
               )}
               {row.carriedOver ? <span className="tag tag-warn rx-carried-tag" title="前回から引き継いだ処方です（未確認）">引継</span> : null}
-              <span className="rp-qty">
-                {editable ? (
-                  <>
-                    <input aria-label="数量" className="input input-num rp-qty-input" disabled={row.issued === false} min="0" onChange={(event) => setRow(index, { quantity: parseNumber(event.target.value) })} step="any" type="number" value={row.quantity ?? ""} />
-                    <input aria-label="単位" className="input rp-unit-input" disabled={row.issued === false} maxLength={20} onChange={(event) => setRow(index, { unit: event.target.value })} placeholder="本" value={row.unit || ""} />
-                  </>
-                ) : <span>{row.issued !== false && row.quantity ? `${row.quantity}${row.unit || ""}` : ""}</span>}
+              {/* 数量〜×は 1 つのかたまり。列が狭いときは薬剤名の下の行に右寄せで落ちる（× だけが 1 行を占めない） */}
+              <span className="rp-row-tail">
+                <span className="rp-qty">
+                  {editable ? (
+                    <>
+                      <input aria-label="数量" className="input input-num rp-qty-input" disabled={row.issued === false} min="0" onChange={(event) => setRow(index, { quantity: parseNumber(event.target.value) })} step="any" type="number" value={row.quantity ?? ""} />
+                      <input aria-label="単位" className="input rp-unit-input" disabled={row.issued === false} maxLength={20} onChange={(event) => setRow(index, { unit: event.target.value })} placeholder="本" value={row.unit || ""} />
+                    </>
+                  ) : <span>{row.issued !== false && row.quantity ? `${row.quantity}${row.unit || ""}` : ""}</span>}
+                </span>
+                {editable && bottles?.bottles && !(row.quantity === bottles.bottles && row.unit === "本") ? (
+                  <button
+                    className="btn btn-chip rp-bottles"
+                    onClick={() => setRow(index, { quantity: bottles.bottles, unit: "本" })}
+                    title={`${days}日 × 1日${row.timesPerDay}回 × ${row.eye === "ou" ? 2 : 1}眼 = ${bottles.dropsNeeded}滴 ÷ 1本${bottles.dropsPerBottle}滴${row.days ? "" : "（次回まで）"}`}
+                    type="button"
+                  >
+                    目安{bottles.bottles}本 反映
+                  </button>
+                ) : null}
+                {editable ? <button aria-label={`${row.name || "薬剤"}を削除`} className="rp-x" onClick={() => removeRow(index)} type="button">×</button> : null}
               </span>
-              {editable && bottles?.bottles && !(row.quantity === bottles.bottles && row.unit === "本") ? (
-                <button
-                  className="btn btn-chip rp-bottles"
-                  onClick={() => setRow(index, { quantity: bottles.bottles, unit: "本" })}
-                  title={`${days}日 × 1日${row.timesPerDay}回 × ${row.eye === "ou" ? 2 : 1}眼 = ${bottles.dropsNeeded}滴 ÷ 1本${bottles.dropsPerBottle}滴${row.days ? "" : "（次回まで）"}`}
-                  type="button"
-                >
-                  目安{bottles.bottles}本 反映
-                </button>
-              ) : null}
-              {editable ? <button aria-label={`${row.name || "薬剤"}を削除`} className="rp-x" onClick={() => removeRow(index)} type="button">×</button> : null}
             </li>
           );
         })}
       </ul>
       <div className="rp-foot">
-        {editable ? (
-          <select aria-label="院内・院外" className="input rp-route" onChange={(event) => setShared({ route: event.target.value })} value={head.route || "outside"}>
-            <option value="outside">院外</option>
-            <option value="inside">院内</option>
-          </select>
-        ) : <span className="rp-route-static">{head.route === "inside" ? "院内" : "院外"}</span>}
-        {TOPICAL_KINDS.has(head.kind) || head.eye ? (
-          <EyeSegment ariaLabel="処方の眼" editable={editable} missing={TOPICAL_KINDS.has(head.kind) && !head.eye} onChange={(eye) => setShared({ eye })} value={head.eye} />
-        ) : null}
-        <UsagePill editable={editable} onChange={setShared} row={head} />
-        <label className="rp-days">
-          {editable ? <input aria-label="日数" className="input input-num rp-days-input" min="0" onChange={(event) => setShared({ days: parseNumber(event.target.value) })} type="number" value={head.days ?? ""} /> : <span>{head.days ?? "—"}</span>}
-          <span>日</span>
-        </label>
-        {editable && head.days && rows.filter((row) => row.kind !== "comment").length > group.items.length ? (
-          <button className="btn btn-chip rp-days-all" onClick={() => setAllDays(head.days)} title="すべての処方の日数をこの日数にそろえる" type="button">一括反映</button>
-        ) : null}
-        {carried && editable ? (
-          <button className="btn btn-chip" onClick={() => setShared({})} title="この束を今回の処方として確認します" type="button">継続</button>
-        ) : null}
-        {editable ? <button aria-label={`Rp${number}を削除`} className="col-tool rp-delete" onClick={removeGroup} title="この束を削除" type="button">🗑</button> : null}
+        <span className="rp-foot-group">
+          {editable ? (
+            <select aria-label="院内・院外" className="input rp-route" onChange={(event) => setShared({ route: event.target.value })} value={head.route || "outside"}>
+              <option value="outside">院外</option>
+              <option value="inside">院内</option>
+            </select>
+          ) : <span className="rp-route-static">{head.route === "inside" ? "院内" : "院外"}</span>}
+          {TOPICAL_KINDS.has(head.kind) || head.eye ? (
+            <EyeSegment ariaLabel="処方の眼" editable={editable} missing={TOPICAL_KINDS.has(head.kind) && !head.eye} onChange={(eye) => setShared({ eye })} value={head.eye} />
+          ) : null}
+          <UsagePill editable={editable} onChange={setShared} row={head} />
+        </span>
+        {/* 日数〜削除は 2 つ目のかたまり（狭いときは 2 段目にまとめて落ちる） */}
+        <span className="rp-foot-group is-tail">
+          <label className="rp-days">
+            {editable ? <input aria-label="日数" className="input input-num rp-days-input" min="0" onChange={(event) => setShared({ days: parseNumber(event.target.value) })} type="number" value={head.days ?? ""} /> : <span>{head.days ?? "—"}</span>}
+            <span>日</span>
+          </label>
+          {editable && head.days && rows.filter((row) => row.kind !== "comment").length > group.items.length ? (
+            <button className="btn btn-chip rp-days-all" onClick={() => setAllDays(head.days)} title="すべての処方の日数をこの日数にそろえる" type="button">一括反映</button>
+          ) : null}
+          {carried && editable ? (
+            <button className="btn btn-chip" onClick={() => setShared({})} title="この束を今回の処方として確認します" type="button">継続</button>
+          ) : null}
+          {editable ? <button aria-label={`Rp${number}を削除`} className="col-tool rp-delete" onClick={removeGroup} title="この束を削除" type="button">🗑</button> : null}
+        </span>
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { adherenceLabel, counsellingLabel, diagnosisName, groupRps, pupilLabel } from "@halunasu/eye-core";
 import { ALIGNMENT_LABELS, MOTILITY_LABELS, PLAN_ITEM_EYE_LABELS, RAPD_LABELS } from "@halunasu/eye-contracts";
 import { COPY_DRAG_TYPE, dateWithWeekday, ORDER_BADGES, RX_BADGES } from "./chart-shared";
@@ -51,7 +51,7 @@ export function VersionsPanel({ encounterId, versions }) {
     <ol className="versions">
       {[...versions].reverse().map((version) => (
         <li key={version.versionId}>
-          <a href={`/encounters/${encounterId}/print?version=${version.version}`} rel="noreferrer" target="_blank">v{version.version}</a>
+          <a className="version-link" href={`/encounters/${encounterId}/print?version=${version.version}`} rel="noreferrer" target="_blank">v{version.version}</a>
           <span className="muted small"> {formatDateTime(version.finalizedAt)} {version.finalizedBy?.displayName}</span>
           {version.amendmentReason ? <div className="small">修正理由: {version.amendmentReason}</div> : null}
           {version.warningCodes?.length ? <div className="muted small">確認事項 {version.warningCodes.length}件のまま確定</div> : null}
@@ -315,6 +315,8 @@ function HistoryCard({ encounter, editable, onCopy, highlighted }) {
 
 // 左「薬歴」: 薬剤 × 年月の表に ✓（デジカルの投薬履歴）。✓ を押すと診療履歴のそのカルテへ。
 export function DrugHistoryTab({ history, onJump }) {
+  // 月は古い順に右へ並ぶ。狭いペインでも最新の月が見えるよう、開いたときは右端までスクロールしておく（薬剤名の列は左に固定）
+  const scrollRef = useRef(null);
   const { months, rows } = useMemo(() => {
     const visits = [...history].sort((left, right) => String(left.encounterDate).localeCompare(String(right.encounterDate)));
     const monthKeys = [...new Set(visits.map((item) => item.encounterDate.slice(0, 7)))];
@@ -329,6 +331,10 @@ export function DrugHistoryTab({ history, onJump }) {
     }
     return { months: monthKeys, rows: [...byName.values()] };
   }, [history]);
+  useEffect(() => {
+    const node = scrollRef.current;
+    if (node) node.scrollLeft = node.scrollWidth;
+  }, [months.length]);
   if (!rows.length) return <p className="empty">処方の記録はありません。</p>;
   const years = [];
   for (const month of months) {
@@ -337,7 +343,7 @@ export function DrugHistoryTab({ history, onJump }) {
     else years.push({ year, span: 1 });
   }
   return (
-    <div className="table-scroll drug-history">
+    <div className="table-scroll drug-history" ref={scrollRef}>
       <table className="data-table drug-matrix">
         <thead>
           <tr>
@@ -351,7 +357,7 @@ export function DrugHistoryTab({ history, onJump }) {
         <tbody>
           {rows.map((row) => (
             <tr key={row.name}>
-              <th scope="row"><span className="rp-badge">{RX_BADGES[row.kind] || "薬"}</span>{row.name}</th>
+              <th scope="row" title={row.name}><span className="rp-badge">{RX_BADGES[row.kind] || "薬"}</span>{row.name}</th>
               {months.map((month) => (
                 <td key={month}>
                   {row.cells.has(month) ? (

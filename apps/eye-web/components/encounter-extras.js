@@ -151,7 +151,7 @@ export function PatientHistoryLine({ profile, onEdit = null }) {
             </span>
           ))}
         </span>
-      ) : <span className="history-line-text muted">全身既往・内服・眼科既往は未記入</span>}
+      ) : <span className="history-line-text muted" title="全身既往・内服・眼科既往は未記入">全身既往・内服・眼科既往は未記入</span>}
       {onEdit ? <button aria-label="既往・内服を編集" className="link-button" onClick={onEdit} type="button">{parts.length ? "編集" : "記入"}</button> : null}
     </div>
   );

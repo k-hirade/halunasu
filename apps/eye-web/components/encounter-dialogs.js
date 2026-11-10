@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { prescriptionText } from "../lib/format";
 
 // 保存状態。自動保存なので「いま保存されているか」だけをはっきり見せる。
@@ -43,9 +43,17 @@ export function WarningsDialog({ content, readiness, version, error = "", procee
   const issued = content.prescriptions.filter((item) => item.name && item.kind !== "comment");
   const planned = (content.orders || []).filter((order) => order.kind !== "comment" && order.status === "planned").length;
   const confirmsInDialog = warnings.some((item) => RESOLVED_IN_DIALOG.has(item.code));
+  // 進むボタンに最初のフォーカスを置くが、autoFocus だとダイアログが一番下までスクロールして見出しと表の先頭が隠れるため、
+  // スクロールさせずにフォーカスし、ダイアログは先頭から見せる（ボタンは下端に固定されているので見える）
+  const dialogRef = useRef(null);
+  const proceedRef = useRef(null);
+  useEffect(() => {
+    proceedRef.current?.focus({ preventScroll: true });
+    if (dialogRef.current) dialogRef.current.scrollTop = 0;
+  }, []);
   return (
     <div className="dialog-backdrop" role="presentation">
-      <div aria-labelledby="warnings-heading" className="dialog dialog-wide warnings-dialog" role="dialog">
+      <div aria-labelledby="warnings-heading" className="dialog dialog-wide warnings-dialog" ref={dialogRef} role="dialog">
         <h2 id="warnings-heading">{blockers.length || warnings.length ? "警告一覧" : "カルテを確定します"}（v{version}）</h2>
         {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
         {blockers.length || warnings.length ? (
@@ -59,10 +67,10 @@ export function WarningsDialog({ content, readiness, version, error = "", procee
                     const [target, kind] = warningKind(item);
                     return (
                       <tr className={item.blocker ? "is-blocker" : item.level === "high" ? "is-high" : "is-low"} key={`${item.code}-${index}`}>
-                        <td>{target}</td>
-                        <td><span className={`warn-level${item.blocker ? " is-blocker" : item.level === "high" ? " is-high" : ""}`}>{item.blocker ? "要修正" : item.level === "high" ? "確認" : "注意"}</span> {kind}</td>
-                        <td>{item.message}</td>
-                        <td>{onFix && item.code === "order_planned" && item.field ? <button className="btn btn-chip" onClick={() => onFix(item)} type="button">実施にする</button> : null}</td>
+                        <td className="warn-target">{target}</td>
+                        <td className="warn-kind"><span className={`warn-level${item.blocker ? " is-blocker" : item.level === "high" ? " is-high" : ""}`}>{item.blocker ? "要修正" : item.level === "high" ? "確認" : "注意"}</span> {kind}</td>
+                        <td className="warn-message">{item.message}</td>
+                        <td className="warn-fix">{onFix && item.code === "order_planned" && item.field ? <button className="btn btn-chip" onClick={() => onFix(item)} type="button">実施にする</button> : null}</td>
                       </tr>
                     );
                   })}
@@ -101,10 +109,10 @@ export function WarningsDialog({ content, readiness, version, error = "", procee
         <div className="dialog-actions">
           <button className="btn btn-ghost" onClick={onCancel} type="button">戻って編集</button>
           <button
-            autoFocus
             className="btn btn-primary"
             disabled={busy || blockers.length > 0}
             onClick={async () => { setBusy(true); await onProceed(); setBusy(false); }}
+            ref={proceedRef}
             type="button"
           >
             {proceedLabel}
