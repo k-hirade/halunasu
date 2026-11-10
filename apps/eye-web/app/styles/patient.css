@@ -1362,3 +1362,9 @@ a.visit-row:focus-visible {
 .cmp-ou-head .btn.btn-chip {
   min-width: 32px;
 }
+
+/* ファイルの表示の「このファイルを削除する」（開閉）: PC でも 32px の高さを確保する */
+.dialog.dialog-viewer .archive-box > summary {
+  align-content: center;
+  min-height: 32px;
+}
