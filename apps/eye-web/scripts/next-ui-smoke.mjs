@@ -252,6 +252,7 @@ async function runDoctorFlow(browser) {
   await page.keyboard.press("Shift+Slash");
   await page.getByRole("dialog", { name: "ショートカット" }).getByText("次へ（確定 → 受付の状態 → 次の患者）").waitFor();
   await page.getByRole("dialog").getByRole("button", { name: "閉じる" }).click();
+  await assertEditorPopoversFit(page);
   // S で保存
   await page.keyboard.press("s");
   await page.getByText("保存しました。").waitFor({ timeout: 15_000 });
@@ -1356,6 +1357,37 @@ async function assertNavFits(page) {
       await page.locator(".eh-menu-button").click();
     }
   }
+  await page.setViewportSize(original);
+}
+
+// 共通の位置合わせ（components/popover-placement.js）と、ダイアログの高さの上限:
+// 操作帯の「…」・印刷のメニューが画面の左右にはみ出さない。横向きスマホの高さでも、ダイアログは画面に収まり、
+// 下のボタンまでスクロールで届く。
+async function assertEditorPopoversFit(page) {
+  const original = page.viewportSize();
+  const insideViewport = async (selector, label) => {
+    const box = await page.locator(selector).boundingBox();
+    const view = page.viewportSize();
+    assert.ok(box && box.x >= 0 && box.x + box.width <= view.width + 1 && box.y >= 0 && box.y + box.height <= view.height + 1, `${label} fits in ${view.width}x${view.height}: ${JSON.stringify(box)}`);
+  };
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.locator(".actionbar-more > summary").click();
+  await insideViewport(".actionbar-more > .more-menu-list", "the action bar … menu");
+  await page.locator(".actionbar-more > summary").click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator(".actionbar-print > summary").click();
+  await insideViewport(".actionbar-print > .more-menu-list", "the print menu");
+  await page.locator(".actionbar-print > summary").click();
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.locator(".chart-head").click();
+  await page.keyboard.press("Shift+Slash");
+  const dialog = page.getByRole("dialog", { name: "ショートカット" });
+  await dialog.waitFor();
+  await insideViewport(".dialog-backdrop > .dialog", "the shortcut dialog");
+  const close = dialog.getByRole("button", { name: "閉じる" });
+  await close.scrollIntoViewIfNeeded();
+  await insideViewport(".dialog-backdrop .dialog-actions", "the dialog buttons");
+  await close.click();
   await page.setViewportSize(original);
 }
 
