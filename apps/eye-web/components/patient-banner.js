@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { isSuspectedDiagnosis } from "@halunasu/eye-contracts";
 import { useEyeApi } from "./eye-api";
 import { EYE_LABELS, formatDate, patientLine, todayIso } from "../lib/format";
@@ -45,14 +46,16 @@ export function PatientBanner({ patient, profile, context, onProfileSaved, actio
         {compact ? null : flags}
       </div>
       {actions ? <div className="patient-banner-actions">{actions}</div> : null}
-      {editing ? (
+      {/* 帯は sticky（z-index で重なりの文脈を作る）の中にあるため、ダイアログは body の直下に描き、ヘッダー・操作帯より手前に出す */}
+      {editing ? createPortal(
         <ProfileDialog
           canEditDiagnoses={Boolean(context?.canEditDiagnoses)}
           onCancel={() => setEditing(false)}
           onSaved={(saved) => { setEditing(false); onProfileSaved?.(saved); }}
           patientId={patient.patientId}
           profile={profile}
-        />
+        />,
+        document.body
       ) : null}
     </div>
   );
@@ -108,7 +111,7 @@ export function ProfileDialog({ patientId, profile, canEditDiagnoses, onCancel, 
 
   return (
     <div className="dialog-backdrop" role="presentation">
-      <form aria-labelledby="profile-heading" className="dialog dialog-wide" onSubmit={submit} role="dialog">
+      <form aria-labelledby="profile-heading" className="dialog dialog-wide profile-dialog" onSubmit={submit} role="dialog">
         <h2 id="profile-heading">アレルギー・病名・既往</h2>
         {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
 
