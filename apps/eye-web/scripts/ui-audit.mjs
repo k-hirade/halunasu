@@ -1,12 +1,14 @@
 // UI 監査。デモデータ入りのローカル環境（メモリストア）と Next 開発サーバーを起動し、
-// 主要画面を 5 つの画面幅で撮影して、文字サイズ・コントラスト・タップ領域・横あふれを計測する。
-// 診察（/）関連: home（診察）・home-summary（行を選んで概要）・home-tasks（要対応の一覧）・home-dark・search（検索）・register（新規患者登録）・menu
-// 検査入力: exam・exam-dark・exam-iop・exam-gaze・exam-worth。患者: patient・patient-vaiop・patient-dark・images・images-ou・images-series
-// ヘッダー: header・header-editor・header-dark・header-menu（--viewports 1713x900,1440x900 で幅を指定）
-// パスワード変更: password・password-error・password-dark
-// 受付関連: reception・reception-dark・reception-filter・reception-booking・reception-booking-calendar(-dark)・reception-search・reception-register・reception-schedule(-dark)
+// 画面と状態（ダイアログ・メニュー・タブ・引き出し）を画面幅ごとに撮影して、文字サイズ・コントラスト・タップ領域・横あふれと、
+// レスポンシブの不具合（画面外へのはみ出し・切れ・スクロールできない枠・隠れた操作・小さいタップ領域/文字・文字の重なり）を計測する。
+// 状態の一覧は下の STATES（名前 → 開く URL と、開いた後の操作）。-dark で終わる名前は暗室表示。
 //
-//   node scripts/ui-audit.mjs [--out DIR] [--pages editor,reception]
+//   node scripts/ui-audit.mjs [--out DIR] [--pages editor,reception] [--viewports 1440x900,390x844 | responsive]
+//                             [--concurrency 4] [--no-full] [--dark-viewports 1366x768,390x844]
+//   --pages は名前（"editor" は editor と editor-dark）。前方一致は後ろに "*"（"editor*" で editor-* すべて）。
+//   --viewports responsive は 12 の画面幅（PC 4・タブレット 4・スマホ 3・スマホ横 1）。768〜1024 の縦長はタッチ、
+//   スマホはタッチ + モバイルの表示（isMobile）で開く。--dark-viewports を付けると -dark の状態はその幅だけで撮る。
+//   出力: DIR/<状態>-<幅>x<高さ>.png（--no-full でなければ -full.png も）、metrics.json、responsive.json（要素ごとの指摘）、responsive-summary.txt
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
@@ -23,12 +25,356 @@ const metricsScript = readFileSync(join(root, "scripts/ui-audit-metrics.js"), "u
 
 const args = parseArgs(process.argv.slice(2));
 const outDir = resolve(args.get("out") || join(tmpdir(), "eye-ui-audit"));
-const onlyPages = args.get("pages") ? new Set(args.get("pages").split(",")) : null;
+const pageFilters = args.get("pages") ? args.get("pages").split(",").filter(Boolean) : null;
+const matchesFilter = (name) => !pageFilters || pageFilters.some((filter) => (filter.endsWith("*") ? name.startsWith(filter.slice(0, -1)) : name === filter || name.replace(/-dark$/u, "") === filter));
+const wants = (prefix) => !pageFilters || Object.keys(STATES).some((name) => name.startsWith(prefix) && matchesFilter(name));
+const RESPONSIVE_VIEWPORTS = [
+  [1920, 1080], [1440, 900], [1366, 768], [1280, 800], [1024, 768],
+  [1024, 1366], [820, 1180], [768, 1024],
+  [430, 932], [390, 844], [360, 740], [844, 390]
+];
+const parseViewports = (value) => (value === "responsive" ? RESPONSIVE_VIEWPORTS : value.split(",").map((item) => item.split("x").map(Number)));
 // --viewports 1713x900,1440x900 で画面幅を指定できる（既定は下の 5 つ）
-const VIEWPORTS = args.get("viewports")
-  ? args.get("viewports").split(",").map((item) => item.split("x").map(Number))
-  : [[1440, 900], [1280, 800], [1024, 768], [768, 1024], [390, 844]];
+const VIEWPORTS = args.get("viewports") ? parseViewports(args.get("viewports")) : [[1440, 900], [1280, 800], [1024, 768], [768, 1024], [390, 844]];
+const DARK_VIEWPORTS = args.get("dark-viewports") ? parseViewports(args.get("dark-viewports")) : null;
+const CONCURRENCY = Math.max(1, Number(args.get("concurrency") || 1));
+const FULL = !args.has("no-full");
 mkdirSync(outDir, { recursive: true });
+
+// 端末の種類: 768〜1024 の縦長の画面（iPad など）はタッチ、スマホ（短い辺が 500 未満）はタッチ + モバイル表示
+const deviceOf = (width, height) => {
+  const phone = Math.min(width, height) < 500;
+  const tablet = !phone && width <= 1024 && height > width;
+  return { hasTouch: phone || tablet, isMobile: phone };
+};
+
+// ---- 状態の一覧: 名前 → { path（prepare が返す場所の名前）, run(page, view) } ----
+// view = { width, height, touch, ids }。run の中で失敗しても、その時点の画面を撮って setupError に残す。
+const editorPath = "editor";
+const finalizedPath = "finalized";
+const openUserMenu = (page, view) => page.locator(view.width < 768 ? ".eh-menu-button" : ".eh-user-button").click();
+// カルテの左「患者の情報」は 768px 未満で引き出し、右「オーダー」は 1280px 未満で引き出し
+const openLeftPane = async (page, view) => { if (view.width < 768) await page.locator(".encounter-actions").getByRole("button", { name: "患者の情報", exact: true }).click(); };
+const openRightPane = async (page, view) => { if (view.width < 1280) await page.locator(".encounter-actions").getByRole("button", { name: "オーダー", exact: true }).click(); };
+const leftTab = (label) => ({ path: editorPath, run: async (page, view) => { await openLeftPane(page, view); await page.locator(".chart-left").getByRole("tab", { name: new RegExp(`^${label}`, "u") }).click(); } });
+const rightCategory = (label, query = "") => ({
+  path: editorPath,
+  run: async (page, view) => {
+    await openRightPane(page, view);
+    await page.locator(".chart-right").getByRole("tab", { name: label, exact: true }).click();
+    if (query) { await page.getByLabel("オーダーを検索").fill(query); await page.waitForTimeout(900); }
+  }
+});
+const examTab = (label) => ({ path: "exam", run: async (page) => { await page.getByRole("tab", { name: label, exact: true }).click(); await page.waitForTimeout(300); } });
+const printMedia = (path) => ({ path, run: async (page) => { await page.emulateMedia({ media: "print" }); await page.waitForTimeout(300); } });
+const settingsRow = (path, index = 0) => ({ path, run: async (page) => { await page.locator(".master-row-open").nth(index).click(); await page.waitForTimeout(400); } });
+const settingsButton = (path, name) => ({ path, run: async (page) => { await page.getByRole("button", { name, exact: true }).click(); await page.waitForTimeout(400); } });
+const firstRp = (page) => page.locator(".rp-block, [aria-label^='処方 Rp']").first();
+
+const STATES = {
+  // ログイン
+  login: { path: "login", noAuth: true },
+  "login-totp": {
+    path: "login",
+    noAuth: true,
+    run: async (page) => {
+      await page.getByLabel("病院コード").fill(LOCAL_ORGANIZATION_CODE);
+      await page.getByLabel("個人ID").fill("director");
+      await page.getByLabel("ログイン用パスワード", { exact: true }).fill(LOCAL_PASSWORD);
+      await page.getByRole("button", { name: "ログイン", exact: true }).click();
+      await page.getByLabel("6桁コード").waitFor();
+    }
+  },
+  // ヘッダー（受付・カルテ・メニュー・ヘルプ）とパスワード変更
+  header: { path: "reception" },
+  "header-editor": { path: editorPath },
+  "header-menu": { path: "reception", run: openUserMenu },
+  menu: { path: "reception", run: openUserMenu },
+  "header-help": {
+    path: "reception",
+    run: async (page, view) => {
+      if (view.width < 768) await page.locator(".eh-menu-button").click();
+      await page.getByRole("button", { name: "ショートカット・ヘルプ" }).first().click();
+      await page.getByRole("dialog", { name: "ショートカット" }).waitFor();
+    }
+  },
+  "header-dark": { path: "reception" },
+  password: { path: "reception", run: async (page, view) => openPassword(page, view) },
+  "password-dark": { path: "reception", run: async (page, view) => openPassword(page, view) },
+  "password-error": {
+    path: "reception",
+    run: async (page, view) => {
+      const dialog = await openPassword(page, view);
+      await dialog.getByLabel("現在のパスワード", { exact: true }).fill("wrong-password-2026");
+      await dialog.getByLabel("新しいパスワード", { exact: true }).fill("audit-new-password-2026");
+      await dialog.getByLabel("新しいパスワード（確認）", { exact: true }).fill("audit-new-password-2026");
+      await dialog.getByRole("button", { name: "変更する" }).click();
+      await dialog.getByRole("alert").first().waitFor();
+    }
+  },
+  "password-empty": {
+    path: "reception",
+    run: async (page, view) => {
+      const dialog = await openPassword(page, view);
+      await dialog.getByRole("button", { name: "変更する" }).click();
+      await page.waitForTimeout(300);
+    }
+  },
+
+  // 受付・予約・検索・登録
+  reception: { path: "reception" },
+  "reception-dark": { path: "reception" },
+  "reception-filter": { path: "reception", run: async (page) => page.getByRole("button", { name: "▼ 絞り込み" }).click() },
+  "reception-booking": { path: "reception", run: async (page) => openRowBooking(page) },
+  "reception-booking-calendar": { path: "reception", run: async (page) => { const dialog = await openRowBooking(page); await dialog.getByRole("button", { name: "予約状況" }).click(); } },
+  "reception-booking-calendar-dark": { path: "reception", run: async (page) => { const dialog = await openRowBooking(page); await dialog.getByRole("button", { name: "予約状況" }).click(); } },
+  "reception-add-booking": { path: "reception", run: async (page) => { await page.getByRole("button", { name: "予約を追加", exact: true }).click(); await page.getByRole("dialog").first().waitFor(); } },
+  "reception-walkin": { path: "reception", run: async (page) => { await page.getByRole("button", { name: "当日受付", exact: true }).click(); await page.getByRole("dialog", { name: "当日受付" }).waitFor(); } },
+  "reception-rowmenu": { path: "reception", run: async (page) => { await page.locator(".rc-row summary[aria-label$='のその他の操作']").first().click(); } },
+  "reception-memo": { path: "reception", run: async (page) => { await page.locator(".rc-row").getByRole("button", { name: /の受付メモ/u }).first().click(); await page.getByRole("dialog").first().waitFor(); } },
+  "reception-search": { path: "reception", run: async (page) => { await page.getByRole("button", { name: "患者検索（/）" }).click(); await page.waitForTimeout(800); } },
+  "reception-search-results": {
+    path: "reception",
+    run: async (page) => {
+      await page.getByRole("button", { name: "患者検索（/）" }).click();
+      await page.getByRole("dialog", { name: "患者検索" }).getByLabel("検索する語").fill("模");
+      await page.waitForTimeout(900);
+    }
+  },
+  "reception-register": {
+    path: "reception",
+    run: async (page) => {
+      await page.getByRole("button", { name: "患者検索（/）" }).click();
+      await page.waitForTimeout(800);
+      await page.getByRole("button", { name: "新規患者登録" }).click();
+    }
+  },
+  "reception-schedule": { path: "schedule" },
+  "reception-schedule-dark": { path: "schedule" },
+  // 診察（/）
+  home: { path: "home" },
+  "home-dark": { path: "home" },
+  "home-summary": {
+    path: "home",
+    run: async (page) => {
+      await page.getByRole("tab", { name: /^全て/u }).click().catch(() => null);
+      await page.locator(".cl-row").first().click();
+      await page.waitForTimeout(1200);
+    }
+  },
+  "home-tasks": { path: "home", run: async (page) => { await page.getByRole("tab", { name: /^未確定カルテ/u }).click(); await page.waitForTimeout(500); } },
+  "home-all": { path: "home", run: async (page) => { await page.getByRole("tab", { name: /^全て/u }).click(); await page.waitForTimeout(500); } },
+  search: {
+    path: "home",
+    run: async (page) => {
+      await page.getByRole("button", { name: "患者検索（/）" }).click();
+      await page.getByRole("dialog", { name: "患者検索" }).getByLabel("検索する語").fill("模");
+      await page.waitForTimeout(800);
+    }
+  },
+  register: {
+    path: "home",
+    run: async (page) => {
+      await page.getByRole("button", { name: "患者検索（/）" }).click();
+      await page.getByRole("dialog", { name: "患者検索" }).getByLabel("検索する語").fill("もぎ");
+      await page.waitForTimeout(800);
+      await page.getByRole("dialog", { name: "患者検索" }).getByRole("button", { name: "新規患者登録" }).click();
+      await page.waitForTimeout(800);
+    }
+  },
+
+  // カルテ編集
+  editor: { path: editorPath },
+  "editor-dark": { path: editorPath },
+  "editor-tab-info": leftTab("患者情報"),
+  "editor-tab-exam": leftTab("検査"),
+  "editor-tab-historylist": leftTab("診療履歴"),
+  "editor-tab-drugs": leftTab("薬歴"),
+  "editor-tab-files": leftTab("ファイル"),
+  "editor-history": leftTab("病名"),
+  "editor-dx-add": {
+    path: editorPath,
+    run: async (page, view) => {
+      await openLeftPane(page, view);
+      await page.getByRole("tab", { name: "病名" }).click();
+      await page.getByRole("button", { name: "病名を追加" }).click();
+      const dialog = page.getByRole("dialog", { name: "傷病名新規登録" });
+      await dialog.getByLabel("傷病名を検索").fill("緑内障");
+      await page.waitForTimeout(900);
+    }
+  },
+  "editor-dx-edit": {
+    path: editorPath,
+    run: async (page, view) => {
+      await openLeftPane(page, view);
+      await page.getByRole("tab", { name: "病名" }).click();
+      await page.locator(".dx-table").getByRole("button", { name: /を編集$/u }).first().click();
+      await page.getByRole("dialog").first().waitFor();
+    }
+  },
+  "editor-set-panel": rightCategory("セット"),
+  "editor-side": rightCategory("投薬", "ラタノ"),
+  "editor-order-exam": rightCategory("検査"),
+  "editor-order-optical": rightCategory("眼鏡・CL"),
+  "editor-order-phrase": rightCategory("定型文"),
+  "editor-order-all": rightCategory("全て", "眼"),
+  "editor-rp": {
+    path: editorPath,
+    run: async (page) => {
+      const rp = firstRp(page);
+      await rp.scrollIntoViewIfNeeded();
+      await rp.locator('summary[aria-label="用法"]').first().click();
+      await page.waitForTimeout(300);
+    }
+  },
+  "editor-rp-menu": {
+    path: editorPath,
+    run: async (page) => {
+      const rp = firstRp(page);
+      await rp.scrollIntoViewIfNeeded();
+      await rp.locator("summary.rp-badge").first().click();
+      await page.waitForTimeout(300);
+    }
+  },
+  "editor-next": {
+    path: editorPath,
+    run: async (page) => {
+      await page.getByRole("toolbar", { name: "カルテの操作" }).getByRole("button", { name: /次へ/u }).click();
+      await page.getByRole("dialog", { name: /警告一覧|カルテを確定します/u }).waitFor();
+    }
+  },
+  "editor-status": {
+    path: finalizedPath,
+    run: async (page) => {
+      await page.getByRole("toolbar", { name: "カルテの操作" }).getByRole("button", { name: /次へ/u }).click();
+      await page.getByRole("dialog", { name: "患者ステータス選択" }).waitFor();
+      await page.waitForTimeout(800);
+    }
+  },
+  "editor-finalized": { path: finalizedPath },
+  "editor-versions": { path: finalizedPath, run: async (page) => { await page.getByRole("button", { name: /^版履歴/u }).first().click(); await page.getByRole("dialog", { name: "版履歴" }).waitFor(); } },
+  "editor-shortcuts": { path: editorPath, run: async (page) => { await page.getByRole("button", { name: "ショートカット一覧" }).click(); await page.getByRole("dialog", { name: "ショートカット" }).waitFor(); } },
+  "editor-schema-pick": { path: editorPath, run: async (page) => { await page.locator(".sketch-add").click(); await page.getByRole("dialog").first().waitFor(); } },
+  "editor-schema": {
+    path: editorPath,
+    run: async (page) => {
+      await page.locator(".sketch-add").click();
+      await page.getByRole("dialog").getByRole("button", { name: "右眼眼底" }).click();
+      await page.waitForTimeout(600);
+    }
+  },
+  "editor-set-create": { path: editorPath, run: async (page) => { await page.getByRole("button", { name: "セット登録" }).click(); await page.getByRole("dialog", { name: /セット登録/u }).waitFor(); } },
+  "editor-visit": { path: editorPath, run: async (page) => { await page.getByRole("button", { name: /^診療日・区分を変える/u }).click(); await page.getByRole("dialog").first().waitFor(); } },
+  "editor-profile": { path: editorPath, run: async (page) => { await page.getByRole("button", { name: "既往・内服を編集" }).first().click(); await page.getByRole("dialog").first().waitFor(); } },
+  "editor-allergy": { path: editorPath, run: async (page) => { await page.getByRole("button", { name: "アレルギー・病名" }).first().click(); await page.waitForTimeout(400); } },
+  "editor-print-menu": { path: editorPath, run: async (page) => { await page.locator(".actionbar-print > summary").click(); } },
+  "editor-more": { path: editorPath, run: async (page) => { await page.locator(".actionbar-more > summary").click(); } },
+  "editor-booking": { path: editorPath, run: async (page) => { await page.getByRole("button", { name: "予約を取る" }).click(); await page.getByRole("dialog").first().waitFor(); } },
+  "editor-bottom": { path: editorPath, run: async (page) => { await page.evaluate(() => { for (const el of document.querySelectorAll(".chart-center, .chart-columns, main, body, html")) el.scrollTop = el.scrollHeight; window.scrollTo(0, document.documentElement.scrollHeight); }); await page.waitForTimeout(300); } },
+
+  // 検査入力（大タブ 11・テンキー・データ表示）
+  exam: { path: "exam" },
+  "exam-dark": { path: "exam" },
+  "exam-iop": examTab("眼圧"),
+  "exam-refraction": examTab("屈折"),
+  "exam-kerato": examTab("角膜曲率"),
+  "exam-gaze": examTab("眼位"),
+  "exam-worth": examTab("両眼視"),
+  "exam-color": examTab("色覚"),
+  "exam-stereo": examTab("立体視"),
+  "exam-accommodation": examTab("調節"),
+  "exam-anterior": examTab("前眼部"),
+  "exam-other": examTab("その他"),
+  "exam-keypad": {
+    path: "exam",
+    run: async (page) => {
+      const padButton = page.getByRole("button", { name: "テンキー", exact: true });
+      if (await padButton.isEnabled()) await padButton.click();
+      await page.getByLabel("遠見 右眼 球面").first().click();
+      await page.waitForTimeout(500);
+    }
+  },
+  "exam-data": { path: "exam", run: async (page) => { await page.getByRole("button", { name: "データ表示" }).click(); await page.getByRole("dialog").first().waitFor(); } },
+  "exam-checklist": { path: "exam", run: async (page) => { await page.getByRole("button", { name: "＋ 検査を追加" }).click(); await page.waitForTimeout(400); } },
+  "exam-bottom": { path: "exam", run: async (page) => { await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight)); await page.waitForTimeout(300); } },
+
+  // 患者ページ・画像の比較
+  patient: { path: "patient" },
+  "patient-dark": { path: "patient" },
+  "patient-vaiop": { path: "patient", run: async (page) => { await page.getByRole("tab", { name: "視力眼圧" }).click(); await page.waitForTimeout(500); } },
+  "patient-upload": { path: "patient", run: async (page) => { await page.getByRole("button", { name: "＋取込" }).first().click(); await page.getByRole("dialog").first().waitFor(); } },
+  "patient-more": { path: "patient", run: async (page) => { await page.locator('summary[aria-label="その他の操作"]').first().click(); } },
+  "patient-file": { path: "patient", run: async (page) => { await page.locator("button.thumb, button:has(> .side-row-title)").first().click(); await page.waitForTimeout(600); } },
+  images: { path: "images" },
+  "images-ou": { path: "images", run: async (page) => { await page.getByRole("button", { name: "OU", exact: true }).click(); await page.waitForTimeout(500); } },
+  "images-series": { path: "images", run: async (page) => { await page.getByRole("button", { name: "時系列", exact: true }).click(); await page.waitForTimeout(500); } },
+
+  // 会計連携
+  billing: { path: "billing" },
+  "billing-dark": { path: "billing" },
+  "billing-diff": {
+    path: "billing",
+    run: async (page) => {
+      await page.locator('.bill-row-wrap[data-state="changed"] .flow-row-open').first().click();
+      await page.locator('.bill-row-wrap[data-state="pending"] .flow-row-open').first().click();
+      await page.waitForTimeout(300);
+    }
+  },
+  "billing-send": { path: "billing", run: async (page) => { await page.locator('.bill-row-wrap[data-state="pending"] .bill-actions .btn-primary').first().click(); await page.waitForTimeout(300); } },
+  "billing-more": { path: "billing", run: async (page) => { await page.locator("summary[aria-label='会計連携のその他の操作']").click(); } },
+  "billing-help": { path: "billing", run: async (page) => { await page.locator("summary[aria-label='この画面について']").click(); } },
+  "billing-rowmenu": { path: "billing", run: async (page) => { await page.locator(".bill-row-wrap summary[aria-label$='のその他の操作']").first().click(); } },
+  "billing-print": {
+    path: "billing",
+    run: async (page) => {
+      // 印刷ダイアログは開かず、印刷する連絡票の写しを残してから印刷の表示で撮る
+      await page.evaluate(() => {
+        window.print = () => {
+          const copy = document.querySelector(".bill-slips")?.cloneNode(true);
+          if (copy) document.body.appendChild(copy);
+        };
+      });
+      await page.locator("summary[aria-label='会計連携のその他の操作']").click();
+      await page.getByRole("button", { name: "この日の全員の連絡票を印刷" }).click();
+      await page.waitForTimeout(800);
+      await page.emulateMedia({ media: "print" });
+    }
+  },
+
+  // 文書・印刷
+  document: { path: "document" },
+  "document-dark": { path: "document" },
+  "document-insert": { path: "document", run: async (page) => { await page.getByRole("button", { name: "＋カルテから挿入" }).click(); await page.waitForTimeout(600); } },
+  "document-more": { path: "document", run: async (page) => { await page.locator('summary[aria-label="文書のその他の操作"]').click(); } },
+  "document-confirm": { path: "document", run: async (page) => { await page.getByRole("button", { name: "確定する" }).first().click(); await page.getByRole("dialog").first().waitFor(); } },
+  "document-print": { path: "documentPrint" },
+  "document-print-dark": { path: "documentPrint" },
+  "document-print-media": printMedia("documentPrint"),
+  "encounter-print": { path: "encounterPrint" },
+  "encounter-print-media": printMedia("encounterPrint"),
+  optical: { path: "optical" },
+  "optical-dark": { path: "optical" },
+  "optical-media": printMedia("optical"),
+
+  // 設定（各項目と編集ダイアログ）
+  settings: { path: "settings" },
+  "settings-dark": { path: "settings" },
+  "settings-facility-edit": { path: "settings", run: async (page) => { await page.getByRole("button", { name: "✎ 編集" }).click(); await page.waitForTimeout(400); } },
+  "settings-users": { path: "settingsUsers" },
+  "settings-users-edit": settingsRow("settingsUsers"),
+  "settings-sets": { path: "settingsSets", run: async (page) => { await page.locator(".set-tree-item", { hasText: "点眼" }).first().click(); await page.waitForTimeout(300); } },
+  "settings-sets-edit": settingsRow("settingsSets"),
+  "settings-sets-new": settingsButton("settingsSets", "＋ セットを追加"),
+  "settings-sets-folder": settingsButton("settingsSets", "＋ フォルダ"),
+  "settings-phrases": { path: "settingsPhrases" },
+  "settings-phrases-edit": settingsButton("settingsPhrases", "＋ 定型文を追加"),
+  "settings-drugs": { path: "settingsDrugs" },
+  "settings-panel": settingsRow("settingsDrugs", 1),
+  "settings-panel-dark": settingsRow("settingsDrugs", 1),
+  "settings-drugs-new": settingsButton("settingsDrugs", "＋ 薬剤を追加"),
+  "settings-export": { path: "settingsExport" },
+  "settings-audit": { path: "settingsAudit" }
+};
 
 const [platformPort, eyePort, webPort] = await Promise.all([findOpenPort(), findOpenPort(), findOpenPort()]);
 const stack = await startLocalEyeStack({ platformPort, eyePort, demo: true });
@@ -56,138 +402,27 @@ try {
   const browser = await launchBrowser();
   try {
     const { storageState, paths } = await prepare(browser);
-    const pages = Object.entries(paths).filter(([name]) => !onlyPages || onlyPages.has(name.replace(/-dark$/u, "")));
-    for (const [name, path] of pages) {
-      for (const [width, height] of VIEWPORTS) {
-        const context = await browser.newContext({ viewport: { width, height }, ...(name === "login" ? {} : { storageState }) });
-        const dark = name.endsWith("-dark");
-        await context.addInitScript((value) => { try { window.localStorage.setItem("halunasu-eye-dark", value); } catch {} }, dark ? "1" : "0");
-        const page = await context.newPage();
-        const errors = [];
-        page.on("console", (message) => { if (message.type() === "error") errors.push(message.text().slice(0, 300)); });
-        page.on("pageerror", (error) => errors.push(`PAGEERROR ${error.message.slice(0, 200)}`));
-        await page.goto(baseUrl + path, { waitUntil: "networkidle" }).catch(() => null);
-        await page.waitForTimeout(name === "login" ? 1500 : 2500);
-        await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
-        // 767px 以下はヘッダーの「メニュー」、それより広い画面は利用者メニュー（施設管理・暗室表示・ログアウト）を開いて撮る
-        if (name === "menu" || name === "header-menu") await page.locator(width < 768 ? ".eh-menu-button" : ".eh-user-button").click();
-        if (name.startsWith("password")) {
-          await page.locator(width < 768 ? ".eh-menu-button" : ".eh-user-button").click();
-          await page.getByRole("button", { name: "パスワード変更" }).click();
-          const dialog = page.getByRole("dialog", { name: "パスワード変更" });
-          await dialog.waitFor();
-          if (name === "password-error") {
-            await dialog.getByLabel("現在のパスワード", { exact: true }).fill("wrong-password-2026");
-            await dialog.getByLabel("新しいパスワード", { exact: true }).fill("audit-new-password-2026");
-            await dialog.getByLabel("新しいパスワード（確認）", { exact: true }).fill("audit-new-password-2026");
-            await dialog.getByRole("button", { name: "変更する" }).click();
-            await dialog.getByRole("alert").waitFor();
-          }
-        }
-        // 患者検索はヘッダーの虫めがねで開くモーダル
-        if (name === "search" || name === "register") {
-          await page.getByRole("button", { name: "患者検索（/）" }).click();
-          await page.getByRole("dialog", { name: "患者検索" }).getByLabel("検索する語").fill(name === "register" ? "もぎ" : "模");
-          await page.waitForTimeout(800);
-        }
-        if (name === "register") {
-          await page.getByRole("dialog", { name: "患者検索" }).getByRole("button", { name: "新規患者登録" }).click();
-          await page.waitForTimeout(800);
-        }
-        // 診察の一覧: 最初の行を 1 回押して概要を出す（1024px 未満は下からのシート）
-        if (name === "home-summary") {
-          await page.getByRole("tab", { name: /^全て/u }).click().catch(() => null);
-          await page.locator(".cl-row").first().click().catch(() => null);
-          await page.waitForTimeout(1200);
-        }
-        // 検査入力の大タブ
-        const examTab = { "exam-iop": "眼圧", "exam-gaze": "眼位", "exam-worth": "両眼視" }[name];
-        if (examTab) {
-          await page.getByRole("tab", { name: examTab, exact: true }).click();
-          await page.waitForTimeout(300);
-        }
-        if (name === "patient-vaiop") {
-          await page.getByRole("tab", { name: "視力眼圧" }).click();
-          await page.waitForTimeout(500);
-        }
-        if (name === "images-ou" || name === "images-series") {
-          await page.getByRole("button", { name: name === "images-ou" ? "OU" : "時系列", exact: true }).click().catch(() => null);
-          await page.waitForTimeout(500);
-        }
-        // 受付: 絞り込みのポップオーバー・行末の［予約］（2 列の予約登録）・患者検索のモーダル・モーダルからの新規患者登録
-        if (name === "reception-filter") await page.getByRole("button", { name: "▼ 絞り込み" }).click();
-        if (name === "reception-booking" || name.startsWith("reception-booking-calendar")) {
-          await page.locator(".rc-row", { hasText: "見本 花子" }).getByRole("button", { name: /の次回予約$/u }).click();
-          if (name.startsWith("reception-booking-calendar")) await page.getByRole("dialog", { name: "予約登録" }).getByRole("button", { name: "予約状況" }).click();
-        }
-        if (name === "reception-search" || name === "reception-register") {
-          await page.getByRole("button", { name: "患者検索（/）" }).click();
-          await page.waitForTimeout(800);
-          if (name === "reception-register") await page.getByRole("button", { name: "新規患者登録" }).click();
-        }
-        if (name.startsWith("reception-")) await page.waitForTimeout(600);
-        if (name === "home-tasks") {
-          await page.getByRole("tab", { name: /^未確定カルテ/u }).click();
-          await page.waitForTimeout(500);
-        }
-        // 左「患者の情報」は 768px 未満で引き出し。診療履歴（既定）のかわりに病名タブを撮る
-        if (name === "editor-history") {
-          if (width < 768) await page.getByRole("button", { name: "患者の情報" }).click();
-          await page.getByRole("tab", { name: "病名" }).click();
-        }
-        // 右「オーダー」は 1280px 未満で引き出し。投薬の検索結果を出して撮る
-        if (name === "editor-side") {
-          if (width < 1280) await page.getByRole("button", { name: "オーダー", exact: true }).click();
-          await page.getByRole("tab", { name: "投薬" }).click();
-          await page.getByLabel("オーダーを検索").fill("ラタノ");
-          await page.waitForTimeout(800);
-        }
-        if (name.startsWith("editor-") && !name.endsWith("dark")) await page.waitForTimeout(400);
-        // 会計連携: 再計待と未連携の行を開いた状態、1 人ずつの連携の確認ダイアログ
-        if (name === "billing-diff") {
-          await page.locator('.bill-row-wrap[data-state="changed"] .flow-row-open').first().click();
-          await page.locator('.bill-row-wrap[data-state="pending"] .flow-row-open').first().click();
-          await page.waitForTimeout(300);
-        }
-        if (name === "billing-send") {
-          await page.locator('.bill-row-wrap[data-state="pending"] .bill-actions .btn-primary').first().click();
-          await page.waitForTimeout(300);
-        }
-        if (name === "billing-print") {
-          // 印刷ダイアログは開かず、印刷する連絡票の写しを残してから印刷の表示で撮る
-          await page.evaluate(() => {
-            window.print = () => {
-              const copy = document.querySelector(".bill-slips")?.cloneNode(true);
-              if (copy) document.body.appendChild(copy);
-            };
-          });
-          await page.locator("summary[aria-label='会計連携のその他の操作']").click();
-          await page.getByRole("button", { name: "この日の全員の連絡票を印刷" }).click();
-          await page.waitForTimeout(800);
-          await page.emulateMedia({ media: "print" });
-        }
-        // 設定: 一覧の行を押して編集ダイアログを開いた状態も撮る
-        if (name.startsWith("settings-panel") || name === "settings-sets-edit" || name === "settings-users") {
-          await page.locator(".master-row-open").nth(name.startsWith("settings-panel") ? 1 : 0).click().catch(() => null);
-          await page.waitForTimeout(400);
-        }
-        if (name === "settings-facility-edit") {
-          await page.getByRole("button", { name: "✎ 編集" }).click().catch(() => null);
-          await page.waitForTimeout(400);
-        }
-        if (name === "settings-sets") {
-          await page.locator(".set-tree-item", { hasText: "点眼" }).first().click().catch(() => null);
-          await page.waitForTimeout(300);
-        }
-        const tag = `${name}-${width}x${height}`;
-        await page.screenshot({ path: join(outDir, `${tag}.png`) });
-        await page.screenshot({ path: join(outDir, `${tag}-full.png`), fullPage: true });
-        const metrics = await page.evaluate(metricsScript);
-        metrics.errors = errors;
-        results[tag] = metrics;
-        await context.close();
-      }
+    const jobs = [];
+    for (const [name, state] of Object.entries(STATES)) {
+      if (!matchesFilter(name)) continue;
+      const viewports = name.endsWith("-dark") && DARK_VIEWPORTS ? DARK_VIEWPORTS : VIEWPORTS;
+      for (const [width, height] of viewports) jobs.push({ name, state, width, height });
     }
+    let next = 0;
+    let done = 0;
+    const started = Date.now();
+    const worker = async () => {
+      while (next < jobs.length) {
+        const job = jobs[next];
+        next += 1;
+        await runJob(browser, storageState, paths, job).catch((error) => {
+          results[`${job.name}-${job.width}x${job.height}`] = { setupError: `JOB ${error.message.slice(0, 300)}`, errors: [] };
+        });
+        done += 1;
+        if (done % 20 === 0) console.log(`${done}/${jobs.length} (${Math.round((Date.now() - started) / 1000)}s)`);
+      }
+    };
+    await Promise.all(Array.from({ length: CONCURRENCY }, worker));
   } finally {
     await browser.close().catch(() => null);
   }
@@ -200,8 +435,77 @@ try {
 }
 
 writeFileSync(join(outDir, "metrics.json"), JSON.stringify(results, null, 1));
+writeResponsive(results);
 printSummary(results);
-console.log(`\nScreenshots and metrics.json: ${outDir}`);
+console.log(`\nScreenshots, metrics.json, responsive.json and responsive-summary.txt: ${outDir}`);
+
+// 1 つの状態 × 1 つの画面幅を撮る
+async function runJob(browser, storageState, paths, { name, state, width, height }) {
+  const device = deviceOf(width, height);
+  const context = await browser.newContext({ viewport: { width, height }, ...device, ...(state.noAuth ? {} : { storageState }) });
+  try {
+    const dark = name.endsWith("-dark");
+    await context.addInitScript((value) => { try { window.localStorage.setItem("halunasu-eye-dark", value); } catch {} }, dark ? "1" : "0");
+    const page = await context.newPage();
+    page.setDefaultTimeout(10_000);
+    const errors = [];
+    page.on("console", (message) => { if (message.type() === "error") errors.push(message.text().slice(0, 300)); });
+    page.on("pageerror", (error) => errors.push(`PAGEERROR ${error.message.slice(0, 200)}`));
+    const target = paths[state.path];
+    if (!target) throw new Error(`no path for ${state.path}`);
+    await page.goto(baseUrl + target, { waitUntil: "networkidle", timeout: 60_000 }).catch(() => null);
+    await page.waitForTimeout(state.noAuth ? 1500 : 2500);
+    await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+    let setupError = "";
+    if (state.run) {
+      try {
+        await state.run(page, { width, height, touch: device.hasTouch });
+      } catch (error) {
+        setupError = error.message.split("\n")[0].slice(0, 240);
+      }
+    }
+    await page.waitForTimeout(300);
+    const tag = `${name}-${width}x${height}`;
+    await page.screenshot({ path: join(outDir, `${tag}.png`) });
+    if (FULL) await page.screenshot({ path: join(outDir, `${tag}-full.png`), fullPage: true });
+    const metrics = await page.evaluate(metricsScript);
+    metrics.errors = errors;
+    metrics.setupError = setupError;
+    metrics.device = device;
+    results[tag] = metrics;
+  } finally {
+    await context.close();
+  }
+}
+
+async function openPassword(page, view) {
+  await openUserMenu(page, view);
+  await page.getByRole("button", { name: "パスワード変更" }).click();
+  const dialog = page.getByRole("dialog", { name: "パスワード変更" });
+  await dialog.waitFor();
+  return dialog;
+}
+
+async function openRowBooking(page) {
+  await page.locator(".rc-row", { hasText: "見本 花子" }).getByRole("button", { name: /の次回予約$/u }).first().click();
+  const dialog = page.getByRole("dialog", { name: "予約登録" });
+  await dialog.waitFor();
+  return dialog;
+}
+
+// 指摘を状態ごと・種類ごとにまとめて responsive.json と responsive-summary.txt に書く
+function writeResponsive(all) {
+  const kinds = ["offViewport", "clipped", "bleed", "unscrollable", "covered", "textOverlap", "ellipsisNoTitle", "tinyText", "tinyTargets"];
+  const report = {};
+  const lines = [`state${" ".repeat(36)}docX  ${kinds.map((kind) => kind.slice(0, 8).padStart(9)).join("")}  lock  setup`];
+  for (const [tag, metrics] of Object.entries(all)) {
+    const r = metrics.responsive || {};
+    report[tag] = { docOverflowX: r.docOverflowX, docOverflowY: r.docOverflowY, scrollLock: r.scrollLock, setupError: metrics.setupError || "", errors: (metrics.errors || []).slice(0, 5), ...Object.fromEntries(kinds.map((kind) => [kind, r[kind] || []])), coveredByOverlay: r.coveredByOverlay || 0 };
+    lines.push(`${tag.padEnd(40)} ${String(r.docOverflowX ?? "-").padStart(5)}  ${kinds.map((kind) => String((r[kind] || []).length).padStart(9)).join("")}  ${r.scrollLock ? "LOCK" : "    "}  ${metrics.setupError ? `ERR ${metrics.setupError.slice(0, 80)}` : ""}`);
+  }
+  writeFileSync(join(outDir, "responsive.json"), JSON.stringify(report, null, 1));
+  writeFileSync(join(outDir, "responsive-summary.txt"), `${lines.join("\n")}\n`);
+}
 
 // ログインし、撮影対象のカルテ・患者・文書を用意する（デモの ID は起動ごとに変わる）。
 async function prepare(browser) {
@@ -240,6 +544,17 @@ async function prepare(browser) {
   }));
   await page.reload();
   await page.getByRole("textbox", { name: "主訴・所見", exact: true }).fill("術後定期検査。右眼のかすみは改善。\n前房清明、IOL 正位。");
+  // 病名（病名タブの一覧・編集ダイアログの撮影用）。まだ無ければマスターから主病で 1 件
+  await page.getByRole("tab", { name: "病名" }).click();
+  if (!(await page.locator(".dx-table").getByRole("button", { name: /を編集$/u }).count())) {
+    await page.getByRole("button", { name: "病名を追加" }).click();
+    const dxDialog = page.getByRole("dialog", { name: "傷病名新規登録" });
+    await dxDialog.getByLabel("傷病名を検索").fill("開放隅角緑内障");
+    await dxDialog.locator(".dx-add-row").filter({ hasText: /^原発開放隅角緑内障/u }).first().getByRole("button", { name: "主病" }).click();
+    await dxDialog.getByText(/登録しました/u).waitFor();
+    await dxDialog.getByRole("button", { name: "閉じる" }).click();
+  }
+  await page.getByRole("tab", { name: /^診療履歴/u }).click();
   // 眼別の所見（従来の欄）・説明・同意。撮影で見えるように入れておく
   // 前回から写った所見があれば眼別の所見は畳んだまま出ている（空なら＋チップ）
   if (await page.getByRole("button", { name: "＋ 眼別の所見" }).count()) await page.getByRole("button", { name: "＋ 眼別の所見" }).click();
@@ -282,9 +597,10 @@ async function prepare(browser) {
   const documentPath = new URL(page.url()).pathname;
   await page.getByLabel("宛先 医療機関").fill("県立中央病院");
   await page.waitForTimeout(2500);
-  if (!onlyPages || [...onlyPages].some((name) => name.startsWith("billing"))) await seedBilling(page);
-  if (!onlyPages || [...onlyPages].some((name) => name.startsWith("settings"))) await seedSettings(page);
-  if (!onlyPages || [...onlyPages].some((name) => name.startsWith("patient") || name.startsWith("images"))) await uploadSampleImages(page, patientHref);
+  // 確定済みのカルテ（版履歴・次へ の受付の状態の撮影用）は会計連携の準備で作る
+  const billingIds = wants("billing") || wants("editor") ? await seedBilling(page) : [];
+  if (wants("settings")) await seedSettings(page);
+  if (wants("patient") || wants("images")) await uploadSampleImages(page, patientHref);
   const storageState = await context.storageState();
   await context.close();
   return {
@@ -293,71 +609,24 @@ async function prepare(browser) {
       login: "/",
       home: "/",
       reception: "/reception",
+      schedule: "/reception/schedule",
       patient: patientHref,
       images: `${patientHref}/images`,
-      "patient-dark": patientHref,
       editor: encounterPath,
+      finalized: billingIds[2] ? `/encounters/${billingIds[2]}` : encounterPath,
       exam: `${encounterPath}/exam`,
-      "exam-dark": `${encounterPath}/exam`,
-      "exam-iop": `${encounterPath}/exam`,
-      "exam-gaze": `${encounterPath}/exam`,
-      "exam-worth": `${encounterPath}/exam`,
-      "patient-vaiop": patientHref,
-      "images-ou": `${patientHref}/images`,
-      "images-series": `${patientHref}/images`,
-      "home-summary": "/",
       optical: `${encounterPath}/optical`,
       document: documentPath,
-      "document-print": `${documentPath}/print`,
-      "encounter-print": `${encounterPath}/print`,
-      "document-dark": documentPath,
-      "document-print-dark": `${documentPath}/print`,
-      "optical-dark": `${encounterPath}/optical`,
+      documentPrint: `${documentPath}/print`,
+      encounterPrint: `${encounterPath}/print`,
       billing: "/billing",
-      "billing-diff": "/billing",
-      "billing-print": "/billing",
-      "billing-send": "/billing",
-      "billing-dark": "/billing",
       settings: "/settings",
-      "settings-dark": "/settings",
-      "settings-facility-edit": "/settings#facility",
-      "settings-panel": "/settings#drugs",
-      "settings-sets": "/settings#sets",
-      "settings-sets-edit": "/settings#sets",
-      "settings-phrases": "/settings#phrases",
-      "settings-users": "/settings#users",
-      "settings-export": "/settings#export",
-      "settings-audit": "/settings#audit",
-      "settings-panel-dark": "/settings#drugs",
-      "editor-dark": encounterPath,
-      "reception-dark": "/reception",
-      "reception-filter": "/reception",
-      "reception-booking": "/reception",
-      "reception-booking-calendar": "/reception",
-      "reception-booking-calendar-dark": "/reception",
-      "reception-search": "/reception",
-      "reception-register": "/reception",
-      "reception-schedule": "/reception/schedule",
-      "reception-schedule-dark": "/reception/schedule",
-      menu: "/reception",
-      // ヘッダーだけを見る（受付・カルテ・暗室表示・メニューを開いた状態）
-      header: "/reception",
-      "header-editor": encounterPath,
-      "header-dark": "/reception",
-      "header-menu": "/reception",
-      // パスワード変更（利用者メニュー → ダイアログ。password-error は誤った現在のパスワードを送った状態）
-      password: "/reception",
-      "password-error": "/reception",
-      "password-dark": "/reception",
-      images: `${patientHref}/images`,
-      "encounter-print": `${encounterPath}/print`,
-      "document-print": `${documentPath}/print`,
-      search: "/",
-      register: "/",
-      "home-tasks": "/",
-      "home-dark": "/",
-      "editor-history": encounterPath,
-      "editor-side": encounterPath
+      settingsUsers: "/settings#users",
+      settingsSets: "/settings#sets",
+      settingsPhrases: "/settings#phrases",
+      settingsDrugs: "/settings#drugs",
+      settingsExport: "/settings#export",
+      settingsAudit: "/settings#audit"
     }
   };
 }
@@ -421,9 +690,10 @@ async function seedBilling(page) {
     const patched = await call("PATCH", `/v1/eye/encounters/${resend.encounterId}`, { expectedRevision: amended.encounter.revision, content });
     await call("POST", `/v1/eye/encounters/${resend.encounterId}/finalize`, { expectedRevision: patched.encounter.revision });
     await call("POST", `/v1/eye/encounters/${amending.encounterId}/amend`, { expectedRevision: amending.revision, reason: "処方日数の訂正" });
-    return ids.length;
+    return ids.map((item) => item.encounterId);
   });
-  if (result !== 5) throw new Error("billing seed failed");
+  if (result.length !== 5) throw new Error("billing seed failed");
+  return result;
 }
 
 // 設定の撮影用: 医療機関情報、セットのフォルダ（入れ子）とセット。
@@ -522,6 +792,7 @@ function crc32(buffer) {
 function printSummary(all) {
   console.log("page                       width  overflow  height  targets  <44px  contrastNG  <=13px%  errors");
   for (const [tag, metrics] of Object.entries(all)) {
+    if (!metrics.innerWidth) { console.log(`${tag.padEnd(26)} ${metrics.setupError || "no metrics"}`); continue; }
     const sizes = Object.entries(metrics.fontSizesByChars || {});
     const total = sizes.reduce((sum, [, chars]) => sum + chars, 0) || 1;
     const small = sizes.filter(([size]) => Number(size) <= 13).reduce((sum, [, chars]) => sum + chars, 0);
