@@ -1763,8 +1763,11 @@ fieldset:disabled .input::placeholder {
   display: none;
 }
 
+/* 位置は開いたときに components/popover-placement.js が合わせる（画面やスクロール枠に入らないときだけ）。
+ * 表の td などの nowrap を受け継がず、項目は 1 行ずつ縦に並べる。 */
 .more-menu-list {
   background: var(--surface);
+  white-space: normal;
   border: 1px solid var(--line);
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);

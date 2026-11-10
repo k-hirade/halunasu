@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { usePopoverPlacement } from "./popover-placement";
 import { acceptNumber, normalizeNumberText, readNumber } from "../lib/exam-number";
 import { formatDiopter } from "../lib/format";
 
@@ -44,9 +45,14 @@ export function moveToNextOnEnter(event) {
   focusNextField(target);
 }
 
-// スマホではテンキーが画面下のシートになるため、入力欄を画面の上の方へ送る。
+// テンキー・視力の選択を画面下のシートにする条件（スマホ・タッチ端末・高さの低い画面）。
+// exam.css の同じ条件の @media とそろえる。それ以外は欄の下（入らなければ上）に開くポップオーバー
+// （シートのときは CSS で fixed になるので、usePopoverPlacement は何もしない）。
+export const KEYPAD_SHEET_QUERY = "(max-width: 639px), (pointer: coarse), (max-height: 600px)";
+
+// シートのときは入力欄が隠れないよう、欄を画面の上の方へ送る。
 function revealAboveSheet(input) {
-  if (!input || typeof window === "undefined" || !window.matchMedia("(max-width: 639px)").matches) return;
+  if (!input || typeof window === "undefined" || !window.matchMedia(KEYPAD_SHEET_QUERY).matches) return;
   requestAnimationFrame(() => input.scrollIntoView({ block: "start", behavior: "smooth" }));
 }
 
@@ -64,9 +70,11 @@ export function NumberField({
   const inputRef = useRef(null);
   const wrapRef = useRef(null);
   const keepRef = useRef(false);
+  const padRef = useRef(null);
   const committed = Number.isFinite(value) ? value : null;
   const shown = text ?? (committed === null ? "" : format(committed));
   const usePad = Boolean(pad && touch && !keyboard);
+  usePopoverPlacement(padRef, padOpen && usePad);
 
   function close() {
     keepRef.current = false;
@@ -155,6 +163,7 @@ export function NumberField({
             close();
             focusNextField(inputRef.current, { includeSkipped: true });
           }}
+          panelRef={padRef}
           previous={pad.previous}
           text={normalizeNumberText(shown)}
         />
@@ -205,7 +214,7 @@ function PadHead({ title, onClose, press, closeLabel = "テンキーを閉じる
   );
 }
 
-function NumberPad({ kind, text: current, fresh, committed, previous, onKey, onNext, onKeyboard, onClose }) {
+function NumberPad({ kind, text: current, fresh, committed, previous, onKey, onNext, onKeyboard, onClose, panelRef }) {
   const keep = (event) => event.preventDefault();
   const press = (handler) => ({ onClick: handler, onMouseDown: keep, onPointerDown: keep, type: "button" });
   // 数字と符号は、フォーカス直後なら新しい入力として始める。小数部のキー・⌫ は今の値に効かせる。
@@ -224,7 +233,7 @@ function NumberPad({ kind, text: current, fresh, committed, previous, onKey, onN
   const digitKeys = ["7", "8", "9", "4", "5", "6", "1", "2", "3"];
   if (kind === "axis") {
     return (
-      <div aria-label="軸のテンキー" className="num-pad is-axis" role="group">
+      <div aria-label="軸のテンキー" className="num-pad is-axis" ref={panelRef} role="group">
         <PadHead onClose={onClose} press={press} title="軸（0〜180）" />
         {["180", "90", "0"].map((value) => <button className="num-key is-quick" key={value} {...press(() => { onKey(value); onNext(); })}>{value}</button>)}
         {digitKeys.map((value) => <button className="num-key" key={value} {...press(() => onKey(`${base}${value}`))}>{value}</button>)}
@@ -238,7 +247,7 @@ function NumberPad({ kind, text: current, fresh, committed, previous, onKey, onN
     );
   }
   return (
-    <div aria-label="度数のテンキー" className="num-pad" role="group">
+    <div aria-label="度数のテンキー" className="num-pad" ref={panelRef} role="group">
       <PadHead onClose={onClose} press={press} title="度数（D）" />
       <button aria-pressed={!fresh && sign === "-"} className="num-key is-sign" {...press(() => onKey(fresh ? "-" : `-${unsigned}`))}>−</button>
       <button aria-pressed={!fresh && sign === "+"} className="num-key is-sign" {...press(() => onKey(fresh ? "+" : `+${unsigned}`))}>+</button>
@@ -268,7 +277,9 @@ export function VaField({ value, onChange, previous = "", touch = false, classNa
   const inputRef = useRef(null);
   const wrapRef = useRef(null);
   const keepRef = useRef(false);
+  const pickerRef = useRef(null);
   const usePicker = touch && !keyboard;
+  usePopoverPlacement(pickerRef, open && usePicker);
   const keep = (event) => event.preventDefault();
   const press = (handler) => ({ onClick: handler, onMouseDown: keep, onPointerDown: keep, type: "button" });
   const close = () => {
@@ -313,7 +324,7 @@ export function VaField({ value, onChange, previous = "", touch = false, classNa
         value={value || ""}
       />
       {open && usePicker ? (
-        <div aria-label="視力を選ぶ" className="va-picker" role="group">
+        <div aria-label="視力を選ぶ" className="va-picker" ref={pickerRef} role="group">
           <PadHead closeLabel="視力の選択を閉じる" onClose={() => { close(); inputRef.current?.blur(); }} press={press} title="視力" />
           {VA_VALUES.map((item) => (
             <button

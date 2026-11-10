@@ -997,36 +997,7 @@
   min-width: 40px;
 }
 
-/* スマホ: テンキー・視力の選択は画面下のシートにする（欄は上へスクロールして見えるようにする） */
-@media (max-width: 639px) {
-  .num-pad,
-  .va-picker,
-  .xt-grid.is-workbench .xt-eye-os .num-pad,
-  .xt-grid.is-workbench .xt-eye-os .va-picker {
-    bottom: calc(8px + env(safe-area-inset-bottom));
-    left: 8px;
-    position: fixed;
-    right: 8px;
-    top: auto;
-    z-index: 60;
-  }
-
-  .num-pad {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-
-  .num-pad.is-axis {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .va-picker {
-    grid-template-columns: repeat(10, minmax(0, 1fr));
-  }
-
-  .xt-grid .input {
-    scroll-margin-top: calc(var(--nav-h) + 16px);
-  }
-}
+/* スマホ・タッチ端末・高さの低い画面のテンキーのシートは、このファイルの末尾（右寄せの指定より後に置く） */
 
 .num-key.is-text {
   font-size: var(--fs-sm);
@@ -2131,5 +2102,61 @@
 
   .rd-bar .exam-bar-row {
     font-size: var(--fs-xs);
+  }
+}
+
+/* テンキー・視力の選択は、スマホ・タッチ端末（タブレット・スマホ横）・高さの低い画面では画面下のシートにする。
+ * 条件は components/exam-inputs.js の KEYPAD_SHEET_QUERY とそろえる。欄は上へスクロールして見えるようにする。
+ * 右寄せ（.rd-grid の右の欄・左眼の欄）の指定より後に置き、同じ詳細度で上書きする。PC では欄の下に開き、
+ * 下に入らなければ上に開く（components/popover-placement.js）。 */
+@media (max-width: 639px), (pointer: coarse), (max-height: 600px) {
+  .num-pad,
+  .va-picker,
+  .xt-grid.is-workbench .xt-eye-os .num-pad,
+  .xt-grid.is-workbench .xt-eye-os .va-picker,
+  .rd-grid td:nth-last-child(-n + 4) .num-pad,
+  .rd-grid td:nth-last-child(-n + 4) .va-picker {
+    bottom: calc(8px + env(safe-area-inset-bottom));
+    left: 8px;
+    margin: 0 auto;
+    max-height: calc(100dvh - var(--nav-h) - 16px - env(safe-area-inset-bottom));
+    max-width: 560px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    position: fixed;
+    right: 8px;
+    top: auto;
+    z-index: 60;
+  }
+
+  .num-pad {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .num-pad.is-axis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .va-picker {
+    grid-template-columns: repeat(10, minmax(0, 1fr));
+  }
+
+  /* 欄を上へ送るとき、固定ヘッダーの下に潜らないようにする */
+  .xt-grid .input,
+  .rd-grid .input {
+    scroll-margin-top: calc(var(--nav-h) + 16px);
+  }
+}
+
+/* 高さの低い画面（スマホ横）では、シートのキーを低くして 1 画面に収める */
+@media (max-height: 500px) {
+  .num-key {
+    min-height: 36px;
+  }
+
+  .num-pad,
+  .va-picker {
+    gap: 4px;
+    padding: 6px;
   }
 }

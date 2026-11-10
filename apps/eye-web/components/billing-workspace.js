@@ -366,9 +366,9 @@ export function BillingWorkspace() {
         <header className="page-head bill-head">
           <div className="bill-title">
             <h1>会計連携</h1>
-            <details className="bill-help">
+            <details className="bill-help" data-popover>
               <summary aria-label="この画面について" className="btn btn-chip">?</summary>
-              <p>確定したカルテの「実施した検査・処置」「今回出した処方」「発行した文書」を、1 人ずつレセコンへ渡します（今はレセコンが取り込む CSV を保存します）。受付が会計待なら会計済にします。連携のあとでカルテを直すと「再計待」になるので、差分を見てからもう一度連携してください。点数の計算はレセコンで行います。</p>
+              <p data-popover-panel>確定したカルテの「実施した検査・処置」「今回出した処方」「発行した文書」を、1 人ずつレセコンへ渡します（今はレセコンが取り込む CSV を保存します）。受付が会計待なら会計済にします。連携のあとでカルテを直すと「再計待」になるので、差分を見てからもう一度連携してください。点数の計算はレセコンで行います。</p>
             </details>
           </div>
           <div className="head-actions">

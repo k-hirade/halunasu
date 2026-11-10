@@ -1,6 +1,7 @@
 import "./globals.css";
 import { headers } from "next/headers";
 import { AuthGate, PlatformAuthProvider } from "../components/platform-auth";
+import { PopoverAutoPlacement } from "../components/popover-placement";
 import { SiteNav } from "../components/site-nav";
 import { BRAND_DESCRIPTION, BRAND_LOGIN, BRAND_NAME, BRAND_TITLE, PRODUCT_NAME } from "../lib/brand";
 import { eyeRuntimeConfigFromEnv } from "../lib/runtime-config";
@@ -33,6 +34,8 @@ export default async function RootLayout({ children }) {
         <script id="halunasu-eye-theme" nonce={nonce} suppressHydrationWarning dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
       </head>
       <body>
+        {/* 「…」メニューなどのポップオーバーを、画面やスクロール枠の端で切れない位置に開く */}
+        <PopoverAutoPlacement />
         <PlatformAuthProvider
           platformBaseUrl={runtimeConfig.platformBaseUrl}
           brand={{ name: BRAND_NAME, product: PRODUCT_NAME, login: BRAND_LOGIN }}
