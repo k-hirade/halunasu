@@ -667,3 +667,26 @@
     padding: 24px 16px;
   }
 }
+
+/* ログイン（横向きのスマホなど高さ 500px 以下）: 説明文を省き、ラベルと入力欄を横に並べて、
+ * スクロールしなくても［ログイン］まで見えるようにする（帯の高さは globals.css で詰めてある） */
+@media (max-height: 500px) {
+  .operator-gate-card > div:first-child > p {
+    display: none;
+  }
+
+  .operator-gate-card h1 {
+    font-size: var(--fs-xl);
+  }
+
+  .operator-gate-card .field:not(.operator-gate-remembered) {
+    align-items: center;
+    column-gap: 12px;
+    grid-template-columns: 10.5em minmax(0, 1fr);
+    margin-bottom: 0;
+  }
+
+  .operator-gate-card .field:not(.operator-gate-remembered) > :not(label) {
+    grid-column: 2;
+  }
+}
