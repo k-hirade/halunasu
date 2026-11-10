@@ -249,7 +249,9 @@ export function BillingWorkspace() {
         <span className="bill-extra-text">
           {item.amending ? (
             <>
-              {item.handoff?.state === "handed_off" ? <span className="muted">{formatClock(item.handoff.at)} 連携済 v{item.handoff.version} のあと修正中</span> : <span>修正中</span>}
+              {item.handoff?.state === "handed_off" ? (
+                <span className="muted" title={`${formatClock(item.handoff.at)} 連携済 v${item.handoff.version} のあと修正中`}>{formatClock(item.handoff.at)} 連携済 v{item.handoff.version} のあと修正中</span>
+              ) : <span>修正中</span>}
               {item.amendmentReason ? <span className="bill-reason" title={item.amendmentReason}>理由: {item.amendmentReason}</span> : null}
             </>
           ) : <span className="muted">診察中・確定待ち</span>}
@@ -262,8 +264,8 @@ export function BillingWorkspace() {
       if (!chips.length) return <span className="muted">品目の違いなし</span>;
       return (
         <>
-          {chips.slice(0, MAX_CHIPS).map((chip, index) => <span className={`bill-chip is-${chip.kind}`} key={index}>{chip.label}</span>)}
-          {chips.length > MAX_CHIPS ? <span className="bill-chip">ほか{chips.length - MAX_CHIPS}件</span> : null}
+          {chips.slice(0, MAX_CHIPS).map((chip, index) => <span className={`bill-chip is-${chip.kind}`} key={index} title={chip.label}>{chip.label}</span>)}
+          {chips.length > MAX_CHIPS ? <span className="bill-chip" title={chips.slice(MAX_CHIPS).map((chip) => chip.label).join(" ")}>ほか{chips.length - MAX_CHIPS}件</span> : null}
         </>
       );
     }
@@ -298,7 +300,7 @@ export function BillingWorkspace() {
           <span className="bill-number mono">{patient?.primaryPatientNumber || "—"}</span>
           <span className="bill-name">
             <strong>{name}</strong>
-            {patient?.displayNameKana ? <span className="flow-kana">{patient.displayNameKana}</span> : null}
+            {patient?.displayNameKana ? <span className="flow-kana" title={patient.displayNameKana}>{patient.displayNameKana}</span> : null}
           </span>
           <span className="bill-meta" data-number={patient?.primaryPatientNumber ? `No.${patient.primaryPatientNumber}` : ""}>
             <span className="bill-age">{age !== null ? `${age}${sex}` : sex}</span>
@@ -306,7 +308,7 @@ export function BillingWorkspace() {
           </span>
           <span className="bill-reception">{reception ? <span className={`bill-reception-tag status-${appointment.displayStatus || appointment.status}`}>{reception}</span> : <span className="muted">受付なし</span>}</span>
           <span className="bill-final">
-            {item.finalizedAt ? <>{formatClock(item.finalizedAt)}<span className="muted"> {item.finalizedBy?.displayName || ""}</span></> : <span className="muted">—</span>}
+            {item.finalizedAt ? <>{formatClock(item.finalizedAt)}<span className="muted" title={item.finalizedBy?.displayName || undefined}> {item.finalizedBy?.displayName || ""}</span></> : <span className="muted">—</span>}
             {row.state === "changed" ? <span className="bill-version mono">v{item.handoff.version}→v{item.version}</span> : null}
           </span>
           <span className="bill-extra">{renderExtra(row)}</span>
@@ -429,6 +431,8 @@ export function BillingWorkspace() {
                     {pendingRows.length && (tab === null || tab === "pending") ? (
                       <label className="bill-check-hit" title="未連携の全員を選ぶ">
                         <input aria-label="未連携の全員を選ぶ" checked={allPendingSelected} onChange={() => setSelected(new Set(allPendingSelected ? [] : pendingRows.map((row) => row.key)))} type="checkbox" />
+                        {/* スマホでは見出しの列が消えるので、文字で何を選ぶかを示す */}
+                        <span aria-hidden="true" className="bill-check-text">未連携をすべて選ぶ</span>
                       </label>
                     ) : null}
                   </span>
@@ -497,6 +501,8 @@ export function BillingWorkspace() {
 
       {printTargets.length ? (
         <div className="print-only bill-slips">
+          {/* 連絡票は A4 縦。印刷するときだけ用紙と余白を決める（ほかの画面の印刷には効かせない） */}
+          <style>{"@page { size: A4 portrait; margin: 12mm 12mm 14mm; }"}</style>
           {printTargets.map((item) => <Slip date={date} facilityName={facilityName} item={item} key={item.encounterId} />)}
         </div>
       ) : null}
@@ -629,8 +635,11 @@ function ItemLine({ item, withCategory = false }) {
   return (
     <span className="bill-item">
       {withCategory ? <span className="bill-item-cat">{item.category}</span> : null}
-      <span className="bill-item-name">{item.name}</span>
-      {EYE[item.eye] ? <span className={`bill-eye eye-${item.eye}`}>{EYE[item.eye]}</span> : null}
+      {/* 薬剤名と眼は 1 つにまとめ、眼だけが次の行に回らないようにする */}
+      <span className="bill-item-main">
+        <span className="bill-item-name">{item.name}</span>
+        {EYE[item.eye] ? <span className={`bill-eye eye-${item.eye}`}>{EYE[item.eye]}</span> : null}
+      </span>
       {details ? <span className="bill-item-detail">{details}</span> : null}
     </span>
   );

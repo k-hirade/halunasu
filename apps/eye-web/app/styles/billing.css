@@ -302,6 +302,17 @@
   overflow: hidden;
 }
 
+/* 文字の途中で切らず、省略記号を出す（全文は title） */
+.bill-extra-text > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bill-check-text {
+  display: none;
+}
+
 .bill-chip {
   border: 1px solid var(--line-strong);
   border-radius: 4px;
@@ -467,8 +478,19 @@
   min-width: 2.5em;
 }
 
+/* 名前と眼の間では改行しない（改行の可否は共通の親の white-space で決まる）。名前の中では折り返せる */
+.bill-item-main {
+  min-width: 0;
+  white-space: nowrap;
+}
+
 .bill-item-name {
   font-weight: 700;
+  white-space: normal;
+}
+
+.bill-item-main > .bill-eye {
+  margin-left: 6px;
 }
 
 .bill-item-detail {
@@ -648,6 +670,28 @@
   .bill-detail {
     padding-left: 30px;
   }
+
+  /* 品目・変更の列: チップと修正中の文は折り返して全文を出す（2 段目の行は高さに余裕がある） */
+  .bill-extra {
+    flex-wrap: wrap;
+    padding: 2px 0;
+    white-space: normal;
+  }
+
+  .bill-extra-text {
+    flex-wrap: wrap;
+    gap: 0 8px;
+  }
+
+  .bill-extra-text > span {
+    overflow: visible;
+    overflow-wrap: anywhere;
+  }
+
+  .bill-chip {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
 }
 
 @media (max-width: 767px) {
@@ -722,8 +766,34 @@
     display: none;
   }
 
+  /* 状態のタブは横スクロール。右端をぼかして続きがあることを示す */
   .bill-chips-row > .flow-chips {
-    max-width: 100%;
+    margin-left: -12px;
+    margin-right: -12px;
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 12px, #000 calc(100% - 28px), transparent 100%);
+    mask-image: linear-gradient(90deg, transparent 0, #000 12px, #000 calc(100% - 28px), transparent 100%);
+    max-width: calc(100% + 24px);
+    padding: 0 28px 0 12px;
+  }
+
+  /* 見出しの行: 「未連携をすべて選ぶ」を文字で出す */
+  .bill-head-row {
+    grid-template-areas: "check check check check";
+  }
+
+  .bill-head-row .bill-check-hit {
+    gap: 8px;
+    justify-content: flex-start;
+    margin: -4px 0;
+    padding: 0 4px;
+    width: auto;
+  }
+
+  .bill-head-row .bill-check-text {
+    display: inline;
+    font-size: var(--fs-sm);
+    font-weight: 700;
+    white-space: nowrap;
   }
 
   .bill-group-note {
@@ -754,6 +824,13 @@
 
 /* 会計連絡票（1 人 1 枚） */
 @media print {
+  /* 画面用の余白を外し、1 枚目から用紙の余白（@page）だけにする */
+  .eye-page.billing-page {
+    margin: 0;
+    max-width: none;
+    padding: 0;
+  }
+
   .bill-slips {
     display: block;
   }
@@ -827,4 +904,12 @@
 
 .bill-slip-foot {
   padding-top: 8px;
+}
+
+/* タッチ端末: 連携の記録の開閉を指で押せる大きさに（「?」は globals.css の .btn-chip で 40px） */
+@media (pointer: coarse) {
+  .bill-log .flow-group-toggle {
+    min-height: 40px;
+    padding: 0 6px;
+  }
 }
