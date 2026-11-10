@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { formatDate } from "../lib/format";
+import { LABEL_CHAR_WIDTH, placeLabels } from "../lib/label-layout.mjs";
 import { iopAxis, thinLabels, vaAxis } from "../lib/trend-scale.mjs";
 import { IOP_METHOD_LABELS, VA_CORRECTION_TYPE_LABELS } from "../lib/format";
 
@@ -36,7 +37,7 @@ export function VaIopView({ points = [], emptyText = "確定済みのカルテ�
         <div className="vi-table-wrap" aria-label="視力の記録" role="region" tabIndex={0}>
           <table className="vi-table">
             <thead>
-              <tr><th scope="col">検査日</th><th scope="col">種</th><th scope="col">遠近</th><th scope="col">右眼</th><th scope="col">左眼</th></tr>
+              <tr><th scope="col">検査日</th><th scope="col">種<span className="vi-dist-inline">・遠近</span></th><th className="vi-dist" scope="col">遠近</th><th scope="col">右眼</th><th scope="col">左眼</th></tr>
             </thead>
             <tbody>
               {newestFirst.flatMap((point) => {
@@ -46,8 +47,8 @@ export function VaIopView({ points = [], emptyText = "確定済みのカルテ�
                   rows.push(
                     <tr key={`${point.encounterId}-far`}>
                       <td className="mono">{formatDate(point.encounterDate)}</td>
-                      <td>{type}</td>
-                      <td>遠</td>
+                      <td>{type}<span className="vi-dist-inline">・遠</span></td>
+                      <td className="vi-dist">遠</td>
                       <td className="vi-od">{farText(point.od)}</td>
                       <td className="vi-os">{farText(point.os)}</td>
                     </tr>
@@ -57,8 +58,8 @@ export function VaIopView({ points = [], emptyText = "確定済みのカルテ�
                   rows.push(
                     <tr key={`${point.encounterId}-near`}>
                       <td className="mono">{rows.length ? "" : formatDate(point.encounterDate)}</td>
-                      <td>{rows.length ? "" : type}</td>
-                      <td>近</td>
+                      <td>{rows.length ? "" : type}<span className="vi-dist-inline">{rows.length ? "近" : "・近"}</span></td>
+                      <td className="vi-dist">近</td>
                       <td className="vi-od">{point.od?.vaNearLabel || "—"}</td>
                       <td className="vi-os">{point.os?.vaNearLabel || "—"}</td>
                     </tr>
@@ -115,6 +116,7 @@ function SeriesChart({ kind, title, unit = "", points, series, shown, toggle }) 
   const xOf = (iso) => (max === min ? (left + right) / 2 : left + ((dayNumber(iso) - min) / (max - min)) * (right - left));
   const labels = thinLabels(points.map((point) => ({ key: point.encounterId, iso: point.encounterDate, x: xOf(point.encounterDate) })));
   const format = kind === "va" ? formatVa : String;
+  const placed = axis ? placeValueLabels({ active, points, axis, xOf, kind, left, width, height, dates: labels.map((item) => item.x), ticks: axis.ticks.map((tick) => ({ y: axis.y(tick), text: format(tick) })) }) : new Map();
   return (
     <section className={`vi-chart is-${kind}`} aria-label={`${title}のグラフ`}>
       <div className="vi-chart-head">
@@ -148,11 +150,12 @@ function SeriesChart({ kind, title, unit = "", points, series, shown, toggle }) 
                   const value = point[item.side][item.field];
                   const x = xOf(point.encounterDate);
                   const y = axis.y(value);
-                  const text = kind === "va" ? point[item.side][item.labelField] || formatVa(value) : String(value);
+                  const text = valueText(kind, item, point);
+                  const label = placed.get(`${item.key}|${point.encounterId}`);
                   return (
                     <g key={point.encounterId}>
                       <circle className="dot" cx={x} cy={y} r={3.5} />
-                      <text className="vi-value" textAnchor="middle" x={x} y={item.side === "od" ? y - 7 : y + 14}>{text}</text>
+                      {label ? <text className="vi-value" textAnchor="middle" x={label.x} y={label.y}>{text}</text> : null}
                       <title>{`${formatDate(point.encounterDate)} ${item.label} ${text}${unit ? ` ${unit}` : ""}`}</title>
                     </g>
                   );
@@ -165,6 +168,33 @@ function SeriesChart({ kind, title, unit = "", points, series, shown, toggle }) 
       </div>
     </section>
   );
+}
+
+function valueText(kind, item, point) {
+  const value = point[item.side][item.field];
+  return kind === "va" ? point[item.side][item.labelField] || formatVa(value) : String(value);
+}
+
+// 値のラベルの置き場所（lib/label-layout.mjs の placeLabels）。新しい測定から順に、右眼は点の上・左眼は点の下を
+// 第一候補にし、ほかのラベル・点・Y 軸の目盛り・下の日付・枠の外に掛からない所に置く。
+// どこにも置けないラベルは省く（値は点の title と上の表で見られる）。返り値は「系列|受診」→ { x, y }。
+function placeValueLabels({ active, points, axis, xOf, kind, left, width, height, dates, ticks }) {
+  const obstacles = [];
+  // 目盛りの文字（右端が left - 6）と、下の日付（「26/10/20」、ベースラインは height - 4）
+  for (const tick of ticks) obstacles.push({ x1: left - 6 - tick.text.length * LABEL_CHAR_WIDTH, x2: left - 4, y1: tick.y - 8, y2: tick.y + 4 });
+  for (const x of dates) obstacles.push({ x1: x - 26, x2: x + 26, y1: height - 14, y2: height });
+  const items = [];
+  for (const series of active) {
+    for (const point of points) {
+      const value = point[series.side]?.[series.field];
+      if (!isNumber(value)) continue;
+      const x = xOf(point.encounterDate);
+      const y = axis.y(value);
+      obstacles.push({ x1: x - 4, x2: x + 4, y1: y - 4, y2: y + 4 });
+      items.push({ key: `${series.key}|${point.encounterId}`, x, y, up: series.side === "od", text: valueText(kind, series, point), order: -dayNumber(point.encounterDate) });
+    }
+  }
+  return placeLabels(items, { obstacles, bounds: { left: left - 2, right: width - 2, top: 0, bottom: height } });
 }
 
 function typeLabel(point) {
