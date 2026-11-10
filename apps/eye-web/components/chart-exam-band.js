@@ -21,6 +21,8 @@ function recordStamp(record) {
   return [formatTime(record.at), record.examinerName || record.recordedBy?.displayName || ""].filter(Boolean).join(" ");
 }
 
+// 視力の行（「0.9（1.2×S-1.00D=C-0.50D Ax180°）」）は空白で折らない。折るなら括弧の前で折れ、「Ax180°）」だけが次の行に残らない。
+const keepTogether = (text) => (text ? text.replace(/ /gu, "\u00a0") : text);
 const isFilled = (value) => value !== null && value !== undefined && value !== "";
 
 function nearLine(row = {}) {
@@ -105,11 +107,11 @@ export function ExamBand({ content, encounterId, confirmations, canConfirm, onCo
       {!any ? <p className="muted small exam-band-empty">検査値はまだありません。</p> : (
         <div className="exam-band-body">
           <div className="exam-block">
-            <span className="exam-block-label">【視力】{visionRecord ? <span className="exam-block-stamp">{recordStamp(visionRecord)}</span> : null}</span>
+            <span className="exam-block-label">【視力】{visionRecord ? <span className="exam-block-stamp" title={recordStamp(visionRecord)}>{recordStamp(visionRecord)}</span> : null}</span>
             <div className="exam-block-values">
               {SIDES.map((side) => (
                 <span className={`exam-va eye-${side}`} key={side}>
-                  <span className="exam-eye-mark">{SIDE_MARK[side]}=</span>{formatVisualAcuityLine(exam[side] || {}) || "—"}
+                  <span className="exam-eye-mark">{SIDE_MARK[side]}=</span>{keepTogether(formatVisualAcuityLine(exam[side] || {})) || "—"}
                 </span>
               ))}
               {binocularVa.uncorrected || binocularVa.corrected ? (
@@ -126,7 +128,7 @@ export function ExamBand({ content, encounterId, confirmations, canConfirm, onCo
             ) : null}
           </div>
           <div className="exam-block">
-            <span className="exam-block-label">【眼圧】{iopMethod ? <span className="exam-block-stamp">{iopMethod}</span> : null}{iopRecord ? <span className="exam-block-stamp">{recordStamp(iopRecord)}</span> : null}</span>
+            <span className="exam-block-label">【眼圧】{iopMethod ? <span className="exam-block-stamp">{iopMethod}</span> : null}{iopRecord ? <span className="exam-block-stamp" title={recordStamp(iopRecord)}>{recordStamp(iopRecord)}</span> : null}</span>
             <div className="exam-block-values">
               {SIDES.map((side) => (
                 <span className={`exam-iop eye-${side}${exam[side]?.iop > 21 ? " is-high" : ""}`} key={side}>

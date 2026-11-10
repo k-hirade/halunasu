@@ -31,6 +31,9 @@ import { applyCopy, appendRpRows } from "../lib/chart-copy";
 const SIDES = ["od", "os"];
 // 次へ（→）で選ぶ受付の状態。再計待は表示用の派生、取消はカルテのある受付にはできないので出さない。
 const NEXT_STATUS_MENU = APPOINTMENT_STATUS_MENU.filter((status) => status !== "rebill_waiting" && status !== "cancelled");
+// 3 ペイン（右も常に表示）と、左を常に表示する条件。chart-editor.css の @media とそろえる。
+const WIDE_QUERY = "(min-width: 1280px) and (min-height: 501px)";
+const MEDIUM_QUERY = "(min-width: 768px) and (min-height: 501px)";
 
 // カルテ画面（デジカルの 3 ペイン）。左「患者の情報」・中央「本日のカルテ（主訴・所見｜処置・行為）」・右「オーダー」と、
 // 右下の操作（保存・印刷・→次へ）。眼科の検査値と次回予定の作法はトプコンに合わせる。
@@ -55,8 +58,11 @@ export function EncounterEditor({ encounterId }) {
   const [sets, setSets] = useState(null);
   const [highlight, setHighlight] = useState("");
   const [now, setNow] = useState(Date.now());
-  const wide = useMediaQuery("(min-width: 1280px)", true);
-  const medium = useMediaQuery("(min-width: 768px)", true);
+  // 高さ 500px 以下（スマホ横）は幅があっても 3 ペインにせず、スマホと同じ「ページ全体のスクロール＋左右は引き出し」にする
+  const wide = useMediaQuery(WIDE_QUERY, true);
+  const medium = useMediaQuery(MEDIUM_QUERY, true);
+  // スマホ縦（767px 以下）は操作帯を 1 段にするため、送信を「…」の中へ移す
+  const phone = useMediaQuery("(max-width: 767px)", false);
   // 下の操作帯の高さ（スマホでは 1〜2 段）を本文の下の余白に使う
   const actionbarRef = useMeasuredHeight("--actionbar-h");
   const findingsRef = useRef(null);
@@ -456,16 +462,19 @@ export function EncounterEditor({ encounterId }) {
 
       <div className="chart-shell">
         <aside aria-label="患者の情報" className="chart-left">
-          <div className="pane-head drawer-only">
-            <h2 className="pane-title">患者の情報</h2>
-            <button className="btn btn-chip" onClick={() => setDrawer(null)} type="button">閉じる</button>
-          </div>
-          <div className="pane-tabs" role="tablist">
-            {LEFT_TABS.map((tab) => (
-              <button aria-selected={leftTab === tab.id} className="pane-tab" key={tab.id} onClick={() => setLeftTab(tab.id)} role="tab" title={`${tab.label}（${tab.keyLabel}）`} type="button">
-                {tab.label}{tab.id === "history" && detail.history.length ? <span className="pane-tab-count">{detail.history.length}</span> : null}
-              </button>
-            ))}
+          {/* 引き出しの見出しとタブは 1 つのかたまりで上に残す */}
+          <div className="pane-sticky">
+            <div className="pane-head drawer-only">
+              <h2 className="pane-title">患者の情報</h2>
+              <button className="btn btn-chip" onClick={() => setDrawer(null)} type="button">閉じる</button>
+            </div>
+            <div className="pane-tabs" role="tablist">
+              {LEFT_TABS.map((tab) => (
+                <button aria-selected={leftTab === tab.id} className="pane-tab" key={tab.id} onClick={() => setLeftTab(tab.id)} role="tab" title={`${tab.label}（${tab.keyLabel}）`} type="button">
+                  {tab.label}{tab.id === "history" && detail.history.length ? <span className="pane-tab-count">{detail.history.length}</span> : null}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="pane-body" role="tabpanel">{leftContent[leftTab]}</div>
         </aside>
@@ -574,12 +583,15 @@ export function EncounterEditor({ encounterId }) {
 
         <div aria-label="カルテの操作" className="chart-actionbar" data-fixed-bar="bottom" ref={actionbarRef} role="toolbar">
           <span className="actionbar-group">
-            {context?.canReceive ? (
+            {context?.canReceive && !phone ? (
               <button className="btn btn-ghost" disabled={!finalizedView} onClick={openSend} title={finalizedView ? "会計へ送信（K）" : "確定後に送信できます"} type="button">送信</button>
             ) : null}
             <details className="more-menu actionbar-more">
               <summary aria-label="その他の操作" className="btn btn-ghost">…</summary>
               <div className="more-menu-list">
+                {context?.canReceive && phone ? (
+                  <button className="btn btn-ghost" disabled={!finalizedView} onClick={(event) => { event.currentTarget.closest("details").open = false; openSend(); }} title={finalizedView ? "会計へ送信（K）" : "確定後に送信できます"} type="button">{finalizedView ? "会計へ送信" : "会計へ送信（確定後）"}</button>
+                ) : null}
                 <button className="btn btn-ghost" onClick={(event) => { event.currentTarget.closest("details").open = false; setDialog("versions"); }} type="button">版履歴</button>
                 {encounter.status === "draft" && encounter.versionCount === 0 && context?.canWrite ? (
                   <button className="btn btn-ghost danger-text" onClick={(event) => { event.currentTarget.closest("details").open = false; setDialog("discard"); }} type="button">下書きを破棄</button>

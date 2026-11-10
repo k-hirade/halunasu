@@ -2,6 +2,8 @@
  * カルテ（/encounters/[id]）。デジカルの 3 ペイン: 左「患者の情報」≒34%・中央「本日のカルテ」≒46%（主訴・所見｜処置・行為）・
  * 右「オーダー」≒20%。操作（送信・保存・印刷・→次へ）は右ペインの下。各ペインは中で縦にスクロールし、ページはスクロールしない。
  * 1280px 未満は右を引き出し（操作は画面下の帯）、768px 未満は左も引き出し。色はトークンだけを使う（暗室表示もそのまま）。
+ * 高さ 500px 以下（スマホ横）は幅に関係なく 768px 未満と同じ配置（ページ全体をスクロールし、左右は引き出し）にする。
+ * 条件は encounter-editor.js の WIDE_QUERY / MEDIUM_QUERY とそろえる。
  */
 
 .chart-page {
@@ -50,7 +52,8 @@
   grid-template-areas:
     "left center right"
     "left center act";
-  grid-template-columns: minmax(0, 34fr) minmax(0, 46fr) minmax(0, 20fr);
+  /* 右は 280px を下回らない（学習リストの薬剤名・検索欄が割れない） */
+  grid-template-columns: minmax(0, 34fr) minmax(0, 46fr) minmax(280px, 20fr);
   grid-template-rows: minmax(0, 1fr) auto;
   min-height: 0;
 }
@@ -67,6 +70,8 @@
 .chart-left {
   background: var(--page);
   border-right: 1px solid var(--line);
+  /* 左の中身（診療履歴のカード・病名の表・タブ）はペインの幅で組み替える */
+  container: left-pane / inline-size;
   grid-area: left;
   padding: 0 10px 16px;
 }
@@ -96,22 +101,83 @@
   padding: 8px 8px 12px;
 }
 
+/* 右（オーダー）: 見出し・区分・検索は上に残し、一覧だけをスクロールする（区分を選んでも見出しが流れない） */
+.chart-right {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.chart-right > .pane-head {
+  flex: 0 0 auto;
+}
+
+.chart-right > .order-panel {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.chart-right .order-cats,
+.chart-right .order-search,
+.chart-right .order-target {
+  flex: 0 0 auto;
+}
+
+.chart-right .order-results {
+  align-content: start;
+  flex: 1 1 auto;
+  margin: 0 -8px -12px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 8px 12px;
+}
+
 .chart-page .drawer-only {
   display: none;
 }
 
 /* ---- 左: タブ ---- */
+/* 引き出しの見出し（患者の情報・閉じる）とタブは 1 つのかたまりで上に残す */
+.chart-left .pane-sticky {
+  background: var(--page);
+  margin: 0 -10px 8px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.chart-left .pane-sticky > .pane-head {
+  margin: 0;
+  padding: 0 10px 6px;
+}
+
+/* タブは 1 段。入りきらない幅では横にスクロールする（2 段目に 1 つだけ残らない） */
 .chart-left .pane-tabs {
   background: var(--page);
   border-bottom: 1px solid var(--line);
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 0 2px;
-  margin: 0 -10px 8px;
+  overflow-x: auto;
   padding: 4px 6px 0;
-  position: sticky;
-  top: 0;
-  z-index: 2;
+  scrollbar-width: none;
+}
+
+.chart-left .pane-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.chart-left .pane-tab {
+  flex: 0 0 auto;
+}
+
+@container left-pane (max-width: 360px) {
+  .chart-left .pane-tab {
+    padding: 4px 6px;
+  }
 }
 
 .pane-tab {
@@ -1328,11 +1394,13 @@
   cursor: default;
 }
 
-.usage-list {
+/* .more-menu-list の min-width（globals.css が後から読み込まれる）に負けないよう 2 つ並べる */
+.more-menu-list.usage-list {
   display: grid;
   gap: 8px;
   left: 0;
-  min-width: 260px;
+  /* 1回〜6回が 1 段に並ぶ幅 */
+  min-width: min(300px, calc(100vw - 16px));
   padding: 8px;
   right: auto;
 }
@@ -1344,10 +1412,12 @@
   gap: 4px;
 }
 
+/* 回数・用法のチップは横に並べる（.more-menu-list .btn の幅 100% を打ち消す） */
 .usage-list .btn.btn-chip {
   font-size: var(--fs-sm);
   min-height: 30px;
   padding: 0 10px;
+  width: auto;
 }
 
 /* 眼鏡・CL と次回予定 */
@@ -1626,7 +1696,7 @@
 }
 
 /* 右ペインの下（1280px 以上）では［→ 次へ］を 2 段目に大きく */
-@media (min-width: 1280px) {
+@media (min-width: 1280px) and (min-height: 501px) {
   .chart-actionbar .actionbar-group:last-child {
     display: grid;
     flex: 1 1 100%;
@@ -1759,7 +1829,7 @@
   z-index: 44;
 }
 
-@media (max-width: 1279px) {
+@media (max-width: 1279px), (max-height: 500px) {
   .chart-shell {
     grid-template-areas:
       "left center"
@@ -1809,8 +1879,8 @@
   }
 }
 
-/* ---- 768px 未満: 左も引き出し。ページは縦にスクロールし、操作は下に固定 ---- */
-@media (max-width: 767px) {
+/* ---- 768px 未満と高さ 500px 以下: 左も引き出し。ページは縦にスクロールし、操作は下に固定 ---- */
+@media (max-width: 767px), (max-height: 500px) {
   /* 下の余白は操作帯の実際の高さ（--actionbar-h、encounter-editor.js で計測。安全領域を含む）に合わせる */
   .chart-page {
     height: auto;
@@ -1822,27 +1892,6 @@
     position: sticky;
     top: var(--nav-h);
     z-index: 20;
-  }
-
-  .chart-page .patient-banner {
-    align-items: stretch;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .chart-page .encounter-actions {
-    justify-content: flex-end;
-  }
-
-  .chart-page .patient-banner-name .kana,
-  .chart-page .patient-banner-name .patient-banner-line,
-  .chart-page .patient-banner-flags .tag,
-  .chart-page .patient-banner-flags .muted {
-    display: none;
-  }
-
-  .chart-page .patient-banner.is-compact h1 {
-    font-size: var(--fs-lg);
   }
 
   .chart-shell {
@@ -1858,7 +1907,7 @@
     bottom: 0;
     box-shadow: 8px 0 24px rgba(15, 23, 42, 0.18);
     left: 0;
-    padding-top: 12px;
+    padding-top: 0;
     position: fixed;
     top: var(--nav-h);
     transform: translateX(-105%);
@@ -1877,6 +1926,16 @@
     display: flex;
   }
 
+  /* 上の余白は sticky のかたまりの中に持つ（ペインの padding だと、その分だけ流れる中身が上に透けて見える） */
+  .chart-left .pane-sticky {
+    padding-top: 12px;
+  }
+
+  /* 履歴のカードへ飛んだとき、上に残る見出し＋タブの裏に隠れない */
+  .chart-page .history-card {
+    scroll-margin-top: 96px;
+  }
+
   .chart-actionbar {
     bottom: 0;
     box-shadow: 0 -4px 16px rgba(15, 23, 42, 0.1);
@@ -1887,17 +1946,10 @@
     z-index: 40;
   }
 
-  .history-cols,
   .dx-edit-grid,
   .status-choice,
   .shortcut-cols {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .history-col + .history-col {
-    border-left: 0;
-    border-top: 1px solid var(--line);
-    padding: 4px 0 2px;
   }
 
   .dx-edit-modifiers {
@@ -1912,6 +1964,84 @@
 
   .input.findings-text-main {
     min-height: 160px;
+  }
+}
+
+/* ---- 768px 未満（スマホ縦）: 患者の帯と操作帯を詰める ---- */
+@media (max-width: 767px) {
+  /* 患者の帯は 2 段: 1 段目に ← 氏名 と［患者の情報］［オーダー］、2 段目にアレルギーと病名の編集 */
+  .chart-page .patient-banner {
+    align-items: center;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+  }
+
+  .chart-page .patient-banner-main,
+  .chart-page .patient-banner-name {
+    display: contents;
+  }
+
+  .chart-page .patient-banner-name > h1 {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .chart-page .patient-banner-actions {
+    order: 1;
+  }
+
+  .chart-page .patient-banner-flags {
+    flex: 1 1 100%;
+    order: 2;
+  }
+
+  .chart-page .encounter-actions {
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+  }
+
+  /* 360px 前後でも氏名と同じ段に収まるよう、帯のボタンを少し詰める（氏名は省略しない） */
+  @media (max-width: 400px) {
+    .chart-page .patient-banner {
+      column-gap: 4px;
+    }
+
+    .chart-page .encounter-actions {
+      gap: 4px;
+    }
+
+    .chart-page .encounter-actions .btn.btn-chip {
+      font-size: var(--fs-sm);
+      padding-left: 8px;
+      padding-right: 8px;
+    }
+  }
+
+  .chart-page .patient-banner-name .kana,
+  .chart-page .patient-banner-name .patient-banner-line,
+  .chart-page .patient-banner-flags .tag,
+  .chart-page .patient-banner-flags .muted {
+    display: none;
+  }
+
+  .chart-page .patient-banner.is-compact h1 {
+    font-size: var(--fs-lg);
+  }
+
+  /* 操作帯は 1 段（送信は「…」の中。encounter-editor.js） */
+  .chart-actionbar {
+    flex-wrap: nowrap;
+    gap: 4px;
+  }
+
+  /* globals.css の .btn.btn（後から読み込まれる）より強く */
+  .chart-page .chart-actionbar .btn {
+    padding-left: 10px;
+    padding-right: 10px;
   }
 }
 
@@ -2291,4 +2421,382 @@
 .adherence-line .input.adherence-note {
   flex: 1 1 160px;
   min-width: 0;
+}
+
+/* ==== レスポンシブの修正（カルテ編集。docs/eye-ux/responsive-issues-20261110.md の B） ==== */
+
+/* 左のペインが狭いとき（タブレット・1024px 付近・引き出し）: 診療履歴のカードを 1 列に（B-5） */
+@container left-pane (max-width: 440px) {
+  .history-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .history-col + .history-col {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    padding: 4px 0 2px;
+  }
+
+}
+
+/* さらに狭いときは、所見の部位を値の上に置く（値が 1 字ずつ縦に並ばない） */
+@container left-pane (max-width: 280px) {
+  .history-finding {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* 左の表（病名・薬歴・検査）: 横にスクロールできることが分かるよう、続きのある側の端に影を出す（B-10） */
+.chart-left .table-scroll {
+  background:
+    linear-gradient(to right, var(--page) 40%, transparent) left center / 24px 100% no-repeat local,
+    linear-gradient(to left, var(--page) 40%, transparent) right center / 24px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, rgba(15, 23, 42, 0.2), transparent) left center / 10px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, rgba(15, 23, 42, 0.2), transparent) right center / 10px 100% no-repeat scroll;
+  background-color: var(--page);
+}
+
+.dx-table .dx-date {
+  white-space: nowrap;
+}
+
+.dx-inline-flag,
+.dx-inline-date {
+  display: none;
+}
+
+.dx-check {
+  display: inline-flex;
+}
+
+/* 病名の表: ペインが狭いときは「主」「疑い」「転帰日」「診療科」の列を省き、傷病名・転帰のセルに入れる */
+@container left-pane (max-width: 520px) {
+  .dx-table .dx-col-primary,
+  .dx-table .dx-col-suspect,
+  .dx-table .dx-col-end,
+  .dx-table .dx-col-dept {
+    display: none;
+  }
+
+  .dx-table .dx-inline-flag {
+    display: inline-block;
+  }
+
+  .dx-table .dx-inline-flag.is-suspect {
+    border-color: var(--amber-line);
+    color: var(--amber);
+  }
+
+  .dx-table .dx-inline-date {
+    color: var(--muted);
+    display: block;
+    font-size: var(--fs-xs);
+    white-space: nowrap;
+  }
+
+  .dx-name {
+    min-width: 7em;
+  }
+
+  .dx-table th,
+  .dx-table td {
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+}
+
+/* 薬歴: 薬剤名の列を左に固定する（開いたときは最新の月まで右へスクロール済み）。
+ * 共通の .data-table の overflow:hidden（packages/web-ui）があると sticky が表の中で止まるため、この表だけ外す */
+.data-table.drug-matrix {
+  overflow: visible;
+}
+
+.drug-matrix thead th[rowspan],
+.drug-matrix tbody th {
+  background: var(--page);
+  box-shadow: 6px 0 6px -6px rgba(15, 23, 42, 0.35);
+  left: 0;
+  position: sticky;
+  z-index: 1;
+}
+
+@container left-pane (max-width: 440px) {
+  .drug-matrix tbody th {
+    max-width: 140px;
+  }
+}
+
+/* 患者情報タブのアレルギー: 改行しても背景が 1 つの枠になる（B-15） */
+.chart-left .allergy-badge {
+  display: inline-block;
+  max-width: 100%;
+}
+
+/* ファイルタブの文書の種類は途中で折らない（B-21） */
+.chart-left .docs-type {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+/* 処方 Rp の行: 薬剤名が伸び、数量〜×はかたまりで右に寄る（B-13） */
+.rp-row-tail {
+  align-items: center;
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 4px 6px;
+  margin-left: auto;
+}
+
+.rp-foot-group {
+  align-items: center;
+  display: inline-flex;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.rp-foot-group.is-tail {
+  flex: 1 1 auto;
+}
+
+/* 学習リストの数量は割らない（B-22） */
+.order-bundle-name {
+  min-width: 0;
+}
+
+.order-bundle-qty {
+  white-space: nowrap;
+}
+
+/* 検査の帯: 視力の枠を眼圧より広く取り、矯正の値（S・C・Ax）が途中で折れにくくする。狭いときは上下に積む（B-17） */
+.exam-band-body {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.exam-band-body > .exam-block {
+  align-content: start;
+  flex: 1 1 220px;
+}
+
+.exam-band-body > .exam-block:first-child {
+  flex: 1.6 1 300px;
+}
+
+.exam-band-body > .exam-extras-line,
+.exam-band-body > .exam-confirm-row {
+  flex: 1 1 100%;
+}
+
+/* 検査の帯の記録者は途中で折らない（B-17） */
+.exam-block-stamp {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  white-space: nowrap;
+}
+
+/* Rp の区分バッジ（点眼▾）: summary は押しやすい大きさ、見た目のバッジは中の文字だけ（B-14） */
+.rp-badge-menu > summary.rp-badge.rp-badge-summary {
+  align-items: center;
+  background: none;
+  border: 0;
+  display: inline-flex;
+  flex: 0 0 auto;
+  line-height: normal;
+  margin-right: 4px;
+  padding: 0;
+}
+
+.rp-badge-summary > .rp-badge {
+  margin-right: 0;
+}
+
+/* 傷病名の新規登録: 狭い幅では「名前」と「ボタン 3 つ」の 2 段にそろえる（B-19） */
+@media (max-width: 600px) {
+  .dx-add-name {
+    flex: 1 1 100%;
+  }
+
+  .dx-add-actions {
+    margin-left: auto;
+  }
+}
+
+/* 警告一覧: 狭い幅では 1 件を 2 段（対象・種類／メッセージ）にする（B-20） */
+@media (max-width: 600px) {
+  .warnings-table thead {
+    display: none;
+  }
+
+  .warnings-table,
+  .warnings-table tbody {
+    display: block;
+  }
+
+  .warnings-table tr {
+    border-bottom: 1px solid var(--line);
+    display: grid;
+    gap: 2px 8px;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .data-table.warnings-table td {
+    border: 0;
+    padding: 4px 8px;
+  }
+
+  .warnings-table td.warn-target {
+    font-weight: 700;
+    padding-right: 0;
+  }
+
+  .warnings-table td.warn-message {
+    grid-column: 1 / -1;
+    padding-top: 0;
+  }
+
+  .warnings-table td.warn-fix {
+    grid-column: 1 / -1;
+    padding-top: 0;
+  }
+
+  .warnings-table td.warn-fix:empty {
+    display: none;
+  }
+}
+
+/* 患者ステータス選択: 次のステータスは 2〜3 列に並べ、ダイアログを縦に伸ばさない（B-1） */
+.status-next {
+  column-gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(7.5em, 1fr));
+}
+
+.status-next > legend {
+  margin-bottom: 4px;
+}
+
+@media (max-width: 480px) {
+  .status-dialog .dialog-actions .dialog-action-left {
+    flex: 1 1 100%;
+    margin-right: 0;
+    order: 1;
+  }
+}
+
+/* 高さ 500px 以下（スマホ横）: 患者の帯を 1 行に収めるため、病名のタグは省く（アレルギーは必ず残す） */
+@media (max-height: 500px) {
+  .chart-page .patient-banner-flags .tag,
+  .chart-page .patient-banner-flags .muted {
+    display: none;
+  }
+}
+
+/* 高さ 500px 以下（スマホ横）: 右の引き出しは見出しと区分を上に残し、検索から下を一緒にスクロールする（B-3・B-11） */
+@media (max-height: 500px) {
+  .chart-right {
+    display: block;
+    overflow-y: auto;
+    padding-top: 0;
+  }
+
+  .chart-right > .order-panel {
+    display: grid;
+  }
+
+  .chart-right .order-results {
+    margin: 0;
+    overflow: visible;
+    padding: 0;
+  }
+
+  .chart-right > .pane-head {
+    background: var(--surface);
+    height: 48px;
+    margin: 0 -8px;
+    padding: 0 8px;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+  }
+
+  .chart-right .order-cats {
+    background: var(--surface);
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    padding-bottom: 6px;
+    position: sticky;
+    top: 48px;
+    z-index: 2;
+  }
+
+  /* シェーマのキャンバスがダイアログを占めない（ボタンまでスクロールしやすく） */
+  .sketch-dialog .sketch-canvas {
+    max-height: calc(100dvh - 180px);
+  }
+}
+
+/* タッチ端末: カルテに固有の小さい操作を押しやすく（共通の部品は globals.css の @media (pointer:coarse)）（B-14） */
+@media (pointer: coarse) {
+  .rp-x,
+  .drug-check {
+    min-height: 36px;
+    min-width: 36px;
+  }
+
+  .exam-cell-button {
+    align-items: center;
+    display: inline-flex;
+    min-height: 36px;
+  }
+
+  .order-cat {
+    min-height: 40px;
+  }
+
+  .chart-left .pane-tab {
+    min-height: 40px;
+  }
+
+  /* チェック・ラジオは label 全体が当たり判定。その高さを確保する（カルテ・カルテのダイアログ・帯の編集ダイアログ） */
+  .chart-page label.check-line,
+  .chart-page label.inline-field,
+  .profile-dialog label.check-line,
+  .profile-dialog label.inline-field {
+    min-height: 36px;
+  }
+
+  .exam-cell-button {
+    justify-content: center;
+    min-width: 36px;
+  }
+
+  .dx-check {
+    align-items: center;
+    display: inline-flex;
+    justify-content: center;
+    min-height: 36px;
+    min-width: 36px;
+  }
+
+  .data-table.dx-table td.dx-check-cell {
+    padding: 0;
+    vertical-align: middle;
+  }
+
+  /* シェーマの色・版履歴の版・ファイルタブの文書名 */
+  .chart-page .swatch {
+    height: 36px;
+    width: 36px;
+  }
+
+  .chart-page .version-link,
+  .chart-left .docs-title a {
+    align-items: center;
+    display: inline-flex;
+    min-height: 36px;
+    min-width: 36px;
+  }
 }

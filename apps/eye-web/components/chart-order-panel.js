@@ -92,11 +92,12 @@ export function OrderPanel({
           <input
             aria-label="オーダーを検索"
             className="input"
+            title="漢字・かな・英字で検索できます"
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Escape" && !event.nativeEvent.isComposing) setQuery("");
             }}
-            placeholder={`${current.label}を検索（漢字・かな・英字）`}
+            placeholder={`${current.label}を検索`}
             ref={searchRef}
             type="search"
             value={query}
@@ -175,7 +176,9 @@ export function OrderPanel({
                   <button className="order-bundle" disabled={!editable} key={bundle.key} onClick={() => onAddLearning("prescriptions", bundle)} type="button">
                     {bundle.rows.filter((row) => row.kind !== "comment").slice(0, 5).map((row, index) => (
                       <span className="order-bundle-row" key={index}>
-                        <span className="rp-badge">{RX_BADGES[row.kind] || "薬"}</span>{row.name}{row.quantity ? ` ${row.quantity}${row.unit || ""}` : ""}
+                        <span className="rp-badge">{RX_BADGES[row.kind] || "薬"}</span>
+                        {/* 数量は「2 本」で割れないよう 1 つにまとめる */}
+                        <span className="order-bundle-name">{row.name}{row.quantity ? <span className="order-bundle-qty"> {row.quantity}{row.unit || ""}</span> : null}</span>
                       </span>
                     ))}
                     {bundle.rows.length > 5 ? <span className="order-bundle-more">+{bundle.rows.length - 5}</span> : null}

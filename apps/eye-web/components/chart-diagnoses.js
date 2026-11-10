@@ -91,35 +91,43 @@ export function DiagnosisTab({ profile, patientId, canEdit, encounterDate, onSav
             <thead>
               <tr>
                 {canEdit ? <th aria-label="選択" scope="col" /> : null}
-                <th scope="col">主</th>
+                <th className="dx-col-primary" scope="col">主</th>
                 <th scope="col">傷病名</th>
                 <th scope="col">眼</th>
-                <th scope="col">疑い</th>
+                <th className="dx-col-suspect" scope="col">疑い</th>
                 <th aria-sort={sortAsc ? "ascending" : "descending"} scope="col">
                   <button className="link-button" onClick={() => setSortAsc(!sortAsc)} type="button">開始日{sortAsc ? "▲" : "▼"}</button>
                 </th>
-                <th scope="col">転帰日</th>
+                <th className="dx-col-end" scope="col">転帰日</th>
                 <th scope="col">転帰</th>
-                <th scope="col">診療科</th>
+                <th className="dx-col-dept" scope="col">診療科</th>
                 {canEdit ? <th aria-label="編集" scope="col" /> : null}
               </tr>
             </thead>
             <tbody>
               {rows.map(({ item, index }) => (
                 <tr className={item.status === "resolved" ? "is-resolved" : ""} key={item.diagnosisId || index}>
-                  {canEdit ? <td><input aria-label={`${item.name}を選ぶ`} checked={checked.has(index)} onChange={() => toggle(index)} type="checkbox" /></td> : null}
-                  <td>{item.primary ? <span className="dx-primary">主</span> : ""}</td>
+                  {/* 選ぶチェックはセルいっぱいの label で包み、指で押しやすくする */}
+                  {canEdit ? <td className="dx-check-cell"><label className="dx-check"><input aria-label={`${item.name}を選ぶ`} checked={checked.has(index)} onChange={() => toggle(index)} type="checkbox" /></label></td> : null}
+                  <td className="dx-col-primary">{item.primary ? <span className="dx-primary">主</span> : ""}</td>
                   <td className="dx-name">
+                    {/* ペインが狭いときは「主」「疑い」の列を省き、ここにバッジで出す */}
+                    {item.primary ? <span className="dx-primary dx-inline-flag">主</span> : null}
+                    {isSuspectedDiagnosis(item) ? <span className="dx-primary dx-inline-flag is-suspect">疑</span> : null}
                     {diagnosisName(item)}
                     {item.code ? <span className="dx-code">{item.code}</span> : null}
                     {item.note ? <span className="muted small dx-note">{item.note}</span> : null}
                   </td>
                   <td>{EYE_LABELS[item.eye] ? EYE_LABELS[item.eye].slice(0, 1) : ""}</td>
-                  <td>{isSuspectedDiagnosis(item) ? "疑" : ""}</td>
-                  <td>{item.startDate ? formatDate(item.startDate) : ""}</td>
-                  <td>{item.endDate ? formatDate(item.endDate) : ""}</td>
-                  <td>{item.status === "resolved" ? OUTCOME_LABELS[item.outcome || "cured"] || "治癒" : ""}</td>
-                  <td>{item.department || ""}</td>
+                  <td className="dx-col-suspect">{isSuspectedDiagnosis(item) ? "疑" : ""}</td>
+                  <td className="dx-date">{item.startDate ? formatDate(item.startDate) : ""}</td>
+                  <td className="dx-col-end dx-date">{item.endDate ? formatDate(item.endDate) : ""}</td>
+                  <td>
+                    {item.status === "resolved" ? OUTCOME_LABELS[item.outcome || "cured"] || "治癒" : ""}
+                    {/* 狭いときは転帰日の列を省き、転帰の下に出す */}
+                    {item.endDate ? <span className="dx-inline-date">{formatDate(item.endDate)}</span> : null}
+                  </td>
+                  <td className="dx-col-dept">{item.department || ""}</td>
                   {canEdit ? <td><button aria-label={`${item.name}を編集`} className="btn btn-chip" onClick={() => setEditing(index)} type="button">✎</button></td> : null}
                 </tr>
               ))}

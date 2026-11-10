@@ -376,6 +376,16 @@ const STATES = {
   "settings-audit": { path: "settingsAudit" }
 };
 
+// ---- (B) カルテ編集: 高さ 500px 以下（スマホ横）は幅があっても左が引き出しになる ----
+// 上の openLeftPane は幅だけで判断するため、左のタブを開く状態は、高さ 500px 以下ではまず引き出しを開いてから元の操作をする。
+for (const name of ["editor-tab-info", "editor-tab-exam", "editor-tab-historylist", "editor-tab-drugs", "editor-tab-files", "editor-history", "editor-dx-add", "editor-dx-edit"]) {
+  const original = STATES[name].run;
+  STATES[name].run = async (page, view) => {
+    if (view.width >= 768 && view.height <= 500) await page.locator(".encounter-actions").getByRole("button", { name: "患者の情報", exact: true }).click();
+    await original(page, view);
+  };
+}
+
 const [platformPort, eyePort, webPort] = await Promise.all([findOpenPort(), findOpenPort(), findOpenPort()]);
 const stack = await startLocalEyeStack({ platformPort, eyePort, demo: true });
 const baseUrl = `http://127.0.0.1:${webPort}`;

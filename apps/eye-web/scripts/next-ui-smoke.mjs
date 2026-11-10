@@ -254,6 +254,7 @@ async function runDoctorFlow(browser) {
   await page.getByRole("dialog", { name: "ショートカット" }).getByText("次へ（確定 → 受付の状態 → 次の患者）").waitFor();
   await page.getByRole("dialog").getByRole("button", { name: "閉じる" }).click();
   await assertEditorPopoversFit(page);
+  await assertEditorResponsiveB(page);
   // S で保存
   await page.keyboard.press("s");
   await page.getByText("保存しました。").waitFor({ timeout: 15_000 });
@@ -1550,4 +1551,53 @@ async function runReceptionResponsiveChecks(browser) {
 
   assert.deepEqual(pageErrors, []);
   await context.close();
+}
+
+// ---- カルテ編集のレスポンシブ（docs/eye-ux/responsive-issues-20261110.md の B） ----
+// スマホ縦: 患者の帯は 2 段・操作帯は 1 段、帯から開く編集ダイアログはヘッダーより手前。
+// スマホ横（高さ 390）: 3 ペインにせず、左右とも引き出し・ページ全体のスクロールになる。
+// 1024px: 用法のメニューの回数のチップ（1回〜6回）が縦 1 列にならない。
+async function assertEditorResponsiveB(page) {
+  const original = page.viewportSize();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(300);
+  const phone = await page.evaluate(() => ({
+    overflow: document.documentElement.scrollWidth - window.innerWidth,
+    banner: document.querySelector(".chart-topbar").getBoundingClientRect().height,
+    bar: document.querySelector(".chart-actionbar").getBoundingClientRect().height
+  }));
+  assert.ok(phone.overflow <= 1, `the chart does not scroll sideways at 390px: ${JSON.stringify(phone)}`);
+  assert.ok(phone.banner <= 120, `the patient banner is 2 rows at 390px: ${JSON.stringify(phone)}`);
+  assert.ok(phone.bar <= 72, `the action bar is 1 row at 390px: ${JSON.stringify(phone)}`);
+  await page.locator(".chart-topbar").getByRole("button", { name: "アレルギー・病名" }).click();
+  const profile = page.getByRole("dialog", { name: "アレルギー・病名・既往" });
+  await profile.waitFor();
+  const front = await page.evaluate(() => {
+    const dialog = document.querySelector("[aria-labelledby='profile-heading']");
+    const heading = dialog.querySelector("h2").getBoundingClientRect();
+    const hit = document.elementFromPoint(heading.left + 8, heading.top + heading.height / 2);
+    return { inBody: dialog.parentElement.parentElement === document.body, onTop: Boolean(hit && dialog.contains(hit)) };
+  });
+  assert.ok(front.inBody && front.onTop, `the banner profile dialog is drawn above the header: ${JSON.stringify(front)}`);
+  await profile.getByRole("button", { name: "キャンセル" }).click();
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.waitForTimeout(300);
+  await page.locator(".encounter-actions").getByRole("button", { name: "患者の情報", exact: true }).waitFor();
+  const landscape = await page.evaluate(() => ({
+    pageScrolls: document.documentElement.scrollHeight > window.innerHeight + 100,
+    rightFixed: getComputedStyle(document.querySelector(".chart-right")).position === "fixed",
+    leftFixed: getComputedStyle(document.querySelector(".chart-left")).position === "fixed"
+  }));
+  assert.ok(landscape.pageScrolls && landscape.rightFixed && landscape.leftFixed, `844x390 uses the phone layout (page scroll, both drawers): ${JSON.stringify(landscape)}`);
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.waitForTimeout(300);
+  const usage = page.locator(".rp-group.is-rx summary[aria-label='用法']").first();
+  if (await usage.count()) {
+    await usage.scrollIntoViewIfNeeded();
+    await usage.click();
+    const rows = await page.locator(".usage-menu[open] .usage-times .btn").evaluateAll((buttons) => new Set(buttons.map((button) => Math.round(button.getBoundingClientRect().top))).size);
+    assert.ok(rows <= 2, `the usage times chips sit in a row (rows: ${rows})`);
+    await usage.click();
+  }
+  await page.setViewportSize(original);
 }
