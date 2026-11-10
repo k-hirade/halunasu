@@ -130,7 +130,12 @@ export function PrintView({ encounterId }) {
     >
       <div className="chart-sheet">
         <header className="cs-facility">
-          <span>{[info.name, info.postalCode ? `〒${info.postalCode}` : "", info.address, info.phone ? `TEL ${info.phone}` : ""].filter(Boolean).join("　")}</span>
+          <span className="cs-facility-info">
+            {info.name ? <span>{info.name}</span> : null}
+            {info.postalCode ? <span>〒{info.postalCode}</span> : null}
+            {info.address ? <span className="cs-facility-address">{info.address}</span> : null}
+            {info.phone ? <span>TEL {info.phone}</span> : null}
+          </span>
           <span className="cs-kind">診療録（写し）</span>
         </header>
         <div className="cs-patient">
