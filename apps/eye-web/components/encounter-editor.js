@@ -23,6 +23,7 @@ import { StatusTag } from "./home-workspace";
 import { CommonDiagnosesList, PatientBanner, ProfileDialog } from "./patient-banner";
 import { openPatientSearch, SHORTCUT_HELP_EVENT } from "./patient-search";
 import { useEncounterDraft } from "./use-encounter-draft";
+import { useMeasuredHeight } from "./use-measured-height";
 import { useMediaQuery } from "./use-media-query";
 import { addDays, formatDate, formatDateTime, phraseTargetPath, VISIT_TYPE_LABELS } from "../lib/format";
 import { applyCopy, appendRpRows } from "../lib/chart-copy";
@@ -56,6 +57,8 @@ export function EncounterEditor({ encounterId }) {
   const [now, setNow] = useState(Date.now());
   const wide = useMediaQuery("(min-width: 1280px)", true);
   const medium = useMediaQuery("(min-width: 768px)", true);
+  // 下の操作帯の高さ（スマホでは 1〜2 段）を本文の下の余白に使う
+  const actionbarRef = useMeasuredHeight("--actionbar-h");
   const findingsRef = useRef(null);
   const searchRef = useRef(null);
   const learning = useLearningList(Boolean(context?.canWrite));
@@ -569,7 +572,7 @@ export function EncounterEditor({ encounterId }) {
           />
         </aside>
 
-        <div aria-label="カルテの操作" className="chart-actionbar" role="toolbar">
+        <div aria-label="カルテの操作" className="chart-actionbar" data-fixed-bar="bottom" ref={actionbarRef} role="toolbar">
           <span className="actionbar-group">
             {context?.canReceive ? (
               <button className="btn btn-ghost" disabled={!finalizedView} onClick={openSend} title={finalizedView ? "会計へ送信（K）" : "確定後に送信できます"} type="button">送信</button>

@@ -17,6 +17,7 @@ import { VaDatalist } from "./exam-inputs";
 import { copyDeviceValues, DevicePanels, EXAM_TABS, ExamTabBody, tabHasValues, writeValue } from "./exam-regdata";
 import { PatientBanner } from "./patient-banner";
 import { useEncounterDraft } from "./use-encounter-draft";
+import { useMeasuredHeight } from "./use-measured-height";
 import { useMediaQuery } from "./use-media-query";
 import { ensureEncounterFor, nextExamPatient } from "../lib/consult-flow";
 import {
@@ -46,6 +47,8 @@ export function ExamWorkbench({ encounterId }) {
     load, save, update, confirmExam, revisionRef, applyServerEncounter
   } = useEncounterDraft(encounterId);
   const coarse = useMediaQuery("(pointer: coarse)", false);
+  // 下の固定バーの高さ（段数で変わる）を本文の下の余白に使う
+  const examBarRef = useMeasuredHeight("--exam-bar-h");
   const [now, setNow] = useState(Date.now());
   const [matches, setMatches] = useState(null);
   const [busy, setBusy] = useState("");
@@ -426,7 +429,7 @@ export function ExamWorkbench({ encounterId }) {
         </fieldset>
       </div>
 
-      <div className="exam-bar rd-bar" role="region" aria-label="検査の操作">
+      <div aria-label="検査の操作" className="exam-bar rd-bar" data-fixed-bar="bottom" ref={examBarRef} role="region">
         <div className="exam-bar-row">
           {editable ? <SaveIndicator onRetry={save} state={saveState} /> : null}
           <span className="exam-bar-eyes">

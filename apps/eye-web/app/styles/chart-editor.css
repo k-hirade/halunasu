@@ -1811,10 +1811,11 @@
 
 /* ---- 768px 未満: 左も引き出し。ページは縦にスクロールし、操作は下に固定 ---- */
 @media (max-width: 767px) {
+  /* 下の余白は操作帯の実際の高さ（--actionbar-h、encounter-editor.js で計測。安全領域を含む）に合わせる */
   .chart-page {
     height: auto;
     overflow: visible;
-    padding-bottom: calc(72px + env(safe-area-inset-bottom));
+    padding-bottom: calc(var(--actionbar-h, 72px) + 8px);
   }
 
   .chart-page .encounter-bar.chart-topbar {

@@ -1262,8 +1262,10 @@
 }
 
 /* ---- 検査入力（トプコンの RegData に倣う: 記録の行 → 大タブ → 小タブ → 本文） ---- */
-.rd-page {
-  padding-bottom: calc(150px + env(safe-area-inset-bottom));
+/* 下の固定バーの分の余白。バーの実際の高さ（--exam-bar-h、exam-workbench.js で計測。安全領域を含む）を使う。
+ * globals.css の .eye-page の padding より後から効くよう、.eye-page.rd-page で詳細度を上げる。 */
+.eye-page.rd-page {
+  padding-bottom: calc(var(--exam-bar-h, 150px) + 16px);
 }
 
 .rd-title {
@@ -2102,8 +2104,8 @@
     order: 2;
   }
 
-  .rd-page {
-    padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  .eye-page.rd-page {
+    padding-bottom: calc(var(--exam-bar-h, 96px) + 16px);
   }
 }
 
