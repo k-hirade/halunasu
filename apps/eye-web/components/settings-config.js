@@ -343,7 +343,7 @@ export function ClinicHoursSection({ canEdit }) {
     <ConfigFrame
       action={canEdit ? <button className="btn btn-ghost" onClick={() => { setError(""); setEditing(JSON.parse(JSON.stringify(value))); }} type="button">✎ 編集</button> : null}
       config={config}
-      description="曜日ごとの診療時間と、予約の1枠の長さです。予約の画面の時間の表と、受付の予約時刻の候補に使います。"
+      description="曜日ごとの診療時間と、予約の1枠の長さです。予約・受付の画面がこの値を読みます（未設定なら従来どおり 8〜18 時・30 分）。"
       title="診療時間・予約枠"
     >
       {flash ? <p className="alert alert-ok" role="status">{flash}</p> : null}

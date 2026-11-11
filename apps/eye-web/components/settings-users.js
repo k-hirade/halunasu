@@ -107,7 +107,7 @@ export function UsersSection({ onDirtyChange, context }) {
                 {shown.map((item) => (
                   <tr className={isActive(item) ? "" : "is-off"} key={item.memberId}>
                     <td className="mono">{item.loginId}</td>
-                    <td><strong>{item.displayName}</strong>{item.memberId === context?.memberId ? <span className="muted small">（自分）</span> : null}</td>
+                    <td><strong>{item.displayName}</strong>{item.memberId === context?.memberId ? <span className="muted small user-self">（自分）</span> : null}</td>
                     <td>{memberRoleText(item.eyeRoles)}</td>
                     <td>{item.eyeRoles.includes("admin") ? "あり" : <span className="muted">なし</span>}</td>
                     <td className={isActive(item) ? "" : "user-off"}>{MEMBER_STATUS_LABELS[item.status] || item.status || "有効"}</td>
