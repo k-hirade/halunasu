@@ -52,6 +52,8 @@ export const collections = Object.freeze({
   eyeStaffProfiles: "eye_staff_profiles",
   eyeFacilitySettings: "eye_facility_settings",
   eyeDailyCounters: "eye_daily_counters",
+  eyeReceptionSettings: "eye_reception_settings",
+  eyePatientMarks: "eye_patient_marks",
   referrals: "referrals"
 });
 
@@ -287,6 +289,16 @@ export function eyeStaffProfilePath(orgId, memberId) {
 // 医療機関情報（眼科カルテの設定）。医院ごとに 1 件。
 export function eyeFacilitySettingsPath(orgId) {
   return orgDocPath(orgId, collections.eyeFacilitySettings, "default", "settingsId");
+}
+
+// 受付の設定（受付メモのラベル・患者マークの定義）。医院ごとに 1 件。
+export function eyeReceptionSettingsPath(orgId) {
+  return orgDocPath(orgId, collections.eyeReceptionSettings, "default", "settingsId");
+}
+
+// 患者マーク（車椅子・難聴など、受付一覧の行頭に出す印）。患者ごとに 1 件。
+export function eyePatientMarksPath(orgId, patientId) {
+  return orgDocPath(orgId, collections.eyePatientMarks, patientId, "patientId");
 }
 
 export function eyePatientProfilePath(orgId, patientId) {

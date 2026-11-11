@@ -10,11 +10,15 @@ import { PatientRegisterDialog, RECEPTION_CHANGED_EVENT } from "./patient-regist
 import { ageOn, SEX_LABELS, todayIso } from "../lib/format";
 import { birthWithEra } from "../lib/reception-table";
 import { rankPatients } from "./patient-search";
+import { MarkBadges, useReceptionSettings } from "./reception-dialogs";
+import { hasSearchOptions, monthRange, searchOptionsBody } from "../lib/reception-extras";
+
+const EMPTY_OPTIONS = Object.freeze({ history: "", historyAll: false, diagnosis: "", diagnosisAll: false, visitFrom: "", visitTo: "", phone: "" });
 
 // 患者検索のモーダル（デジカルの患者検索）。1 行の入力で番号・カナ・氏名・生年月日を探し、
 // 結果の行から［表示］（患者のカルテ）［編集］［受付］［予約］。右上に［新規患者登録］。
 // キーボードだけで使える: 開くと入力欄にカーソル、↑↓ で行を選び Enter で開く、Esc で閉じる（日本語入力の確定中は動かない）。
-// 傷病名・受診期間・電話番号の条件は検索 API が対応していないので出さない。
+// 入力欄の右の［▼］で検索オプション（診療履歴・傷病名・受診期間・電話番号）を開き、［検索］で条件を足す（デジカルの検索オプション）。
 export function PatientSearchModal({ initialQuery = "", onClose }) {
   const api = useEyeApi();
   const router = useRouter();
@@ -27,6 +31,11 @@ export function PatientSearchModal({ initialQuery = "", onClose }) {
   const [notice, setNotice] = useState("");
   const [refresh, setRefresh] = useState(0);
   const [active, setActive] = useState(0);
+  // 検索オプション: 入力中（draft）と、［検索］で決めた条件（applied）
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [draftOptions, setDraftOptions] = useState(EMPTY_OPTIONS);
+  const [applied, setApplied] = useState(EMPTY_OPTIONS);
+  const receptionSettings = useReceptionSettings(api);
 
   useEffect(() => {
     api("/v1/eye/context").then((payload) => setContext(payload.context)).catch(() => setContext(null));
@@ -38,29 +47,54 @@ export function PatientSearchModal({ initialQuery = "", onClose }) {
   }, []);
   useEffect(() => {
     function onKeyDown(event) {
-      if (event.key === "Escape" && !sub) onClose();
+      if (event.key === "Escape" && !sub) {
+        if (optionsOpen) setOptionsOpen(false);
+        else onClose();
+      }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose, sub]);
+  }, [onClose, sub, optionsOpen]);
 
   const trimmed = query.trim();
+  const optionKey = JSON.stringify(searchOptionsBody(applied));
+  const resultKey = `${trimmed}\n${optionKey}`;
   useEffect(() => {
     let cancelled = false;
     const birthDate = parseBirthDateQuery(trimmed);
     const handle = setTimeout(() => {
-      api("/v1/eye/patients/search", { method: "POST", body: { ...(birthDate ? { q: "", birthDate } : { q: trimmed }), details: true } })
+      api("/v1/eye/patients/search", { method: "POST", body: { ...(birthDate ? { q: "", birthDate } : { q: trimmed }), ...JSON.parse(optionKey), details: true } })
         .then((payload) => {
           if (cancelled) return;
-          setResult({ query: trimmed, patients: rankPatients(payload.patients, trimmed), limit: payload.limit || 50, error: "" });
+          setResult({ query: resultKey, patients: rankPatients(payload.patients, trimmed), limit: payload.limit || 50, error: "", truncated: Boolean(payload.truncated) });
           setActive(0);
         })
-        .catch((error) => { if (!cancelled) setResult({ query: trimmed, patients: [], limit: 50, error: error.message }); });
+        .catch((error) => { if (!cancelled) setResult({ query: resultKey, patients: [], limit: 50, error: error.message }); });
     }, 250);
     return () => { cancelled = true; clearTimeout(handle); };
-  }, [api, trimmed, refresh]);
+  }, [api, trimmed, optionKey, resultKey, refresh]);
 
-  const loading = result.query !== trimmed;
+  const loading = result.query !== resultKey;
+  const optionsOn = hasSearchOptions(applied);
+  const optionSummary = [
+    applied.history.trim() ? `診療履歴「${applied.history.trim()}」${applied.historyAll ? "（すべて）" : ""}` : "",
+    applied.diagnosis.trim() ? `傷病名「${applied.diagnosis.trim()}」${applied.diagnosisAll ? "（すべて）" : ""}` : "",
+    applied.visitFrom || applied.visitTo ? `受診期間 ${applied.visitFrom.replaceAll("-", "/") || "…"}〜${applied.visitTo.replaceAll("-", "/") || "…"}` : "",
+    applied.phone.trim() ? `電話番号「${applied.phone.trim()}」` : ""
+  ].filter(Boolean);
+
+  function applyOptions(event) {
+    event?.preventDefault();
+    if (draftOptions.visitFrom && draftOptions.visitTo && draftOptions.visitFrom > draftOptions.visitTo) return;
+    setApplied(draftOptions);
+    setOptionsOpen(false);
+    inputRef.current?.focus();
+  }
+
+  function clearOptions() {
+    setDraftOptions(EMPTY_OPTIONS);
+    setApplied(EMPTY_OPTIONS);
+  }
   const patients = result.patients;
 
   function show(patient) {
@@ -164,16 +198,67 @@ export function PatientSearchModal({ initialQuery = "", onClose }) {
                 value={query}
               />
               {query ? <button aria-label="入力を消す" className="btn btn-ghost btn-sm" onClick={() => { setQuery(""); inputRef.current?.focus(); }} type="button">×</button> : null}
+              <button
+                aria-controls="ps-options"
+                aria-expanded={optionsOpen}
+                aria-label="検索オプション"
+                className={`btn btn-ghost btn-sm ps-options-toggle${optionsOn ? " is-active" : ""}`}
+                onClick={() => { setDraftOptions(applied); setOptionsOpen(!optionsOpen); }}
+                title="診療履歴・傷病名・受診期間・電話番号で絞る"
+                type="button"
+              >▼</button>
             </div>
             {canRegister ? (
               <button className="btn btn-primary ps-register" onClick={() => setSub({ kind: "register", initial: registerInitial(trimmed) })} type="button">新規患者登録</button>
             ) : null}
             <button aria-label="閉じる" className="btn btn-ghost ps-close" onClick={onClose} type="button">閉じる</button>
           </div>
+          {optionsOpen ? (
+            <form aria-label="検索オプション" className="ps-options" id="ps-options" onSubmit={applyOptions} role="group">
+              <strong className="ps-options-title">検索オプション</strong>
+              <div className="ps-option-row">
+                <label htmlFor="ps-opt-history">診療履歴</label>
+                <input className="input" id="ps-opt-history" onChange={(event) => setDraftOptions({ ...draftOptions, history: event.target.value })} placeholder="カルテに書いた語（空白で区切って複数）" value={draftOptions.history} />
+                <label className="ps-option-all"><input checked={draftOptions.historyAll} onChange={(event) => setDraftOptions({ ...draftOptions, historyAll: event.target.checked })} type="checkbox" />すべて含む</label>
+              </div>
+              <div className="ps-option-row">
+                <label htmlFor="ps-opt-diagnosis">傷病名</label>
+                <input className="input" id="ps-opt-diagnosis" onChange={(event) => setDraftOptions({ ...draftOptions, diagnosis: event.target.value })} placeholder="例: 緑内障 白内障" value={draftOptions.diagnosis} />
+                <label className="ps-option-all"><input checked={draftOptions.diagnosisAll} onChange={(event) => setDraftOptions({ ...draftOptions, diagnosisAll: event.target.checked })} type="checkbox" />すべて含む</label>
+              </div>
+              <div className="ps-option-row">
+                <span id="ps-opt-visit">受診期間</span>
+                <div aria-labelledby="ps-opt-visit" className="ps-option-range" role="group">
+                  <input aria-label="受診期間の開始" className="input" max={draftOptions.visitTo || undefined} onChange={(event) => setDraftOptions({ ...draftOptions, visitFrom: event.target.value })} type="date" value={draftOptions.visitFrom} />
+                  <span aria-hidden="true">〜</span>
+                  <input aria-label="受診期間の終了" className="input" min={draftOptions.visitFrom || undefined} onChange={(event) => setDraftOptions({ ...draftOptions, visitTo: event.target.value })} type="date" value={draftOptions.visitTo} />
+                </div>
+                <div className="ps-option-quick">
+                  <button className="btn btn-ghost btn-sm" onClick={() => setDraftOptions({ ...draftOptions, ...monthRange(todayIso(), 0) })} type="button">今月</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setDraftOptions({ ...draftOptions, ...monthRange(todayIso(), -1) })} type="button">先月</button>
+                </div>
+              </div>
+              <div className="ps-option-row">
+                <label htmlFor="ps-opt-phone">電話番号</label>
+                <input className="input" id="ps-opt-phone" inputMode="tel" onChange={(event) => setDraftOptions({ ...draftOptions, phone: event.target.value })} placeholder="一部でも探せます（ハイフンなし可）" value={draftOptions.phone} />
+              </div>
+              <div className="ps-options-actions">
+                <button className="btn btn-ghost" onClick={() => setDraftOptions(EMPTY_OPTIONS)} type="button">クリア</button>
+                <button className="btn btn-ghost" onClick={() => setOptionsOpen(false)} type="button">キャンセル</button>
+                <button className="btn btn-primary" type="submit">検索</button>
+              </div>
+            </form>
+          ) : null}
+          {optionsOn ? (
+            <p className="ps-options-applied" role="status">
+              <span className="ps-options-applied-label">条件</span>{optionSummary.join(" ・ ")}
+              <button className="btn btn-ghost btn-sm" onClick={clearOptions} type="button">条件を外す</button>
+            </p>
+          ) : null}
           {notice ? <p className="alert alert-ok ps-notice" role="status">{notice}</p> : null}
           {result.error ? <p className="alert alert-danger" role="alert">{result.error}</p> : null}
           <p className="ps-caption muted small" aria-live="polite">
-            {loading ? "検索中…" : trimmed ? (patients.length >= result.limit ? `${result.limit}件以上あります。番号・生年月日を足して絞ってください。` : `${patients.length}件`) : "最近更新された患者"}
+            {loading ? "検索中…" : trimmed || optionsOn ? (patients.length >= result.limit || result.truncated ? `${result.limit}件以上あります。番号・生年月日・条件を足して絞ってください。` : `${patients.length}件`) : "最近更新された患者"}
             <span className="ps-hint">生年月日は 1950/3/4・S25.3.4 の形でも探せます</span>
             <span className="ps-keys" aria-hidden="true">↑↓ 選択　Enter 開く　Esc 閉じる</span>
           </p>
@@ -181,6 +266,7 @@ export function PatientSearchModal({ initialQuery = "", onClose }) {
             <table aria-label="検索結果" className="ps-table" id="ps-results" role="grid">
               <thead>
                 <tr>
+                  <th className="ps-col-marks" scope="col"><span className="sr-only">マーク</span></th>
                   <th scope="col">患者番号</th>
                   <th scope="col">フリガナ</th>
                   <th scope="col">名前</th>
@@ -197,6 +283,7 @@ export function PatientSearchModal({ initialQuery = "", onClose }) {
                   const age = ageOn(patient.birthDate);
                   return (
                     <tr aria-selected={index === active} className={`ps-row${index === active ? " is-active" : ""}`} id={`ps-row-${index}`} key={patient.patientId} onMouseEnter={() => setActive(index)}>
+                      <td className="ps-col-marks" data-label="マーク"><MarkBadges definitions={receptionSettings.settings.marks} keys={patient.marks || []} /></td>
                       <td className="mono" data-label="患者番号">{patient.primaryPatientNumber || "—"}</td>
                       <td className="ps-kana" data-label="フリガナ">{patient.displayNameKana}</td>
                       <td className="ps-name" data-label="名前"><strong>{patient.displayName}</strong></td>
@@ -216,7 +303,7 @@ export function PatientSearchModal({ initialQuery = "", onClose }) {
                 })}
               </tbody>
             </table>
-            {!loading && !result.error && patients.length === 0 ? <p className="empty">{trimmed ? "該当する患者がいません。" : "患者が登録されていません。"}</p> : null}
+            {!loading && !result.error && patients.length === 0 ? <p className="empty">{trimmed || optionsOn ? "該当する患者がいません。" : "患者が登録されていません。"}</p> : null}
           </div>
         </div>
       </div>
