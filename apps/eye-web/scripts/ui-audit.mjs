@@ -369,6 +369,7 @@ const STATES = {
       });
       await page.locator("summary[aria-label='会計連携のその他の操作']").click();
       await page.getByRole("button", { name: "この日の全員の連絡票を印刷" }).click();
+      await page.getByRole("dialog", { name: "会計連絡票" }).getByRole("button", { name: "印刷", exact: true }).click();
       await page.waitForTimeout(800);
       await page.emulateMedia({ media: "print" });
     }
@@ -394,7 +395,7 @@ const STATES = {
   "settings-dark": { path: "settings" },
   "settings-facility-edit": { path: "settings", run: async (page) => { await page.getByRole("button", { name: "✎ 編集" }).click(); await page.waitForTimeout(400); } },
   "settings-users": { path: "settingsUsers" },
-  "settings-users-edit": settingsRow("settingsUsers"),
+  "settings-users-edit": { path: "settingsUsers", run: async (page) => { await page.locator(".users-table").getByRole("button", { name: /を編集$/u }).first().click(); await page.waitForTimeout(400); } },
   "settings-sets": { path: "settingsSets", run: async (page) => { await page.locator(".set-tree-item", { hasText: "点眼" }).first().click(); await page.waitForTimeout(300); } },
   "settings-sets-edit": settingsRow("settingsSets"),
   "settings-sets-new": settingsButton("settingsSets", "＋ セットを追加"),
@@ -578,6 +579,50 @@ for (const name of ["editor-tab-info", "editor-tab-exam", "editor-tab-historylis
     await original(page, view);
   };
 }
+
+// ---- replicate-2（admin）: 施設管理の追加の項目・利用者の新規登録・経営データ集計・ヘッダーのツールチップ・
+// 会計連絡票の印刷プレビュー・文書の項目ごとの入力と雛形。比較の PNG との対応は docs/eye-ux/rep2-admin-20261111.md ----
+const adminApi = (page, method, path, body) => page.evaluate(async ({ method, path, body }) => {
+  const csrf = decodeURIComponent((document.cookie.match(/(?:^|; )halunasu_csrf=([^;]*)/u) || [])[1] || "");
+  const response = await fetch(`/api/eye${path}`, { method, credentials: "include", headers: { "content-type": "application/json", "x-csrf-token": csrf }, body: body ? JSON.stringify(body) : undefined });
+  return { status: response.status, body: await response.json().catch(() => ({})) };
+}, { method, path, body });
+const AUDIT_TEMPLATE = { templateId: "", name: "白内障手術のご紹介", type: "referral", title: "診療情報提供書", body: "{{患者氏名}} 様（{{年齢}}・{{性別}}）について、手術のご検討をお願いいたします。\n\n【傷病名】\n{{傷病名}}\n\n【紹介目的】\n白内障手術のご検討をお願いいたします。\n\n【検査所見】\n{{視力}}\n{{眼圧}}\n\n【現在の処方】\n{{処方}}" };
+// 撮影用の雛形（並列の撮影で重なっても、409 は無視する）
+async function ensureTemplate(page) {
+  const current = await adminApi(page, "GET", "/v1/eye/clinic-config/docTemplates");
+  if ((current.body.value?.templates || []).length) return;
+  await adminApi(page, "PUT", "/v1/eye/clinic-config/docTemplates", { expectedRevision: current.body.revision || 0, value: { templates: [AUDIT_TEMPLATE] } });
+}
+Object.assign(STATES, {
+  "settings-users-new": settingsButton("settingsUsers", "＋ 新規登録"),
+  "settings-hours": { path: "settingsHours" },
+  "settings-hours-edit": settingsButton("settingsHours", "✎ 編集"),
+  "settings-labels": { path: "settingsLabels" },
+  "settings-labels-edit": settingsButton("settingsLabels", "＋ ラベルを追加"),
+  "settings-lab": { path: "settingsLab" },
+  "settings-lab-edit": settingsButton("settingsLab", "＋ 院内検査項目を追加"),
+  "settings-templates": { path: "settingsTemplates" },
+  "settings-templates-edit": settingsButton("settingsTemplates", "＋ 雛形を追加"),
+  "settings-print": { path: "settingsPrint" },
+  "settings-print-edit": settingsButton("settingsPrint", "✎ 編集"),
+  "settings-other": { path: "settingsOther" },
+  "settings-report": { path: "settingsReport" },
+  "settings-report-result": { path: "settingsReport", run: async (page) => { await page.getByRole("button", { name: "集計する" }).click(); await page.getByRole("region", { name: "集計の結果" }).waitFor(); } },
+  "settings-audit-day": { path: "settingsAudit", run: async (page) => { await page.getByLabel("期間").selectOption("day"); await page.waitForTimeout(600); } },
+  "header-tooltip": { path: "reception", run: async (page, view) => { if (view.width >= 768) { await page.locator(".eh-tool-schedule").hover(); await page.waitForTimeout(300); } } },
+  "billing-preview": { path: "billing", run: async (page) => { await page.locator("summary[aria-label='会計連携のその他の操作']").click(); await page.getByRole("button", { name: "この日の全員の連絡票を印刷" }).click(); await page.getByRole("dialog", { name: "会計連絡票" }).waitFor(); } },
+  "document-fields": { path: "document", run: async (page) => { await page.getByRole("button", { name: "項目ごと", exact: true }).click(); await page.waitForTimeout(300); } },
+  "document-template": {
+    path: "document",
+    run: async (page) => {
+      await ensureTemplate(page);
+      await page.reload({ waitUntil: "networkidle" });
+      await page.getByLabel("文書雛形").selectOption({ label: AUDIT_TEMPLATE.name });
+      await page.waitForTimeout(200);
+    }
+  }
+});
 
 const [platformPort, eyePort, webPort] = await Promise.all([findOpenPort(), findOpenPort(), findOpenPort()]);
 const stack = await startLocalEyeStack({ platformPort, eyePort, demo: true });
@@ -863,7 +908,14 @@ async function prepare(browser) {
       settingsPhrases: "/settings#phrases",
       settingsDrugs: "/settings#drugs",
       settingsExport: "/settings#export",
-      settingsAudit: "/settings#audit"
+      settingsAudit: "/settings#audit",
+      settingsHours: "/settings#hours",
+      settingsLabels: "/settings#labels",
+      settingsLab: "/settings#lab",
+      settingsTemplates: "/settings#templates",
+      settingsPrint: "/settings#print",
+      settingsOther: "/settings#other",
+      settingsReport: "/settings#report"
     }
   };
 }

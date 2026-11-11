@@ -10,8 +10,19 @@ export const FACILITY_SETTINGS_FIELDS = Object.freeze({
   fax: 30,
   email: 200,
   founder: 100,
-  administrator: 100
+  administrator: 100,
+  // デジカルの医療機関情報の編集に合わせて追加（どれも任意。空なら紙には出さない）
+  nameKana: 100,
+  representative: 100,
+  representativeKana: 100,
+  prescriptionRoute: 10,
+  invoiceRegistrationNumber: 20
 });
+
+// 院内・院外処方（医院の既定。紙には出さない）
+export const PRESCRIPTION_ROUTES = Object.freeze(["outside", "inside"]);
+const INVOICE_NUMBER = /^T\d{13}$/u;
+const KANA = /^[゠-ヿ぀-ゟ･-ﾟ ・ー－\-　]+$/u;
 
 const POSTAL_CODE = /^\d{3}-?\d{4}$/u;
 const PHONE = /^[0-9０-９()（）+＋\-－‐ー ]+$/u;
@@ -41,6 +52,14 @@ export function validateFacilitySettingsInput(input = {}) {
   }
   if (values.email && !EMAIL.test(values.email)) throw validationError("メールアドレスの形を確認してください。", "email");
   if (values.medicalInstitutionCode && !INSTITUTION_CODE.test(values.medicalInstitutionCode)) throw validationError("医療機関コードは数字で入れてください。", "medicalInstitutionCode");
+  for (const field of ["nameKana", "representativeKana"]) {
+    if (values[field] && !KANA.test(values[field])) throw validationError("フリガナはカタカナで入れてください。", field);
+  }
+  if (values.prescriptionRoute && !PRESCRIPTION_ROUTES.includes(values.prescriptionRoute)) throw validationError("院内・院外を選んでください。", "prescriptionRoute");
+  if (values.invoiceRegistrationNumber) {
+    values.invoiceRegistrationNumber = values.invoiceRegistrationNumber.normalize("NFKC").toUpperCase().replace(/[\s-]/gu, "");
+    if (!INVOICE_NUMBER.test(values.invoiceRegistrationNumber)) throw validationError("適格請求書発行事業者の登録番号は T と13桁の数字で入れてください。", "invoiceRegistrationNumber");
+  }
   return { expectedRevision, values };
 }
 
@@ -75,7 +94,7 @@ export function effectiveFacility(facility, settings) {
   }
   if (settings.postalCode) address.postalCode = settings.postalCode;
   merged.address = address;
-  for (const field of ["phone", "fax", "email", "founder", "administrator", "medicalInstitutionCode"]) {
+  for (const field of ["phone", "fax", "email", "founder", "administrator", "medicalInstitutionCode", "nameKana", "representative", "representativeKana", "prescriptionRoute", "invoiceRegistrationNumber"]) {
     if (settings[field]) merged[field] = settings[field];
   }
   return merged;

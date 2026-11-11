@@ -1,0 +1,632 @@
+/*
+ * replicate-2（admin）: ヘッダーのアイコン列・施設管理の追加の項目・利用者管理・経営データ集計・
+ * 文書の項目ごとの入力・会計連絡票の印刷プレビュー。色は globals.css の変数だけを使う。
+ */
+
+/* ───────── ヘッダー（デジカル p.27 と同じく、右上はアイコンだけ。名前はツールチップと読み上げ） ───────── */
+@media (min-width: 768px) {
+  .eh .eh-right .eh-tool:not(.eh-menu-item) .eh-tool-label {
+    display: none;
+  }
+
+  .eh .eh-right .eh-tool:not(.eh-menu-item) {
+    min-width: 34px;
+    padding: 0 7px;
+  }
+
+  .eh .eh-right .eh-tool:not(.eh-menu-item) .eh-badge {
+    position: absolute;
+    right: -4px;
+    top: -3px;
+  }
+}
+
+.eh-sep {
+  align-self: center;
+  background: var(--line);
+  height: 20px;
+  margin: 0 4px;
+  width: 1px;
+}
+
+.eh-tool-dark[aria-pressed="true"] {
+  background: var(--teal-soft);
+  color: var(--teal-dark);
+}
+
+/* ツールチップ（マウスを載せたとき・キーボードで選んだとき） */
+.eh-tool[data-tip]::after {
+  background: var(--text);
+  border-radius: 6px;
+  color: var(--surface);
+  content: attr(data-tip);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  left: 50%;
+  opacity: 0;
+  padding: 4px 8px;
+  pointer-events: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  transform: translateX(-50%);
+  transition: opacity 0.12s;
+  white-space: nowrap;
+  z-index: 45;
+}
+
+.eh-tool[data-tip]:hover::after,
+.eh-tool[data-tip]:focus-visible::after {
+  opacity: 1;
+}
+
+/* 右端のアイコンのツールチップは右に寄せて画面からはみ出さないようにする */
+.eh-tool-help[data-tip]::after {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
+@media (max-width: 767px) {
+  .eh-sep {
+    display: none;
+  }
+
+  .eh-tool[data-tip]::after {
+    display: none;
+  }
+}
+
+/* ───────── 施設管理のメニュー（項目が増えたので、縦メニューを詰めて画面の高さに収める） ───────── */
+@media (min-width: 861px) {
+  .settings-page .settings-nav {
+    max-height: calc(100dvh - var(--nav-h) - 24px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-right: 4px;
+  }
+
+  .settings-page .settings-nav-item {
+    min-height: 34px;
+    padding: 4px 10px 4px 12px;
+  }
+
+  .settings-page .settings-nav-group + .settings-nav-group {
+    margin-top: 12px;
+  }
+
+  .settings-page .settings-title {
+    margin-bottom: 10px;
+  }
+}
+
+@media (min-width: 861px) and (pointer: coarse) {
+  .settings-page .settings-nav-item {
+    min-height: 40px;
+  }
+}
+
+/* ───────── 施設管理の追加の項目（表 ＋［＋ 新規登録］＋［編集］） ───────── */
+.admin-section .admin-updated {
+  margin-top: 8px;
+}
+
+.admin-list + .admin-list {
+  margin-top: 20px;
+}
+
+.admin-list-head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-bottom: 8px;
+}
+
+.admin-list-head h3 {
+  align-items: baseline;
+  display: flex;
+  font-size: var(--fs-lg);
+  gap: 6px;
+  margin: 0;
+}
+
+.admin-list-head .btn {
+  margin-left: auto;
+}
+
+.admin-table-wrap {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.admin-table {
+  min-width: 100%;
+}
+
+.admin-table th,
+.admin-table td {
+  vertical-align: middle;
+}
+
+.admin-table tr.is-off td {
+  color: var(--muted);
+}
+
+.admin-table .admin-desc {
+  color: var(--text-soft);
+  font-size: var(--fs-sm);
+  max-width: 28em;
+}
+
+.admin-table .admin-edit {
+  text-align: right;
+  white-space: nowrap;
+  width: 1%;
+}
+
+.admin-table .admin-state {
+  white-space: nowrap;
+  width: 1%;
+}
+
+.admin-table .num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.admin-table .nowrap {
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.admin-chip {
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  display: inline-block;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  line-height: 20px;
+  min-width: 24px;
+  padding: 0 8px;
+  text-align: center;
+}
+
+.admin-chip.tone-teal { background: var(--teal-soft); border-color: var(--teal); color: var(--teal-dark); }
+.admin-chip.tone-blue { background: var(--blue-soft); border-color: var(--blue-line); color: var(--blue-ink); }
+.admin-chip.tone-amber { background: var(--amber-soft); border-color: var(--amber-line); color: var(--amber); }
+.admin-chip.tone-red { background: var(--red-soft); border-color: var(--red-line); color: var(--red); }
+.admin-chip.tone-gray { background: var(--surface-muted); color: var(--text-soft); }
+
+.admin-mark-cell {
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+}
+
+.admin-form {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-textarea {
+  font-family: inherit;
+  line-height: 1.6;
+  min-height: 12em;
+  resize: vertical;
+}
+
+.admin-radio {
+  border: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.admin-radio legend {
+  color: var(--text-soft);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  margin-bottom: 6px;
+  padding: 0;
+  width: 100%;
+}
+
+/* デジカルの編集ダイアログと同じ、左に項目名・右に入力欄の 1 列（狭い画面では上下） */
+.admin-row-field {
+  align-items: center;
+  column-gap: 16px;
+  display: grid;
+  grid-template-columns: 12em minmax(0, 1fr);
+}
+
+.admin-row-label {
+  color: var(--text-soft);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.admin-required {
+  background: var(--red-soft);
+  border: 1px solid var(--red-line);
+  border-radius: 4px;
+  color: var(--red);
+  font-size: var(--fs-xs);
+  font-style: normal;
+  margin-left: 6px;
+  padding: 0 4px;
+}
+
+.admin-static {
+  min-height: 32px;
+  padding: 6px 0;
+}
+
+.admin-inline {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+
+.admin-facility-form {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-password {
+  background: var(--amber-soft);
+  border: 1px solid var(--amber-line);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.admin-password p {
+  margin: 0;
+}
+
+.admin-password code {
+  font-size: var(--fs-lg);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  user-select: all;
+}
+
+.users-table th,
+.users-table td:nth-child(3),
+.users-table td:nth-child(4),
+.users-table td:nth-child(5) {
+  white-space: nowrap;
+}
+
+.users-table .user-self {
+  display: inline-block;
+  margin-left: 4px;
+}
+
+.users-table .user-off {
+  color: var(--red);
+  font-weight: 700;
+}
+
+/* 診療時間（曜日ごとの行） */
+.admin-slot {
+  max-width: 220px;
+}
+
+.admin-hours {
+  display: grid;
+  gap: 6px;
+}
+
+.admin-hours-row {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 2.5em minmax(0, 1fr);
+  padding: 6px 0;
+}
+
+.admin-hours-day {
+  font-weight: 800;
+  text-align: center;
+}
+
+.admin-hours-ranges {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+
+.admin-hours-range {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+}
+
+.admin-hours-range .input-time {
+  width: 7.5em;
+}
+
+/* ───────── 経営データ集計（期間 〜 期間・メモ・［集計する］→ 結果・集計の記録） ───────── */
+.report-form {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  padding: 14px 16px;
+}
+
+.report-label {
+  font-weight: 700;
+}
+
+.report-range {
+  align-items: center;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.report-hint {
+  flex: 1 1 100%;
+  font-size: var(--fs-sm);
+}
+
+.report-hint.is-error {
+  color: var(--red);
+  font-weight: 700;
+}
+
+.report-result,
+.report-history {
+  margin-top: 16px;
+  padding: 14px 16px;
+}
+
+.report-result-head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  justify-content: space-between;
+}
+
+.report-result-head h3,
+.report-history h3 {
+  font-size: var(--fs-lg);
+  margin: 0 0 8px;
+}
+
+.report-result-head h3 .muted {
+  font-weight: 400;
+  margin-left: 6px;
+}
+
+.report-downloads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.report-totals {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(7.5em, 1fr));
+  margin: 12px 0;
+}
+
+.report-totals div {
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.report-totals dt {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.report-totals dd {
+  font-size: var(--fs-xl);
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  margin: 0;
+}
+
+.report-subhead {
+  font-size: var(--fs-md);
+  margin: 12px 0 6px;
+}
+
+/* 操作記録の「‹ 日付 ›」 */
+.audit-day-stepper {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+}
+
+/* ───────── 文書: 項目ごとの入力（デジカル p.118 の、項目名と入力欄の縦の並び） ───────── */
+.doc-fields {
+  display: grid;
+  gap: 0;
+}
+
+.doc-field-row {
+  align-items: start;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 9.5em minmax(0, 1fr);
+  padding: 8px 0;
+}
+
+.doc-field-label {
+  color: var(--text-soft);
+  display: grid;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  padding-top: 8px;
+}
+
+.doc-field-input {
+  field-sizing: content;
+  line-height: 1.6;
+  min-height: 2.6em;
+  resize: vertical;
+}
+
+.doc-template-picker {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 10px;
+}
+
+.doc-template-picker .field {
+  flex: 1 1 14em;
+  margin: 0;
+}
+
+.ls-footer-note {
+  border-top: 1px solid var(--line);
+  color: var(--text-soft);
+  font-size: var(--fs-xs);
+  margin: 14px 0 0;
+  padding-top: 6px;
+  text-align: center;
+}
+
+/* ───────── 会計連携: 連携の確認・会計連絡票の印刷プレビュー ───────── */
+.bill-send-visit {
+  color: var(--text-soft);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--fs-sm);
+  gap: 4px 16px;
+  margin: 0 0 8px;
+}
+
+.bill-send-print {
+  margin: 8px 0 0;
+}
+
+.bill-slip-note {
+  color: var(--text-soft);
+}
+
+.dialog-backdrop.bill-preview-backdrop {
+  align-items: stretch;
+  padding: 16px;
+}
+
+.bill-preview {
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  margin: 0 auto;
+  max-height: calc(100dvh - 32px);
+  max-width: 920px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.bill-preview-bar {
+  align-items: center;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 10px 14px;
+}
+
+.bill-preview-bar h2 {
+  font-size: var(--fs-lg);
+  margin: 0;
+}
+
+.bill-preview-count {
+  color: var(--muted);
+  flex: 1 1 auto;
+  font-size: var(--fs-sm);
+}
+
+.bill-preview-pages {
+  display: grid;
+  gap: 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px;
+}
+
+.bill-preview-sheet {
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.12);
+  margin: 0 auto;
+  max-width: 794px;
+  padding: 32px 36px 28px;
+  position: relative;
+  width: 100%;
+}
+
+.bill-preview-page {
+  bottom: 6px;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  position: absolute;
+  right: 12px;
+}
+
+@media (max-width: 640px) {
+  .admin-row-field,
+  .doc-field-row {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 4px;
+  }
+
+  .doc-field-label {
+    padding-top: 0;
+  }
+
+  .admin-list-head .btn {
+    margin-left: 0;
+  }
+
+  .dialog-backdrop.bill-preview-backdrop {
+    padding: 0;
+  }
+
+  .bill-preview {
+    border-radius: 0;
+    max-height: 100dvh;
+  }
+
+  .bill-preview-sheet {
+    padding: 16px;
+  }
+}
+
+@media (max-height: 500px) {
+  .dialog-backdrop.bill-preview-backdrop {
+    padding: 0;
+  }
+
+  .bill-preview {
+    max-height: 100dvh;
+  }
+}

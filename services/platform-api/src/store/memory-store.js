@@ -348,7 +348,10 @@ export class MemoryPlatformStore {
     return compactObject({
       ...member,
       mfaRequired: identity?.mfaRequired,
-      mfaEnrolled: identity?.mfaEnrolled
+      mfaEnrolled: identity?.mfaEnrolled,
+      // 利用者の一覧（施設管理）に出す最終ログインとパスワード更新の日時。識別情報から読むだけで、利用者には保存しない。
+      lastLoginAt: identity?.lastLoginAt,
+      passwordUpdatedAt: identity?.passwordUpdatedAt
     });
   }
 

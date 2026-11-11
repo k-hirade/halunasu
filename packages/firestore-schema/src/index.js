@@ -51,6 +51,7 @@ export const collections = Object.freeze({
   eyePhrases: "eye_phrases",
   eyeStaffProfiles: "eye_staff_profiles",
   eyeFacilitySettings: "eye_facility_settings",
+  eyeClinicConfig: "eye_clinic_config",
   eyeDailyCounters: "eye_daily_counters",
   eyeReceptionSettings: "eye_reception_settings",
   eyePatientMarks: "eye_patient_marks",
@@ -299,6 +300,11 @@ export function eyeReceptionSettingsPath(orgId) {
 // 患者マーク（車椅子・難聴など、受付一覧の行頭に出す印）。患者ごとに 1 件。
 export function eyePatientMarksPath(orgId, patientId) {
   return orgDocPath(orgId, collections.eyePatientMarks, patientId, "patientId");
+}
+
+// 施設管理の追加の設定（文書雛形・検査会社・受付ラベルなど）。医院ごと・項目ごとに 1 件。
+export function eyeClinicConfigPath(orgId, section) {
+  return orgDocPath(orgId, collections.eyeClinicConfig, section, "section");
 }
 
 export function eyePatientProfilePath(orgId, patientId) {

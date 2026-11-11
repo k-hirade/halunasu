@@ -7,7 +7,13 @@ import { formatDate, todayIso } from "../lib/format";
 import { AUDIT_CATEGORY_LABELS, AUDIT_EVENT_LABELS, auditRangeFor, auditTargetLabel } from "../lib/settings";
 
 const PAGE_SIZE = 100;
-const RANGE_OPTIONS = [["today", "今日"], ["week", "7日間"], ["month", "30日間"], ["custom", "期間を指定"]];
+const RANGE_OPTIONS = [["day", "日付で見る"], ["today", "今日"], ["week", "7日間"], ["month", "30日間"], ["custom", "期間を指定"]];
+
+function shiftDate(iso, days) {
+  const date = new Date(`${iso}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
 
 function timeText(iso, withYear) {
   if (!iso) return "";
@@ -17,10 +23,12 @@ function timeText(iso, withYear) {
   return `${withYear ? `${parts.year}/` : ""}${parts.month}/${parts.day} ${parts.hour}:${parts.minute}`;
 }
 
-export function AuditLogSection({ masters }) {
+// デジカルの監査ログ（p.198）は「‹ 日付 ›」で1日ずつ見る。同じ見方を「日付で見る」で選べる（既定はその他設定の期間）。
+export function AuditLogSection({ masters, defaultPreset = "week" }) {
   const api = useEyeApi();
   const today = todayIso();
-  const [rangePreset, setRangePreset] = useState("week");
+  const [rangePreset, setRangePreset] = useState(defaultPreset);
+  const [day, setDay] = useState(today);
   const [custom, setCustom] = useState(() => auditRangeFor("week", today));
   const [category, setCategory] = useState(null);
   const [actor, setActor] = useState("");
@@ -35,7 +43,7 @@ export function AuditLogSection({ masters }) {
   const [error, setError] = useState("");
   const requestId = useRef(0);
 
-  const range = auditRangeFor(rangePreset, today) || custom;
+  const range = rangePreset === "day" ? { from: day, to: day } : auditRangeFor(rangePreset, today) || custom;
   const rangeValid = Boolean(range.from && range.to && range.from <= range.to);
 
   function query(cursor) {
@@ -112,6 +120,13 @@ export function AuditLogSection({ masters }) {
             {RANGE_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
         </label>
+        {rangePreset === "day" ? (
+          <span className="audit-day-stepper">
+            <button aria-label="前の日" className="btn btn-ghost btn-sm" onClick={() => setDay(shiftDate(day, -1))} type="button">‹</button>
+            <input aria-label="記録の日付" className="input input-date" max={today} onChange={(event) => { if (event.target.value) setDay(event.target.value); }} type="date" value={day} />
+            <button aria-label="次の日" className="btn btn-ghost btn-sm" disabled={day >= today} onClick={() => setDay(shiftDate(day, 1))} type="button">›</button>
+          </span>
+        ) : null}
         {rangePreset === "custom" ? (
           <span className="audit-range-inputs">
             <input aria-label="開始日" className="input input-date" max={today} onChange={(event) => setCustom({ ...custom, from: event.target.value })} type="date" value={custom.from} />

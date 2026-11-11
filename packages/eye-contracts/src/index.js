@@ -228,7 +228,7 @@ export function isActiveAppointmentStatus(status) {
 
 // 操作記録の種類。画面の絞り込みチップと API の category 絞り込みで同じ分け方を使う。
 export const AUDIT_CATEGORIES = Object.freeze(["view", "change", "finalize", "export", "settings", "other"]);
-const AUDIT_SETTINGS_EVENTS = new Set(["eye.drug_preset_saved", "eye.order_set_saved", "eye.set_folder_saved", "eye.phrase_saved", "eye.staff_profile_saved", "eye.facility_settings_saved"]);
+const AUDIT_SETTINGS_EVENTS = new Set(["eye.drug_preset_saved", "eye.order_set_saved", "eye.set_folder_saved", "eye.phrase_saved", "eye.staff_profile_saved", "eye.facility_settings_saved", "eye.clinic_config_saved"]);
 const AUDIT_CHANGE_SUFFIX = /_(created|updated|saved|discarded|amend_started|confirmed|unconfirmed|status_changed|uploaded|archived|reviewed)$/u;
 
 export function auditEventCategory(eventType) {

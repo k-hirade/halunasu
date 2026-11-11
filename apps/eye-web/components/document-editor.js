@@ -4,10 +4,12 @@ import Link from "next/link";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ConfirmDialog, SaveIndicator } from "./encounter-dialogs";
+import { DocumentFieldsEditor, TemplatePicker } from "./document-fields";
 import { DocumentInsertPanel } from "./document-insert-panel";
 import { useEyeApi } from "./eye-api";
 import { LetterSheet } from "./letter-sheet";
 import { usePrintNames } from "./use-print-names";
+import { usePrintSettings } from "./print-settings";
 import { ageOn, formatDate, formatDateTime, SEX_LABELS } from "../lib/format";
 import { letterChecks, parseLetter, readPurpose, writePurpose } from "../lib/letter";
 import { DEFAULT_HONORIFIC, HONORIFIC_OPTIONS } from "../lib/paper";
@@ -30,6 +32,7 @@ export function DocumentEditor({ documentId }) {
   const api = useEyeApi();
   const router = useRouter();
   const printNames = usePrintNames();
+  const printSettings = usePrintSettings();
   const [document, setDocument] = useState(null);
   const [context, setContext] = useState(null);
   const [form, setForm] = useState(null);
@@ -43,6 +46,11 @@ export function DocumentEditor({ documentId }) {
   const [purposeDraft, setPurposeDraft] = useState(null);
   const [notice, setNotice] = useState("");
   const [finalizedNow, setFinalizedNow] = useState(false);
+  // 本文の入力の形（項目ごと / 本文全体）と文書雛形。施設管理の「その他設定」「文書雛形」から。古い API では本文全体のみ。
+  const [inputMode, setInputMode] = useState(null);
+  const [templates, setTemplates] = useState([]);
+  const [templateDialog, setTemplateDialog] = useState(null);
+  const [applying, setApplying] = useState(false);
   const revisionRef = useRef(0);
   const dirtyRef = useRef(false);
   const savingRef = useRef(null);
@@ -73,6 +81,19 @@ export function DocumentEditor({ documentId }) {
 
   const editable = Boolean(document && document.status === "draft" && context?.canWriteDocuments);
   editableRef.current = editable;
+
+  useEffect(() => {
+    if (!editable) return undefined;
+    let active = true;
+    apiRef.current("/v1/eye/clinic-config")
+      .then((payload) => {
+        if (!active) return;
+        setTemplates((payload.clinicConfig?.docTemplates?.value?.templates || []).filter((item) => item.active !== false));
+        setInputMode((current) => current || payload.clinicConfig?.otherSettings?.value?.documentInputMode || "text");
+      })
+      .catch(() => { if (active) setInputMode((current) => current || "text"); });
+    return () => { active = false; };
+  }, [editable]);
   const patientId = document?.patientId;
 
   // 下書きのときだけ: 差し込み元より新しいカルテがあるかの確認と、宛先の候補（この患者の過去の文書・院内の紹介先）。
@@ -254,6 +275,27 @@ export function DocumentEditor({ documentId }) {
     }
   }
 
+  async function applyTemplate(template) {
+    setTemplateDialog(null);
+    if (!(await flush())) return;
+    setApplying(true);
+    try {
+      const payload = await api(`/v1/eye/documents/${documentId}/apply-template`, { method: "POST", body: { expectedRevision: revisionRef.current, templateId: template.templateId } });
+      revisionRef.current = payload.document.revision;
+      setDocument(payload.document);
+      const nextForm = formFrom(payload.document);
+      formRef.current = nextForm;
+      setForm(nextForm);
+      setSaveState("saved");
+      setInputMode("fields");
+      setNotice(`雛形「${template.name}」から本文を作りました。`);
+    } catch (nextError) {
+      setError(nextError.message);
+    } finally {
+      setApplying(false);
+    }
+  }
+
   const preview = useMemo(() => (document && form ? { ...document, ...form } : null), [document, form]);
   const checks = useMemo(() => (preview && editable ? letterChecks(preview) : []), [preview, editable]);
   const source = useMemo(() => sourceCheck(document, chart), [document, chart]);
@@ -366,7 +408,7 @@ export function DocumentEditor({ documentId }) {
                 <label className="field"><span>診療科</span><input aria-label="宛先 診療科" autoComplete="off" className="input" onChange={(event) => changeRecipient({ department: event.target.value })} value={form.recipient.department} /></label>
                 <label className="field"><span>医師名</span><input aria-label="宛先 医師" autoComplete="off" className="input" onChange={(event) => changeRecipient({ doctor: event.target.value })} placeholder="氏名のみ" value={form.recipient.doctor} /></label>
                 <label className="field doc-honorific"><span>敬称</span>
-                  <select aria-label="宛先 敬称" className="input" onChange={(event) => changeRecipient({ honorific: event.target.value })} value={form.recipient.honorific || DEFAULT_HONORIFIC}>
+                  <select aria-label="宛先 敬称" className="input" onChange={(event) => changeRecipient({ honorific: event.target.value })} value={form.recipient.honorific || printSettings.defaultHonorific || DEFAULT_HONORIFIC}>
                     {HONORIFIC_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                   </select>
                 </label>
@@ -424,27 +466,38 @@ export function DocumentEditor({ documentId }) {
             <section className="doc-card" aria-labelledby="doc-body-heading">
               <div className="doc-card-head">
                 <h2 id="doc-body-heading">本文</h2>
+                <span aria-label="本文の入力の形" className="doc-seg" role="group">
+                  <button aria-pressed={inputMode === "fields"} className="btn btn-chip" onClick={() => setInputMode("fields")} type="button">項目ごと</button>
+                  <button aria-pressed={inputMode !== "fields"} className="btn btn-chip" onClick={() => setInputMode("text")} type="button">本文全体</button>
+                </span>
                 <button className="btn btn-ghost btn-sm" onClick={() => setInserting(true)} type="button">＋カルテから挿入</button>
               </div>
-              {sections.length ? (
-                <nav aria-label="本文の見出し" className="doc-toc">
-                  {sections.map((section) => (
-                    <button className={`btn btn-chip${section.text.trim() ? "" : " is-empty"}`} key={`${section.line}-${section.heading}`} onClick={() => jumpToSection(section)} title={section.text.trim() ? "" : "この見出しの下が空です"} type="button">{section.heading}</button>
-                  ))}
-                </nav>
-              ) : null}
-              <textarea
-                aria-label="本文"
-                className="input document-body"
-                onBlur={rememberCursor}
-                onChange={(event) => { change({ body: event.target.value }); cursorRef.current = event.target.selectionStart; }}
-                onClick={rememberCursor}
-                onKeyUp={rememberCursor}
-                onSelect={rememberCursor}
-                ref={bodyRef}
-                rows={12}
-                value={form.body}
-              />
+              <TemplatePicker busy={applying} onApply={(template) => (form.body.trim() ? setTemplateDialog(template) : applyTemplate(template))} templates={templates} type={document.type} />
+              {inputMode === "fields" ? (
+                <DocumentFieldsEditor body={form.body} onChange={(body) => change({ body })} skipPurpose={isReferral && Boolean(purpose)} />
+              ) : (
+                <>
+                  {sections.length ? (
+                    <nav aria-label="本文の見出し" className="doc-toc">
+                      {sections.map((section) => (
+                        <button className={`btn btn-chip${section.text.trim() ? "" : " is-empty"}`} key={`${section.line}-${section.heading}`} onClick={() => jumpToSection(section)} title={section.text.trim() ? "" : "この見出しの下が空です"} type="button">{section.heading}</button>
+                      ))}
+                    </nav>
+                  ) : null}
+                  <textarea
+                    aria-label="本文"
+                    className="input document-body"
+                    onBlur={rememberCursor}
+                    onChange={(event) => { change({ body: event.target.value }); cursorRef.current = event.target.selectionStart; }}
+                    onClick={rememberCursor}
+                    onKeyUp={rememberCursor}
+                    onSelect={rememberCursor}
+                    ref={bodyRef}
+                    rows={12}
+                    value={form.body}
+                  />
+                </>
+              )}
             </section>
 
             <details className="doc-card doc-settings">
@@ -467,7 +520,7 @@ export function DocumentEditor({ documentId }) {
             />
           ) : (
             <ScaledSheet>
-              <LetterSheet document={preview} printNames={printNames} showEmpty={editable} />
+              <LetterSheet document={preview} printNames={printNames} settings={printSettings} showEmpty={editable} />
             </ScaledSheet>
           )}
         </div>
@@ -475,6 +528,11 @@ export function DocumentEditor({ documentId }) {
 
       {dialog === "finalize" ? (
         <FinalizeDocumentDialog blockers={blockers} onCancel={() => setDialog("")} onConfirm={finalize} warnings={warnings} />
+      ) : null}
+      {templateDialog ? (
+        <ConfirmDialog confirmLabel="置き換える" onCancel={() => setTemplateDialog(null)} onConfirm={() => applyTemplate(templateDialog)} title="本文を雛形で置き換えますか？">
+          <p>いまの本文を、雛形「{templateDialog.name}」に患者とカルテの内容を入れたものに置き換えます。宛先・発行日はそのままです。</p>
+        </ConfirmDialog>
       ) : null}
       {dialog === "discard" ? (
         <ConfirmDialog confirmLabel="破棄する" danger onCancel={() => setDialog("")} onConfirm={discard} title="この下書きを破棄しますか？">

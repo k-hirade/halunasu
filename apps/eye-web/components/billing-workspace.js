@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useEyeApi, useEyeFileTransfer } from "./eye-api";
+import { usePrintSettings } from "./print-settings";
 import { BILLING_TABS, billingRows, countByState, diffChips, diffItems, groupByCategory, itemSummary } from "../lib/billing-diff";
 import { addDays, ageOn, APPOINTMENT_STATUS_LABELS, DIAGNOSIS_STATUS_LABELS, formatDate, SEX_LABELS, todayIso, VISIT_TYPE_LABELS } from "../lib/format";
 
@@ -32,6 +33,10 @@ export function BillingWorkspace() {
   const [busy, setBusy] = useState(false);
   const [lastRun, setLastRun] = useState(null);
   const [printIds, setPrintIds] = useState(null);
+  // 印刷の前に紙面を確かめる（デジカルの帳票が別タブの PDF で開くのと同じく、まず紙面のプレビューを出し、［印刷］で印刷する）
+  const [previewIds, setPreviewIds] = useState(null);
+  const [printAfterSend, setPrintAfterSend] = useState(false);
+  const printSettings = usePrintSettings();
   const requestRef = useRef(0);
 
   // 選んでいた人のうち、未連携のままの人だけを残す
@@ -129,6 +134,7 @@ export function BillingWorkspace() {
       });
       setFailures(({ [row.key]: _removed, ...rest }) => rest);
       setSending(null);
+      if (printAfterSend) setPreviewIds([row.key]);
       setOpen((current) => {
         const next = new Set(current);
         next.delete(row.key);
@@ -207,6 +213,7 @@ export function BillingWorkspace() {
   const allPendingSelected = pendingRows.length > 0 && selectedRows.length === pendingRows.length;
   const latestRun = day?.handoffs?.[0];
   const printTargets = printIds ? encounters.filter((item) => printIds.includes(item.encounterId)) : [];
+  const previewTargets = previewIds ? encounters.filter((item) => previewIds.includes(item.encounterId)) : [];
   const closeMenu = (event) => event.currentTarget.closest("details")?.removeAttribute("open");
 
   function renderAction(row) {
@@ -228,7 +235,7 @@ export function BillingWorkspace() {
         <summary aria-label={`${name} のその他の操作`} className="btn btn-chip">…</summary>
         <div className="more-menu-list">
           <Link className="btn btn-ghost" href={`/encounters/${row.key}`}>カルテを開く</Link>
-          <button className="btn btn-ghost" onClick={(event) => { closeMenu(event); setPrintIds([row.key]); }} type="button">この人の連絡票を印刷</button>
+          <button className="btn btn-ghost" onClick={(event) => { closeMenu(event); setPreviewIds([row.key]); }} type="button">この人の連絡票を印刷</button>
         </div>
       </details>
     );
@@ -353,7 +360,7 @@ export function BillingWorkspace() {
         <div className="bill-detail-actions">
           <span className="muted small">カルテ v{item.version}{row.state === "handed_off" && item.handoff.at ? ` ・ ${formatDateTime(item.handoff.at)} ${item.handoff.by?.displayName || ""} が連携` : ""}</span>
           <Link className="btn btn-ghost btn-sm" href={`/encounters/${row.key}`}>カルテを開く</Link>
-          <button className="btn btn-ghost btn-sm" onClick={() => setPrintIds([row.key])} type="button">この人の連絡票を印刷</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => setPreviewIds([row.key])} type="button">この人の連絡票を印刷</button>
           {row.state === "pending" || row.state === "changed" ? (
             <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => setSending(row)} type="button">{row.state === "changed" ? "この人を再連携" : "この人を連携"}</button>
           ) : null}
@@ -383,7 +390,7 @@ export function BillingWorkspace() {
             <details className="more-menu">
               <summary aria-label="会計連携のその他の操作" className="btn btn-ghost">…</summary>
               <div className="more-menu-list bill-menu">
-                <button className="btn btn-ghost" disabled={!encounters.length} onClick={(event) => { closeMenu(event); setPrintIds(encounters.map((item) => item.encounterId)); }} type="button">この日の全員の連絡票を印刷</button>
+                <button className="btn btn-ghost" disabled={!encounters.length} onClick={(event) => { closeMenu(event); setPreviewIds(encounters.map((item) => item.encounterId)); }} type="button">この日の全員の連絡票を印刷</button>
                 <button className="btn btn-ghost" disabled={!pendingRows.length} onClick={(event) => { closeMenu(event); setTab("pending"); setSelected(new Set(pendingRows.map((row) => row.key))); }} type="button">未連携の全員を選んでまとめて連携…</button>
                 <button className="btn btn-ghost" disabled={busy || !encounters.length} onClick={(event) => { closeMenu(event); setConfirmAll(true); }} type="button">全件 CSV（確認用）…</button>
                 <p className="bill-menu-note">全件 CSV は連携済みも含みます。レセコンへの取込には使わないでください。</p>
@@ -477,13 +484,24 @@ export function BillingWorkspace() {
           <div className="bill-selbar" role="region" aria-label="選択した患者の操作">
             <span className="bill-selbar-count"><strong>{selectedRows.length}人</strong>を選択中<span className="muted">（{itemSummary(selectedRows.flatMap((row) => row.item.items)) || "受診のみ"}）</span></span>
             <button className="btn btn-ghost" onClick={() => setSelected(new Set())} type="button">選択を解除</button>
-            <button className="btn btn-ghost" onClick={() => setPrintIds(selectedRows.map((row) => row.key))} type="button">連絡票を印刷</button>
+            <button className="btn btn-ghost" onClick={() => setPreviewIds(selectedRows.map((row) => row.key))} type="button">連絡票を印刷</button>
             <button className="btn btn-primary" disabled={busy} onClick={() => handoffSelected(selectedRows.map((row) => row.key))} type="button">まとめて連携（CSV）</button>
           </div>
         ) : null}
       </div>
 
-      {sending ? <SendDialog busy={busy} onCancel={() => setSending(null)} onConfirm={() => send(sending)} row={sending} /> : null}
+      {sending ? <SendDialog busy={busy} onCancel={() => setSending(null)} onConfirm={() => send(sending)} onPrintChange={setPrintAfterSend} printAfter={printAfterSend} row={sending} /> : null}
+
+      {previewTargets.length ? (
+        <SlipPreview
+          date={date}
+          facilityName={facilityName}
+          items={previewTargets}
+          onClose={() => setPreviewIds(null)}
+          onPrint={() => setPrintIds(previewTargets.map((item) => item.encounterId))}
+          settings={printSettings}
+        />
+      ) : null}
 
       {confirmAll ? (
         <div className="dialog-backdrop no-print" role="presentation">
@@ -503,7 +521,7 @@ export function BillingWorkspace() {
         <div className="print-only bill-slips">
           {/* 連絡票は A4 縦。印刷するときだけ用紙と余白を決める（ほかの画面の印刷には効かせない） */}
           <style>{"@page { size: A4 portrait; margin: 12mm 12mm 14mm; }"}</style>
-          {printTargets.map((item) => <Slip date={date} facilityName={facilityName} item={item} key={item.encounterId} />)}
+          {printTargets.map((item) => <Slip date={date} facilityName={facilityName} item={item} key={item.encounterId} settings={printSettings} />)}
         </div>
       ) : null}
     </main>
@@ -511,7 +529,7 @@ export function BillingWorkspace() {
 }
 
 // 連携の確認（デジカルの「送信しますか？」にあたる 2 択）。誰の・何を渡すかと、受付がどうなるかを見せる。
-function SendDialog({ row, busy, onCancel, onConfirm }) {
+function SendDialog({ row, busy, onCancel, onConfirm, printAfter = false, onPrintChange }) {
   const { item, patient, appointment } = row;
   const again = row.state === "changed";
   const chips = again && item.handoff.previousItems ? diffChips(diffItems(item.handoff.previousItems, item.items)) : null;
@@ -533,6 +551,11 @@ function SendDialog({ row, busy, onCancel, onConfirm }) {
           <span>{VISIT_TYPE_LABELS[item.visitType] || ""}</span>
           <span className="muted">カルテ v{item.version}</span>
         </p>
+        {/* デジカルの会計画面の 1 行目（診療日・医師）に合わせる */}
+        <p className="bill-send-visit">
+          <span>診療日 {formatDateJa(item.encounterDate)}</span>
+          {item.finalizedBy?.displayName ? <span>確定 {item.finalizedBy.displayName}</span> : null}
+        </p>
         <div className="bill-send-items">
           <ItemGroups items={item.items} />
         </div>
@@ -546,6 +569,13 @@ function SendDialog({ row, busy, onCancel, onConfirm }) {
           レセコンが取り込む CSV を保存します。
           {toDone ? "受付を「会計済」にします。" : appointment ? `受付の状態（${APPOINTMENT_STATUS_LABELS[appointment.displayStatus || appointment.status] || ""}）は変えません。` : "この日の受付はありません。"}
         </p>
+        {/* デジカルの会計画面の帳票のチェック（領収書・明細書…）にあたる。ハルナスの紙は会計連絡票だけ */}
+        {onPrintChange ? (
+          <label className="field-check bill-send-print">
+            <input checked={printAfter} onChange={(event) => onPrintChange(event.target.checked)} type="checkbox" />
+            連携したあとに会計連絡票を印刷する
+          </label>
+        ) : null}
         <div className="dialog-actions">
           <button className="btn btn-ghost" disabled={busy} onClick={onCancel} type="button">やめる</button>
           <button autoFocus className="btn btn-primary" disabled={busy} onClick={onConfirm} type="button">{busy ? "連携中…" : again ? "再連携する" : "連携する"}</button>
@@ -574,7 +604,7 @@ function DiffTable({ rows }) {
 }
 
 // 会計連絡票（1人1枚）
-function Slip({ item, date, facilityName }) {
+function Slip({ item, date, facilityName, settings = null }) {
   const patient = item.patient || {};
   const age = ageOn(patient.birthDate, item.encounterDate);
   const chips = item.handoff.state === "changed" && item.handoff.previousItems ? diffChips(diffItems(item.handoff.previousItems, item.items)) : null;
@@ -595,7 +625,7 @@ function Slip({ item, date, facilityName }) {
         <p><strong className="bill-slip-name">{patient.displayName}</strong> {age !== null ? `${age}歳` : ""} {patient.sex && patient.sex !== "unknown" ? SEX_LABELS[patient.sex] : ""} {VISIT_TYPE_LABELS[item.visitType] || ""} ・ カルテ v{item.version}</p>
       </section>
       <section className="bill-slip-body">
-        <div className="bill-slip-line"><span className="bill-slip-label">病名</span><span>{item.diagnoses.length ? item.diagnoses.map(diagnosisLabel).join("、") : "なし"}</span></div>
+        {settings?.billingSlipDiagnoses === false ? null : <div className="bill-slip-line"><span className="bill-slip-label">病名</span><span>{item.diagnoses.length ? item.diagnoses.map(diagnosisLabel).join("、") : "なし"}</span></div>}
         {item.items.length ? groupByCategory(item.items).map((group) => (
           <div className="bill-slip-line" key={group.category}>
             <span className="bill-slip-label">{group.category}</span>
@@ -608,8 +638,38 @@ function Slip({ item, date, facilityName }) {
           <p><strong>前回連携（v{item.handoff.version}）からの変更:</strong> {chips ? (chips.length ? chips.map((chip) => chip.label).join(" ") : "品目の違いなし") : "前回の品目の記録なし"}</p>
         ) : null}
         <p>点数はレセコンで計算します。</p>
+        {settings?.footerNote ? <p className="bill-slip-note">{settings.footerNote}</p> : null}
       </footer>
     </article>
+  );
+}
+
+// 会計連絡票の印刷プレビュー（デジカルの帳票の PDF 表示に合わせる: 上に帳票名・枚数・［印刷］、下に紙面を並べる）
+function SlipPreview({ items, date, facilityName, settings, onPrint, onClose }) {
+  useEffect(() => {
+    const onKeyDown = (event) => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+  return (
+    <div className="dialog-backdrop bill-preview-backdrop no-print" role="presentation">
+      <div aria-labelledby="bill-preview-heading" aria-modal="true" className="bill-preview" role="dialog">
+        <header className="bill-preview-bar">
+          <h2 id="bill-preview-heading">会計連絡票</h2>
+          <span className="bill-preview-count">{items.length}枚 ・ A4 縦</span>
+          <button autoFocus className="btn btn-primary" onClick={onPrint} type="button">印刷</button>
+          <button className="btn btn-ghost bill-preview-close" onClick={onClose} type="button">閉じる</button>
+        </header>
+        <div className="bill-preview-pages">
+          {items.map((item, index) => (
+            <div className="bill-preview-sheet" key={item.encounterId}>
+              <Slip date={date} facilityName={facilityName} item={item} settings={settings} />
+              <span aria-hidden="true" className="bill-preview-page">{index + 1} / {items.length}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 

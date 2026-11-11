@@ -390,7 +390,7 @@ async function runDoctorFlow(browser) {
   // 設定（デジカルの施設管理と同じ形）: 最初は医療機関情報。［編集］のダイアログで入れた値が紙に載る
   await page.goto(`${baseUrl}/settings`);
   await page.getByRole("heading", { name: "医療機関情報" }).waitFor();
-  assert.deepEqual(await page.locator(".settings-nav-item").allInnerTexts().then((items) => items.map((text) => text.replace(/\d+$/u, "").trim())), ["医療機関情報", "利用者", "セット", "定型文", "よく使う薬剤", "データ出力", "操作記録"]);
+  assert.deepEqual(await page.locator(".settings-nav-item").allInnerTexts().then((items) => items.map((text) => text.replace(/\d+$/u, "").trim())), ["医療機関情報", "利用者管理", "診療時間・予約枠", "受付ラベル・患者マーク", "セット", "定型文", "よく使う薬剤", "検査会社・院内検査項目", "文書雛形", "帳票設定", "その他設定", "操作記録", "経営データ集計", "データ出力"]);
   await page.getByRole("button", { name: "✎ 編集" }).click();
   const facilityDialog = page.getByRole("dialog", { name: "医療機関情報の編集" });
   await facilityDialog.getByLabel("医療機関名").fill("スモーク眼科クリニック");
@@ -458,18 +458,47 @@ async function runDoctorFlow(browser) {
   assert.equal((await finalizedOptical.locator(".rx-sign-name").innerText()).replace("印", "").trim(), "院長", "the role in parentheses is not printed");
   assert.match(await finalizedOptical.locator(".rx-no").innerText(), /No\. \d{8}-[0-9A-F]{6}-1/u, "the prescription number comes from the encounter and version");
   // 利用者（施設管理の利用者管理と同じ列）。［編集］で印刷用の氏名を決める
-  await page.locator(".settings-nav-item", { hasText: "利用者" }).click();
+  // replicate-2（admin）: 利用者管理はデジカル p.201 の表（最終更新・最終ログイン・パスワード更新）と、［編集］のダイアログ
+  await page.locator(".settings-nav-item", { hasText: "利用者管理" }).click();
   await page.waitForURL(/#users$/u);
-  await page.locator(".master-head.user-cols").getByText("ログイン ID").waitFor();
-  await page.locator(".master-row").filter({ hasText: "院長" }).first().click();
+  const usersTable = page.locator(".users-table");
+  await usersTable.getByRole("columnheader", { name: "最終ログイン" }).waitFor();
+  await usersTable.getByRole("columnheader", { name: "パスワード更新" }).waitFor();
+  await usersTable.locator("tr").filter({ hasText: "院長" }).first().getByRole("button", { name: /を編集$/u }).click();
   const staffPanel = page.getByRole("dialog", { name: "利用者の編集" });
+  await staffPanel.getByRole("group", { name: "施設管理権限" }).waitFor();
+  assert.equal(await staffPanel.getByRole("radio", { name: "なし" }).isDisabled(), true, "you cannot remove your own administrator right");
+  assert.equal(await staffPanel.getByRole("button", { name: "無効化" }).count(), 0, "you cannot disable yourself");
   await staffPanel.getByLabel("印刷用の氏名").fill("山田 一郎");
   await staffPanel.getByText("紙には「山田 一郎」と出ます。", { exact: false }).waitFor();
   await staffPanel.getByRole("button", { name: "保存", exact: true }).click();
-  await staffPanel.getByText("保存しました").waitFor();
-  await page.locator(".master-row").filter({ hasText: "山田 一郎" }).waitFor();
-  assert.equal(await staffPanel.getByRole("button", { name: "停止する" }).count(), 0, "staff rows cannot be stopped");
-  await staffPanel.getByRole("button", { name: "閉じる", exact: true }).click();
+  await staffPanel.waitFor({ state: "detached" });
+  await page.getByText("保存しました", { exact: false }).first().waitFor();
+  await usersTable.locator("tr").filter({ hasText: "山田 一郎" }).waitFor();
+  // 新規登録（仮のパスワードを出す）→ 無効化 → 一覧から隠れる
+  await page.getByRole("button", { name: "＋ 新規登録" }).click();
+  const newUser = page.getByRole("dialog", { name: "利用者の新規登録" });
+  await newUser.getByLabel("ログイン ID").fill("smoke-nurse");
+  await newUser.getByLabel("利用者名").fill("看護 花子");
+  await newUser.getByRole("checkbox", { name: "医師" }).uncheck();
+  await newUser.getByRole("checkbox", { name: "看護師" }).check();
+  const temporary = (await newUser.locator(".admin-password code").innerText()).trim();
+  assert.ok(temporary.length >= 12, "the temporary password meets the policy");
+  await newUser.getByRole("button", { name: "登録", exact: true }).click();
+  await newUser.waitFor({ state: "detached" });
+  const nurseRow = usersTable.locator("tr").filter({ hasText: "smoke-nurse" });
+  await nurseRow.getByText("看護師").waitFor();
+  await nurseRow.getByRole("button", { name: /を編集$/u }).click();
+  const nursePanel = page.getByRole("dialog", { name: "利用者の編集" });
+  await nursePanel.getByRole("button", { name: "パスワードリセット" }).click();
+  await nursePanel.getByRole("button", { name: "リセットする" }).click();
+  await nursePanel.locator(".admin-password code").waitFor();
+  await nursePanel.getByRole("button", { name: "無効化" }).click();
+  await nursePanel.getByRole("button", { name: "無効にする" }).click();
+  await nursePanel.waitFor({ state: "detached" });
+  await nurseRow.waitFor({ state: "detached" });
+  await page.getByLabel(/無効な利用者を表示しない/u).uncheck();
+  await usersTable.locator("tr").filter({ hasText: "smoke-nurse" }).getByText("無効").waitFor();
   await finalizedOptical.reload();
   await finalizedOptical.locator(".rx-sign-name").filter({ hasText: "山田 一郎" }).waitFor();
   await finalizedOptical.goto(`${encounterUrl}/print`);
@@ -951,10 +980,17 @@ async function runReceptionFlow(browser) {
   await detail.locator(".bill-items").waitFor();
   await page.evaluate(() => {
     window.__printed = [];
-    window.print = () => window.__printed.push(document.querySelectorAll(".bill-slip").length);
+    window.print = () => window.__printed.push(document.querySelectorAll(".bill-slips .bill-slip").length);
   });
   await detail.getByRole("button", { name: "この人の連絡票を印刷" }).click();
+  // replicate-2（admin）: まず紙面のプレビュー（デジカルの帳票の PDF 表示）。［印刷］で印刷し、プレビューは閉じるまで残る
+  const slipPreview = page.getByRole("dialog", { name: "会計連絡票" });
+  await slipPreview.locator(".bill-slip").first().waitFor();
+  assert.equal(await slipPreview.locator(".bill-slip").count(), 1, "the preview shows only that patient's slip");
+  await slipPreview.getByRole("button", { name: "印刷", exact: true }).click();
   await page.waitForFunction(() => window.__printed.length === 1);
+  await slipPreview.getByRole("button", { name: "閉じる" }).click();
+  await slipPreview.waitFor({ state: "detached" });
   assert.deepEqual(await page.evaluate(() => window.__printed), [1]);
   // 全件 CSV は「…」から、確認してから
   await page.locator("summary[aria-label=\"会計連携のその他の操作\"]").click();

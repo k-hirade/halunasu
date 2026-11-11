@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useEyeApi } from "./eye-api";
 import { LetterSheet } from "./letter-sheet";
 import { usePrintNames } from "./use-print-names";
+import { usePrintSettings } from "./print-settings";
 import { PrintMessage, PrintShell } from "./print-shell";
 import { formatDateTime } from "../lib/format";
 
@@ -12,6 +13,7 @@ import { formatDateTime } from "../lib/format";
 export function DocumentPrint({ documentId }) {
   const api = useEyeApi();
   const printNames = usePrintNames();
+  const printSettings = usePrintSettings();
   const [document, setDocument] = useState(null);
   const [error, setError] = useState("");
 
@@ -52,7 +54,7 @@ export function DocumentPrint({ documentId }) {
       title={document.title}
       watermark={discarded ? "破棄済み" : "下書き・未確定"}
     >
-      <LetterSheet document={document} printNames={printNames} />
+      <LetterSheet document={document} printNames={printNames} settings={printSettings} />
     </PrintShell>
   );
 }

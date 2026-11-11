@@ -69,6 +69,8 @@ for (const methodName of [
   "saveStaffProfile",
   "getFacilitySettings",
   "saveFacilitySettings",
+  "getClinicConfig",
+  "saveClinicConfig",
   "getPatientProfile",
   "savePatientProfile",
   "createAppointment",
