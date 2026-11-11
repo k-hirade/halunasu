@@ -240,6 +240,23 @@ async function runDoctorFlow(browser) {
   await page.getByRole("button", { name: "シェーマ追加" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "右眼眼底" }).click();
   await drawStroke(page);
+  // ==== replicate-2 eye: シェーマの道具（四角・元に戻す・やり直す）。下絵の一覧と前回のシェーマの欄がある ====
+  {
+    const sketchDialog = page.getByRole("dialog");
+    await sketchDialog.getByRole("button", { name: "四角", exact: true }).click();
+    const sbox = await page.locator(".sketch-editor .sketch-canvas").boundingBox();
+    await page.mouse.move(sbox.x + sbox.width * 0.2, sbox.y + sbox.height * 0.2);
+    await page.mouse.down();
+    await page.mouse.move(sbox.x + sbox.width * 0.35, sbox.y + sbox.height * 0.35, { steps: 4 });
+    await page.mouse.up();
+    assert.equal(await page.locator(".sketch-editor .sketch-canvas > rect").count(), 2, "rectangle tool adds a rect (plus the paper)");
+    await sketchDialog.getByRole("button", { name: "元に戻す" }).click();
+    assert.equal(await page.locator(".sketch-editor .sketch-canvas > rect").count(), 1, "undo removes the rectangle");
+    await page.keyboard.press("Control+Shift+Z");
+    assert.equal(await page.locator(".sketch-editor .sketch-canvas > rect").count(), 2, "redo restores it");
+    assert.ok(await page.locator(".sketch-template-row").count() >= 15, "the template list shows all eye templates");
+    await sketchDialog.getByRole("button", { name: "ペン", exact: true }).click();
+  }
   await page.getByRole("dialog").getByRole("button", { name: "保存" }).click();
   await page.locator(".sketch-strip .sketch-thumb polyline").first().waitFor();
   // 既往・全身疾患・内服は主訴・所見の上に 1 行で出し、同じ編集ダイアログで直す
@@ -318,6 +335,10 @@ async function runDoctorFlow(browser) {
   await card.locator(".history-group.is-order").first().dragTo(page.locator(".chart-col-acts .chart-col-head"));
   await page.getByText(/検査・処置を複写しました|同じ検査・処置はすでにあるため/u).first().waitFor();
   assert.ok(await page.locator(".rp-group.is-order .rp-row").count() >= orderCount, "dropping an order group copies it");
+  // ==== replicate-2 eye: 所見の部位・方針も 1 つずつドラッグで写せる（トプコンの過去データのドラッグ＆ドロップ） ====
+  assert.ok(await card.locator('.history-finding[data-copy-kind="finding"]').count() > 0, "finding rows are draggable");
+  await card.locator('.history-finding[data-copy-kind="finding"]').first().dragTo(page.locator(".chart-col-findings .chart-col-head"));
+  await page.getByText(/から(前眼部|隅角|中間透光体|眼底|C\/D|その他の所見)を複写しました/u).first().waitFor();
   // 検査値（API で入れた記録）を帯から確認する
   await page.getByText("保存済み").waitFor({ timeout: 15_000 });
   await addExamRecord(page, revisitId, { vision: { far: { od: { corrected: "0.8" } } }, iop: { od: { readings: [23, 24, 22], method: "nct" } }, refraction: { od: { sphere: -1.25 } } });
@@ -528,7 +549,17 @@ async function runDoctorFlow(browser) {
   await page.getByRole("button", { name: "閉じる" }).click();
   await page.getByRole("link", { name: "比較 ›" }).click();
   await page.getByRole("heading", { name: "画像の比較" }).waitFor();
-  // 患者帯（アレルギー）・件数つきの種類チップ・既定は「前回 vs 最新」・片側だけ送る
+  // ==== replicate-2 eye: 経過（IMAGEnet 6 Follow-up）。画像のある日が 2 日以上なら既定。上段＝最新、下段＝前回 ====
+  await page.locator('.cmp-followup-row[data-role="followup"] img.file-preview').first().waitFor();
+  assert.equal(await page.getByRole("button", { name: "経過", exact: true }).getAttribute("aria-pressed"), "true");
+  assert.equal(await page.getByLabel("基準の日付", { exact: true }).inputValue(), "2026-05-01");
+  assert.equal(await page.locator('.cmp-followup-row[data-role="baseline"] .cmp-fu-cell').count(), await page.locator('.cmp-followup-row[data-role="followup"] .cmp-fu-cell').count(), "type columns line up between rows");
+  await page.getByRole("button", { name: "基準の日付を次へ" }).click();
+  assert.notEqual(await page.getByLabel("基準の日付", { exact: true }).inputValue(), "2026-05-01");
+  await page.getByRole("button", { name: "初回", exact: true }).click();
+  assert.equal(await page.getByLabel("基準の日付", { exact: true }).inputValue(), "2026-05-01");
+  await page.getByRole("button", { name: "比較", exact: true }).click();
+  // 患者帯（アレルギー）・件数つきの種類チップ・比較は「前回 vs 最新」・片側だけ送る
   await page.getByText("アレルギー: ペニシリン系（発疹）").first().waitFor();
   await page.locator(".cmp-grid img.file-preview").nth(1).waitFor();
   assert.match(await page.locator(".cmp-chip").first().innerText(), /OCT\s*2/u);
@@ -548,6 +579,28 @@ async function runDoctorFlow(browser) {
   await page.locator(".cmp-strip").waitFor();
   await page.getByRole("link", { name: "← 患者ページ" }).click();
   await page.locator(".trend-svg").waitFor();
+  // ==== replicate-2 eye: 顔写真（ファイルの種類「顔写真」）を帯に出す・IOL 管理・術前検査 ====
+  await uploadFile(pngPath, { kind: "face_photo", eye: "ou", title: "顔写真" });
+  await page.locator(".patient-banner .pt-photo img").waitFor();
+  await page.locator(".patient-banner .pt-photo").click();
+  await page.getByRole("dialog", { name: "顔写真" }).locator("img.pt-photo-large").waitFor();
+  await page.getByRole("dialog", { name: "顔写真" }).getByRole("button", { name: "閉じる" }).click();
+  await page.getByRole("tab", { name: "IOL", exact: true }).click();
+  await page.getByText("記録はありません。").first().waitFor();
+  await page.getByRole("button", { name: "＋ 右眼に追加" }).click();
+  const iolDialog = page.getByRole("dialog", { name: /IOL の記録/u });
+  await iolDialog.getByLabel("レンズ（型番）", { exact: true }).fill("SN60WF");
+  await iolDialog.getByLabel("度数（D）", { exact: true }).fill("21.5");
+  await iolDialog.getByLabel("A定数", { exact: true }).fill("119");
+  await iolDialog.getByLabel("眼軸長（mm）", { exact: true }).fill("23.45");
+  await iolDialog.getByRole("button", { name: "保存", exact: true }).click();
+  await page.getByText("IOL の記録を保存しました。").waitFor();
+  assert.match(await page.locator(".iol-eye").first().locator("tbody tr").first().innerText(), /SN60WF[\s\S]*\+21\.50/u);
+  await page.getByRole("tab", { name: "術前検査", exact: true }).click();
+  assert.equal(await page.locator(".preop-eye").count(), 2);
+  assert.match(await page.locator(".preop-eye").first().innerText(), /23\.45 mm[\s\S]*SN60WF/u);
+  await page.getByRole("tab", { name: "カルテ概要", exact: true }).click();
+  await page.locator(".ps-info .pt-photo").waitFor();
 
   // 定型文とセットを登録して、新しいカルテで使う（定型文は複数行、作った後に表示名を直す）
   await page.goto(`${baseUrl}/settings#phrases`);
@@ -1056,6 +1109,14 @@ async function runOrthoptistFlow(browser) {
   assert.equal(new URL(page.url()).pathname, "/", "a single click must not open the chart");
   assert.equal(await waitingRow.getAttribute("aria-selected"), "true");
   assert.equal(await page.getByRole("button", { name: "次の患者" }).isEnabled(), true);
+  // ==== replicate-2 eye: 1280px 以上では概要の右に縦のランチャー（診察開始・カルテ・検査入力・患者・視力眼圧・画像・IOL・次の患者） ====
+  await page.setViewportSize({ width: 1366, height: 768 });
+  const launcher = page.getByRole("navigation", { name: "選んだ患者の操作" });
+  await launcher.getByRole("button", { name: /診察開始/u }).waitFor();
+  for (const name of ["患者", "視力眼圧", "画像", "IOL"]) await launcher.getByRole("link", { name: new RegExp(name, "u") }).first().waitFor();
+  assert.equal(await summary.getByRole("button", { name: "診察開始" }).count(), 0, "actions move to the launcher");
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await summary.getByRole("button", { name: "診察開始" }).waitFor();
   await page.getByRole("tab", { name: /^未確定カルテ/u }).click();
   await page.getByRole("region", { name: "未確定カルテ" }).waitFor();
   await page.getByRole("tab", { name: /^全て/u }).click();
@@ -1144,7 +1205,23 @@ async function runOrthoptistFlow(browser) {
   const dataDialog = page.getByRole("dialog", { name: "本日の検査記録" });
   await dataDialog.getByText(/14 15 15/u).waitFor();
   await dataDialog.getByText(/4灯（融像）/u).waitFor();
+  // ==== replicate-2 eye: データ表示はレポート（検査ごとの色の帯の見出し＋本文、左に目次） ====
+  assert.ok(await dataDialog.locator(".rd-report-band").count() >= 2, "each exam has a heading band");
+  assert.ok(await dataDialog.locator(".rd-report-index-link").count() >= 2, "the report has an index");
   await dataDialog.getByRole("button", { name: "閉じる" }).click();
+  // ==== replicate-2 eye: 機器データ取込（貼り付け → プレビュー → 取り込む → レフ値のパネルに出る。登録前） ====
+  await page.getByRole("tab", { name: "視力" }).click();
+  await page.getByRole("button", { name: "機器データ取込" }).click();
+  const importPanel = page.locator(".rd-import");
+  await importPanel.getByLabel("機器データ（貼り付け）").fill("R -1.25 -0.50 180\nL -2.00 -0.75 90");
+  await importPanel.locator(".rd-import-lines").getByText(/S-1\.25 C-0\.50 A180/u).waitFor();
+  await importPanel.getByRole("button", { name: "取り込む", exact: true }).click();
+  const refPanel = page.locator(".rd-device").filter({ hasText: "レフ値" });
+  await refPanel.getByText(/<R> -1\.25 -0\.50 180/u).waitFor();
+  await refPanel.getByText("手入力取込").waitFor();
+  assert.equal(await page.locator(".rd-import").count(), 0, "import panel closes after import");
+  // 取り込んだ値は登録前（入力中）。キャンセルで登録前に戻す
+  await page.getByRole("button", { name: "キャンセル" }).click();
   // 前の記録に切り替えて直す → キャンセルで登録前に戻る
   await page.locator(".rd-record-chip").filter({ hasText: "09:00" }).click();
   await page.getByRole("tab", { name: "視力" }).click();
