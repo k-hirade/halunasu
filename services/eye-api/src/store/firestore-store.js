@@ -15,6 +15,8 @@ import {
   eyeSetFolderPath,
   eyeStaffProfilePath,
   eyeFacilitySettingsPath,
+  eyePatientMarksPath,
+  eyeReceptionSettingsPath,
   organizationPath
 } from "../../../../packages/firestore-schema/src/index.js";
 import { sortByDate } from "../../../../packages/eye-core/src/index.js";
@@ -266,6 +268,36 @@ export class FirestoreEyeStore {
       const current = dataOrNull(await transaction.get(ref));
       if ((current?.revision || 0) !== expectedRevision) throw storeError("ConflictError", 409, "facility settings were updated by someone else; reload and try again");
       const saved = { ...settings, orgId };
+      transaction.set(ref, saved);
+      return saved;
+    });
+  }
+
+  async getReceptionSettings(orgId) {
+    return dataOrNull(await this.doc(eyeReceptionSettingsPath(orgId)).get());
+  }
+
+  async saveReceptionSettings(orgId, settings, expectedRevision) {
+    return this.db.runTransaction(async (transaction) => {
+      const ref = this.doc(eyeReceptionSettingsPath(orgId));
+      const current = dataOrNull(await transaction.get(ref));
+      if ((current?.revision || 0) !== expectedRevision) throw storeError("ConflictError", 409, "reception settings were updated by someone else; reload and try again");
+      const saved = { ...settings, orgId };
+      transaction.set(ref, saved);
+      return saved;
+    });
+  }
+
+  async getPatientMarks(orgId, patientId) {
+    return dataOrNull(await this.doc(eyePatientMarksPath(orgId, patientId)).get());
+  }
+
+  async savePatientMarks(orgId, record, expectedRevision) {
+    return this.db.runTransaction(async (transaction) => {
+      const ref = this.doc(eyePatientMarksPath(orgId, record.patientId));
+      const current = dataOrNull(await transaction.get(ref));
+      if ((current?.revision || 0) !== expectedRevision) throw storeError("ConflictError", 409, "patient marks were updated by someone else; reload and try again");
+      const saved = { ...record, orgId };
       transaction.set(ref, saved);
       return saved;
     });

@@ -38,7 +38,42 @@ export function buildAppointment({ appointmentId, orgId, input, patientSnapshot,
   };
 }
 
+// 受付編集履歴（デジカルの受付編集履歴）に残す項目。値は画面に出せる短い文字列だけ（患者の情報は氏名のみ）。
+export const APPOINTMENT_HISTORY_FIELDS = Object.freeze(["date", "time", "purpose", "note", "doctorMemberId", "department", "patientId", "patientName", "receptionLabels", "location"]);
+const EDIT_HISTORY_LIMIT = 50;
+
+// before → after で変わった項目を 1 件の履歴にして足す（変わっていなければそのまま）。古いものから捨てて 50 件まで。
+export function withEditHistory(before, after, { actor, now }) {
+  const changes = [];
+  for (const field of APPOINTMENT_HISTORY_FIELDS) {
+    const from = historyValue(before[field]);
+    const to = historyValue(after[field]);
+    if (from !== to) changes.push({ field, from, to });
+  }
+  if (!changes.length) return after;
+  return { ...after, editHistory: [...(before.editHistory || []), { at: now, by: actor, changes }].slice(-EDIT_HISTORY_LIMIT) };
+}
+
+function historyValue(value) {
+  if (Array.isArray(value)) return value.join("、");
+  return String(value ?? "").slice(0, 200);
+}
+
+// 受付の作成・編集・状態の変更を時刻の順に並べる（受付編集履歴の画面用）
+export function appointmentHistory(appointment) {
+  const entries = [
+    { kind: "created", at: appointment.createdAt, by: appointment.createdBy || null },
+    ...(appointment.statusHistory || []).filter((item, index) => !(index === 0 && item.at === appointment.createdAt)).map((item) => ({ kind: "status", at: item.at, by: item.by || null, status: item.status })),
+    ...(appointment.editHistory || []).map((item) => ({ kind: "edit", at: item.at, by: item.by || null, changes: item.changes }))
+  ];
+  return entries.filter((item) => item.at).sort((left, right) => String(left.at).localeCompare(String(right.at)));
+}
+
 export function applyAppointmentUpdate(current, input, { patientSnapshot, actor, now }) {
+  return withEditHistory(current, applyAppointmentFields(current, input, { patientSnapshot, actor, now }), { actor, now });
+}
+
+function applyAppointmentFields(current, input, { patientSnapshot, actor, now }) {
   return {
     ...current,
     date: input.date ?? current.date,

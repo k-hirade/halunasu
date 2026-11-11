@@ -83,6 +83,7 @@ import {
   buildAppointment,
   isActiveAppointment
 } from "./appointments.js";
+import { advancedPatientSearch, loadPatientMarks, parseAdvancedSearch, routeReception } from "./reception.js";
 import { billingCsv, buildBillingEncounter, handoffListItem, handoffSnapshotOf, handoffStatus } from "./billing.js";
 import {
   applyDocumentUpdate,
@@ -211,6 +212,13 @@ async function routeEyeApiRequest(input = {}) {
     return ok({ context: contextView(context) });
   }
 
+  // 受付の設定・患者マーク・受付 1 件と履歴・ラベルと場所（reception.js）
+  const receptionResponse = await routeReception({
+    method, parts, url, input, context, orgId, actor, now, audit, eyeStore, platformStore,
+    helpers: { ok, requireAccess, requirePatient, requireAppointment }
+  });
+  if (receptionResponse) return receptionResponse;
+
   if (method === "GET" && matches(parts, ["v1", "eye", "bootstrap"])) {
     const [facilities, drugPresets, orderSets, setFolders, phrases, staff, facilitySettings] = await Promise.all([
       platformStore.listFacilities(orgId),
@@ -260,14 +268,25 @@ async function routeEyeApiRequest(input = {}) {
     const search = String(input.body?.q || "").trim().slice(0, 100);
     const birthDate = String(input.body?.birthDate || "").trim();
     if (birthDate && !DATE_PATTERN.test(birthDate)) throw badRequest("birthDate must be YYYY-MM-DD", "birthDate");
-    const patients = (await searchPatients(platformStore, orgId, { search, birthDate })).filter((patient) => patient.status !== "merged");
+    // 検索オプション（受診期間・傷病名・診療履歴・電話番号）があれば、その条件で絞る（reception.js）
+    const advanced = parseAdvancedSearch(input.body || {});
+    let truncated;
+    let patients;
+    if (advanced) {
+      const found = await advancedPatientSearch({ platformStore, eyeStore, orgId, options: advanced, hasBaseQuery: Boolean(search || birthDate), baseSearch: () => searchPatients(platformStore, orgId, { search, birthDate }), limit: SEARCH_LIMIT });
+      patients = found.patients;
+      truncated = found.truncated;
+    } else {
+      patients = (await searchPatients(platformStore, orgId, { search, birthDate })).filter((patient) => patient.status !== "merged");
+    }
     // details: true（患者検索の画面）では、最終受付日と患者メモを付ける。候補の一覧（ヘッダー）では引かない。
     if (input.body?.details === true) {
       const tomorrow = addIsoDays(today(input), 1);
       const details = await Promise.all(patients.map((patient) => patientVisitDetails(eyeStore, orgId, patient.patientId, tomorrow)));
-      return ok({ patients: patients.map((patient, index) => ({ ...patient, lastVisitDate: details[index].lastVisitDate, patientMemo: details[index].patientMemo })), limit: SEARCH_LIMIT });
+      const marks = await loadPatientMarks(eyeStore, orgId, patients.map((patient) => patient.patientId));
+      return ok({ patients: patients.map((patient, index) => ({ ...patient, lastVisitDate: details[index].lastVisitDate, patientMemo: details[index].patientMemo, marks: marks[patient.patientId]?.marks || [] })), limit: SEARCH_LIMIT, ...(advanced ? { advanced: true, truncated } : {}) });
     }
-    return ok({ patients });
+    return ok({ patients, ...(advanced ? { advanced: true, truncated } : {}) });
   }
 
   // 担当医の候補（受付・予約の医師の選択）。この医院の眼科で医師の役割を持つ有効な職員。

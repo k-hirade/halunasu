@@ -17,6 +17,8 @@ export class MemoryEyeStore {
     this.phrases = new Map();
     this.staffProfiles = new Map();
     this.facilitySettings = new Map();
+    this.receptionSettings = new Map();
+    this.patientMarks = new Map();
     this.documents = new Map();
     this.files = new Map();
     this.billingHandoffs = new Map();
@@ -146,6 +148,32 @@ export class MemoryEyeStore {
     if ((current?.revision || 0) !== expectedRevision) throw storeError("ConflictError", 409, "facility settings were updated by someone else; reload and try again");
     const saved = { ...settings, orgId };
     this.facilitySettings.set(orgId, clone(saved));
+    return clone(saved);
+  }
+
+  // 受付の設定（ラベル・マークの定義）。医院ごとに 1 件。版が違えば 409。
+  getReceptionSettings(orgId) {
+    return cloneOrNull(this.receptionSettings.get(orgId));
+  }
+
+  saveReceptionSettings(orgId, settings, expectedRevision) {
+    const current = this.receptionSettings.get(orgId);
+    if ((current?.revision || 0) !== expectedRevision) throw storeError("ConflictError", 409, "reception settings were updated by someone else; reload and try again");
+    const saved = { ...settings, orgId };
+    this.receptionSettings.set(orgId, clone(saved));
+    return clone(saved);
+  }
+
+  // 患者マーク。患者ごとに 1 件。版が違えば 409。
+  getPatientMarks(orgId, patientId) {
+    return cloneOrNull(this.forOrg(this.patientMarks, orgId).get(patientId));
+  }
+
+  savePatientMarks(orgId, record, expectedRevision) {
+    const records = this.forOrg(this.patientMarks, orgId);
+    if ((records.get(record.patientId)?.revision || 0) !== expectedRevision) throw storeError("ConflictError", 409, "patient marks were updated by someone else; reload and try again");
+    const saved = { ...record, orgId };
+    records.set(record.patientId, clone(saved));
     return clone(saved);
   }
 
