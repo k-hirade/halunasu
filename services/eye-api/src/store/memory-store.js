@@ -17,6 +17,7 @@ export class MemoryEyeStore {
     this.phrases = new Map();
     this.staffProfiles = new Map();
     this.facilitySettings = new Map();
+    this.clinicConfig = new Map();
     this.documents = new Map();
     this.files = new Map();
     this.billingHandoffs = new Map();
@@ -146,6 +147,20 @@ export class MemoryEyeStore {
     if ((current?.revision || 0) !== expectedRevision) throw storeError("ConflictError", 409, "facility settings were updated by someone else; reload and try again");
     const saved = { ...settings, orgId };
     this.facilitySettings.set(orgId, clone(saved));
+    return clone(saved);
+  }
+
+  getClinicConfig(orgId, section) {
+    return cloneOrNull(this.forOrg(this.clinicConfig, orgId).get(section));
+  }
+
+  // 施設管理の追加の設定。項目ごとに 1 件。expectedRevision（まだ無いときは 0）が今の版と違えば 409。
+  saveClinicConfig(orgId, section, config, expectedRevision) {
+    const records = this.forOrg(this.clinicConfig, orgId);
+    const current = records.get(section);
+    if ((current?.revision || 0) !== expectedRevision) throw storeError("ConflictError", 409, "settings were updated by someone else; reload and try again");
+    const saved = { ...config, section, orgId };
+    records.set(section, clone(saved));
     return clone(saved);
   }
 

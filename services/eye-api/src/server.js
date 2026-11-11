@@ -95,6 +95,9 @@ import {
 } from "./documents.js";
 import { japanDate } from "./dates.js";
 import { buildFacilitySettings, effectiveFacility, facilitiesWithSettings, facilitySettingsView, pickFacility, validateFacilitySettingsInput } from "./facility.js";
+import { assertClinicConfigSection, buildClinicConfig, CLINIC_CONFIG_SECTIONS, clinicConfigChangeSummary, clinicConfigView, labCatalogItems, validateClinicConfigInput } from "./clinic-config.js";
+import { fillTemplate, templateValues } from "./doc-templates.js";
+import { buildVisitReport, validateReportRange } from "./reports.js";
 import { invalidateLearningCache, learningList } from "./learning.js";
 import { defaultMasterIndex, MASTER_SEARCH_LIMIT } from "./masters.js";
 import { createId } from "./ids.js";
@@ -212,7 +215,7 @@ async function routeEyeApiRequest(input = {}) {
   }
 
   if (method === "GET" && matches(parts, ["v1", "eye", "bootstrap"])) {
-    const [facilities, drugPresets, orderSets, setFolders, phrases, staff, facilitySettings] = await Promise.all([
+    const [facilities, drugPresets, orderSets, setFolders, phrases, staff, facilitySettings, clinicConfig] = await Promise.all([
       platformStore.listFacilities(orgId),
       eyeStore.listDrugPresets(orgId),
       Promise.resolve(eyeStore.listOrderSets(orgId)).then(sortSets),
@@ -221,7 +224,9 @@ async function routeEyeApiRequest(input = {}) {
       // 紙に載せる氏名（memberId → 氏名）。読めなくても起動は止めない（画面側は表示名から括弧を除いて出す）。
       loadEyeStaff(platformStore, eyeStore, orgId).catch(() => []),
       // 医療機関情報（設定）。読めなくても起動は止めず、基本の施設情報で紙を作る。
-      loadFacilitySettings(eyeStore, orgId)
+      loadFacilitySettings(eyeStore, orgId),
+      // 施設管理の追加の設定（受付ラベル・帳票設定など）。読めなくても起動は止めず、既定の値を使う。
+      loadClinicConfig(eyeStore, orgId, ["labLists", "receptionLabels", "clinicHours", "printSettings", "otherSettings"])
     ]);
     const printNames = Object.fromEntries(staff.map((item) => [item.memberId, item.resolvedName]));
     return ok({
@@ -229,7 +234,9 @@ async function routeEyeApiRequest(input = {}) {
       // 紙（印刷・紹介状）が読む facilities は、医療機関情報で入れた値を重ねたもの（形は従来どおり）
       facilities: facilitiesWithSettings(facilities, facilitySettings),
       facilitySettings: facilitySettingsView(facilitySettings),
-      drugPresets, orderSets, setFolders, phrases, orderCatalog: DEFAULT_ORDER_CATALOG, printNames });
+      // オーダーの候補 = 既定の候補 + 施設管理の院内検査項目（有効なもの）
+      drugPresets, orderSets, setFolders, phrases, orderCatalog: [...DEFAULT_ORDER_CATALOG, ...labCatalogItems(clinicConfig.labLists.value)], printNames,
+      clinicConfig: { receptionLabels: clinicConfig.receptionLabels.value, clinicHours: clinicConfig.clinicHours.value, printSettings: clinicConfig.printSettings.value, otherSettings: clinicConfig.otherSettings.value } });
   }
 
   // 公開マスター（医薬品・傷病名・修飾語・診療行為）の検索。語は患者の情報ではないので URL で受け取る。
@@ -306,9 +313,11 @@ async function routeEyeApiRequest(input = {}) {
     const patients = await platformStore.listPatients(orgId);
     const bundles = [];
     for (const patient of patients) bundles.push(await exportPatient(eyeStore, orgId, patient));
-    const [drugPresets, orderSets, setFolders, phrases, facilitySettings] = await Promise.all([eyeStore.listDrugPresets(orgId), eyeStore.listOrderSets(orgId), eyeStore.listSetFolders(orgId), eyeStore.listPhrases(orgId), loadFacilitySettings(eyeStore, orgId)]);
+    const [drugPresets, orderSets, setFolders, phrases, facilitySettings, clinicConfig] = await Promise.all([eyeStore.listDrugPresets(orgId), eyeStore.listOrderSets(orgId), eyeStore.listSetFolders(orgId), eyeStore.listPhrases(orgId), loadFacilitySettings(eyeStore, orgId), loadClinicConfig(eyeStore, orgId)]);
     await audit({ eventType: "eye.clinic_exported", targetType: "organization", targetId: orgId, safePayload: { patientCount: bundles.length } });
-    return ok({ format: "halunasu-eye-export-v1", exportedAt: now, orgId, settings: { drugPresets, orderSets, setFolders, phrases, ...(facilitySettings ? { facilitySettings: facilitySettingsView(facilitySettings) } : {}) }, patients: bundles });
+    // 施設管理の追加の設定は保存したものだけを入れる（形は { 項目: { value, revision } }）
+    const savedConfig = Object.fromEntries(Object.entries(clinicConfig).filter(([, item]) => item.revision > 0));
+    return ok({ format: "halunasu-eye-export-v1", exportedAt: now, orgId, settings: { drugPresets, orderSets, setFolders, phrases, ...(facilitySettings ? { facilitySettings: facilitySettingsView(facilitySettings) } : {}), ...(Object.keys(savedConfig).length ? { clinicConfig: savedConfig } : {}) }, patients: bundles });
   }
 
   if (method === "POST" && matches(parts, ["v1", "eye", "patients"])) {
@@ -849,6 +858,24 @@ async function routeEyeApiRequest(input = {}) {
       await audit({ eventType: "eye.document_discarded", targetType: "document", targetId: documentId, patientId: document.patientId, safePayload: { type: document.type } });
       return ok({ document });
     }
+    // 文書雛形から本文を作る（下書きだけ）。雛形の {{患者氏名}} などを、この文書の患者・差し込み元のカルテ・患者プロファイルで埋める。
+    if (method === "POST" && action === "apply-template" && parts.length === 5) {
+      requireAccess(context, EYE_DOCUMENT_ROLES, "Document access is required");
+      requirePlatformCsrf(input.headers || {}, context.session);
+      const expectedRevision = requiredRevision(input.body);
+      const templateId = String(input.body?.templateId || "");
+      const templates = (await loadClinicConfig(eyeStore, orgId, ["docTemplates"])).docTemplates.value.templates;
+      const template = templates.find((item) => item.templateId === templateId && item.active !== false);
+      if (!template) throw notFoundError("template not found");
+      const history = await eyeStore.listPatientEncounters(orgId, current.patientId);
+      const encounter = current.encounterId ? history.find((item) => item.encounterId === current.encounterId) || null : null;
+      const profile = await loadProfile(eyeStore, orgId, current.patientId, history);
+      const body = fillTemplate(template.body, templateValues({ document: current, encounter, profile }));
+      const document = applyDocumentUpdate(current, { title: template.title || current.title, recipient: current.recipient, body, issueDate: current.issueDate }, { actor, now });
+      await eyeStore.replaceDocument(orgId, document, expectedRevision);
+      await audit({ eventType: "eye.document_updated", targetType: "document", targetId: documentId, patientId: document.patientId, safePayload: { templateId } });
+      return ok({ document });
+    }
     if (method === "POST" && action === "duplicate" && parts.length === 5) {
       requireAccess(context, EYE_DOCUMENT_ROLES, "Document access is required");
       requirePlatformCsrf(input.headers || {}, context.session);
@@ -1190,6 +1217,37 @@ async function routeEyeApiRequest(input = {}) {
     return ok({ facilitySettings: facilitySettingsView(settings), facility: effectiveFacility(pickFacility(facilities), settings), baseFacility: pickFacility(facilities) });
   }
 
+  // 施設管理の追加の設定（文書雛形・検査会社と院内検査項目・受付ラベルと患者マーク・診療時間・帳票設定・その他設定）。
+  // 見るのは眼科の役割を持つ全員、直すのは管理者。PUT は項目ごとに { expectedRevision, value }。
+  if (method === "GET" && matches(parts, ["v1", "eye", "clinic-config"])) {
+    return ok({ clinicConfig: await loadClinicConfig(eyeStore, orgId) });
+  }
+  if (method === "GET" && parts.length === 4 && matches(parts.slice(0, 3), ["v1", "eye", "clinic-config"])) {
+    assertClinicConfigSection(parts[3]);
+    return ok({ section: parts[3], ...(await loadClinicConfig(eyeStore, orgId, [parts[3]]))[parts[3]] });
+  }
+  if (method === "PUT" && parts.length === 4 && matches(parts.slice(0, 3), ["v1", "eye", "clinic-config"])) {
+    const section = parts[3];
+    assertClinicConfigSection(section);
+    requireAccess(context, EYE_SETTINGS_ROLES, "Eye settings access is required");
+    requirePlatformCsrf(input.headers || {}, context.session);
+    const { expectedRevision, value } = validateClinicConfigInput(section, input.body || {}, { createId });
+    const current = await eyeStore.getClinicConfig(orgId, section);
+    const saved = await eyeStore.saveClinicConfig(orgId, section, buildClinicConfig(current, section, value, { actor, now }), expectedRevision);
+    await audit({ eventType: "eye.clinic_config_saved", targetType: "clinic_config", targetId: section, safePayload: clinicConfigChangeSummary(section, current?.value, value) });
+    return ok({ section, ...clinicConfigView(section, saved) });
+  }
+
+  // 経営データの集計（期間の予約・受付の件数と受診の一覧）。CSV は画面で作る。出力したことは操作記録に残す。
+  if (method === "GET" && matches(parts, ["v1", "eye", "reports", "visits"])) {
+    requireAccess(context, EYE_SETTINGS_ROLES, "Reports require an administrator");
+    const range = validateReportRange(url.searchParams);
+    const appointments = await eyeStore.listAppointmentsInRange(orgId, range.from, range.to);
+    const report = buildVisitReport(appointments, range);
+    await audit({ eventType: "eye.report_exported", targetType: "organization", targetId: orgId, safePayload: { from: range.from, to: range.to, visitCount: report.visits.length, includeMemo: range.includeMemo } });
+    return ok({ report, generatedAt: now });
+  }
+
   // 印刷用の氏名。眼科の役割を持つ職員の一覧と、紙に載せる氏名（未設定なら空）を返す。
   if (method === "GET" && matches(parts, ["v1", "eye", "staff-profiles"])) {
     requireAccess(context, EYE_SETTINGS_ROLES, "Eye settings access is required");
@@ -1400,6 +1458,15 @@ async function buildWorklist(eyeStore, platformStore, orgId) {
 // 眼科の役割を持つ職員と、その印刷用の氏名。
 // セットの保存で「送って空にした」ときに空へ戻す項目
 const SET_CLEARABLE_FIELDS = Object.freeze({ folderId: () => "", diagnoses: () => [], findingsText: () => "" });
+
+// 施設管理の追加の設定。項目ごとに { value, revision, updatedAt, updatedBy }。読めない・保存が無いときは既定の値。
+async function loadClinicConfig(eyeStore, orgId, sections = CLINIC_CONFIG_SECTIONS) {
+  const entries = await Promise.all(sections.map(async (section) => {
+    const stored = await Promise.resolve().then(() => eyeStore.getClinicConfig?.(orgId, section) ?? null).catch(() => null);
+    return [section, clinicConfigView(section, stored)];
+  }));
+  return Object.fromEntries(entries);
+}
 
 async function loadFacilitySettings(eyeStore, orgId) {
   return Promise.resolve().then(() => eyeStore.getFacilitySettings?.(orgId) ?? null).catch(() => null);
