@@ -374,7 +374,96 @@ const STATES = {
   "settings-panel-dark": settingsRow("settingsDrugs", 1),
   "settings-drugs-new": settingsButton("settingsDrugs", "＋ 薬剤を追加"),
   "settings-export": { path: "settingsExport" },
-  "settings-audit": { path: "settingsAudit" }
+  "settings-audit": { path: "settingsAudit" },
+
+  // ---- replicate-2 chart-main（docs/eye-ux/rep2-chart-main-20261111.md）: 中央・右のオーダー・右下の操作帯・カルテのダイアログ ----
+  // 13: 検査の帯を畳んで 主訴・所見｜処置・行為 を広く使う
+  "editor-exam-collapsed": { path: editorPath, run: async (page) => { await page.getByRole("button", { name: "検査の欄を畳む" }).click(); await page.waitForTimeout(200); } },
+  // 35: 右下の大きいボタンの操作帯（確定済みのカルテでは［送信］が塗りのボタン）
+  "editor-actionbar-finalized": { path: finalizedPath, run: async (page) => { await page.getByRole("toolbar", { name: "カルテの操作" }).scrollIntoViewIfNeeded(); } },
+  // 35: 検査依頼
+  "editor-exam-request": {
+    path: editorPath,
+    run: async (page) => {
+      await page.getByRole("toolbar", { name: "カルテの操作" }).getByRole("button", { name: "検査依頼" }).click();
+      const dialog = page.getByRole("dialog", { name: "検査依頼" });
+      await dialog.waitFor();
+      await dialog.getByRole("button", { name: "＋視・圧", exact: true }).click();
+      await page.waitForTimeout(300);
+    }
+  },
+  // 49: カルテの［¥ 送信］から送る中身を確認
+  "editor-send": {
+    path: finalizedPath,
+    run: async (page) => {
+      await page.getByRole("toolbar", { name: "カルテの操作" }).getByRole("button", { name: "送信" }).click();
+      await page.getByRole("dialog", { name: /会計情報をレセコンへ送りますか/u }).waitFor();
+      await page.waitForTimeout(800);
+    }
+  },
+  // 30: Rp のコメント追加ダイアログ（記載先・キーワード）
+  "editor-rp-comment": {
+    path: editorPath,
+    run: async (page) => {
+      const rp = firstRp(page);
+      await rp.scrollIntoViewIfNeeded();
+      await rp.locator("summary.rp-badge").first().click();
+      await page.getByRole("button", { name: /コメントを追加（探す/u }).first().click();
+      await page.getByRole("dialog", { name: "コメント追加" }).waitFor();
+    }
+  },
+  // 36: 警告一覧で 1 行を無効化した状態
+  "editor-next-dismissed": {
+    path: editorPath,
+    run: async (page) => {
+      await page.getByRole("toolbar", { name: "カルテの操作" }).getByRole("button", { name: /次へ/u }).click();
+      const dialog = page.getByRole("dialog", { name: /警告一覧|カルテを確定します/u });
+      await dialog.waitFor();
+      const dismiss = dialog.getByRole("button", { name: /を無効化$/u }).first();
+      if (await dismiss.count()) await dismiss.click();
+      await page.waitForTimeout(200);
+    }
+  },
+  // 29: 用法が未入力の Rp（赤いボタン）。新しい Rp に薬を入れた直後
+  "editor-rp-usage-missing": {
+    path: editorPath,
+    run: async (page, view) => {
+      await openRightPane(page, view);
+      await page.locator(".chart-right").getByRole("tab", { name: "投薬", exact: true }).click();
+      // よく使う薬剤は既定の用法を持つので、薬剤名をそのまま入れる（用法なし）
+      await page.getByLabel("オーダーを検索").fill("監査用の点眼");
+      await page.waitForTimeout(900);
+      await page.locator(".chart-right .order-item.is-free").click();
+      if (view.width < 1280) await page.locator(".chart-right").getByRole("button", { name: "閉じる" }).click();
+      const missing = page.locator(".usage-pill.is-missing").first();
+      await missing.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(300);
+    }
+  },
+  // 25: 定期登録のダイアログ
+  "editor-regular-create": {
+    path: editorPath,
+    run: async (page) => {
+      await page.getByRole("button", { name: "定期登録" }).click();
+      await page.getByRole("dialog", { name: "定期登録" }).waitFor();
+    }
+  },
+  // 25: 右下の「定期」を開いた状態（その場で 1 件登録してから開く）
+  "editor-order-regular": {
+    path: editorPath,
+    run: async (page, view) => {
+      await page.getByRole("button", { name: "定期登録" }).click();
+      const dialog = page.getByRole("dialog", { name: "定期登録" });
+      await dialog.getByLabel("定期の名前").fill(`監査 定期 ${view.width}`);
+      await dialog.getByRole("radio", { name: /毎回/u }).check();
+      await dialog.getByRole("button", { name: "登録" }).click();
+      await dialog.waitFor({ state: "detached" });
+      await openRightPane(page, view);
+      const head = page.locator(".order-regular > summary");
+      if (!(await page.locator(".order-regular[open]").count())) await head.click();
+      await page.waitForTimeout(300);
+    }
+  }
 };
 
 // ==== replicate-2 chart-left: カルテ左ペイン（デジカルの 2 段タブ・各タブ・ダイアログ） ====

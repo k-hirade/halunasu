@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { PER_EYE_PHRASE_TARGETS } from "@halunasu/eye-contracts";
 import { RX_BADGES, useMasterSearch } from "./chart-shared";
+import { pointsLabel, useMasterLookup } from "./chart-points";
 import { PHRASE_TARGET_LABELS } from "../lib/format";
 
 // 右のオーダー欄の区分タブ（デジカルの 2 段の区分 + 全て）。key はショートカットの数字キー。
@@ -34,9 +35,20 @@ function bundleLine(bundle) {
   ].filter(Boolean).join(" ");
 }
 
+// 検索語との突き合わせ（全角半角・ひらがなカタカナの違いをならす）
+function normalize(text) {
+  return String(text || "").normalize("NFKC").replace(/[ぁ-ゖ]/gu, (char) => String.fromCharCode(char.charCodeAt(0) + 0x60)).toLowerCase();
+}
+
+const REPEAT_LABELS = { next: "次回", every: "毎回" };
+export function regularRepeatLabel(item) {
+  return item.repeat === "months" ? `${item.repeatMonths || 1}か月ごと` : REPEAT_LABELS[item.repeat] || "次回";
+}
+
 export function OrderPanel({
   editable, category, setCategory, drugPresets, catalog, orderSets, setFolders, phrases, learning, canManageSets, selectedRp,
-  onAddDrug, onAddOrder, onAddLearning, onApplySet, onInsertPhrase, onCreateSet, onAddOptical, searchRef
+  onAddDrug, onAddOrder, onAddLearning, onApplySet, onInsertPhrase, onCreateSet, onAddOptical, searchRef,
+  regular = null, onApplyRegular = null, onEditRegular = null
 }) {
   const [query, setQuery] = useState("");
   const [eyeOnly, setEyeOnly] = useState(true);
@@ -66,6 +78,13 @@ export function OrderPanel({
     if (category === "procedure" || category === "surgery") return bundle.rows?.some((row) => row.kind === "procedure");
     return category === "all";
   });
+
+  // 検索中は、語を含む学習リストの束を結果の上に出す（デジカルの学習リスト: 用法・日数ごとの点線の枠）
+  const nq = normalize(q);
+  const learnedRxHits = q && DRUG_CATEGORIES.has(category) ? learnedRx.filter((bundle) => bundle.rows?.some((row) => row.kind !== "comment" && normalize(row.name).includes(nq))).slice(0, 8) : [];
+  const learnedOrderHits = q && PROCEDURE_CATEGORIES.has(category) ? (learning.order || []).filter((bundle) => bundle.rows?.some((row) => row.kind !== "comment" && normalize(row.name).includes(nq))).slice(0, 8) : [];
+  // 学習リストの検査・処置の行の点数（診療行為マスターのコードがある行）
+  const pointsOf = useMasterLookup("procedure", (learning.order || []).slice(0, LEARNING_LIMIT).flatMap((bundle) => (bundle.rows || []).map((row) => row.procedureCode)).filter(Boolean));
 
   const target = selectedRp ? (selectedRp.field === "prescriptions" ? "選択中の処方 Rp に入ります" : "選択中の検査・処置の束に入ります") : "新しい束として入ります";
   const showSearch = !["set", "optical", "phrase"].includes(category);
@@ -122,6 +141,16 @@ export function OrderPanel({
         ) : null}
         {showSearch && q ? (
           <>
+            {learnedRxHits.length ? (
+              <ResultGroup title="学習リスト（よく使う処方）">
+                {learnedRxHits.map((bundle) => <RxBundle bundle={bundle} editable={editable} key={bundle.key} onAdd={() => onAddLearning("prescriptions", bundle)} />)}
+              </ResultGroup>
+            ) : null}
+            {learnedOrderHits.length ? (
+              <ResultGroup title="学習リスト（よく使う検査・処置）">
+                {learnedOrderHits.map((bundle) => <OrderBundle bundle={bundle} editable={editable} key={bundle.key} onAdd={() => onAddLearning("orders", bundle)} pointsOf={pointsOf} />)}
+              </ResultGroup>
+            ) : null}
             {catalogItems.length ? (
               <ResultGroup title="院内の検査・処置">
                 {catalogItems.map((item) => (
@@ -173,17 +202,7 @@ export function OrderPanel({
             {DRUG_CATEGORIES.has(category) ? (
               <ResultGroup title="学習リスト（よく使う処方）">
                 {learnedRx.length ? learnedRx.slice(0, LEARNING_LIMIT).map((bundle) => (
-                  <button className="order-bundle" disabled={!editable} key={bundle.key} onClick={() => onAddLearning("prescriptions", bundle)} type="button">
-                    {bundle.rows.filter((row) => row.kind !== "comment").slice(0, 5).map((row, index) => (
-                      <span className="order-bundle-row" key={index}>
-                        <span className="rp-badge">{RX_BADGES[row.kind] || "薬"}</span>
-                        {/* 数量は「2 本」で割れないよう 1 つにまとめる */}
-                        <span className="order-bundle-name">{row.name}{row.quantity ? <span className="order-bundle-qty"> {row.quantity}{row.unit || ""}</span> : null}</span>
-                      </span>
-                    ))}
-                    {bundle.rows.length > 5 ? <span className="order-bundle-more">+{bundle.rows.length - 5}</span> : null}
-                    <span className="order-bundle-foot">{bundleLine(bundle)}<span className="order-bundle-count">{bundle.count}回</span></span>
-                  </button>
+                  <RxBundle bundle={bundle} editable={editable} key={bundle.key} onAdd={() => onAddLearning("prescriptions", bundle)} />
                 )) : <p className="muted small">確定したカルテが増えると、よく使う処方がここに並びます。</p>}
               </ResultGroup>
             ) : null}
@@ -201,13 +220,7 @@ export function OrderPanel({
             {learnedOrders.length ? (
               <ResultGroup title="学習リスト（よく使う検査・処置）">
                 {learnedOrders.slice(0, LEARNING_LIMIT).map((bundle) => (
-                  <button className="order-bundle" disabled={!editable} key={bundle.key} onClick={() => onAddLearning("orders", bundle)} type="button">
-                    {bundle.rows.filter((row) => row.kind !== "comment").slice(0, 5).map((row, index) => (
-                      <span className="order-bundle-row" key={index}><span className="rp-badge is-order">{row.kind === "procedure" ? "処置" : "検査"}</span>{row.name}{row.eye ? `（${{ od: "右", os: "左", ou: "両" }[row.eye]}）` : ""}</span>
-                    ))}
-                    {bundle.rows.length > 5 ? <span className="order-bundle-more">+{bundle.rows.length - 5}</span> : null}
-                    <span className="order-bundle-foot"><span className="order-bundle-count">{bundle.count}回</span></span>
-                  </button>
+                  <OrderBundle bundle={bundle} editable={editable} key={bundle.key} onAdd={() => onAddLearning("orders", bundle)} pointsOf={pointsOf} />
                 ))}
               </ResultGroup>
             ) : null}
@@ -226,7 +239,75 @@ export function OrderPanel({
           </>
         ) : null}
       </div>
+      {regular ? <RegularSection editable={editable} onApply={onApplyRegular} onEdit={onEditRegular} regular={regular} /> : null}
     </div>
+  );
+}
+
+// 学習リストの処方の束（デジカルの点線の枠: 薬の行と、用法・日数の行）
+function RxBundle({ bundle, editable, onAdd }) {
+  const rows = bundle.rows.filter((row) => row.kind !== "comment");
+  return (
+    <button className="order-bundle is-learned" disabled={!editable} onClick={onAdd} type="button">
+      {rows.slice(0, 5).map((row, index) => (
+        <span className="order-bundle-row" key={index}>
+          <span className="rp-badge">{RX_BADGES[row.kind] || "薬"}</span>
+          {/* 数量は「2 本」で割れないよう 1 つにまとめる */}
+          <span className="order-bundle-name">{row.name}{row.quantity ? <span className="order-bundle-qty"> {row.quantity}{row.unit || ""}</span> : null}</span>
+        </span>
+      ))}
+      {rows.length > 5 ? <span className="order-bundle-more">+{rows.length - 5}</span> : null}
+      <span className="order-bundle-foot">{bundleLine(bundle) || "用法なし"}<span className="order-bundle-count">{bundle.count}回</span></span>
+    </button>
+  );
+}
+
+function OrderBundle({ bundle, editable, onAdd, pointsOf }) {
+  const rows = bundle.rows.filter((row) => row.kind !== "comment");
+  return (
+    <button className="order-bundle is-learned" disabled={!editable} onClick={onAdd} type="button">
+      {rows.slice(0, 5).map((row, index) => (
+        <span className="order-bundle-row" key={index}>
+          <span className="rp-badge is-order">{row.kind === "procedure" ? "処置" : "検査"}</span>
+          <span className="order-bundle-name">{row.name}{row.eye ? `（${{ od: "右", os: "左", ou: "両" }[row.eye]}）` : ""}</span>
+          {pointsLabel(pointsOf(row.procedureCode)) ? <span className="order-points">{pointsLabel(pointsOf(row.procedureCode))}</span> : null}
+        </span>
+      ))}
+      {rows.length > 5 ? <span className="order-bundle-more">+{rows.length - 5}</span> : null}
+      <span className="order-bundle-foot"><span className="order-bundle-count">{bundle.count}回</span></span>
+    </button>
+  );
+}
+
+// 定期（デジカルの右下の「定期診療」）: この患者の定期を畳める欄で出す。今回の対象は印つきで上に。押すと中央に入る。
+function RegularSection({ regular, editable, onApply, onEdit }) {
+  const items = regular.items || [];
+  const due = items.filter((item) => item.due);
+  const [open, setOpen] = useState(null);
+  const isOpen = open ?? due.length > 0;
+  return (
+    <details className="order-regular" onToggle={(event) => setOpen(event.currentTarget.open)} open={isOpen}>
+      <summary className="order-regular-head">
+        <span>定期</span>
+        {items.length ? <span className="pane-tab-count">{items.length}</span> : null}
+        {due.length ? <span className="tag tag-warn">今回 {due.length}</span> : null}
+      </summary>
+      <div className="order-regular-body">
+        {regular.loading ? <p className="muted small">読み込み中…</p> : null}
+        {regular.error ? <p className="alert alert-danger small">{regular.error}</p> : null}
+        {!regular.loading && !items.length ? <p className="muted small">この患者の定期はありません。中央の［定期登録］で今のカルテから作れます。</p> : null}
+        {[...due, ...items.filter((item) => !item.due)].map((item) => (
+          <div className={`order-regular-row${item.due ? " is-due" : ""}`} key={item.setId}>
+            <button className="order-item order-regular-apply" disabled={!editable} onClick={() => onApply?.(item)} title="押すと今のカルテに入ります" type="button">
+              <span className="rp-badge is-plan">{regularRepeatLabel(item)}</span>
+              <span className="order-item-name">{item.name}</span>
+              <span className="muted small">処方{item.prescriptions.filter((row) => row.kind !== "comment").length}・検査{item.orders.filter((row) => row.kind !== "comment").length}</span>
+            </button>
+            {onEdit ? <button aria-label={`定期「${item.name}」を編集`} className="col-tool" onClick={() => onEdit(item)} type="button">✎</button> : null}
+          </div>
+        ))}
+      </div>
+    </details>
   );
 }
 
@@ -286,20 +367,23 @@ function PhraseList({ phrases, editable, onInsertPhrase }) {
       {groups.map(([target, label, items]) => (
         <section className="order-group" key={target}>
           <h3 className="order-group-title">{label}</h3>
-          {items.map((item) => (
-            <div className="phrase-row" key={item.phraseId}>
-              <span className="phrase-text" title={item.text}>{item.label || item.text}</span>
-              {PER_EYE_PHRASE_TARGETS.includes(target) ? (
-                <span className="phrase-actions">
-                  <button className="btn btn-chip" disabled={!editable} onClick={() => onInsertPhrase(item, "od")} type="button">右</button>
-                  <button className="btn btn-chip" disabled={!editable} onClick={() => onInsertPhrase(item, "os")} type="button">左</button>
-                  <button className="btn btn-chip" disabled={!editable} onClick={() => onInsertPhrase(item, "both")} type="button">両</button>
+          {/* トプコンの所見入力サポート: 定型文はボタンの並び。押すとその欄に入る。眼ごとの欄は右・左・両を選ぶ */}
+          <div className="phrase-tiles">
+            {items.map((item) => (PER_EYE_PHRASE_TARGETS.includes(target) ? (
+              <div className="phrase-tile is-eye" key={item.phraseId} title={item.text}>
+                <span className="phrase-tile-label">{item.label || item.text}</span>
+                <span className="phrase-tile-eyes">
+                  <button aria-label={`${item.label || item.text}を右眼に挿入`} className="btn btn-chip" disabled={!editable} onClick={() => onInsertPhrase(item, "od")} type="button">右</button>
+                  <button aria-label={`${item.label || item.text}を左眼に挿入`} className="btn btn-chip" disabled={!editable} onClick={() => onInsertPhrase(item, "os")} type="button">左</button>
+                  <button aria-label={`${item.label || item.text}を両眼に挿入`} className="btn btn-chip" disabled={!editable} onClick={() => onInsertPhrase(item, "both")} type="button">両</button>
                 </span>
-              ) : (
-                <button className="btn btn-chip" disabled={!editable} onClick={() => onInsertPhrase(item)} type="button">挿入</button>
-              )}
-            </div>
-          ))}
+              </div>
+            ) : (
+              <button className="phrase-tile" disabled={!editable} key={item.phraseId} onClick={() => onInsertPhrase(item)} title={item.text} type="button">
+                <span className="phrase-tile-label">{item.label || item.text}</span>
+              </button>
+            )))}
+          </div>
         </section>
       ))}
     </div>

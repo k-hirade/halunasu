@@ -6,6 +6,8 @@ import { NEXT_VISIT_PLAN_PRESETS, PLAN_ITEM_EYE_LABELS, RP_SHARED_FIELDS } from 
 import { AdherenceLine, showAdherence } from "./encounter-extras";
 import { formatTime, OpticalSection, parseNumber } from "./encounter-sections";
 import { closeMenu, COPY_DRAG_TYPE, newRpId, ORDER_BADGES, RX_BADGES, TOPICAL_KINDS } from "./chart-shared";
+import { pointsLabel, useMasterLookup } from "./chart-points";
+import { RpCommentDialog } from "./encounter-dialogs";
 import { addDays, COMMON_USAGES, EYE_LABELS, formatShortDate } from "../lib/format";
 
 const EYE_CHOICES = [["od", "R"], ["os", "L"], ["ou", "両"]];
@@ -23,6 +25,8 @@ export function ActsColumn({
   const orderGroups = groupRps(content.orders || []);
   const carried = (content.prescriptions || []).filter((row) => row.carriedOver && row.kind !== "comment").length;
   const empty = !rxGroups.length && !orderGroups.length && !content.optical?.type;
+  // 診療行為マスターのコードのある行に点数を出す（デジカルの処置・行為の「75点」）
+  const pointsOf = useMasterLookup("procedure", (content.orders || []).map((row) => row.procedureCode).filter(Boolean));
 
   function onDrop(event) {
     const raw = event.dataTransfer.getData(COPY_DRAG_TYPE);
@@ -89,6 +93,7 @@ export function ActsColumn({
             group={group}
             key={group.rpId}
             onSelect={() => onSelectRp(selectedRp?.field === "orders" && selectedRp.rpId === group.rpId ? null : { field: "orders", rpId: group.rpId })}
+            pointsOf={pointsOf}
             selected={selectedRp?.field === "orders" && selectedRp.rpId === group.rpId}
             update={update}
           />
@@ -141,6 +146,7 @@ function RxGroup({ group, number, content, update, editable, drugPresets, nextDa
   const presetById = new Map(drugPresets.map((preset) => [preset.presetId, preset]));
   const carried = group.items.some(({ row }) => row.carriedOver);
   const notIssued = group.items.length > 0 && group.items.every(({ row }) => row.issued === false);
+  const [commentOpen, setCommentOpen] = useState(false);
 
   // Rp の共有項目（院内外・用法・回数・日数・眼）は束の全部の薬剤行にそろえる。
   function setShared(patch) {
@@ -157,11 +163,11 @@ function RxGroup({ group, number, content, update, editable, drugPresets, nextDa
     update(["prescriptions"], rows.filter((_, rowIndex) => !indexes.has(rowIndex)));
   }
   // legacy（rpId の無い 1 行）にコメントを付けるときは、先に rpId を振る
-  function addComment(scope) {
+  function addComment(scope, text = "") {
     const rpId = group.legacy ? newRpId() : group.rpId;
     const base = group.legacy ? setRows(rows, (_, index) => indexes.has(index), { rpId }) : rows;
     const last = Math.max(...indexes);
-    const next = [...base.slice(0, last + 1), { kind: "comment", rpId, text: "", scope }, ...base.slice(last + 1)];
+    const next = [...base.slice(0, last + 1), { kind: "comment", rpId, text, scope }, ...base.slice(last + 1)];
     update(["prescriptions"], next);
   }
   // 両眼の束を右眼・左眼の 2 つの束に分ける（片眼だけ変更・中止するとき）
@@ -211,6 +217,7 @@ function RxGroup({ group, number, content, update, editable, drugPresets, nextDa
           return (
             <li className="rp-row" key={index}>
               <RpBadgeMenu editable={editable} label={RX_BADGES[row.kind] || badge}>
+                <button className="btn btn-ghost" onClick={(event) => { closeMenu(event); setCommentOpen(true); }} type="button">コメントを追加（探す・記載先を選ぶ）…</button>
                 <button className="btn btn-ghost" onClick={(event) => { closeMenu(event); addComment("free"); }} type="button">コメントを追加（処方箋に載せる）</button>
                 <button className="btn btn-ghost" onClick={(event) => { closeMenu(event); addComment("chart"); }} type="button">コメントを追加（カルテのみ）</button>
                 {head.eye === "ou" && TOPICAL_KINDS.has(head.kind) ? (
@@ -282,6 +289,7 @@ function RxGroup({ group, number, content, update, editable, drugPresets, nextDa
           {editable ? <button aria-label={`Rp${number}を削除`} className="col-tool rp-delete" onClick={removeGroup} title="この束を削除" type="button">🗑</button> : null}
         </span>
       </div>
+      {commentOpen ? <RpCommentDialog kind="rx" onAdd={({ text, scope }) => { addComment(scope, text); setCommentOpen(false); }} onCancel={() => setCommentOpen(false)} /> : null}
     </div>
   );
 }
@@ -303,7 +311,8 @@ function UsagePill({ row, onChange, editable }) {
   if (!editable) return <span className="usage-pill is-static">{text || "用法なし"}</span>;
   return (
     <details className="more-menu usage-menu">
-      <summary aria-label="用法" className={`usage-pill${text ? "" : " is-empty"}`}>{text || "用法を選択"}</summary>
+      {/* 未入力はデジカルと同じく目立つ色のボタン（押すと選べる） */}
+      <summary aria-label="用法" className={`usage-pill${text ? "" : " is-empty is-missing"}`}>{text || "用法を選んでください"}</summary>
       <div className="more-menu-list usage-list">
         <div aria-label="1日の回数" className="usage-times" role="group">
           {[1, 2, 3, 4, 5, 6].map((times) => (
@@ -321,17 +330,18 @@ function UsagePill({ row, onChange, editable }) {
   );
 }
 
-function OrderGroup({ group, content, update, editable, selected, onSelect }) {
+function OrderGroup({ group, content, update, editable, selected, onSelect, pointsOf = () => null }) {
   const rows = content.orders || [];
+  const [commentOpen, setCommentOpen] = useState(false);
   const indexes = new Set(group.rows.map((item) => item.index));
   const setRow = (index, patch) => update(["orders", index], { ...rows[index], ...patch });
   const removeRow = (index) => update(["orders"], rows.filter((_, rowIndex) => rowIndex !== index));
-  function addComment(scope) {
+  function addComment(scope, text = "") {
     const rpId = group.legacy ? newRpId() : group.rpId;
     const base = group.legacy ? setRows(rows, (_, index) => indexes.has(index), { rpId }) : rows;
     const last = Math.max(...indexes);
     const orderId = `ord_${Date.now().toString(36)}c`;
-    update(["orders"], [...base.slice(0, last + 1), { orderId, kind: "comment", rpId, text: "", scope }, ...base.slice(last + 1)]);
+    update(["orders"], [...base.slice(0, last + 1), { orderId, kind: "comment", rpId, text, scope }, ...base.slice(last + 1)]);
   }
   return (
     <div
@@ -359,6 +369,7 @@ function OrderGroup({ group, content, update, editable, selected, onSelect }) {
           return (
             <li className={`rp-row order-row is-${status}`} key={row.orderId}>
               <RpBadgeMenu className="is-order" editable={editable} label={ORDER_BADGES[row.kind] || "検査"}>
+                <button className="btn btn-ghost" onClick={(event) => { closeMenu(event); setCommentOpen(true); }} type="button">コメントを追加（探す・記載先を選ぶ）…</button>
                 <button className="btn btn-ghost" onClick={(event) => { closeMenu(event); addComment("free"); }} type="button">コメントを追加（レセプトに載せる）</button>
                 <button className="btn btn-ghost" onClick={(event) => { closeMenu(event); addComment("chart"); }} type="button">コメントを追加（カルテのみ）</button>
                 {status === "planned" && !row.statusChangedBy ? (
@@ -366,6 +377,7 @@ function OrderGroup({ group, content, update, editable, selected, onSelect }) {
                 ) : null}
               </RpBadgeMenu>
               <span className="rp-name" title={row.procedureCode ? `診療行為コード ${row.procedureCode}` : undefined}>{row.name || row.code}</span>
+              {pointsLabel(pointsOf(row.procedureCode)) ? <span className="rp-points">{pointsLabel(pointsOf(row.procedureCode))}</span> : null}
               {row.sourceEncounterId ? <span className="tag rp-plan-tag" title="前回の診療予定から入った項目です">前回予定</span> : null}
               {row.eye || editable ? <EyeSegment ariaLabel={`${row.name}の眼`} editable={editable} onChange={(eye) => setRow(index, { eye })} value={row.eye} /> : null}
               <span className="rp-status">
@@ -383,6 +395,7 @@ function OrderGroup({ group, content, update, editable, selected, onSelect }) {
           );
         })}
       </ul>
+      {commentOpen ? <RpCommentDialog kind="order" onAdd={({ text, scope }) => { addComment(scope, text); setCommentOpen(false); }} onCancel={() => setCommentOpen(false)} /> : null}
     </div>
   );
 }

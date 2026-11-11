@@ -96,8 +96,9 @@ import {
 import { japanDate } from "./dates.js";
 import { buildFacilitySettings, effectiveFacility, facilitiesWithSettings, facilitySettingsView, pickFacility, validateFacilitySettingsInput } from "./facility.js";
 import { invalidateLearningCache, learningList } from "./learning.js";
-import { defaultMasterIndex, MASTER_SEARCH_LIMIT } from "./masters.js";
+import { defaultMasterIndex, MASTER_SEARCH_LIMIT, parseLookupCodes } from "./masters.js";
 import { commonModifiers } from "./modifier-common.js";
+import { handleRegularOrderRoute, withoutRegularOrders } from "./regular-orders.js";
 import { createId } from "./ids.js";
 import {
   applyProfileUpdate,
@@ -217,7 +218,7 @@ async function routeEyeApiRequest(input = {}) {
     const [facilities, drugPresets, orderSets, setFolders, phrases, staff, facilitySettings] = await Promise.all([
       platformStore.listFacilities(orgId),
       eyeStore.listDrugPresets(orgId),
-      Promise.resolve(eyeStore.listOrderSets(orgId)).then(sortSets),
+      Promise.resolve(eyeStore.listOrderSets(orgId)).then(withoutRegularOrders).then(sortSets),
       Promise.resolve(eyeStore.listSetFolders(orgId)).then(sortSets),
       eyeStore.listPhrases(orgId),
       // 紙に載せる氏名（memberId → 氏名）。読めなくても起動は止めない（画面側は表示名から括弧を除いて出す）。
@@ -257,6 +258,24 @@ async function routeEyeApiRequest(input = {}) {
     const category = String(url.searchParams.get("category") || "");
     if (category && !LEARNING_CATEGORIES.includes(category)) throw badRequest(`category must be one of: ${LEARNING_CATEGORIES.join(", ")}`, "category");
     return ok(await learningList(eyeStore, orgId, { category, now: new Date(now) }));
+  }
+
+  // 公開マスターをコードで引く（カルテの行・学習リストの点数・薬価）。codes=a,b（最大 100 件）。
+  if (method === "GET" && matches(parts, ["v1", "eye", "masters", "lookup"])) {
+    const type = String(url.searchParams.get("type") || "");
+    if (!EYE_MASTER_TYPES.includes(type)) throw badRequest(`type must be one of: ${EYE_MASTER_TYPES.join(", ")}`, "type");
+    const codes = parseLookupCodes(url.searchParams.get("codes"));
+    const index = input.masterIndex || defaultMasterIndex();
+    return ok({ type, results: typeof index.lookup === "function" ? index.lookup(type, codes) : [] });
+  }
+
+  // 定期（患者ごとのセット。regular-orders.js）
+  {
+    const response = await handleRegularOrderRoute({
+      method, parts, url, input, context, eyeStore, platformStore, orgId, actor, audit,
+      helpers: { requireAccess, requireCsrf: requirePlatformCsrf, requirePatient, requireEncounter, ok, created, notFound: notFoundError, createId }
+    });
+    if (response) return response;
   }
 
   // 患者検索の語は氏名などの個人情報なので、アクセスログに残る URL ではなく本文で受け取る。
@@ -1105,7 +1124,7 @@ async function routeEyeApiRequest(input = {}) {
 
   // セット（とフォルダ）は管理者と医師が作る・直す。医師はカルテ画面から「現在のカルテからセットを作成」できる。
   if (method === "GET" && matches(parts, ["v1", "eye", "order-sets"])) {
-    const [orderSets, setFolders] = await Promise.all([Promise.resolve(eyeStore.listOrderSets(orgId)).then(sortSets), Promise.resolve(eyeStore.listSetFolders(orgId)).then(sortSets)]);
+    const [orderSets, setFolders] = await Promise.all([Promise.resolve(eyeStore.listOrderSets(orgId)).then(withoutRegularOrders).then(sortSets),Promise.resolve(eyeStore.listSetFolders(orgId)).then(sortSets)]);
     return ok({ orderSets, setFolders });
   }
 
@@ -1128,7 +1147,7 @@ async function routeEyeApiRequest(input = {}) {
     requirePlatformCsrf(input.headers || {}, context.session);
     const validated = validateSetFromEncounterInput(input.body || {});
     const encounter = await requireEncounter(eyeStore, orgId, validated.encounterId);
-    const existingSets = await eyeStore.listOrderSets(orgId);
+    const existingSets = withoutRegularOrders(await eyeStore.listOrderSets(orgId));
     const existing = validated.setId ? existingSets.find((item) => item.setId === validated.setId) : null;
     if (validated.setId && !existing) throw notFoundError("set not found");
     const folderId = validated.folderId !== undefined ? validated.folderId : existing?.folderId || "";

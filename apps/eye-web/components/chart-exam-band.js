@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { buildTrend, pupilLabel, sortExamRecords } from "@halunasu/eye-core";
 import { ALIGNMENT_LABELS, IOL_CL_LABELS, MOTILITY_LABELS, RAPD_LABELS } from "@halunasu/eye-contracts";
@@ -10,6 +10,7 @@ import { formatRefraction, formatShortDate, formatVisualAcuityLine, IOP_METHOD_L
 
 const SIDES = ["od", "os"];
 const SIDE_MARK = { od: "RV", os: "LV" };
+const COLLAPSE_KEY = "halunasu.chart.examBandCollapsed";
 
 // 記録の中で、ある値を持つ最後の記録（時刻・検者を出すため）。
 function lastRecordWith(records, pick) {
@@ -35,6 +36,15 @@ function nearLine(row = {}) {
 // 中央の「主訴・所見」の上に出す検査の帯（トプコンの過去カルテの【自覚検査】【眼圧検査】の読み方）。入力は検査ページで行う。
 export function ExamBand({ content, encounterId, confirmations, canConfirm, onConfirm, previous, previousDate, editable, update, now }) {
   const [busy, setBusy] = useState(false);
+  // 畳んだかどうかは端末ごとに覚える（デジカルのように中央を主訴・所見｜処置・行為に広く使いたい人向け）
+  const [collapsed, setCollapsedState] = useState(false);
+  useEffect(() => {
+    try { setCollapsedState(window.localStorage.getItem(COLLAPSE_KEY) === "1"); } catch { /* 覚えられない環境では開いたまま */ }
+  }, []);
+  const setCollapsed = (value) => {
+    setCollapsedState(value);
+    try { window.localStorage.setItem(COLLAPSE_KEY, value ? "1" : "0"); } catch { /* 覚えられなくても畳むことはできる */ }
+  };
   const exam = content.exam || {};
   const records = useMemo(() => sortExamRecords(content.examRecords || []), [content.examRecords]);
   const visionRecord = lastRecordWith(records, (values) => values.vision);
@@ -96,15 +106,19 @@ export function ExamBand({ content, encounterId, confirmations, canConfirm, onCo
       : <span className="confirm-pending">{side === "od" ? "R" : "L"} 未確認</span>;
   };
 
+  const summary = SIDES.map((side) => `${side === "od" ? "R" : "L"} ${formatVisualAcuityLine(exam[side] || {}) || "—"}${Number.isFinite(exam[side]?.iop) ? ` 眼圧${exam[side].iop}` : ""}`).join("　");
+
   return (
-    <section aria-labelledby="exam-heading" className="exam-band" id="sec-exam">
+    <section aria-labelledby="exam-heading" className={`exam-band${collapsed ? " is-collapsed" : ""}`} id="sec-exam">
       <div className="exam-band-head">
+        <button aria-expanded={!collapsed} aria-label={collapsed ? "検査の欄を開く" : "検査の欄を畳む"} className="exam-band-toggle" onClick={() => setCollapsed(!collapsed)} title="畳むと主訴・所見と処置・行為を広く使えます" type="button">{collapsed ? "▸" : "▾"}</button>
         <h3 id="exam-heading">検査</h3>
         <DilationFlags content={content} editable={editable} now={now} update={update} variant="chip" />
         {records.length ? <span className="muted small">記録 {records.length}件</span> : null}
+        {collapsed && pending.length ? <span className="confirm-pending">{pending.map((side) => (side === "od" ? "R" : "L")).join("・")} 未確認</span> : null}
         <Link className="btn btn-chip exam-band-open" href={`/encounters/${encounterId}/exam`}>検査入力を開く</Link>
       </div>
-      {!any ? <p className="muted small exam-band-empty">検査値はまだありません。</p> : (
+      {collapsed ? (any ? <p className="exam-band-summary">{summary}</p> : null) : !any ? <p className="muted small exam-band-empty">検査値はまだありません。</p> : (
         <div className="exam-band-body">
           <div className="exam-block">
             <span className="exam-block-label">【視力】{visionRecord ? <span className="exam-block-stamp" title={recordStamp(visionRecord)}>{recordStamp(visionRecord)}</span> : null}</span>
@@ -157,7 +171,7 @@ export function ExamBand({ content, encounterId, confirmations, canConfirm, onCo
           ) : null}
         </div>
       )}
-      {prev && SIDES.some((side) => hasExamValues(prev[side])) ? (
+      {!collapsed && prev && SIDES.some((side) => hasExamValues(prev[side])) ? (
         <p className="exam-prev-line">
           前回{previousDate ? ` ${formatShortDate(previousDate)}` : ""}:
           {SIDES.map((side) => (

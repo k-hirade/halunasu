@@ -25,8 +25,11 @@ export function createMasterIndex(data = {}) {
     names: [record.name, record.longName, record.generic].filter(Boolean).map(normalizeMasterQuery),
     kana: normalizeMasterQuery(record.kana)
   }))]));
+  const byCode = Object.fromEntries(MASTER_TYPES.map((type) => [type, new Map(tables[type].map((entry) => [String(entry.record.code), entry.record]))]));
   return {
     counts: Object.fromEntries(MASTER_TYPES.map((type) => [type, tables[type].length])),
+    // コードで引く（カルテの行・学習リストに点数・薬価を出すため）。無いコードは返さない。
+    lookup: (type, codes = []) => lookupCodes(byCode[type], codes),
     available: (type) => tables[type].length > 0,
     search: ({ type, q, limit = MASTER_SEARCH_LIMIT, eyeOnly = false }) => searchTable(tables[type] || [], { q, limit, eyeOnly }),
     // コードで 1 件を引く（修飾語の候補一覧など）。無ければ null
@@ -58,6 +61,44 @@ function searchTable(table, { q, limit, eyeOnly }) {
     || String(left.entry.record.code).localeCompare(String(right.entry.record.code))
   ));
   return hits.slice(0, limit).map((hit) => ({ ...hit.entry.record, match: hit.tier === 0 ? "prefix" : "contains" }));
+}
+
+export const MASTER_LOOKUP_LIMIT = 100;
+
+function lookupCodes(table, codes) {
+  if (!table) return [];
+  const seen = new Set();
+  const results = [];
+  for (const raw of codes) {
+    const code = String(raw || "").trim();
+    if (!code || seen.has(code)) continue;
+    seen.add(code);
+    const record = table.get(code);
+    if (record) results.push(record);
+  }
+  return results;
+}
+
+// codes=a,b,c の文字列を検査して配列にする（英数字だけ・最大 MASTER_LOOKUP_LIMIT 件）。
+export function parseLookupCodes(value) {
+  const codes = [...new Set(String(value || "").split(",").map((item) => item.trim()).filter(Boolean))];
+  if (codes.length > MASTER_LOOKUP_LIMIT) {
+    const error = new Error(`codes must be ${MASTER_LOOKUP_LIMIT} or fewer`);
+    error.name = "BadRequestError";
+    error.statusCode = 400;
+    error.field = "codes";
+    throw error;
+  }
+  for (const code of codes) {
+    if (!/^[0-9A-Za-z]{1,20}$/u.test(code)) {
+      const error = new Error("codes must be alphanumeric");
+      error.name = "BadRequestError";
+      error.statusCode = 400;
+      error.field = "codes";
+      throw error;
+    }
+  }
+  return codes;
 }
 
 export function loadMasterData(dir = DEFAULT_MASTER_DIR) {
