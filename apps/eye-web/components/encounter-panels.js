@@ -7,7 +7,8 @@ import { ALIGNMENT_LABELS, MOTILITY_LABELS, PLAN_ITEM_EYE_LABELS, RAPD_LABELS } 
 import { COPY_DRAG_TYPE, dateWithWeekday, ORDER_BADGES, RX_BADGES } from "./chart-shared";
 import { SketchThumb } from "./sketch-pad";
 import { formatTime } from "./encounter-sections";
-import { EYE_LABELS, formatDate, formatDateTime, formatVisualAcuityLine, VISIT_TYPE_LABELS } from "../lib/format";
+import { EYE_LABELS, formatDate, formatDateTime, formatShortDate, formatVisualAcuityLine, VISIT_TYPE_LABELS } from "../lib/format";
+import { copyDragProps, findingDragText } from "../lib/chart-dnd";
 
 // 患者情報・ファイルのタブは chart-left-*.js へ移した（カルテ画面の import はここからのまま）。
 export { PatientInfoTab } from "./chart-left-info";
@@ -209,7 +210,7 @@ function HistoryCard({ encounter, editable, onCopy, highlighted }) {
     const left = findingText(key, content.findings?.os);
     if (!right && !left) return null;
     return (
-      <div className="history-finding" key={key}>
+      <div className="history-finding" key={key} {...copyDragProps(editable, { kind: "finding", encounterId: encounter.encounterId, part: key }, { text: findingDragText(label, right, left), title: `ドラッグして今日の${label}へ（空の欄にだけ入ります）` })}>
         <span className="history-part">{label}</span>
         <span>
           {right ? <span className="history-eye-line"><span className="eye-od">R</span> {right}</span> : null}
@@ -280,7 +281,7 @@ function HistoryCard({ encounter, editable, onCopy, highlighted }) {
           ) : null}
           {findings.length ? <div className="history-findings">{findings}</div> : null}
           {content.findings?.general ? <p className="history-line"><span className="history-label">両眼</span>{content.findings.general}</p> : null}
-          {content.assessment || content.plan ? <p className="history-line pre"><span className="history-label">方針</span>{[content.assessment, content.plan].filter(Boolean).join("\n")}</p> : null}
+          {content.assessment || content.plan ? <p className="history-line pre" {...copyDragProps(editable, { kind: "plan", encounterId: encounter.encounterId }, { text: [content.assessment, content.plan].filter(Boolean).join("\n"), title: "ドラッグして今日の方針へ" })}><span className="history-label">方針</span>{[content.assessment, content.plan].filter(Boolean).join("\n")}</p> : null}
           {adherence ? <p className="history-line"><span className="history-label">点眼</span>{adherence}</p> : null}
           {counselling ? <p className="history-line"><span className="history-label">説明</span>{counselling}</p> : null}
           {content.sketches?.length ? (

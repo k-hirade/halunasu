@@ -1,0 +1,395 @@
+/* replicate-2（眼科パッケージ）: 顔写真・IOL 管理・術前検査・診察のランチャー・視力眼圧の密な表・過去データのドラッグ。
+   色はすべてトークン（app/globals.css の先頭）。 */
+
+/* ---- 過去カルテからのドラッグ（lib/chart-dnd.js が data-copy-kind を付ける） ---- */
+[data-copy-kind] {
+  cursor: grab;
+}
+
+[data-copy-kind]:hover {
+  background: var(--teal-soft);
+  border-radius: 6px;
+}
+
+[data-copy-kind]:active {
+  cursor: grabbing;
+}
+
+/* ---- 顔写真（components/patient-photo.js） ---- */
+.pt-photo {
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  cursor: zoom-in;
+  flex: 0 0 auto;
+  overflow: hidden;
+  padding: 0;
+}
+
+.pt-photo.is-sm {
+  height: 32px;
+  width: 32px;
+}
+
+.pt-photo.is-lg {
+  border-radius: 8px;
+  float: right;
+  height: 72px;
+  margin: 0 0 6px 8px;
+  width: 60px;
+}
+
+.pt-photo img {
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.pt-photo-wait {
+  display: block;
+  height: 100%;
+  width: 100%;
+}
+
+.pt-photo:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.dialog.pt-photo-dialog {
+  max-width: min(520px, calc(100vw - 32px));
+}
+
+.pt-photo-large {
+  border-radius: 8px;
+  display: block;
+  margin: 8px auto;
+  max-height: min(60vh, 520px);
+  max-width: 100%;
+  object-fit: contain;
+}
+
+/* ---- 患者ページのタブ（4 つ＋画像）: 狭い画面では 1 行の横スクロール ---- */
+.pt-tabs {
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.pt-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.pt-tabs .pt-tab {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/* ---- 視力眼圧（トプコンの密な表と 2 段の大きいグラフ） ---- */
+.vi-view.is-dense .vi-table {
+  font-size: var(--fs-xs);
+}
+
+.vi-view.is-dense .vi-table th,
+.vi-view.is-dense .vi-table td {
+  line-height: 1.35;
+  padding: 2px 6px;
+}
+
+.vi-view.is-dense .vi-table tbody tr:nth-child(even) td {
+  background: var(--surface-muted);
+}
+
+.vi-view.is-dense .vi-table-wrap {
+  max-height: 228px;
+}
+
+/* ---- IOL 管理・術前検査（components/patient-iol.js） ---- */
+.pt-iol,
+.pt-preop {
+  padding: 12px;
+}
+
+.iol-head {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-bottom: 10px;
+}
+
+.iol-head h2 {
+  font-size: var(--fs-lg);
+  margin: 0;
+}
+
+.iol-eyes,
+.preop-eyes {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.iol-eye,
+.preop-eye {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-width: 0;
+  padding: 8px 10px;
+}
+
+.iol-eye-head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.iol-eye h3,
+.preop-eye h3 {
+  align-items: center;
+  display: flex;
+  font-size: var(--fs-md);
+  gap: 6px;
+  margin: 0;
+}
+
+.eye-mark {
+  align-items: center;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  display: inline-flex;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  height: 20px;
+  justify-content: center;
+  width: 20px;
+}
+
+.eye-mark.eye-od {
+  color: var(--od);
+}
+
+.eye-mark.eye-os {
+  color: var(--os);
+}
+
+.iol-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.iol-table {
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  min-width: 640px;
+  width: 100%;
+}
+
+.iol-table th {
+  background: var(--surface-muted);
+  color: var(--text-soft);
+  font-weight: 700;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.iol-table th,
+.iol-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 4px 6px;
+  vertical-align: top;
+}
+
+.iol-table tr.is-removed td {
+  color: var(--muted);
+}
+
+.iol-sub {
+  display: block;
+}
+
+.iol-actions {
+  white-space: nowrap;
+}
+
+.tag.iol-status.is-planned {
+  background: var(--amber-soft);
+  border-color: var(--amber-line);
+  color: var(--amber);
+}
+
+.tag.iol-status.is-implanted {
+  background: var(--green-soft);
+  border-color: var(--green-line);
+  color: var(--green);
+}
+
+.tag.iol-status.is-removed {
+  background: var(--surface-muted);
+  color: var(--muted);
+}
+
+.iol-notes {
+  font-size: var(--fs-sm);
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.iol-form {
+  display: grid;
+  gap: 8px 12px;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+
+.iol-form .field.is-wide {
+  grid-column: 1 / -1;
+}
+
+.dialog.iol-dialog {
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+}
+
+.preop-dl {
+  display: grid;
+  margin: 6px 0 0;
+}
+
+.preop-dl > div {
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 92px minmax(0, 1fr);
+  padding: 5px 4px;
+}
+
+/* トプコンのレポートの見出しの帯に倣い、項目の行を交互に薄い色で区切る */
+.preop-dl > div.preop-band {
+  background: var(--teal-soft);
+}
+
+.preop-dl dt {
+  color: var(--text-soft);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.preop-dl dd {
+  font-size: var(--fs-sm);
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.preop-sub {
+  color: var(--text-soft);
+  display: block;
+}
+
+.preop-when {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  margin-left: 8px;
+  white-space: nowrap;
+}
+
+.preop-files {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 10px 0 0;
+}
+
+.preop-files-link {
+  display: inline-block;
+  font-weight: 700;
+}
+
+/* IOL の表は列が多いので眼ごとに縦に積む（術前検査は左右に並べる） */
+@media (min-width: 900px) {
+  .preop-eyes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.iol-table td.mono,
+.iol-table .tag {
+  white-space: nowrap;
+}
+
+/* ---- 診察: 概要の右の縦のランチャー（home-workspace.js の ConsultLauncher） ---- */
+@media (min-width: 1280px) {
+  .cl-layout.has-launcher {
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 34%) 76px;
+  }
+}
+
+.cl-launcher {
+  align-self: start;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 4px;
+  position: sticky;
+  top: calc(var(--nav-h) + 8px);
+}
+
+.cl-launch {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  font: inherit;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  gap: 2px;
+  line-height: 1.2;
+  padding: 6px 2px;
+  text-align: center;
+  text-decoration: none;
+}
+
+.cl-launch:hover:not(:disabled) {
+  background: var(--teal-soft);
+  border-color: var(--line);
+}
+
+.cl-launch:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.cl-launch.is-primary {
+  background: var(--teal);
+  color: var(--on-accent);
+}
+
+.cl-launch.is-next {
+  border-top: 1px solid var(--line);
+  margin-top: 4px;
+}
+
+.cl-launch-icon {
+  font-size: var(--fs-lg);
+  line-height: 1;
+}
+
+.cl-launcher-empty {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  margin: 4px 2px;
+  text-align: center;
+}

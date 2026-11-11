@@ -1905,50 +1905,6 @@
   font-weight: 800;
 }
 
-/* データ表示 */
-.dialog.rd-data-dialog {
-  display: flex;
-  flex-direction: column;
-  max-height: calc(100dvh - 32px);
-  max-width: 720px;
-}
-
-.rd-data-dialog .dialog-head {
-  align-items: center;
-  display: flex;
-  justify-content: space-between;
-}
-
-.rd-data-body {
-  overflow: auto;
-}
-
-.rd-data-record + .rd-data-record {
-  border-top: 1px solid var(--line);
-  margin-top: 10px;
-  padding-top: 10px;
-}
-
-.rd-data-record h3 {
-  font-size: var(--fs-lg);
-  margin: 0 0 6px;
-}
-
-.rd-data-block h4 {
-  background: var(--surface-muted);
-  font-size: var(--fs-sm);
-  margin: 6px 0 2px;
-  padding: 2px 6px;
-}
-
-.rd-data-block p {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: var(--fs-sm);
-  margin: 0;
-  padding-left: 6px;
-  white-space: pre-wrap;
-}
-
 @media (max-width: 1279px) {
   .rd-layout {
     grid-template-columns: minmax(0, 1fr);
@@ -2343,15 +2299,387 @@
   }
 }
 
-/* データ表示: 値が折り返したとき、2 行目以降を字下げして続きだと分かるようにする */
-.rd-data-block p {
-  padding-left: calc(6px + 4ch);
-  text-indent: -4ch;
-}
-
 /* 高さの低い画面: 下のバーを 1 段に保つため「…は未入力です」の注記は省く（同じことはバーの R/L の状態で分かる） */
 @media (max-height: 500px) {
   .rd-page .exam-bar-hint {
     display: none;
+  }
+}
+
+/* ---- 検査データ表示（トプコンの「データ表示」: 色の帯の見出し＋本文のレポート） ---- */
+.dialog.rd-report {
+  --dialog-pad-x: 0px;
+  --dialog-pad-y: 0px;
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - 32px);
+  max-width: 1180px;
+  overflow: hidden;
+}
+
+.rd-report-head {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 16px;
+}
+
+.dialog .rd-report-head h2 {
+  font-size: var(--fs-lg);
+  margin: 0;
+}
+
+.rd-report-patient {
+  color: var(--text-soft);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.rd-report-spacer {
+  flex: 1 1 auto;
+}
+
+.rd-report-main {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: 180px minmax(0, 1fr);
+  min-height: 0;
+}
+
+.rd-report-index {
+  background: var(--surface-muted);
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  padding: 10px 8px;
+}
+
+.rd-report-index-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rd-report-index-visit {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  margin: 0 0 2px;
+}
+
+.rd-report-index-link {
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--fs-sm);
+  min-height: 28px;
+  padding: 2px 8px;
+  text-align: left;
+}
+
+.rd-report-index-link:hover {
+  background: var(--teal-soft);
+  color: var(--teal-dark);
+}
+
+.rd-report-body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px 16px 24px;
+}
+
+.rd-report-visit + .rd-report-visit {
+  border-top: 2px solid var(--line-strong);
+  margin-top: 18px;
+  padding-top: 12px;
+}
+
+.rd-report-visit-title {
+  font-size: var(--fs-lg);
+  margin: 0 0 8px;
+}
+
+.rd-report-record + .rd-report-record {
+  margin-top: 6px;
+}
+
+.rd-report-block {
+  margin-bottom: 14px;
+  scroll-margin-top: 8px;
+}
+
+.rd-report-band {
+  background: var(--teal);
+  border-radius: 4px;
+  color: var(--on-accent);
+  font-size: var(--fs-lg);
+  font-weight: 800;
+  margin: 0 0 6px;
+  padding: 4px 10px;
+}
+
+.rd-report-meta {
+  color: var(--text-soft);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--fs-sm);
+  gap: 4px 14px;
+  margin: 0 0 4px;
+}
+
+.rd-report-meta strong {
+  color: var(--text);
+  margin-right: 2px;
+}
+
+.rd-report-note {
+  color: var(--amber);
+}
+
+/* 値が折り返したとき、2 行目以降を字下げして続きだと分かるようにする */
+.rd-report-line {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--fs-md);
+  line-height: 1.6;
+  margin: 0;
+  overflow-wrap: anywhere;
+  padding-left: calc(10px + 4ch);
+  text-indent: -4ch;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 767px) {
+  .dialog-backdrop.rd-report-backdrop {
+    padding: 0;
+  }
+
+  .dialog.rd-report {
+    border-radius: 0;
+    height: 100dvh;
+    max-height: 100dvh;
+  }
+
+  .rd-report-main {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  /* スマホ: 目次は上の 1 行の横スクロール */
+  .rd-report-index {
+    border-bottom: 1px solid var(--line);
+    border-right: 0;
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 6px 8px;
+  }
+
+  .rd-report-index-group {
+    align-items: center;
+    flex-direction: row;
+    flex-shrink: 0;
+  }
+
+  .rd-report-index-visit {
+    margin: 0 4px 0 0;
+    white-space: nowrap;
+  }
+
+  .rd-report-index-link {
+    white-space: nowrap;
+  }
+
+  .rd-report-print {
+    display: none;
+  }
+}
+
+@media print {
+  body.rd-report-printing * {
+    visibility: hidden;
+  }
+
+  body.rd-report-printing .rd-report,
+  body.rd-report-printing .rd-report * {
+    visibility: visible;
+  }
+
+  body.rd-report-printing .dialog-backdrop.rd-report-backdrop {
+    background: none;
+    display: block;
+    overflow: visible;
+    padding: 0;
+    position: absolute;
+  }
+
+  body.rd-report-printing .dialog.rd-report {
+    border-radius: 0;
+    box-shadow: none;
+    display: block;
+    height: auto;
+    max-height: none;
+    max-width: none;
+    overflow: visible;
+  }
+
+  body.rd-report-printing .rd-report-index,
+  body.rd-report-printing .rd-report-head .btn {
+    display: none;
+  }
+
+  body.rd-report-printing .rd-report-main {
+    display: block;
+  }
+
+  body.rd-report-printing .rd-report-body {
+    overflow: visible;
+  }
+
+  .rd-report-band {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .rd-report-block {
+    break-inside: avoid;
+  }
+}
+
+/* ---- 機器データ取込（RegData の機器データ欄。貼り付け・ファイルの文字を読む） ---- */
+.rd-devices-area {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+  min-width: 0;
+}
+
+.rd-devices-area .rd-devices {
+  margin-bottom: 0;
+}
+
+.rd-devices-bar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  min-width: 0;
+}
+
+.rd-devices-title {
+  color: var(--text-soft);
+  font-size: var(--fs-sm);
+  font-weight: 800;
+}
+
+.rd-devices-notice {
+  color: var(--green);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  min-width: 0;
+}
+
+.btn.rd-import-open {
+  margin-left: auto;
+}
+
+.rd-import {
+  background: var(--surface);
+  border: 1px solid var(--teal);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 10px;
+}
+
+.rd-import-note {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  margin: 0;
+}
+
+.rd-import-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+
+.rd-import-kinds {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+.rd-import-file {
+  cursor: pointer;
+  position: relative;
+}
+
+.rd-import-file:focus-within {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.rd-import-body {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  min-width: 0;
+}
+
+.rd-import-text {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--fs-sm);
+  min-height: 112px;
+  resize: vertical;
+  width: 100%;
+}
+
+.rd-import-preview {
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  min-width: 0;
+  padding: 6px 8px;
+}
+
+.rd-import-kind {
+  font-size: var(--fs-sm);
+  margin: 0 0 2px;
+}
+
+.rd-import-lines {
+  margin: 2px 0;
+}
+
+.rd-import-errors {
+  color: var(--red);
+  font-size: var(--fs-xs);
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+
+p.rd-import-errors {
+  padding-left: 0;
+}
+
+.rd-import-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+@media (max-width: 767px) {
+  .rd-import-body {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

@@ -52,6 +52,7 @@ export const collections = Object.freeze({
   eyeStaffProfiles: "eye_staff_profiles",
   eyeFacilitySettings: "eye_facility_settings",
   eyeClinicConfig: "eye_clinic_config",
+  eyeIolRecords: "eye_iol_records",
   eyeDailyCounters: "eye_daily_counters",
   eyeReceptionSettings: "eye_reception_settings",
   eyePatientMarks: "eye_patient_marks",
@@ -309,6 +310,11 @@ export function eyeClinicConfigPath(orgId, section) {
 
 export function eyePatientProfilePath(orgId, patientId) {
   return orgDocPath(orgId, collections.eyePatientProfiles, patientId, "patientId");
+}
+
+// IOL（眼内レンズ）の記録。患者ごとに 1 件（records の配列と revision）。
+export function eyeIolRecordsPath(orgId, patientId) {
+  return orgDocPath(orgId, collections.eyeIolRecords, patientId, "patientId");
 }
 
 export function eyeAppointmentPath(orgId, appointmentId) {

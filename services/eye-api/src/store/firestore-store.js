@@ -18,6 +18,7 @@ import {
   eyePatientMarksPath,
   eyeReceptionSettingsPath,
   eyeClinicConfigPath,
+  eyeIolRecordsPath,
   organizationPath
 } from "../../../../packages/firestore-schema/src/index.js";
 import { sortByDate } from "../../../../packages/eye-core/src/index.js";
@@ -330,6 +331,21 @@ export class FirestoreEyeStore {
   async listNamed(orgId, collectionName) {
     return docs(await this.orgCollection(orgId, collectionName).get())
       .sort((left, right) => String(left.name || left.label || left.text).localeCompare(String(right.name || right.label || right.text), "ja"));
+  }
+
+  async getIolRecords(orgId, patientId) {
+    return dataOrNull(await this.doc(eyeIolRecordsPath(orgId, patientId)).get());
+  }
+
+  async saveIolRecords(orgId, doc, expectedRevision) {
+    return this.db.runTransaction(async (transaction) => {
+      const ref = this.doc(eyeIolRecordsPath(orgId, doc.patientId));
+      const current = dataOrNull(await transaction.get(ref));
+      if ((current?.revision || 0) !== expectedRevision) throw storeError("ConflictError", 409, "IOL records were updated by someone else; reload and try again");
+      const saved = { ...doc, orgId };
+      transaction.set(ref, saved);
+      return saved;
+    });
   }
 
   async getPatientProfile(orgId, patientId) {

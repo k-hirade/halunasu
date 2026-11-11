@@ -23,6 +23,7 @@ export class MemoryEyeStore {
     this.documents = new Map();
     this.files = new Map();
     this.billingHandoffs = new Map();
+    this.iolRecords = new Map();
   }
 
   createBillingHandoff(orgId, handoff) {
@@ -204,6 +205,20 @@ export class MemoryEyeStore {
     return [...this.forOrg(map, orgId).values()]
       .sort((left, right) => String(left.name || left.label || left.text).localeCompare(String(right.name || right.label || right.text), "ja"))
       .map(clone);
+  }
+
+  // IOL の記録は患者ごとに 1 件。expectedRevision（まだ無いときは 0）が今の版と違えば 409。
+  getIolRecords(orgId, patientId) {
+    return cloneOrNull(this.forOrg(this.iolRecords, orgId).get(patientId));
+  }
+
+  saveIolRecords(orgId, doc, expectedRevision) {
+    const records = this.forOrg(this.iolRecords, orgId);
+    if ((records.get(doc.patientId)?.revision || 0) !== expectedRevision) {
+      throw storeError("ConflictError", 409, "IOL records were updated by someone else; reload and try again");
+    }
+    records.set(doc.patientId, clone({ ...doc, orgId }));
+    return clone({ ...doc, orgId });
   }
 
   getPatientProfile(orgId, patientId) {

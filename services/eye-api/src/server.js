@@ -23,6 +23,7 @@ import {
   EYE_SET_ROLES,
   EYE_SETTINGS_ROLES,
   EYE_WRITE_ROLES,
+  FILE_KINDS,
   isActiveAppointmentStatus,
   LEARNING_CATEGORIES,
   patientSearchVariants,
@@ -104,6 +105,7 @@ import { defaultMasterIndex, MASTER_SEARCH_LIMIT, parseLookupCodes } from "./mas
 import { commonModifiers } from "./modifier-common.js";
 import { handleRegularOrderRoute, withoutRegularOrders } from "./regular-orders.js";
 import { createId } from "./ids.js";
+import { applyIolUpdate, iolView, validateIolRecordsInput } from "./iol.js";
 import {
   applyProfileUpdate,
   deriveProfileFromHistory,
@@ -945,8 +947,28 @@ async function routeEyeApiRequest(input = {}) {
 
   if (method === "GET" && parts.length === 5 && matches(parts.slice(0, 3), ["v1", "eye", "patients"]) && parts[4] === "files") {
     const patient = await requirePatient(platformStore, orgId, parts[3]);
-    const files = (await eyeStore.listPatientFiles(orgId, patient.patientId)).filter((item) => item.status === "stored" && !item.archived);
+    const kind = String(url.searchParams.get("kind") || "");
+    if (kind && !FILE_KINDS.includes(kind)) throw badRequest(`kind must be one of: ${FILE_KINDS.join(", ")}`, "kind");
+    const files = (await eyeStore.listPatientFiles(orgId, patient.patientId)).filter((item) => item.status === "stored" && !item.archived && (!kind || item.kind === kind));
     return ok({ files });
+  }
+
+  // IOL 管理（眼ごとの眼内レンズの記録）。読むのは誰でも、変えるのは記載できる職種。一覧ごと置き換える（revision で競合を検出）。
+  if (parts.length === 5 && matches(parts.slice(0, 3), ["v1", "eye", "patients"]) && parts[4] === "iol") {
+    const patient = await requirePatient(platformStore, orgId, parts[3]);
+    if (method === "GET") {
+      return ok({ iol: iolView(await eyeStore.getIolRecords(orgId, patient.patientId), patient.patientId) });
+    }
+    if (method === "PUT") {
+      requireAccess(context, EYE_WRITE_ROLES, "Eye chart write access is required");
+      requirePlatformCsrf(input.headers || {}, context.session);
+      const validated = validateIolRecordsInput(input.body || {});
+      const current = await eyeStore.getIolRecords(orgId, patient.patientId);
+      const doc = applyIolUpdate({ current, validated, patientId: patient.patientId, actor, now });
+      const saved = await eyeStore.saveIolRecords(orgId, doc, validated.expectedRevision);
+      await audit({ eventType: "eye.iol_updated", targetType: "patient", targetId: patient.patientId, patientId: patient.patientId, safePayload: { revision: doc.revision, recordCount: doc.records.length } });
+      return ok({ iol: iolView(saved, patient.patientId) });
+    }
   }
 
   if (method === "POST" && matches(parts, ["v1", "eye", "files", "uploads"])) {
@@ -1612,6 +1634,7 @@ async function exportPatient(eyeStore, orgId, patient) {
     eyeStore.listPatientAppointments(orgId, patient.patientId),
     eyeStore.getPatientProfile(orgId, patient.patientId)
   ]);
+  const iol = typeof eyeStore.getIolRecords === "function" ? await eyeStore.getIolRecords(orgId, patient.patientId) : null;
   const versions = [];
   for (const encounter of encounters) versions.push(...await eyeStore.listVersions(orgId, encounter.encounterId));
   return {
@@ -1622,7 +1645,8 @@ async function exportPatient(eyeStore, orgId, patient) {
     encounterVersions: versions,
     documents,
     files: files.filter((item) => item.status === "stored").map(({ storagePath, ...file }) => ({ ...file, storagePath })),
-    appointments
+    appointments,
+    ...(iol?.records?.length ? { iolRecords: iolView(iol, patient.patientId).records } : {})
   };
 }
 

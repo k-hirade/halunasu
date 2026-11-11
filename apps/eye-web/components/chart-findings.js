@@ -193,6 +193,7 @@ export function FindingsColumn({
           onCancel={() => setSketchDialog(null)}
           onDelete={sketchDialog.isNew ? null : () => { update(["sketches"], sketches.filter((item) => item.sketchId !== sketchDialog.sketch.sketchId)); setSketchDialog(null); }}
           onSave={saveSketch}
+          pastSketches={previous?.content?.sketches || []}
           readOnly={!editable}
           sketch={sketchDialog.sketch}
         />
