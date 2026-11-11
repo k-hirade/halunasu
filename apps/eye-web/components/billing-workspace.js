@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useEyeApi, useEyeFileTransfer } from "./eye-api";
 import { usePrintSettings } from "./print-settings";
+import { UnapprovedTag } from "./chart-approval";
 import { BILLING_TABS, billingRows, countByState, diffChips, diffItems, groupByCategory, itemSummary } from "../lib/billing-diff";
 import { addDays, ageOn, APPOINTMENT_STATUS_LABELS, DIAGNOSIS_STATUS_LABELS, formatDate, SEX_LABELS, todayIso, VISIT_TYPE_LABELS } from "../lib/format";
 
@@ -317,6 +318,8 @@ export function BillingWorkspace() {
           <span className="bill-final">
             {item.finalizedAt ? <>{formatClock(item.finalizedAt)}<span className="muted" title={item.finalizedBy?.displayName || undefined}> {item.finalizedBy?.displayName || ""}</span></> : <span className="muted">—</span>}
             {row.state === "changed" ? <span className="bill-version mono">v{item.handoff.version}→v{item.version}</span> : null}
+            {/* 承認待ち・差し戻しでも送れる（止めない）。未承認であることだけ出す */}
+            <UnapprovedTag approval={item.approval} />
           </span>
           <span className="bill-extra">{renderExtra(row)}</span>
           <span className="bill-state-cell">{renderState(row)}</span>
@@ -550,6 +553,7 @@ function SendDialog({ row, busy, onCancel, onConfirm, printAfter = false, onPrin
           <span className="mono">{patient?.primaryPatientNumber || ""}</span>
           <span>{VISIT_TYPE_LABELS[item.visitType] || ""}</span>
           <span className="muted">カルテ v{item.version}</span>
+          <UnapprovedTag approval={item.approval} />
         </p>
         {/* デジカルの会計画面の 1 行目（診療日・医師）に合わせる */}
         <p className="bill-send-visit">

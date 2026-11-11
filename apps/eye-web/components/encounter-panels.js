@@ -1,5 +1,6 @@
 "use client";
 
+import { VersionApprovalLine } from "./chart-approval";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { adherenceLabel, counsellingLabel, diagnosisName, groupRps, pupilLabel } from "@halunasu/eye-core";
@@ -77,6 +78,7 @@ export function VersionsPanel({ encounterId, versions }) {
           <span className="muted small"> {formatDateTime(version.finalizedAt)} {version.finalizedBy?.displayName}</span>
           {version.amendmentReason ? <div className="small">修正理由: {version.amendmentReason}</div> : null}
           {version.warningCodes?.length ? <div className="muted small">確認事項 {version.warningCodes.length}件のまま確定</div> : null}
+          <VersionApprovalLine events={version.approvalEvents} />
         </li>
       ))}
     </ol>

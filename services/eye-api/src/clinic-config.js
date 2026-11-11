@@ -4,11 +4,16 @@
 //   clinicHours      診療時間・予約枠（予約の画面が読む）
 //   printSettings    帳票設定（紙の印字の選択）
 //   otherSettings    その他設定（文書の既定の入力方法・操作記録の既定の期間）
+//   approval         カルテの承認（指導医の承認）を使うか（approval.js）
+//   referenceRanges  基準値（バイタル・検査。カルテ左の表の色分けとグラフの線。eye-core の reference-ranges.js）
 // 受付ラベル・患者マークは受付の設定（reception.js の /v1/eye/reception-settings）だけに保存する。以前この API の
 // receptionLabels に保存した値は、受付の設定を読むときに取り込む（mergeLegacyReceptionLabels）。この API の receptionLabels は 404。
 // 読むのは眼科の役割を持つ全員、直すのは管理者。どれも追加の値で、保存していなければ既定の値を返す（従来の動きのまま）。
 
-export const CLINIC_CONFIG_SECTIONS = Object.freeze(["docTemplates", "labLists", "clinicHours", "printSettings", "otherSettings"]);
+import { DEFAULT_REFERENCE_RANGES, resolveReferenceRanges, validateReferenceRanges } from "../../../packages/eye-core/src/index.js";
+import { defaultApprovalSettings, validateApprovalSettings } from "./approval.js";
+
+export const CLINIC_CONFIG_SECTIONS = Object.freeze(["docTemplates", "labLists", "clinicHours", "printSettings", "otherSettings", "approval", "referenceRanges"]);
 export const DOC_TEMPLATE_TYPES = Object.freeze(["referral", "reply", "certificate", "other"]);
 export const WEEKDAYS = Object.freeze(["mon", "tue", "wed", "thu", "fri", "sat", "sun", "holiday"]);
 export const SLOT_MINUTES = Object.freeze([10, 15, 20, 30, 60]);
@@ -29,6 +34,8 @@ export function defaultClinicConfig(section) {
     case "clinicHours": return { slotMinutes: 30, days: Object.fromEntries(WEEKDAYS.map((day) => [day, []])), note: "" };
     case "printSettings": return { defaultHonorific: "御侍史", letterSeal: true, billingSlipDiagnoses: true, footerNote: "" };
     case "otherSettings": return { documentInputMode: "text", auditDefaultRange: "7d" };
+    case "approval": return defaultApprovalSettings();
+    case "referenceRanges": return resolveReferenceRanges(DEFAULT_REFERENCE_RANGES);
     default: throw validationError("unknown settings section", "section");
   }
 }
@@ -123,6 +130,12 @@ const VALIDATORS = {
       footerNote: text(value.footerNote, "footerNote", 200)
     };
   },
+  approval(value) {
+    return validateApprovalSettings(value);
+  },
+  referenceRanges(value) {
+    return validateReferenceRanges(value);
+  },
   otherSettings(value) {
     return {
       documentInputMode: enumOf(value.documentInputMode, DOCUMENT_INPUT_MODES, "documentInputMode", "text"),
@@ -145,7 +158,9 @@ export function buildClinicConfig(current, section, value, { actor, now }) {
 // 返す形: { value, revision, updatedAt, updatedBy }。保存が無ければ既定の値と revision 0。
 export function clinicConfigView(section, stored) {
   return {
-    value: stored?.value ? { ...defaultClinicConfig(section), ...stored.value } : defaultClinicConfig(section),
+    // 基準値は項目ごとに既定の値を重ねる（あとで項目が増えても、保存済みの医院に既定の値が入る）
+    value: section === "referenceRanges" ? resolveReferenceRanges(stored?.value || null)
+      : stored?.value ? { ...defaultClinicConfig(section), ...stored.value } : defaultClinicConfig(section),
     revision: stored?.revision || 0,
     updatedAt: stored?.updatedAt || "",
     updatedBy: stored?.updatedBy || null

@@ -105,6 +105,17 @@ import { defaultMasterIndex, MASTER_SEARCH_LIMIT, parseLookupCodes } from "./mas
 import { commonModifiers } from "./modifier-common.js";
 import { handleRegularOrderRoute, withoutRegularOrders } from "./regular-orders.js";
 import { createId } from "./ids.js";
+import {
+  applyFinalizeApproval,
+  approvalBrief,
+  approvalListItem,
+  approvalRequirement,
+  decideApproval,
+  isAwaitingApproval,
+  validateApprovalActionInput,
+  validateStaffApprovalFlags,
+  versionApprovalEvents
+} from "./approval.js";
 import { applyIolUpdate, iolView, validateIolRecordsInput } from "./iol.js";
 import {
   applyProfileUpdate,
@@ -239,7 +250,7 @@ async function routeEyeApiRequest(input = {}) {
       // 医療機関情報（設定）。読めなくても起動は止めず、基本の施設情報で紙を作る。
       loadFacilitySettings(eyeStore, orgId),
       // 施設管理の追加の設定（診療時間・帳票設定など。受付ラベル・患者マークは受付の設定 /v1/eye/reception-settings）。読めなくても起動は止めず、既定の値を使う。
-      loadClinicConfig(eyeStore, orgId, ["labLists", "clinicHours", "printSettings", "otherSettings"])
+      loadClinicConfig(eyeStore, orgId, ["labLists", "clinicHours", "printSettings", "otherSettings", "approval", "referenceRanges"])
     ]);
     const printNames = Object.fromEntries(staff.map((item) => [item.memberId, item.resolvedName]));
     return ok({
@@ -249,7 +260,9 @@ async function routeEyeApiRequest(input = {}) {
       facilitySettings: facilitySettingsView(facilitySettings),
       // オーダーの候補 = 既定の候補 + 施設管理の院内検査項目（有効なもの）
       drugPresets, orderSets, setFolders, phrases, orderCatalog: [...DEFAULT_ORDER_CATALOG, ...labCatalogItems(clinicConfig.labLists.value)], printNames,
-      clinicConfig: { clinicHours: clinicConfig.clinicHours.value, printSettings: clinicConfig.printSettings.value, otherSettings: clinicConfig.otherSettings.value } });
+      clinicConfig: { clinicHours: clinicConfig.clinicHours.value, printSettings: clinicConfig.printSettings.value, otherSettings: clinicConfig.otherSettings.value,
+        // カルテの承認を使うか・基準値（バイタル・検査）
+        approval: clinicConfig.approval.value, referenceRanges: clinicConfig.referenceRanges.value } });
   }
 
   // 公開マスター（医薬品・傷病名・修飾語・診療行為）の検索。語は患者の情報ではないので URL で受け取る。
@@ -332,11 +345,33 @@ async function routeEyeApiRequest(input = {}) {
     });
   }
 
+  // 承認待ちのカルテ（指導医の承認）。一覧と同じ範囲の項目（氏名・日付・版・確定した人）だけを返す。
+  if (method === "GET" && matches(parts, ["v1", "eye", "approvals"])) {
+    requireAccess(context, EYE_WRITE_ROLES, "Eye chart write access is required");
+    const [approvalContext, pending] = await Promise.all([
+      loadApprovalContext(eyeStore, orgId, context),
+      listAwaitingApproval(eyeStore, orgId)
+    ]);
+    return ok({ enabled: approvalContext.enabled, canApprove: approvalContext.canApprove, count: pending.length, items: pending.slice(0, WORKLIST_ITEM_LIMIT).map(approvalListItem) });
+  }
+
   // 診察画面の「要対応」: 未確定カルテ（前日以前も含む）・紙カルテ要約の未確認・文書の下書き。
   // 一覧と同じ範囲の項目（氏名・日付・状態）だけを返し、本文や要約は返さない。
   if (method === "GET" && matches(parts, ["v1", "eye", "worklist"])) {
     requireAccess(context, EYE_WRITE_ROLES, "Eye chart write access is required");
-    return ok(await buildWorklist(eyeStore, platformStore, orgId));
+    const [worklist, approvalContext, pending] = await Promise.all([
+      buildWorklist(eyeStore, platformStore, orgId),
+      loadApprovalContext(eyeStore, orgId, context),
+      listAwaitingApproval(eyeStore, orgId)
+    ]);
+    // 承認待ち（今の版が承認待ちの確定済みカルテ）。承認を使わない医院では 0 件
+    return ok({
+      ...worklist,
+      approval: { enabled: approvalContext.enabled, canApprove: approvalContext.canApprove },
+      // counts（既存の 3 つ）とは別に持つ
+      approvalPending: pending.slice(0, WORKLIST_ITEM_LIMIT).map(approvalListItem),
+      approvalPendingCount: pending.length
+    });
   }
 
   if (method === "GET" && matches(parts, ["v1", "eye", "patients"])) {
@@ -535,6 +570,7 @@ async function routeEyeApiRequest(input = {}) {
       ]);
       const previous = previousFinalizedEncounter(history, encounter);
       const profile = await loadProfile(eyeStore, orgId, encounter.patientId, history);
+      const approvalContext = await loadApprovalContext(eyeStore, orgId, context);
       await audit({ eventType: "eye.encounter_viewed", targetType: "encounter", targetId: encounterId, patientId: encounter.patientId });
       return ok({
         encounter,
@@ -548,7 +584,17 @@ async function routeEyeApiRequest(input = {}) {
         changes: previous ? diffEncounterContent(previous.content, encounter.content) : [],
         bottleSuggestions: eyeDropBottleSuggestions(encounter, drugPresets),
         nextVisitSuggestion: suggestNextVisit(history, encounter.encounterDate),
-        versions: versions.map(versionSummary)
+        // 版ごとの承認の記録（承認待ちにした・承認・差し戻し）を添える
+        versions: versions.map((version) => ({ ...versionSummary(version), approvalEvents: versionApprovalEvents(encounter, version.version) })),
+        approval: approvalBrief(encounter),
+        approvalContext: {
+          enabled: approvalContext.enabled,
+          approver: approvalContext.approver,
+          requiresApproval: approvalContext.requiresApproval,
+          canApprove: approvalContext.canApprove,
+          // この人がこの版を承認・差し戻しできるか（承認者で、承認待ちで、自分が確定した版でない）
+          canDecide: approvalContext.canApprove && isAwaitingApproval(encounter) && encounter.finalizedBy?.memberId !== context.session.memberId
+        }
       });
     }
 
@@ -620,8 +666,8 @@ async function routeEyeApiRequest(input = {}) {
       requirePlatformCsrf(input.headers || {}, context.session);
       const { expectedRevision } = validateFinalizeEncounterInput(input.body || {});
       const current = await requireEncounter(eyeStore, orgId, encounterId);
-      const { encounter, version, warnings } = await finalizeAndSave({ eyeStore, orgId, current, expectedRevision, actor, now, audit });
-      return ok({ encounter, version: versionSummary(version), warnings });
+      const { encounter, version, warnings } = await finalizeAndSave({ eyeStore, orgId, current, expectedRevision, actor, now, audit, context });
+      return ok({ encounter, version: versionSummary(version), warnings, approval: approvalBrief(encounter) });
     }
 
     // 診察終了（デジカルの［次へ］）: 確定 → その日の受付を選んだ状態へ → 次の診察待の患者を返す。
@@ -638,7 +684,7 @@ async function routeEyeApiRequest(input = {}) {
       let encounter = current;
       let version = null;
       if (current.status === "draft") {
-        ({ encounter, version } = await finalizeAndSave({ eyeStore, orgId, current, expectedRevision: validated.expectedRevision, actor, now, audit }));
+        ({ encounter, version } = await finalizeAndSave({ eyeStore, orgId, current, expectedRevision: validated.expectedRevision, actor, now, audit, context }));
       } else if (current.revision !== validated.expectedRevision) {
         throw conflictError("encounter was updated by someone else; reload and try again");
       }
@@ -677,6 +723,28 @@ async function routeEyeApiRequest(input = {}) {
           encounterId: nextEncounter?.encounterId || ""
         } : null
       });
+    }
+
+    // カルテの承認（指導医）。承認者（医師・管理者の役割＋職員の「承認者」の印）だけ。見ている版（version）を承認する。
+    // 差し戻しは理由（comment）が要る。カルテは確定済みのまま（会計は止めない）で、書いた人が直して確定すると次の版が承認待ちになる。
+    if (method === "POST" && (action === "approve" || action === "return") && parts.length === 5) {
+      requireAccess(context, EYE_FINALIZE_ROLES, "Only an approving doctor can approve an eye chart");
+      requirePlatformCsrf(input.headers || {}, context.session);
+      const validated = validateApprovalActionInput(input.body || {}, { requireComment: action === "return" });
+      const approvalContext = await loadApprovalContext(eyeStore, orgId, context);
+      if (!approvalContext.canApprove) throw forbiddenError("承認者（指導医）に設定された医師だけが承認・差し戻しできます。");
+      const current = await requireEncounter(eyeStore, orgId, encounterId);
+      const encounter = decideApproval(current, { decision: action, version: validated.version, comment: validated.comment, actor, now });
+      await eyeStore.replaceEncounter(orgId, encounter, validated.expectedRevision);
+      await audit({
+        eventType: action === "approve" ? "eye.encounter_approved" : "eye.encounter_returned",
+        targetType: "encounter",
+        targetId: encounterId,
+        patientId: encounter.patientId,
+        // 理由の本文は残さない（有無だけ）
+        safePayload: { version: validated.version, contentHash: encounter.approval.contentHash, hasComment: Boolean(validated.comment) }
+      });
+      return ok({ encounter, approval: approvalBrief(encounter) });
     }
 
     if (method === "POST" && action === "amend" && parts.length === 5) {
@@ -1337,12 +1405,18 @@ async function routeEyeApiRequest(input = {}) {
     requireAccess(context, EYE_SETTINGS_ROLES, "Eye settings access is required");
     requirePlatformCsrf(input.headers || {}, context.session);
     const memberId = parts[3];
-    const validated = validateStaffProfileInput(input.body || {});
+    const body = input.body || {};
+    // 印刷用の氏名と、承認の印（承認者・承認が必要）。送られた項目だけを変える（印だけ・氏名だけの保存もできる）
+    const flags = validateStaffApprovalFlags(body);
+    const validated = body.printName === undefined && Object.keys(flags).length ? null : validateStaffProfileInput(body);
     const member = (await loadEyeStaff(platformStore, eyeStore, orgId)).find((item) => item.memberId === memberId);
     if (!member) throw notFoundError("staff member not found");
-    await eyeStore.saveStaffProfile(orgId, { memberId, printName: validated.printName, updatedBy: actor });
-    await audit({ eventType: "eye.staff_profile_saved", targetType: "staff_profile", targetId: memberId });
-    return ok({ staffProfile: { ...member, printName: validated.printName, resolvedName: printableStaffName(member.displayName, validated.printName) } });
+    // 承認者にできるのは医師（か管理者）の役割を持つ人だけ
+    if (flags.approver === true && !member.eyeRoles.some((role) => EYE_FINALIZE_ROLES.includes(role))) throw badRequest("承認者にできるのは医師です。", "approver");
+    const printName = validated ? validated.printName : member.printName;
+    await eyeStore.saveStaffProfile(orgId, { memberId, printName, ...flags, updatedBy: actor });
+    await audit({ eventType: "eye.staff_profile_saved", targetType: "staff_profile", targetId: memberId, ...(Object.keys(flags).length ? { safePayload: flags } : {}) });
+    return ok({ staffProfile: { ...member, printName, ...flags, resolvedName: printableStaffName(member.displayName, printName) } });
   }
 
   if (method === "GET" && matches(parts, ["v1", "eye", "audit-logs"])) {
@@ -1551,6 +1625,28 @@ async function loadFacilitySettings(eyeStore, orgId) {
   return Promise.resolve().then(() => eyeStore.getFacilitySettings?.(orgId) ?? null).catch(() => null);
 }
 
+// 承認の設定と、この人の承認の印。読めなくても止めない（承認を使わない扱い）。
+async function loadApprovalContext(eyeStore, orgId, context) {
+  const [config, staffProfile] = await Promise.all([
+    loadClinicConfig(eyeStore, orgId, ["approval"]),
+    Promise.resolve().then(() => eyeStore.getStaffProfile(orgId, context.session.memberId)).catch(() => null)
+  ]);
+  const approver = staffProfile?.approver === true;
+  return {
+    enabled: config.approval.value.enabled === true,
+    approver,
+    requiresApproval: staffProfile?.requiresApproval === true,
+    canApprove: approver && hasProductAccess(context.session, EYE_PRODUCT_ID, EYE_FINALIZE_ROLES),
+    staffProfile: staffProfile ? { approver, requiresApproval: staffProfile.requiresApproval === true } : null
+  };
+}
+
+// 承認待ち（今の版が承認待ちの確定済みカルテ）。古い順（早く頼まれたものから）。
+async function listAwaitingApproval(eyeStore, orgId) {
+  const rows = typeof eyeStore.listApprovalPendingEncounters === "function" ? await eyeStore.listApprovalPendingEncounters(orgId, WORKLIST_SCAN_LIMIT) : [];
+  return rows.filter(isAwaitingApproval).sort((left, right) => String(left.approval.requestedAt).localeCompare(String(right.approval.requestedAt)));
+}
+
 async function loadEyeStaff(platformStore, eyeStore, orgId) {
   const [members, profiles] = await Promise.all([
     Promise.resolve().then(() => platformStore.listMembers(orgId)),
@@ -1561,8 +1657,11 @@ async function loadEyeStaff(platformStore, eyeStore, orgId) {
     .filter((member) => member?.memberId && (member.productRoles?.[EYE_PRODUCT_ID] || []).length > 0)
     .map((member) => {
       const displayName = member.displayName || member.loginId || "";
-      const printName = byMember.get(member.memberId)?.printName || "";
+      const stored = byMember.get(member.memberId);
+      const printName = stored?.printName || "";
       return {
+        approver: stored?.approver === true,
+        requiresApproval: stored?.requiresApproval === true,
         memberId: member.memberId,
         loginId: member.loginId || "",
         displayName,
@@ -1680,7 +1779,8 @@ async function billingDay(eyeStore, platformStore, orgId, date) {
       ...encounter,
       patientSnapshot: { ...encounter.patientSnapshot, primaryPatientNumber: current?.primaryPatientNumber || "" }
     }, documents);
-    return { ...built, handoff: handoffStatus(built, handoffs) };
+    // 承認待ち・差し戻しでも会計は止めない（一覧に「未承認」と出す）
+    return { ...built, handoff: handoffStatus(built, handoffs), approval: approvalBrief(encounter) };
   });
   // 再連携が必要なものには、修正の理由（その版を確定したときの理由）を添える。
   for (const item of billing) {
@@ -1723,16 +1823,21 @@ async function loadProfile(eyeStore, orgId, patientId, encounters) {
 }
 
 // カルテを確定して保存する（確定の API と診察終了で共通）。止める条件は finalizeEncounter が決める。
-async function finalizeAndSave({ eyeStore, orgId, current, expectedRevision, actor, now, audit }) {
+async function finalizeAndSave({ eyeStore, orgId, current, expectedRevision, actor, now, audit, context = null }) {
   const history = await eyeStore.listPatientEncounters(orgId, current.patientId);
   const profile = await loadProfile(eyeStore, orgId, current.patientId, history);
   const diagnoses = profile.derived && current.content.diagnoses?.length
     ? current.content.diagnoses
     : diagnosesForEncounter(profile, current.encounterDate);
-  const { encounter, version, warnings } = finalizeEncounter(
+  const finalized = finalizeEncounter(
     { ...current, content: { ...current.content, diagnoses } },
     { actor, now }
   );
+  const { version, warnings } = finalized;
+  // 承認（指導医）: 設定が有効で、確定した人が承認が必要なら、この版を承認待ちにする（approval.js）
+  const approvalContext = context ? await loadApprovalContext(eyeStore, orgId, context) : { enabled: false, staffProfile: null };
+  const requirement = approvalRequirement({ enabled: approvalContext.enabled, staffProfile: approvalContext.staffProfile, current });
+  const encounter = applyFinalizeApproval(finalized.encounter, version, { requirement, actor, now });
   await eyeStore.replaceEncounter(orgId, encounter, expectedRevision, version);
   invalidateLearningCache(eyeStore, orgId);
   await audit({
@@ -1742,6 +1847,9 @@ async function finalizeAndSave({ eyeStore, orgId, current, expectedRevision, act
     patientId: encounter.patientId,
     safePayload: { version: version.version, contentHash: version.contentHash, warningCodes: version.warningCodes }
   });
+  if (requirement === "pending") {
+    await audit({ eventType: "eye.encounter_approval_requested", targetType: "encounter", targetId: encounter.encounterId, patientId: encounter.patientId, safePayload: { version: version.version } });
+  }
   return { encounter, version, warnings };
 }
 

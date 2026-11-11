@@ -39,6 +39,10 @@ const TASKS = [
   { key: "papers", label: "要約未確認", count: "unreviewedPaperCharts" },
   { key: "documents", label: "文書の下書き", count: "draftDocuments" }
 ];
+// 承認待ち（指導医の承認）。承認者か、承認を使う医院で承認待ちがあるときだけタブを出す
+const APPROVAL_TASK = { key: "approvals", label: "承認待ち", count: "approvalPending" };
+const taskCount = (worklist, task) => (task.key === APPROVAL_TASK.key ? worklist.approvalPendingCount ?? 0 : worklist.counts[task.count]);
+const tasksFor = (worklist) => (worklist?.approval?.canApprove || (worklist?.approval?.enabled && worklist?.approvalPendingCount) ? [...TASKS, APPROVAL_TASK] : TASKS);
 const DOCUMENT_TYPE_LABELS = { referral: "紹介状", reply: "返書", certificate: "診断書", other: "その他の文書" };
 const STAGE_LABELS = Object.fromEntries(LIST_STAGES.map((stage) => [stage.key, stage.label]));
 const STAGE_ORDER = Object.fromEntries(LIST_STAGES.map((stage, index) => [stage.key, index]));
@@ -351,8 +355,8 @@ export function HomeWorkspace() {
   }
 
   function renderTask(key) {
-    const task = TASKS.find((item) => item.key === key);
     if (!worklist) return <p className="empty">読み込み中…</p>;
+    const task = tasksFor(worklist).find((item) => item.key === key) || TASKS[0];
     let taskRows = [];
     if (key === "drafts") {
       taskRows = worklist.draftEncounters.map((item) => renderTaskRow({
@@ -364,6 +368,17 @@ export function HomeWorkspace() {
         state: item.amending ? "修正中" : "下書き",
         detail: [item.updatedAt ? `最終保存 ${savedAt(item.updatedAt, date)}` : "", item.updatedBy].filter(Boolean).join(" "),
         action: "カルテを開く"
+      }));
+    } else if (key === APPROVAL_TASK.key) {
+      taskRows = (worklist.approvalPending || []).map((item) => renderTaskRow({
+        key: item.encounterId,
+        href: `/encounters/${item.encounterId}`,
+        date: item.encounterDate,
+        name: item.patientName,
+        kana: item.patientNameKana,
+        state: `承認待ち v${item.version}`,
+        detail: [item.finalizedBy ? `確定 ${item.finalizedBy}` : "", item.requestedAt ? savedAt(item.requestedAt, date) : ""].filter(Boolean).join(" "),
+        action: worklist.approval?.canApprove ? "承認する" : "カルテを開く"
       }));
     } else if (key === "papers") {
       taskRows = worklist.unreviewedPaperCharts.map((item) => renderTaskRow({
@@ -388,7 +403,7 @@ export function HomeWorkspace() {
         action: "文書を開く"
       }));
     }
-    const total = worklist.counts[task.count];
+    const total = taskCount(worklist, task);
     return (
       <section aria-label={task.label} className="flow-group status-task">
         <h2 className="flow-group-head">
@@ -449,8 +464,8 @@ export function HomeWorkspace() {
         {canWrite ? (
           <>
             <span aria-hidden="true" className="cl-tab-divider" />
-            {TASKS.map((task) => {
-              const count = worklist ? worklist.counts[task.count] : null;
+            {tasksFor(worklist).map((task) => {
+              const count = worklist ? taskCount(worklist, task) : null;
               return (
                 <button aria-selected={activeTab === `task:${task.key}`} className={`cl-tab is-task${count ? " has-items" : ""}`} key={task.key} onClick={() => setTab(`task:${task.key}`)} role="tab" type="button">
                   {task.label}<span className="cl-tab-count">{count === null ? "…" : `${count}${worklist.truncated && count ? "+" : ""}`}</span>

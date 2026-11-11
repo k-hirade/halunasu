@@ -11,6 +11,7 @@ import { OrderSetsSection } from "./settings-sets";
 import { UsersSection } from "./settings-users";
 import { ClinicHoursSection, DocTemplatesSection, LabListsSection, OtherSettingsSection, PrintSettingsSection, ReceptionLabelsSection } from "./settings-config";
 import { ReportSection } from "./settings-report";
+import { ApprovalSettingsSection, ReferenceRangesSection } from "./settings-approval";
 import { COMMON_USAGES, downloadJson, formatDateTime, PHRASE_TARGET_LABELS, PHRASE_TARGET_SOAP, PRESCRIPTION_KIND_LABELS, SOAP_LABELS, todayIso } from "../lib/format";
 import { daysPerBottle, drugBottleText, drugDefaultText, drugSearchValues, matchesSearch, normalizeSearch, phraseSearchValues } from "../lib/settings";
 
@@ -20,11 +21,13 @@ const SECTIONS = [
   { key: "facility", label: "医療機関情報", group: "clinic" },
   { key: "users", label: "利用者管理", group: "clinic", admin: true },
   { key: "hours", label: "診療時間・予約枠", group: "clinic" },
+  { key: "approval", label: "カルテの承認", group: "clinic" },
   { key: "labels", label: "受付ラベル・患者マーク", group: "input" },
   { key: "sets", label: "セット", group: "input" },
   { key: "phrases", label: "定型文", group: "input" },
   { key: "drugs", label: "よく使う薬剤", group: "input" },
   { key: "lab", label: "検査会社・院内検査項目", group: "input" },
+  { key: "ranges", label: "基準値（バイタル・検査）", group: "input" },
   { key: "templates", label: "文書雛形", group: "paper" },
   { key: "print", label: "帳票設定", group: "paper" },
   { key: "other", label: "その他設定", group: "paper" },
@@ -178,6 +181,8 @@ export function SettingsWorkspace() {
           {section === "templates" ? <DocTemplatesSection canEdit={context.canManageSettings} /> : null}
           {section === "print" ? <PrintSettingsSection canEdit={context.canManageSettings} /> : null}
           {section === "other" ? <OtherSettingsSection canEdit={context.canManageSettings} /> : null}
+          {section === "approval" ? <ApprovalSettingsSection canEdit={context.canManageSettings} /> : null}
+          {section === "ranges" ? <ReferenceRangesSection canEdit={context.canManageSettings} /> : null}
           {section === "report" ? <ReportSection /> : null}
           {section === "sets" ? (
             <OrderSetsSection

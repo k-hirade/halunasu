@@ -32,6 +32,8 @@ import { useMediaQuery } from "./use-media-query";
 import { addDays, formatDate, formatDateTime, phraseTargetPath, prescriptionText, todayIso, VISIT_TYPE_LABELS } from "../lib/format";
 import { applyCopy, appendRpRows } from "../lib/chart-copy";
 import { chartGuide, GUIDE_STATE_LABELS } from "../lib/chart-guide";
+import { approvalBriefOf, approvalGuideItem } from "../lib/approval";
+import { ApprovalBar, ApprovalTag } from "./chart-approval";
 
 const SIDES = ["od", "os"];
 // 次へ（→）で選ぶ受付の状態。再計待は表示用の派生、取消はカルテのある受付にはできないので出さない。
@@ -252,7 +254,10 @@ export function EncounterEditor({ encounterId }) {
   const futureDraft = meta.encounterDate > todayIso();
   const sendable = Boolean(context?.canReceive) && finalizedView && !encounter.amendment && !futureDraft;
   const examRequestable = Boolean(context?.canWrite) && editable && !futureDraft;
-  const guide = chartGuide(content, { profile, confirmations: encounter.examConfirmations || null });
+  // 承認（指導医）の状態。承認の流れに入ったカルテだけ、ガイドの最後に「承認」を足す
+  const approval = approvalBriefOf(encounter);
+  const approvalGuide = approvalGuideItem(approval);
+  const guide = [...chartGuide(content, { profile, confirmations: encounter.examConfirmations || null }), ...(approvalGuide ? [approvalGuide] : [])];
   const highWarnings = readiness.blockers.length + activeWarnings.filter((item) => item.level === "high").length;
 
   function openSend() {
@@ -372,6 +377,10 @@ export function EncounterEditor({ encounterId }) {
   }
 
   function jumpTo(item) {
+    if (item.id === "approval") {
+      setDialog("versions");
+      return;
+    }
     if (item.id === "diagnosis") {
       openLeft("diagnoses");
       return;
@@ -561,7 +570,16 @@ export function EncounterEditor({ encounterId }) {
     // 版の一覧などを読み直す（確定の直後に打ち始めた入力は消さない）
     await load();
     setFlow(null);
-    setNotice(`確定しました（v${payload.version?.version || ""}）。${payload.warnings?.length ? `確認事項 ${payload.warnings.length}件のまま確定しました。` : ""}`);
+    setNotice(`確定しました（v${payload.version?.version || ""}）。${payload.warnings?.length ? `確認事項 ${payload.warnings.length}件のまま確定しました。` : ""}${payload.approval?.status === "pending" && payload.approval.current ? "指導医の承認待ちになりました。" : ""}`);
+  }
+
+  // 承認・差し戻し（承認者だけ）。見ている版を送り、版履歴などを読み直す
+  async function decideApproval(decision, comment = "") {
+    const payload = await runAction(`/v1/eye/encounters/${encounterId}/${decision}`, { version: encounter.versionCount, ...(comment ? { comment } : {}) });
+    if (!payload) return false;
+    await load();
+    setNotice(decision === "approve" ? `v${encounter.versionCount} を承認しました。` : `v${encounter.versionCount} を差し戻しました。`);
+    return true;
   }
 
   function goToPatient(next) {
@@ -573,8 +591,8 @@ export function EncounterEditor({ encounterId }) {
     info: <PatientInfoTab context={context} onEditProfile={() => setDialog("profile")} onProfileSaved={(saved) => setDetail((current) => ({ ...current, profile: saved }))} patient={patient} profile={profile} />,
     interview: <InterviewTab context={context} encounterDate={meta.encounterDate} onInsert={editable ? insertText : null} onSaved={profileSaved} patientId={encounter.patientId} profile={profile} />,
     allergy: <SideEffectsTab context={context} onSaved={profileSaved} patientId={encounter.patientId} profile={profile} />,
-    vitals: <VitalsTab context={context} encounterDate={meta.encounterDate} onInsert={editable ? insertText : null} onSaved={profileSaved} patientId={encounter.patientId} profile={profile} />,
-    exam: <ExamResultsTab current={content} currentDate={meta.encounterDate} history={detail.history} onInsert={editable ? insertText : null} />,
+    vitals: <VitalsTab context={context} encounterDate={meta.encounterDate} onInsert={editable ? insertText : null} onSaved={profileSaved} patientId={encounter.patientId} profile={profile} ranges={bootstrap.referenceRanges} />,
+    exam: <ExamResultsTab current={content} currentDate={meta.encounterDate} history={detail.history} onInsert={editable ? insertText : null} ranges={bootstrap.referenceRanges} />,
     summary: <SummaryTab context={context} onSaved={profileSaved} patientId={encounter.patientId} profile={profile} />,
     history: <HistoryTab changes={changes} editable={editable} highlightId={highlight} history={detail.history} onCopy={copyFrom} previous={previous} />,
     drugs: <DrugHistoryTab history={detail.history} onJump={(id) => { setLeftTab("history"); setHighlight(id); requestAnimationFrame(() => document.getElementById(`hist-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" })); }} />,
@@ -673,6 +691,7 @@ export function EncounterEditor({ encounterId }) {
               <span>医師 {encounter.finalizedBy?.displayName || (context?.canFinalize ? context.displayName : "—")}</span>
               <span>{VISIT_TYPE_LABELS[meta.visitType] || ""}</span>
               {finalizedView || encounter.amendment ? <StatusTag encounter={{ ...encounter, amending: Boolean(encounter.amendment) }} /> : <span className="tag tag-draft">未確定</span>}
+              <ApprovalTag approval={approval} />
               {primaryDx.length ? <span className="chart-head-dx">主病 {primaryDx.map((item) => item.name).join("、")}</span> : null}
               <span className="muted small chart-head-editors">記載 {encounter.updatedBy?.displayName || encounter.createdBy?.displayName || ""}{encounter.updatedAt ? ` ${formatDateTime(encounter.updatedAt).slice(11)}` : ""}</span>
               {editable && !finalizedView ? <button aria-label={`診療日・区分を変える（${formatDate(meta.encounterDate)} ${VISIT_TYPE_LABELS[meta.visitType]}）`} className="btn btn-chip" onClick={() => setDialog("visit")} type="button">✎</button> : null}
@@ -701,6 +720,13 @@ export function EncounterEditor({ encounterId }) {
             <p className="alert alert-info chart-alert">確定済み（v{encounter.versionCount}）。このまま直すと修正になり、→ 次へ で確定すると新しい版として残ります。</p>
           ) : null}
           {encounter.status === "draft" && !context?.canFinalize ? <p className="alert alert-info chart-alert">下書きとして保存されます。確定は医師が行います。</p> : null}
+          <ApprovalBar
+            approval={approval}
+            approvalContext={approval?.current ? detail.approvalContext : { ...detail.approvalContext, canDecide: false }}
+            onApprove={() => decideApproval("approve")}
+            onReturn={(comment) => decideApproval("return", comment)}
+            versionCount={encounter.versionCount}
+          />
           <CommonDiagnosesList />
           <datalist id="drug-presets">{bootstrap.drugPresets.map((preset) => <option key={preset.presetId} value={preset.name} />)}</datalist>
           <ExamBand

@@ -31,8 +31,8 @@ export function ResultMatrix({ label, columns, rows, defaultSelected = [], onCel
         <table aria-label={label} className="data-table cl-matrix">
           <thead>
             <tr>
-              <th className="cl-matrix-item" scope="col">項目</th>
-              <th className="cl-matrix-ref" scope="col">基準値</th>
+              {/* 基準値は項目の列（左に固定）の右端に置く。日付の列を右へ送っても隠れない */}
+              <th className="cl-matrix-item" scope="col"><span className="cl-matrix-head">項目<span className="cl-matrix-ref">基準値</span></span></th>
               {columns.map((column) => (
                 <th className={`cl-matrix-date${column.today ? " is-today" : ""}`} key={column.key} scope="col">
                   {onHeaderClick && column.editable !== false ? (
@@ -47,12 +47,14 @@ export function ResultMatrix({ label, columns, rows, defaultSelected = [], onCel
             {visibleRows.map((row) => (
               <tr className={row.side ? `is-${row.side}` : ""} key={row.key}>
                 <th className="cl-matrix-item" scope="row">
-                  <label className="cl-matrix-check">
-                    {row.graph !== false ? <input aria-label={`${row.label}をグラフに出す`} checked={selected.has(row.key)} onChange={() => toggle(row.key)} type="checkbox" /> : <span className="cl-check-spacer" />}
-                    <span>{row.label}{row.unit ? <span className="cl-unit">（{row.unit}）</span> : null}</span>
-                  </label>
+                  <span className="cl-matrix-head">
+                    <label className="cl-matrix-check">
+                      {row.graph !== false ? <input aria-label={`${row.label}をグラフに出す`} checked={selected.has(row.key)} onChange={() => toggle(row.key)} type="checkbox" /> : <span className="cl-check-spacer" />}
+                      <span>{row.label}{row.unit ? <span className="cl-unit">（{row.unit}）</span> : null}</span>
+                    </label>
+                    <span className="cl-matrix-ref">{refText(row)}</span>
+                  </span>
                 </th>
-                <td className="cl-matrix-ref">{refText(row)}</td>
                 {columns.map((column) => {
                   const cell = row.values[column.key];
                   const level = cell ? rangeLevel(cell.value, row.ref) : "";
@@ -154,12 +156,12 @@ function MatrixGraphs({ columns, rows, showRef }) {
                 </g>
               ))}
               {labels.map((column) => <text className="cl-axis-text" key={column.key} textAnchor="middle" x={x(column)} y={H - 6}>{column.axisLabel || column.label}</text>)}
-              {showRef ? series.flatMap(({ row, index }) => [["low", row.ref?.low], ["high", row.ref?.high]].filter(([, value]) => Number.isFinite(value)).map(([kind, value]) => (
-                <g key={`${row.key}-${kind}`}>
-                  <line className={`cl-ref-line cl-series-${index % 6}`} x1={PAD.left} x2={width - PAD.right} y1={y(value)} y2={y(value)} />
-                  <text className="cl-ref-text" textAnchor="end" x={width - PAD.right} y={y(value) - 3}>{row.refLabel || row.label} {kind === "low" ? "下限" : "上限"} {value}</text>
+              {showRef ? refLines(series).map(({ key, kind, value, index, label }) => (
+                <g key={key}>
+                  <line className={`cl-ref-line ${index === null ? "is-shared" : `cl-series-${index % 6}`}`} x1={PAD.left} x2={width - PAD.right} y1={y(value)} y2={y(value)} />
+                  <text className="cl-ref-text" textAnchor="end" x={width - PAD.right} y={y(value) - 3}>{label} {kind === "low" ? "下限" : "上限"} {value}</text>
                 </g>
-              ))) : null}
+              )) : null}
               {series.map(({ row, index }) => {
                 const points = columns.filter((column) => Number.isFinite(row.values[column.key]?.value)).map((column) => [x(column), y(row.values[column.key].value), column]);
                 return (
@@ -177,6 +179,25 @@ function MatrixGraphs({ columns, rows, showRef }) {
       })}
     </div>
   );
+}
+
+// 基準値の線。同じ値の線（R・L で同じ基準値など）は 1 本にまとめ、色は付けずに「基準値」とだけ書く。
+function refLines(series) {
+  const lines = new Map();
+  for (const { row, index } of series) {
+    for (const [kind, value] of [["low", row.ref?.low], ["high", row.ref?.high]]) {
+      if (!Number.isFinite(value)) continue;
+      const key = `${kind}-${value}`;
+      const line = lines.get(key);
+      if (line) {
+        line.index = null;
+        line.label = "基準値";
+      } else {
+        lines.set(key, { key, kind, value, index, label: row.refLabel || row.label });
+      }
+    }
+  }
+  return [...lines.values()];
 }
 
 function thinDates(columns, x) {

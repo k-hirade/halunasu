@@ -1,5 +1,6 @@
 "use client";
 
+import { versionApproval } from "../lib/approval";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -75,8 +76,12 @@ export function PrintView({ encounterId }) {
   // 記載医は紙に載せる氏名（設定の「印刷用の氏名」、なければ表示名から役割の括弧を除いたもの）
   const finalizer = finalizedInfo?.finalizedBy || null;
   const doctorName = finalizer ? record.printNames[finalizer.memberId] || printableStaffName(finalizer.displayName) : "";
+  // 承認（指導医）: 承認の流れに入った版だけ。承認がまだの版は紙に「未承認」と入れる
+  const printedApproval = finalizedInfo ? versionApproval((record.versions.find((item) => item.version === finalizedInfo.version) || {}).approvalEvents) : null;
+  const unapproved = Boolean(printedApproval && !printedApproval.approved);
+  const approverName = printedApproval?.approved ? printedApproval.by : "";
   const statusLabel = finalizedInfo
-    ? `確定 v${finalizedInfo.version}（${formatDateTime(finalizedInfo.finalizedAt)} ${doctorName}）`
+    ? `確定 v${finalizedInfo.version}（${formatDateTime(finalizedInfo.finalizedAt)} ${doctorName}）${unapproved ? "・未承認" : ""}`
     : "下書き（未確定）";
   const age = ageOn(patient.birthDate, record.encounterDate);
   const info = facilityInfo(facility);
@@ -115,6 +120,10 @@ export function PrintView({ encounterId }) {
       <strong>下書き（未確定）</strong>です。紙には「下書き・未確定」の透かしが入ります。最終保存 {formatDateTime(encounter.updatedAt)} の内容で、カルテで保存されていない入力は含まれません。
       <Link href={`/encounters/${encounterId}`}>カルテで確定する →</Link>
     </p>
+  ) : unapproved ? (
+    <p className="print-alert is-draft" data-approval-note="print">
+      <strong>未承認</strong>の版です（{printedApproval.returned ? "差し戻し" : "指導医の承認待ち"}）。紙の受診日の行に「未承認」と入ります。
+    </p>
   ) : null;
 
   return (
@@ -148,6 +157,8 @@ export function PrintView({ encounterId }) {
           <span>受診日 {formatDate(record.encounterDate)}（{VISIT_TYPE_LABELS[record.visitType] || ""}）</span>
           <span>記載医 {doctorName || "—"}</span>
           <span>{statusLabel}</span>
+          {unapproved ? <span className="cs-approval is-unapproved" data-approval="unapproved">未承認</span> : null}
+          {approverName ? <span className="cs-approval">承認 {printedApproval.auto ? "" : `${formatDateTime(printedApproval.at)} `}{approverName}</span> : null}
         </p>
 
         <table className="cs-table">

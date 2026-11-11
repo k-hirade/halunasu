@@ -672,6 +672,35 @@ Object.assign(STATES, {
   }
 });
 
+// ---- replicate-2（approval）: カルテの承認（指導医）と基準値の設定 ----
+// account: "doctor" の状態は、承認が必要な医師（書いた人）のログインで撮る。ほかは院長（承認者）。
+const ACCOUNT_STATES = {};
+Object.assign(STATES, {
+  // 書いた人（医師）: 承認待ちのバー・見出しの札・ガイドの「承認」
+  "approval-pending": { path: "approvalPending", account: "doctor" },
+  // 承認者（院長）: ［承認］［差し戻し…］
+  "approval-approver": { path: "approvalPending" },
+  "approval-approver-dark": { path: "approvalPending" },
+  "approval-return-dialog": { path: "approvalPending", run: async (page) => { await page.locator("[data-approval-action='return']").click(); await page.getByRole("dialog", { name: /を差し戻す$/u }).waitFor(); } },
+  // 書いた人: 差し戻し（理由つき）
+  "approval-returned": { path: "approvalReturned", account: "doctor" },
+  // 版履歴の承認の記録（承認待ちにした・差し戻し）
+  "approval-versions": { path: "approvalReturned", run: async (page) => { await page.locator(".chart-head").getByRole("button", { name: /^版履歴/u }).click(); await page.getByRole("dialog", { name: "版履歴" }).waitFor(); } },
+  // 診察の「承認待ち」タブ（承認者）
+  "approval-home": { path: "home", run: async (page) => { await page.getByRole("tab", { name: /^承認待ち/u }).click(); await page.waitForTimeout(400); } },
+  // 患者のカルテ一覧の札・会計の「未承認」・紙の「未承認」
+  "approval-patient": { path: "approvalPatient" },
+  "billing-approval": { path: "billing", run: async (page) => { await page.locator("[data-approval='unapproved']").first().scrollIntoViewIfNeeded(); } },
+  "approval-send": { path: "approvalPending", run: async (page) => { await page.getByRole("toolbar", { name: "カルテの操作" }).getByRole("button", { name: "送信", exact: true }).click(); await page.locator("[data-approval-note='send']").waitFor({ timeout: 15_000 }); } },
+  "approval-print": { path: "approvalPrint" },
+  "approval-print-paper": printMedia("approvalPrint"),
+  // 設定: カルテの承認・基準値（バイタル・検査）
+  "settings-approval": { path: "settingsApproval" },
+  "settings-ranges": { path: "settingsRanges" },
+  "settings-ranges-edit": settingsButton("settingsRanges", "✎ 編集"),
+  "settings-users-approval": { path: "settingsUsers", run: async (page) => { await page.getByRole("button", { name: /^医師を編集$/u }).click(); await page.waitForTimeout(400); } }
+});
+
 const [platformPort, eyePort, webPort] = await Promise.all([findOpenPort(), findOpenPort(), findOpenPort()]);
 const stack = await startLocalEyeStack({ platformPort, eyePort, demo: true });
 const baseUrl = `http://127.0.0.1:${webPort}`;
@@ -749,7 +778,7 @@ console.log(`\nScreenshots, metrics.json, responsive.json and responsive-summary
 // 1 つの状態 × 1 つの画面幅を撮る
 async function runJob(browser, storageState, paths, { name, state, width, height }) {
   const device = deviceOf(width, height);
-  const context = await browser.newContext({ viewport: { width, height }, ...device, ...(state.noAuth ? {} : { storageState }) });
+  const context = await browser.newContext({ viewport: { width, height }, ...device, ...(state.noAuth ? {} : { storageState: (state.account && ACCOUNT_STATES[state.account]) || storageState }) });
   try {
     const dark = name.endsWith("-dark");
     await context.addInitScript((value) => { try { window.localStorage.setItem("halunasu-eye-dark", value); } catch {} }, dark ? "1" : "0");
@@ -927,6 +956,7 @@ async function prepare(browser) {
   const billingIds = wants("billing") || wants("editor") || wants("reception") ? await seedBilling(page) : [];
   if (wants("settings")) await seedSettings(page);
   const receptionIds = wants("reception") ? await seedReceptionRep2(page) : {};
+  const approvalIds = wants("approval") || wants("billing") || wants("settings") ? await seedApproval(browser, page) : {};
   if (wants("patient") || wants("images")) await uploadSampleImages(page, patientHref);
   if (wants("patient")) await seedIol(page, patientHref);
   const storageState = await context.storageState();
@@ -964,7 +994,13 @@ async function prepare(browser) {
       settingsTemplates: "/settings#templates",
       settingsPrint: "/settings#print",
       settingsOther: "/settings#other",
-      settingsReport: "/settings#report"
+      settingsReport: "/settings#report",
+      approvalPending: approvalIds.pending ? `/encounters/${approvalIds.pending}` : encounterPath,
+      approvalReturned: approvalIds.returned ? `/encounters/${approvalIds.returned}` : encounterPath,
+      approvalPatient: approvalIds.patientId ? `/patients/${approvalIds.patientId}` : patientHref,
+      approvalPrint: approvalIds.pending ? `/encounters/${approvalIds.pending}/print` : `${encounterPath}/print`,
+      settingsApproval: "/settings#approval",
+      settingsRanges: "/settings#ranges"
     }
   };
 }
@@ -1015,6 +1051,55 @@ async function withAuditClinicHours(page) {
   await page.route(/\/v1\/eye\/clinic-config\/clinicHours$/u, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ section: "clinicHours", value: auditClinicHours(), revision: 1, updatedAt: "", updatedBy: null }) }));
   await page.reload({ waitUntil: "networkidle" });
   await page.locator(".bk-day-head.is-closed").first().waitFor();
+}
+
+// ---- replicate-2（approval）の撮影用データ ----
+// 承認を使う設定にし、院長を承認者・医師を「承認が必要」にする。医師のログインで 2 人分のカルテを確定し（承認待ち）、
+// 1 件は院長が差し戻す。医師のログイン状態は account: "doctor" の状態で使う。
+async function seedApproval(browser, page) {
+  const today = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+  const config = await apiCall(page, "GET", "/v1/eye/clinic-config/approval");
+  if (!config.value?.enabled) await apiCall(page, "PUT", "/v1/eye/clinic-config/approval", { expectedRevision: config.revision, value: { enabled: true } });
+  const { staff } = await apiCall(page, "GET", "/v1/eye/staff-profiles");
+  const director = staff.find((item) => item.loginId === "director");
+  const doctor = staff.find((item) => item.loginId === "doctor");
+  if (!director || !doctor) return {};
+  await apiCall(page, "PUT", `/v1/eye/staff-profiles/${director.memberId}`, { approver: true });
+  await apiCall(page, "PUT", `/v1/eye/staff-profiles/${doctor.memberId}`, { requiresApproval: true });
+
+  const doctorContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const doctorPage = await doctorContext.newPage();
+  await doctorPage.goto(baseUrl);
+  await doctorPage.getByLabel("個人ID").waitFor();
+  if (await doctorPage.getByLabel("病院コード").count()) await doctorPage.getByLabel("病院コード").fill(LOCAL_ORGANIZATION_CODE);
+  await doctorPage.getByLabel("個人ID").fill("doctor");
+  await doctorPage.getByLabel("ログイン用パスワード", { exact: true }).fill(LOCAL_PASSWORD);
+  await doctorPage.getByRole("button", { name: "ログイン", exact: true }).click();
+  await doctorPage.getByLabel("6桁コード").fill(currentLocalTotp());
+  await doctorPage.getByRole("button", { name: "確認" }).click();
+  await doctorPage.getByRole("heading", { name: "診察", exact: true }).waitFor();
+  const make = async (displayName, kana, number, content, iop) => {
+    const { patient } = await apiCall(doctorPage, "POST", "/v1/eye/patients", { displayName, displayNameKana: kana, birthDate: "1998-04-12", sex: "female", primaryPatientNumber: number });
+    const created = await apiCall(doctorPage, "POST", "/v1/eye/encounters", { patientId: patient.patientId, encounterDate: today, visitType: "revisit" });
+    const encounterId = created.encounter.encounterId;
+    let current = await apiCall(doctorPage, "POST", `/v1/eye/encounters/${encounterId}/exam-records`, {
+      expectedRevision: created.encounter.revision,
+      values: {
+        vision: { far: { od: { uncorrected: "0.4", corrected: "1.2" }, os: { uncorrected: "0.5", corrected: "0.8" } } },
+        iop: { od: { readings: iop[0], method: "nct" }, os: { readings: iop[1], method: "nct" } }
+      }
+    });
+    current = await apiCall(doctorPage, "PATCH", `/v1/eye/encounters/${encounterId}`, { expectedRevision: current.encounter.revision, sections: content });
+    await apiCall(doctorPage, "POST", `/v1/eye/encounters/${encounterId}/finalize`, { expectedRevision: current.encounter.revision });
+    return { encounterId, patientId: patient.patientId };
+  };
+  const pending = await make("研修 春香", "ケンシュウ ハルカ", "AP101", { chiefComplaint: "右眼の充血。昨日から。", plan: "抗菌点眼を開始し 1 週間後に再診" }, [[16, 17, 16], [22, 23, 22]]);
+  const returned = await make("研修 夏美", "ケンシュウ ナツミ", "AP102", { chiefComplaint: "視力低下の精査", plan: "OCT 予定" }, [[14, 14, 15], [15, 15, 15]]);
+  ACCOUNT_STATES.doctor = await doctorContext.storageState();
+  await doctorContext.close();
+  const view = await apiCall(page, "GET", `/v1/eye/encounters/${returned.encounterId}`);
+  await apiCall(page, "POST", `/v1/eye/encounters/${returned.encounterId}/return`, { expectedRevision: view.encounter.revision, version: view.encounter.versionCount, comment: "視力低下の経過（いつから・片眼か）と眼底所見を追記してください。" });
+  return { pending: pending.encounterId, returned: returned.encounterId, patientId: pending.patientId };
 }
 
 // 画面の中から eye-api を呼ぶ（ログインの Cookie と CSRF をそのまま使う）。
