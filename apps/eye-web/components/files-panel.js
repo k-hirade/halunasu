@@ -13,7 +13,8 @@ export const FILE_KIND_LABELS = {
   topography: "角膜形状",
   paper_chart: "紙カルテ",
   referral_in: "他院からの紹介状",
-  other: "その他"
+  other: "その他",
+  face_photo: "顔写真"
 };
 const ACCEPT = "application/pdf,image/jpeg,image/png,image/webp";
 const MAX_BYTES = 20 * 1024 * 1024;

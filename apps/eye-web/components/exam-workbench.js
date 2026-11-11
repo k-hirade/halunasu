@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   COVER_DIRECTION_LABELS,
@@ -17,6 +17,7 @@ import { VaDatalist } from "./exam-inputs";
 import { copyDeviceValues, DevicePanels, EXAM_TABS, ExamTabBody, tabHasValues, useScrollEdge, writeValue } from "./exam-regdata";
 import { PatientBanner } from "./patient-banner";
 import { useEncounterDraft } from "./use-encounter-draft";
+import { withImportedDevice } from "../lib/device-import";
 import { useMeasuredHeight } from "./use-measured-height";
 import { useMediaQuery } from "./use-media-query";
 import { ensureEncounterFor, nextExamPatient } from "../lib/consult-flow";
@@ -291,11 +292,15 @@ export function ExamWorkbench({ encounterId }) {
   const closeMenu = (event) => { event.currentTarget.closest("details")?.removeAttribute("open"); };
   const phrases = (bootstrap.phrases || []).filter((item) => item.active !== false && item.target === "staffNote");
   const eyeState = (side) => (confirmations[side] ? "確認済" : hasExamValues(content.exam[side]) ? "未確認" : "未入力");
+  // 機器の値は、登録済みの記録に「入力中の記録」を重ねて出す（取り込んだばかりの値をすぐ見せる）
+  const draftRecord = { recordId: selectedId || "draft", at: isoFromClock(encounterDate, form.clock), values: form.values };
+  const readingRecords = selectedId ? records.map((record) => (record.recordId === selectedId ? { ...record, values: form.values } : record)) : [...records, draftRecord];
   const devicePanels = (
     <DevicePanels
       disabled={!editable}
       onCopy={(kind, data) => setForm((current) => ({ ...current, values: copyDeviceValues(current.values, kind, data) }))}
-      readings={collectDeviceReadings(records)}
+      onImport={editable ? (kind, data) => setForm((current) => ({ ...current, values: withImportedDevice(current.values, kind, data) })) : null}
+      readings={collectDeviceReadings(readingRecords)}
     />
   );
 
@@ -480,7 +485,15 @@ export function ExamWorkbench({ encounterId }) {
           </div>
         )}
       </div>
-      {showData ? <RecordsDialog onClose={() => setShowData(false)} records={records} /> : null}
+      {showData ? (
+        <ExamReport
+          encounterDate={encounterDate}
+          onClose={() => setShowData(false)}
+          patient={encounter.patientSnapshot}
+          previous={previous}
+          records={records}
+        />
+      ) : null}
     </main>
   );
 }
@@ -493,36 +506,122 @@ function sameForm(left, right) {
   return left.clock === right.clock && left.examinerName === right.examinerName && left.note === right.note && sameValues(left.values, right.values);
 }
 
-// 本日の記録を検査ごとの見出しで並べた読み取り専用の表示（トプコンの「データ表示」）
-function RecordsDialog({ records, onClose }) {
+// 検査データ表示（トプコンの「データ表示」）。検査ごとに色の帯の見出しと本文の行を並べたレポート。
+// 左に検査の目次（押すとその見出しへ）。「前回」で前回受診の検査記録も並べる。印刷できる。読むだけ。
+function ExamReport({ records, previous, patient, encounterDate, onClose }) {
+  const [withPrevious, setWithPrevious] = useState(false);
+  const bodyRef = useRef(null);
   useEffect(() => {
-    const onKey = (event) => { if (event.key === "Escape") onClose(); };
+    const onKey = (event) => { if (event.key === "Escape" && !event.isComposing) onClose(); };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    document.body.classList.add("rd-report-printing");
+    return () => { window.removeEventListener("keydown", onKey); document.body.classList.remove("rd-report-printing"); };
   }, [onClose]);
+  const previousRecords = useMemo(() => previousExamRecords(previous), [previous]);
+  const visits = [
+    { key: "today", label: `本日 ${formatDate(encounterDate)}`, records },
+    ...(withPrevious && previous ? [{ key: "previous", label: `前回 ${formatDate(previous.encounterDate)}`, records: previousRecords }] : [])
+  ];
+  // 目次: 本日の記録にある検査の見出し（同じ見出しは最初の 1 つへ飛ぶ）
+  const headings = [];
+  for (const visit of visits) {
+    visit.records.forEach((record, recordIndex) => {
+      for (const [heading] of recordSummary(record.values)) {
+        if (!headings.some((item) => item.heading === heading && item.visit === visit.key)) headings.push({ heading, visit: visit.key, id: `rd-report-${visit.key}-${recordIndex}-${headingKey(heading)}` });
+      }
+    });
+  }
+  const jump = (id) => {
+    const target = bodyRef.current?.querySelector(`#${CSS.escape(id)}`);
+    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
   return (
-    <div className="dialog-backdrop" onClick={onClose} role="presentation">
-      <section aria-label="本日の検査記録" aria-modal="true" className="dialog rd-data-dialog" onClick={(event) => event.stopPropagation()} role="dialog">
-        <div className="dialog-head">
-          <h2>本日の検査記録</h2>
+    <div className="dialog-backdrop rd-report-backdrop" onClick={onClose} role="presentation">
+      <section aria-label="本日の検査記録" aria-modal="true" className="dialog rd-report" onClick={(event) => event.stopPropagation()} role="dialog">
+        <div className="rd-report-head">
+          <h2>検査データ表示</h2>
+          {patient ? <span className="rd-report-patient">{patient.displayName || ""}</span> : null}
+          <span className="rd-report-spacer" />
+          {previous ? (
+            <button aria-pressed={withPrevious} className="btn btn-chip btn-sm" onClick={() => setWithPrevious(!withPrevious)} title="前回受診の検査記録も並べます" type="button">前回</button>
+          ) : null}
+          <button className="btn btn-ghost btn-sm rd-report-print" onClick={() => window.print()} type="button">印刷</button>
           <button className="btn btn-ghost btn-sm" onClick={onClose} type="button">閉じる</button>
         </div>
-        <div className="rd-data-body">
-          {records.map((record) => (
-            <article className="rd-data-record" key={record.recordId}>
-              <h3>{recordLabel(record) || "時刻なし"}{record.note ? <span className="muted small"> {record.note}</span> : null}</h3>
-              {recordSummary(record.values).map(([heading, lines]) => (
-                <div className="rd-data-block" key={heading}>
-                  <h4>{heading}</h4>
-                  {lines.map((line, index) => <p key={index}>{line}</p>)}
-                </div>
-              ))}
-            </article>
-          ))}
+        <div className="rd-report-main">
+          <nav aria-label="検査の目次" className="rd-report-index">
+            {visits.map((visit) => (
+              <div className="rd-report-index-group" key={visit.key}>
+                <p className="rd-report-index-visit">{visit.label}</p>
+                {headings.filter((item) => item.visit === visit.key).map((item) => (
+                  <button className="rd-report-index-link" key={item.id} onClick={() => jump(item.id)} type="button">{item.heading}</button>
+                ))}
+                {!headings.some((item) => item.visit === visit.key) ? <p className="muted small">記録はありません</p> : null}
+              </div>
+            ))}
+          </nav>
+          <div className="rd-report-body" ref={bodyRef} tabIndex={-1}>
+            {visits.map((visit) => (
+              <div className="rd-report-visit" key={visit.key}>
+                {visits.length > 1 ? <h3 className="rd-report-visit-title">{visit.label}</h3> : null}
+                {!visit.records.length ? <p className="empty">検査記録はありません。</p> : null}
+                {visit.records.map((record, recordIndex) => {
+                  const blocks = recordSummary(record.values);
+                  return (
+                    <article className="rd-report-record" key={record.recordId || recordIndex}>
+                      {blocks.map(([heading, lines]) => (
+                        <section className="rd-report-block" id={`rd-report-${visit.key}-${recordIndex}-${headingKey(heading)}`} key={heading}>
+                          <h4 className="rd-report-band">{heading}</h4>
+                          <p className="rd-report-meta">
+                            <span><strong>測定</strong> {recordClock(record.at) || "—"}</span>
+                            {record.updatedAt ? <span><strong>更新</strong> {stamp(record.updatedAt)}</span> : null}
+                            {record.recordedAt || record.createdAt ? <span><strong>登録</strong> {stamp(record.recordedAt || record.createdAt)}</span> : null}
+                            <span><strong>検者</strong> {record.examinerName || record.recordedBy?.displayName || "—"}</span>
+                            {record.note ? <span className="rd-report-note">{record.note}</span> : null}
+                          </p>
+                          {lines.map((line, index) => <p className="rd-report-line" key={index}>{line}</p>)}
+                        </section>
+                      ))}
+                      {!blocks.length ? <p className="muted small">{recordLabel(record) || "時刻なし"}: 値はありません</p> : null}
+                    </article>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
         </div>
       </section>
     </div>
   );
+}
+
+const headingKey = (heading) => Array.from(heading).map((char) => char.codePointAt(0).toString(36)).join("");
+const stamp = (iso) => {
+  const clock = recordClock(iso);
+  const time = Date.parse(iso || "");
+  if (!Number.isFinite(time)) return clock;
+  const day = new Date(time + 9 * 3600000).toISOString().slice(5, 10).replace("-", "/");
+  return `${day} ${clock}`;
+};
+
+// 前回受診の検査記録。記録が無い古いカルテは、カルテの検査値（視力・眼圧）から 1 件の記録として読む。
+function previousExamRecords(previous) {
+  const content = previous?.content || {};
+  if (content.examRecords?.length) return sortRecords(content.examRecords);
+  const exam = content.exam || {};
+  const values = {};
+  for (const side of SIDES) {
+    const eye = exam[side] || {};
+    const correction = eye.correction || {};
+    const row = {
+      uncorrected: eye.vaUncorrected || "",
+      corrected: eye.vaCorrected || "",
+      sphere: correction.sphere, cylinder: correction.cylinder, axis: correction.axis
+    };
+    if (hasAnyValue(row)) values.vision = { ...(values.vision || {}), far: { ...(values.vision?.far || {}), [side]: row } };
+    if (Number.isFinite(eye.iop)) values.iop = { ...(values.iop || {}), [side]: { readings: [{ value: eye.iop }], average: eye.iop, ...(eye.iopMethod ? { method: eye.iopMethod } : {}) } };
+  }
+  return hasAnyValue(values) ? [{ recordId: "previous-chart", at: previous.encounterDate ? `${previous.encounterDate}T00:00:00+09:00` : "", examinerName: "", values }] : [];
 }
 
 const SIDE_TEXT = { od: "R", os: "L", ou: "B" };

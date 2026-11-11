@@ -6,6 +6,8 @@
 // - Rp は今日のカルテの中で新しい rpId に振り直す（同じ Rp を 2 回入れても混ざらないように）。
 // - シェーマは最大 8 枚。
 
+import { applyPartCopy } from "./chart-dnd.js";
+
 const SIDES = ["od", "os"];
 const COPYABLE_FINDING_KEYS = ["anterior", "lens", "fundus", "other"];
 const MAX_SKETCHES = 8;
@@ -88,7 +90,9 @@ function addSketches(current, sketches, { strokes = true } = {}) {
 //   "orders" オーダーの Rp 1 つ（rows を渡す）
 //   "sketch" シェーマ 1 枚（sketch を渡す。strokes=false で下絵だけ）
 //   "text"   主訴・所見の自由記載だけ
+//   "finding" 眼別所見の部位 1 つ（payload.part）、"plan" 方針（左の診療履歴からのドラッグ。lib/chart-dnd.js）
 export function applyCopy(current, source = {}, kind, payload = {}) {
+  if (kind === "finding" || kind === "plan") return applyPartCopy(current, source, kind, payload);
   let next = current;
   const notes = [];
   let label = "";

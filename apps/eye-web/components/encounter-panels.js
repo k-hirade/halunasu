@@ -11,6 +11,7 @@ import { FilesPanel } from "./files-panel";
 import { AllergyBadge } from "./patient-banner";
 import { SketchThumb } from "./sketch-pad";
 import { EYE_LABELS, formatDate, formatDateTime, formatShortDate, formatVisualAcuityLine, VISIT_TYPE_LABELS } from "../lib/format";
+import { copyDragProps, findingDragText } from "../lib/chart-dnd";
 
 // 左のペイン「患者の情報」のタブ（デジカルの並び。code は Shift+数字のキー）。既定は診療履歴。
 export const LEFT_TABS = [
@@ -152,7 +153,7 @@ function HistoryCard({ encounter, editable, onCopy, highlighted }) {
     const left = findingText(key, content.findings?.os);
     if (!right && !left) return null;
     return (
-      <div className="history-finding" key={key}>
+      <div className="history-finding" key={key} {...copyDragProps(editable, { kind: "finding", encounterId: encounter.encounterId, part: key }, { text: findingDragText(label, right, left), title: `ドラッグして今日の${label}へ（空の欄にだけ入ります）` })}>
         <span className="history-part">{label}</span>
         <span>
           {right ? <span className="history-eye-line"><span className="eye-od">R</span> {right}</span> : null}
@@ -218,7 +219,7 @@ function HistoryCard({ encounter, editable, onCopy, highlighted }) {
           ) : null}
           {findings.length ? <div className="history-findings">{findings}</div> : null}
           {content.findings?.general ? <p className="history-line"><span className="history-label">両眼</span>{content.findings.general}</p> : null}
-          {content.assessment || content.plan ? <p className="history-line pre"><span className="history-label">方針</span>{[content.assessment, content.plan].filter(Boolean).join("\n")}</p> : null}
+          {content.assessment || content.plan ? <p className="history-line pre" {...copyDragProps(editable, { kind: "plan", encounterId: encounter.encounterId }, { text: [content.assessment, content.plan].filter(Boolean).join("\n"), title: "ドラッグして今日の方針へ" })}><span className="history-label">方針</span>{[content.assessment, content.plan].filter(Boolean).join("\n")}</p> : null}
           {adherence ? <p className="history-line"><span className="history-label">点眼</span>{adherence}</p> : null}
           {counselling ? <p className="history-line"><span className="history-label">説明</span>{counselling}</p> : null}
           {content.sketches?.length ? (

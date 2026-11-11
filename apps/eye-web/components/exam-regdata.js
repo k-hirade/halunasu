@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   averageOf,
   COVER_DIRECTION_LABELS,
@@ -31,6 +31,7 @@ import {
 } from "../lib/exam-record";
 
 export { copyDeviceValues, writeValue };
+import { DEVICE_IMPORT_KINDS, DEVICE_IMPORT_LABELS, parseDeviceText, previewLines } from "../lib/device-import";
 import { formatDiopter, IOP_METHOD_LABELS, VA_CORRECTION_TYPE_LABELS } from "../lib/format";
 
 // 検査入力（トプコンの RegData に当たる）の大タブと、その中のフォーム。
@@ -737,13 +738,114 @@ const DEVICE_PANELS = [
 ];
 
 // readings: [{ recordId, at, data }] を種類ごとに。古い → 新しい。
-export function DevicePanels({ readings, onCopy, disabled = false }) {
+// onImport(kind, data): 「機器データ取込」で読んだ値を入力中の記録に入れる（無ければ取込の欄を出さない）。
+export function DevicePanels({ readings, onCopy, onImport = null, disabled = false }) {
+  const [importing, setImporting] = useState(false);
+  const [notice, setNotice] = useState("");
   return (
-    <div className="rd-devices" role="group" aria-label="機器の値">
-      {DEVICE_PANELS.map((panel) => (
-        <DevicePanel disabled={disabled} items={readings[panel.key] || []} key={panel.key} label={panel.label} onCopy={(data) => onCopy(panel.key, data)} panelKey={panel.key} />
-      ))}
+    <div className="rd-devices-area">
+      {onImport ? (
+        <div className="rd-devices-bar">
+          <span className="rd-devices-title">機器の値</span>
+          {notice ? <span className="rd-devices-notice" role="status">{notice}</span> : null}
+          <button aria-expanded={importing} className="btn btn-ghost btn-sm rd-import-open" disabled={disabled} onClick={() => { setImporting(!importing); setNotice(""); }} type="button">
+            {importing ? "取込を閉じる" : "機器データ取込"}
+          </button>
+        </div>
+      ) : null}
+      {importing && onImport ? (
+        <DeviceImportPanel
+          onCancel={() => setImporting(false)}
+          onImport={(kind, data) => {
+            onImport(kind, data);
+            setImporting(false);
+            setNotice(`${DEVICE_IMPORT_LABELS[kind]}を取り込みました。［登録］で記録に保存します。`);
+          }}
+        />
+      ) : null}
+      <div className="rd-devices" role="group" aria-label="機器の値">
+        {DEVICE_PANELS.map((panel) => (
+          <DevicePanel disabled={disabled} items={readings[panel.key] || []} key={panel.key} label={panel.label} onCopy={(data) => onCopy(panel.key, data)} panelKey={panel.key} />
+        ))}
+      </div>
     </div>
+  );
+}
+
+const IMPORT_PLACEHOLDER = "例（レフ）\nR -1.25 -0.50 180\nL -2.00 -0.75 90\n\n例（眼圧）R,14,15,14 ／ （ケラト）<R> K1 43.50 K2 44.25 A 90";
+
+// 機器データ取込（トプコン RegData の機器データ欄）。機器とはつながず、印字・書き出しの文字を貼り付けて読む。
+function DeviceImportPanel({ onImport, onCancel }) {
+  const [kind, setKind] = useState("auto");
+  const [text, setText] = useState("");
+  const [fileError, setFileError] = useState("");
+  const result = useMemo(() => (text.trim() ? parseDeviceText(text, kind) : null), [kind, text]);
+  const hasData = Boolean(result && (result.data.od || result.data.os));
+  const lines = hasData ? previewLines(result.kind, result.data) : [];
+
+  function readFile(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    setFileError("");
+    if (!file) return;
+    if (file.size > 200 * 1024) {
+      setFileError("200KB までのテキスト・CSV を選んでください。");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setText(String(reader.result || ""));
+    reader.onerror = () => setFileError("ファイルを読めませんでした。");
+    reader.readAsText(file);
+  }
+
+  return (
+    <section aria-label="機器データ取込" className="rd-import">
+      <p className="rd-import-note">機器とは接続していません。機器の印字・書き出したテキストや CSV を貼り付けるか、ファイルを選んで読み取ります（サーバーへは送りません）。</p>
+      <div className="rd-import-row">
+        <div aria-label="データの種類" className="segmented rd-import-kinds" role="group">
+          {DEVICE_IMPORT_KINDS.map(([value, label]) => (
+            <button aria-pressed={kind === value} key={value} onClick={() => setKind(value)} type="button">{label}</button>
+          ))}
+        </div>
+        <label className="btn btn-ghost btn-sm rd-import-file">
+          ファイルを選ぶ
+          <input accept=".csv,.txt,text/plain,text/csv" aria-label="機器データのファイル" className="sr-only" onChange={readFile} type="file" />
+        </label>
+      </div>
+      <div className="rd-import-body">
+        <textarea
+          aria-label="機器データ（貼り付け）"
+          className="input rd-import-text"
+          maxLength={20000}
+          onChange={(event) => setText(event.target.value)}
+          placeholder={IMPORT_PLACEHOLDER}
+          rows={5}
+          spellCheck={false}
+          value={text}
+        />
+        <div aria-live="polite" className="rd-import-preview">
+          {!result ? <p className="muted small">貼り付けると、読み取った値がここに出ます。</p> : (
+            <>
+              <p className="rd-import-kind"><strong>{DEVICE_IMPORT_LABELS[result.kind]}</strong>{kind === "auto" ? <span className="muted small">（自動判定）</span> : null}</p>
+              {lines.length ? <pre className="rd-device-body rd-import-lines">{lines.join("\n")}</pre> : <p className="muted small">読み取れる値がありません。</p>}
+              {result.errors.length ? (
+                <ul className="rd-import-errors">
+                  {result.errors.slice(0, 6).map((item, index) => (
+                    <li key={index}>{item.line ? `${item.line}行目: ` : ""}{item.message}{item.text ? `（${item.text.slice(0, 30)}）` : ""}</li>
+                  ))}
+                  {result.errors.length > 6 ? <li>ほか {result.errors.length - 6} 件</li> : null}
+                </ul>
+              ) : null}
+            </>
+          )}
+          {fileError ? <p className="rd-import-errors" role="alert">{fileError}</p> : null}
+        </div>
+      </div>
+      <div className="rd-import-actions">
+        <button className="btn btn-ghost btn-sm" onClick={onCancel} type="button">キャンセル</button>
+        <button className="btn btn-primary btn-sm" disabled={!hasData} onClick={() => onImport(result.kind, result.data)} type="button">取り込む</button>
+      </div>
+    </section>
   );
 }
 

@@ -36,7 +36,10 @@ export const PHRASE_TARGETS = Object.freeze([
 ]);
 // 眼ごとに右・左・両を選んで差し込む定型文の欄
 export const PER_EYE_PHRASE_TARGETS = Object.freeze(["findings.anterior", "findings.lens", "findings.fundus", "findings.other"]);
-export const SKETCH_TEMPLATES = Object.freeze(["anterior", "fundus", "blank"]);
+export const SKETCH_TEMPLATES = Object.freeze(["anterior", "fundus", "blank", "cornea", "lens", "gonio", "eyelid", "vfgrid"]);
+// シェーマの描き方（無いときはフリーハンドのペン）。図形は始点・終点の 2 点で持つ。
+export const SKETCH_TOOLS = Object.freeze(["pen", "line", "arrow", "ellipse", "rect", "text"]);
+export const SKETCH_FILLS = Object.freeze(["solid", "hatch"]);
 export const DIAGNOSIS_STATUSES = Object.freeze(["active", "resolved", "suspected"]);
 export const VA_CORRECTION_TYPES = Object.freeze(["", "glasses", "contact", "pinhole", "trial"]);
 export const ORDER_KINDS = Object.freeze(["exam", "procedure"]);
@@ -87,7 +90,8 @@ export const CL_REPLACEMENT_LABELS = Object.freeze({
 export const DOCUMENT_HONORIFICS = Object.freeze(["御侍史", "御机下", "先生", "殿", "御中"]);
 export const MAX_PRINT_NAME = 40;
 export const DOCUMENT_TYPES = Object.freeze(["referral", "reply", "certificate", "other"]);
-export const FILE_KINDS = Object.freeze(["oct", "vf", "fundus_photo", "anterior_photo", "topography", "paper_chart", "referral_in", "other"]);
+// face_photo: 顔写真（受付・診察での本人確認用。画像の比較には出さない）
+export const FILE_KINDS = Object.freeze(["oct", "vf", "fundus_photo", "anterior_photo", "topography", "paper_chart", "referral_in", "other", "face_photo"]);
 export const EYE_DOCUMENT_ROLES = Object.freeze(["admin", "doctor", "orthoptist", "nurse", "medical_clerk"]);
 // 検査・処置の標準カタログ。医院ごとの追加はセットで行う。
 export const DEFAULT_ORDER_CATALOG = Object.freeze([
@@ -760,10 +764,17 @@ function validateSketches(value) {
       if (!isPlainObject(stroke)) throw validationError(`${strokeField} must be an object`, strokeField);
       const points = normalizeStrokePoints(stroke.points, `${strokeField}.points`);
       totalPoints += points.length / 2;
+      const tool = optionalEnum(stroke.tool, SKETCH_TOOLS, `${strokeField}.tool`);
+      const text = tool === "text" ? optionalString(stroke.text, `${strokeField}.text`, 100) : "";
+      const fill = tool === "ellipse" || tool === "rect" ? optionalEnum(stroke.fill, SKETCH_FILLS, `${strokeField}.fill`) : "";
+      // 古いデータ（ペンのみ）は形を変えない: tool・text・fill は値があるときだけ持たせる
       return {
         color: optionalColor(stroke.color, `${strokeField}.color`) || "#1f2937",
         width: optionalNumber(stroke.width, `${strokeField}.width`, { min: 1, max: 40 }) ?? 3,
-        points
+        points,
+        ...(tool && tool !== "pen" ? { tool } : {}),
+        ...(text ? { text } : {}),
+        ...(fill ? { fill } : {})
       };
     });
     if (totalPoints > MAX_TOTAL_POINTS) {

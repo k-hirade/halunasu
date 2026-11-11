@@ -22,7 +22,8 @@ const PERIODS = [
   { key: "all", label: "全期間", years: null }
 ];
 
-export function TrendPanel({ trend }) {
+// band: 視力・眼圧の各段の高さ（患者ページでは大きくする。トプコンの 2 段のグラフ）
+export function TrendPanel({ trend, band = BAND }) {
   const containerRef = useRef(null);
   const [width, setWidth] = useState(640);
   const [show, setShow] = useState({ va: true, iop: true });
@@ -84,6 +85,7 @@ export function TrendPanel({ trend }) {
             marks={marks}
             onActivate={setActive}
             points={points}
+            band={band}
             show={show}
             width={width}
           />
@@ -99,7 +101,7 @@ export function TrendPanel({ trend }) {
   );
 }
 
-function TrendSvg({ points, marks, show, width, onActivate, active }) {
+function TrendSvg({ points, marks, show, width, onActivate, active, band: BAND_H = BAND }) {
   const plotLeft = PAD.left;
   const plotRight = width - PAD.right;
   const times = points.map((point) => dayNumber(point.encounterDate));
@@ -111,11 +113,11 @@ function TrendSvg({ points, marks, show, width, onActivate, active }) {
   };
 
   let y = PAD.top;
-  const vaBand = show.va ? { top: y, bottom: y + BAND } : null;
+  const vaBand = show.va ? { top: y, bottom: y + BAND_H } : null;
   if (vaBand) y = vaBand.bottom + GAP;
   const markBand = { top: y, bottom: y + MARK_ROW };
   y = markBand.bottom + GAP;
-  const iopBand = show.iop ? { top: y, bottom: y + BAND } : null;
+  const iopBand = show.iop ? { top: y, bottom: y + BAND_H } : null;
   if (iopBand) y = iopBand.bottom + 4;
   const height = y + AXIS_H;
 
@@ -233,7 +235,7 @@ function Band({ band, label, unit, axis, format, plotLeft, plotRight }) {
           <line className="grid" x1={plotLeft} x2={plotRight} y1={axis.y(tick)} y2={axis.y(tick)} />
           <text className="axis" textAnchor="end" x={plotLeft - 6} y={axis.y(tick) + 4}>{format(tick)}</text>
         </g>
-      )) : <text className="axis" x={plotLeft} y={band.top + BAND / 2}>記録なし</text>}
+      )) : <text className="axis" x={plotLeft} y={(band.top + band.bottom) / 2}>記録なし</text>}
     </g>
   );
 }

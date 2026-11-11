@@ -22,7 +22,8 @@ const VA_SERIES = [
   { key: "va-unc-os", side: "os", field: "vaUncorrected", labelField: "vaUncorrectedLabel", label: "裸眼(左)", className: "series-os is-dashed" }
 ];
 
-export function VaIopView({ points = [], emptyText = "確定済みのカルテがまだないため、視力・眼圧の記録はありません。" }) {
+// plotHeight: グラフの高さ（患者ページでは大きくする）。dense: 表の行を詰める（トプコンの密な表）
+export function VaIopView({ points = [], emptyText = "確定済みのカルテがまだないため、視力・眼圧の記録はありません。", plotHeight = PLOT_H, dense = false }) {
   const [shown, setShown] = useState(() => new Set([...IOP_SERIES, ...VA_SERIES].map((series) => series.key)));
   if (!points.length) return <p className="empty">{emptyText}</p>;
   const newestFirst = [...points].reverse();
@@ -32,7 +33,7 @@ export function VaIopView({ points = [], emptyText = "確定済みのカルテ�
     return next;
   });
   return (
-    <div className="vi-view">
+    <div className={`vi-view${dense ? " is-dense" : ""}`}>
       <div className="vi-tables">
         <div className="vi-table-wrap" aria-label="視力の記録" role="region" tabIndex={0}>
           <table className="vi-table">
@@ -88,13 +89,13 @@ export function VaIopView({ points = [], emptyText = "確定済みのカルテ�
           </table>
         </div>
       </div>
-      <SeriesChart kind="iop" points={points} series={IOP_SERIES} shown={shown} title="眼圧" toggle={toggle} unit="mmHg" />
-      <SeriesChart kind="va" points={points} series={VA_SERIES} shown={shown} title="視力" toggle={toggle} />
+      <SeriesChart kind="iop" plotHeight={plotHeight} points={points} series={IOP_SERIES} shown={shown} title="眼圧" toggle={toggle} unit="mmHg" />
+      <SeriesChart kind="va" plotHeight={plotHeight} points={points} series={VA_SERIES} shown={shown} title="視力" toggle={toggle} />
     </div>
   );
 }
 
-function SeriesChart({ kind, title, unit = "", points, series, shown, toggle }) {
+function SeriesChart({ kind, title, unit = "", points, series, shown, toggle, plotHeight = PLOT_H }) {
   const ref = useRef(null);
   const [width, setWidth] = useState(600);
   useEffect(() => {
@@ -105,7 +106,7 @@ function SeriesChart({ kind, title, unit = "", points, series, shown, toggle }) 
   }, []);
   const active = series.filter((item) => shown.has(item.key));
   const values = points.flatMap((point) => active.map((item) => point[item.side]?.[item.field])).filter(isNumber);
-  const band = { top: PAD.top, bottom: PAD.top + PLOT_H };
+  const band = { top: PAD.top, bottom: PAD.top + plotHeight };
   const axis = values.length ? (kind === "va" ? vaAxis(values, band) : iopAxis(values, band)) : null;
   const height = band.bottom + PAD.bottom;
   const left = PAD.left;
@@ -138,7 +139,7 @@ function SeriesChart({ kind, title, unit = "", points, series, shown, toggle }) 
               <line className="grid" x1={left} x2={right} y1={axis.y(tick)} y2={axis.y(tick)} />
               <text className="axis" textAnchor="end" x={left - 6} y={axis.y(tick) + 4}>{format(tick)}</text>
             </g>
-          )) : <text className="axis" x={left} y={band.top + PLOT_H / 2}>表示する値がありません</text>}
+          )) : <text className="axis" x={left} y={band.top + plotHeight / 2}>表示する値がありません</text>}
           {axis ? active.map((item) => {
             const list = points.filter((point) => isNumber(point[item.side]?.[item.field]));
             if (!list.length) return null;

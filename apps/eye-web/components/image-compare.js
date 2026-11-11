@@ -6,8 +6,9 @@ import { useEyeApi } from "./eye-api";
 import { byNewest, FILE_KIND_LABELS, FilePreview, isImageFile, shortDate, ThumbImage, UploadDialog, useFileUrls } from "./files-panel";
 import { PatientBanner } from "./patient-banner";
 import { EYE_LABELS, formatDate } from "../lib/format";
+import { filesOnDate, followupColumns, followupDates, prefersFollowup, resolveFollowupDates } from "../lib/image-followup";
 
-const COMPARE_KINDS = Object.keys(FILE_KIND_LABELS).filter((kind) => kind !== "paper_chart");
+const COMPARE_KINDS = Object.keys(FILE_KIND_LABELS).filter((kind) => kind !== "paper_chart" && kind !== "face_photo");
 const EYE_FILTERS = [["", "すべて"], ["od", "右眼"], ["os", "左眼"]];
 const PANES = [
   { key: "left", mark: "1", label: "左の面" },
@@ -15,8 +16,13 @@ const PANES = [
 ];
 const THUMB_LIMIT = 24;
 const SERIES_LIMIT = 6;
-// 表示モード（IMAGEnet の比較・OU・トレンドの表示に倣う）
+// 表示モード（IMAGEnet の経過・比較・OU・トレンドの表示に倣う）
+const FOLLOWUP_ROWS = [
+  { key: "followup", label: "経過", note: "今回" },
+  { key: "baseline", label: "基準", note: "ベースライン" }
+];
 const MODES = [
+  { key: "followup", label: "経過", title: "今回（上段）と基準の日（下段）を上下に並べ、その日の画像を種類ごとに横に並べる" },
   { key: "compare", label: "比較", title: "同じ眼の 2 つの日付を左右に並べる" },
   { key: "ou", label: "OU", title: "同じ日の右眼と左眼を並べる" },
   { key: "series", label: "時系列", title: "同じ眼・同じ種類を古い順に横に並べる" }
@@ -38,6 +44,10 @@ export function ImageCompare({ patientId }) {
   const [error, setError] = useState("");
   const [mode, setMode] = useState("compare");
   const [ouDate, setOuDate] = useState("");
+  // 経過: 選んだ日付（"" は既定）と、基準の既定（前回 / 初回）
+  const [followPick, setFollowPick] = useState({ followup: "", baseline: "" });
+  const [baselineRule, setBaselineRule] = useState("previous");
+  const modeChosen = useRef(false);
 
   const loadFiles = useCallback(async () => {
     const payload = await api(`/v1/eye/patients/${patientId}/files`);
@@ -78,6 +88,22 @@ export function ImageCompare({ patientId }) {
     setEye(newest.eye === "od" || newest.eye === "os" ? newest.eye : "");
   }, [comparable, kind, kindCounts]);
 
+  // 画像のある受診日が 2 日以上あれば、最初は「経過」で開く（モードを選んだ後は変えない）
+  useEffect(() => {
+    if (files === null || modeChosen.current) return;
+    modeChosen.current = true;
+    if (!prefersFollowup(comparable)) return;
+    setMode("followup");
+    // 経過の既定の眼は、いちばん新しい画像の眼
+    const newest = [...comparable].sort(byNewest)[0];
+    setEye(newest && (newest.eye === "od" || newest.eye === "os") ? newest.eye : "");
+  }, [comparable, files]);
+
+  function chooseMode(value) {
+    modeChosen.current = true;
+    setMode(value);
+  }
+
   function chooseKind(value) {
     setKind(value);
     const newest = comparable.filter((item) => item.kind === value).sort(byNewest)[0];
@@ -117,7 +143,16 @@ export function ImageCompare({ patientId }) {
   })();
   const ouEntry = ouIndex >= 0 ? ouDates[ouIndex][1] : null;
   const seriesFiles = candidates.slice(-SERIES_LIMIT);
-  const shownIds = mode === "ou" ? [ouEntry?.od?.fileId, ouEntry?.os?.fileId] : mode === "series" ? seriesFiles.map((item) => item.fileId) : [selection.left, selection.right];
+  // 経過: 眼の絞り込みに合う画像のある受診日。上段＝経過（既定は最新）、下段＝基準（既定は前回 / 初回）。
+  const visitDates = useMemo(() => followupDates(comparable, eye), [comparable, eye]);
+  const followDates = resolveFollowupDates(visitDates, { ...followPick, rule: baselineRule });
+  const followRows = {
+    followup: filesOnDate(comparable, followDates.followup, eye),
+    baseline: filesOnDate(comparable, followDates.baseline, eye)
+  };
+  const followColumns = followupColumns(followRows.followup, followRows.baseline);
+  const shownIds = mode === "followup" ? [...followRows.followup, ...followRows.baseline].map((item) => item.fileId)
+    : mode === "ou" ? [ouEntry?.od?.fileId, ouEntry?.os?.fileId] : mode === "series" ? seriesFiles.map((item) => item.fileId) : [selection.left, selection.right];
   const { urls, failed } = useFileUrls([
     ...(mode === "compare" ? stripFiles.filter(isImageFile).map((item) => item.fileId) : []),
     ...shownIds
@@ -196,11 +231,11 @@ export function ImageCompare({ patientId }) {
         {kindCounts.length ? (
           <div aria-label="表示モード" className="segmented cmp-modes" role="group">
             {MODES.map((item) => (
-              <button aria-pressed={mode === item.key} key={item.key} onClick={() => setMode(item.key)} title={item.title} type="button">{item.label}</button>
+              <button aria-pressed={mode === item.key} key={item.key} onClick={() => chooseMode(item.key)} title={item.title} type="button">{item.label}</button>
             ))}
           </div>
         ) : null}
-        {kindCounts.length ? (
+        {kindCounts.length && mode !== "followup" ? (
           <div aria-label="種類" className="cmp-chips" role="group">
             {kindCounts.map(([value, count]) => (
               <button aria-pressed={kind === value} className="flow-chip cmp-chip" key={value} onClick={() => chooseKind(value)} type="button">
@@ -225,7 +260,67 @@ export function ImageCompare({ patientId }) {
           {uploadButton}
         </div>
       ) : null}
-      {mode !== "ou" && kindCounts.length > 0 && candidates.length === 0 ? <p className="empty">この条件の画像はありません。眼を「すべて」にすると表示されます。</p> : null}
+      {mode === "followup" && kindCounts.length ? (
+        visitDates.length ? (
+          <div className="cmp-followup" style={{ "--fu-cols": Math.max(1, followColumns.length) }}>
+            {FOLLOWUP_ROWS.map((row) => {
+              const date = followDates[row.key];
+              const index = visitDates.indexOf(date);
+              const rowFiles = followRows[row.key];
+              const pick = (value) => setFollowPick((current) => ({ ...current, [row.key]: value }));
+              return (
+                <section aria-label={`${row.label}（${row.note}）`} className="cmp-followup-row" data-role={row.key} key={row.key}>
+                  <div className="cmp-fu-head">
+                    <span className={`cmp-fu-label is-${row.key}`}>{row.label}</span>
+                    <span className="cmp-fu-dates">
+                      <button aria-label={`${row.label}の日付を前へ`} className="btn btn-chip btn-sm" disabled={index <= 0} onClick={() => pick(visitDates[index - 1])} type="button">‹</button>
+                      <select aria-label={`${row.label}の日付`} className="input input-compact cmp-fu-select" onChange={(event) => pick(event.target.value)} value={date}>
+                        {!date ? <option value="">—</option> : null}
+                        {[...visitDates].reverse().map((value) => <option key={value} value={value}>{formatDate(value)}</option>)}
+                      </select>
+                      <button aria-label={`${row.label}の日付を次へ`} className="btn btn-chip btn-sm" disabled={index < 0 || index >= visitDates.length - 1} onClick={() => pick(visitDates[index + 1])} type="button">›</button>
+                    </span>
+                    <span className="cmp-fu-meta muted small">{row.note}{rowFiles.length ? ` ・ ${rowFiles.length}件` : ""}</span>
+                    {row.key === "baseline" ? (
+                      <span aria-label="基準の日の既定" className="segmented cmp-fu-rule" role="group">
+                        {[["previous", "前回"], ["first", "初回"]].map(([value, label]) => (
+                          <button aria-pressed={baselineRule === value && !followPick.baseline} key={value} onClick={() => { setBaselineRule(value); pick(""); }} type="button">{label}</button>
+                        ))}
+                      </span>
+                    ) : null}
+                  </div>
+                  {date ? (
+                    <div className="cmp-fu-cells">
+                      {followColumns.map((kind) => {
+                        const cellFiles = rowFiles.filter((item) => item.kind === kind);
+                        return (
+                          <div className="cmp-fu-cell" key={kind}>
+                            <div className="cmp-fu-cell-head">{FILE_KIND_LABELS[kind]}</div>
+                            {cellFiles.length ? (
+                              <div className="cmp-fu-files">
+                                {cellFiles.map((item) => (
+                                  <figure className="cmp-fu-file" key={item.fileId}>
+                                    <FilePreview failed={Boolean(failed[item.fileId])} file={item} url={urls[item.fileId]} />
+                                    <figcaption title={item.title}>
+                                      {item.eye ? <span className={`cmp-fu-eye eye-${item.eye}`}>{EYE_LABELS[item.eye]}</span> : null}
+                                      {item.title !== FILE_KIND_LABELS[item.kind] ? <span>{item.title}</span> : null}
+                                    </figcaption>
+                                  </figure>
+                                ))}
+                              </div>
+                            ) : <div className="file-preview is-empty">その日はありません</div>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : <p className="empty">画像のある日がもう 1 日ありません。上段と同じ日を選ぶか、画像を取り込んでください。</p>}
+                </section>
+              );
+            })}
+          </div>
+        ) : <p className="empty">この眼の画像はありません。眼を「すべて」にすると表示されます。</p>
+      ) : null}
+      {(mode === "compare" || mode === "series") && kindCounts.length > 0 && candidates.length === 0 ? <p className="empty">この条件の画像はありません。眼を「すべて」にすると表示されます。</p> : null}
       {mode === "ou" && kindCounts.length ? (
         ouEntry ? (
           <>

@@ -52,6 +52,8 @@ export function HomeWorkspace() {
   const router = useRouter();
   const printNames = usePrintNames();
   const wide = useMediaQuery("(min-width: 1024px)", true);
+  // 1280px 以上では、概要の右に縦のランチャー（トプコンの右端の縦の操作列）を置く
+  const roomy = useMediaQuery("(min-width: 1280px)", true);
   const [data, setData] = useState({ appointments: [], encountersByPatient: {} });
   const [encounters, setEncounters] = useState([]);
   const [worklist, setWorklist] = useState(null);
@@ -398,9 +400,10 @@ export function HomeWorkspace() {
     );
   }
 
+  const launcher = !isTask && wide && roomy ? <ConsultLauncher busy={busy} canStart={canStart} firstWaiting={firstWaiting} item={selected} onNext={callNext} stage={selected?.patientId ? listStageOf(selected, data.encountersByPatient, now) : ""} encounter={selected?.patientId ? data.encountersByPatient[selected.patientId] : null} canWrite={canWrite} onOpenChart={(view) => run(() => openChart(selected, view))} onStartConsult={() => startConsult(selected)} onRegister={context?.canRegisterPatients && context?.canReceive ? () => setRegistering(selected) : null} /> : null;
   const pane = (
     <PatientSummaryPane
-      actions={paneActions(selected)}
+      actions={launcher ? null : paneActions(selected)}
       className={wide ? "" : "is-sheet"}
       error={summaryState.error}
       loading={summaryState.loading}
@@ -458,7 +461,7 @@ export function HomeWorkspace() {
         ) : null}
       </div>
 
-      <div className={`cl-layout${isTask ? " is-task" : ""}`}>
+      <div className={`cl-layout${isTask ? " is-task" : ""}${launcher ? " has-launcher" : ""}`}>
         <section aria-label={isTask ? "要対応の一覧" : "患者一覧"} className="panel cl-list">
           {isTask ? renderTask(activeTab.slice(5)) : (
             <>
@@ -511,6 +514,7 @@ export function HomeWorkspace() {
           )}
         </section>
         {!isTask && wide ? pane : null}
+        {launcher}
       </div>
       {!isTask && !wide && selected && sheetOpen ? (
         <div className="cl-sheet-backdrop" onClick={() => setSheetOpen(false)} role="presentation">
@@ -566,4 +570,39 @@ export function StatusTag({ encounter }) {
   if (encounter.status === "finalized") return <span className="tag tag-ok">確定 v{encounter.versionCount}</span>;
   if (encounter.amending) return <span className="tag tag-warn">修正中</span>;
   return <span className="tag tag-draft">下書き</span>;
+}
+
+// 概要の右の縦の操作列（トプコンのカルテ概要の右端のランチャー）。選んだ患者に対する操作を縦に並べる。
+// アイコンは自前の文字。押せない操作は出さずに、並びの位置だけそろえる。
+function ConsultLauncher({ item, stage, encounter, canWrite, canStart, busy, firstWaiting, onNext, onOpenChart, onStartConsult, onRegister }) {
+  const patientId = item?.patientId || "";
+  const entries = [
+    canStart && stage === "waiting" ? { key: "start", icon: "▶", label: "診察開始", action: onStartConsult, primary: true } : null,
+    patientId && (encounter || (canWrite && item.status !== "booked")) ? { key: "chart", icon: "✎", label: "カルテ", action: () => onOpenChart("") } : null,
+    patientId && canWrite && ["exam", "dark", "waiting"].includes(stage) ? { key: "exam", icon: "◎", label: "検査入力", action: () => onOpenChart("exam") } : null,
+    patientId ? { key: "patient", icon: "☰", label: "患者", href: `/patients/${patientId}` } : null,
+    patientId ? { key: "vaiop", icon: "↗", label: "視力眼圧", href: `/patients/${patientId}?tab=va-iop` } : null,
+    patientId ? { key: "images", icon: "▣", label: "画像", href: `/patients/${patientId}/images` } : null,
+    patientId ? { key: "iol", icon: "◍", label: "IOL", href: `/patients/${patientId}?tab=iol` } : null,
+    !patientId && item && onRegister ? { key: "register", icon: "＋", label: "患者登録", action: onRegister, primary: true } : null
+  ].filter(Boolean);
+  return (
+    <nav aria-label="選んだ患者の操作" className="cl-launcher">
+      {!item ? <p className="cl-launcher-empty">患者を選ぶと操作が出ます</p> : null}
+      {entries.map((entry) => (entry.href ? (
+        <Link className="cl-launch" href={entry.href} key={entry.key}>
+          <span aria-hidden="true" className="cl-launch-icon">{entry.icon}</span>{entry.label}
+        </Link>
+      ) : (
+        <button className={`cl-launch${entry.primary ? " is-primary" : ""}`} disabled={busy !== ""} key={entry.key} onClick={entry.action} type="button">
+          <span aria-hidden="true" className="cl-launch-icon">{entry.icon}</span>{entry.label}
+        </button>
+      )))}
+      {canStart ? (
+        <button className="cl-launch is-next" disabled={!firstWaiting || busy !== ""} onClick={onNext} title={firstWaiting ? `${firstWaiting.patientName} の診察を始めます` : "診察待ちの患者はいません"} type="button">
+          <span aria-hidden="true" className="cl-launch-icon">→</span>次の患者
+        </button>
+      ) : null}
+    </nav>
+  );
 }

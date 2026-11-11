@@ -4,6 +4,7 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { isSuspectedDiagnosis } from "@halunasu/eye-contracts";
 import { useEyeApi } from "./eye-api";
+import { PatientPhoto } from "./patient-photo";
 import { EYE_LABELS, formatDate, patientLine, todayIso } from "../lib/format";
 
 const ALLERGY_CATEGORY_LABELS = { drug: "薬剤", food: "食物", contrast: "造影剤", latex: "ラテックス", other: "その他" };
@@ -37,6 +38,7 @@ export function PatientBanner({ patient, profile, context, onProfileSaved, actio
       <div className="patient-banner-main">
         <div className="patient-banner-name">
           {leading}
+          <PatientPhoto name={patient.displayName} patientId={patient.patientId} size="sm" />
           <h1>{patient.displayName} <span className="kana">{patient.displayNameKana}</span></h1>
           <span className="muted patient-banner-line">{patientLine(patient)}{patient.birthDate ? ` ・ ${formatDate(patient.birthDate)}生` : ""}</span>
           {profile?.contactLensUser ? <span className="tag">CL装用</span> : null}

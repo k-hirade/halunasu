@@ -7,6 +7,8 @@ import { useEyeApi } from "./eye-api";
 import { DocumentsPanel } from "./documents-panel";
 import { FilesPanel, UploadDialog } from "./files-panel";
 import { PatientBanner } from "./patient-banner";
+import { IolPanel, PreopViewer, useIolRecords } from "./patient-iol";
+import { notifyPatientPhotoChanged } from "./patient-photo";
 import { PatientSummaryPane } from "./patient-summary-pane";
 import { TrendPanel } from "./trend-chart";
 import { VaIopView } from "./va-iop-view";
@@ -21,6 +23,8 @@ import {
 } from "../lib/format";
 
 const VISIT_ROWS = 6;
+// 表示のタブ（トプコンの患者の画面のタブ: カルテ内容・視力眼圧・IOL管理・術前検査）。?tab= で開ける。
+const VIEWS = [["summary", "カルテ概要"], ["va-iop", "視力眼圧"], ["iol", "IOL"], ["preop", "術前検査"]];
 
 export function PatientChart({ patientId }) {
   const api = useEyeApi();
@@ -33,6 +37,8 @@ export function PatientChart({ patientId }) {
   const [uploading, setUploading] = useState(false);
   const [filesKey, setFilesKey] = useState(0);
   const [paperFiles, setPaperFiles] = useState([]);
+  const [allFiles, setAllFiles] = useState([]);
+  const iolState = useIolRecords(patientId);
   const [view, setView] = useState("summary");
   const [todayEncounter, setTodayEncounter] = useState(null);
   const todayEncounterId = chart?.encounters?.find((encounter) => encounter.encounterDate === todayIso())?.encounterId || "";
@@ -45,14 +51,18 @@ export function PatientChart({ patientId }) {
     return () => { active = false; };
   }, [api, todayEncounterId]);
 
-  // ?tab=va-iop（検査入力の「過去履歴」から）で視力眼圧のタブを開く
+  // ?tab=va-iop（検査入力の「過去履歴」から）などで、そのタブを開く
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("tab") === "va-iop") setView("va-iop");
+    const tab = new URLSearchParams(window.location.search).get("tab");
+    if (VIEWS.some(([key]) => key === tab)) setView(tab);
   }, []);
 
   const reloadPaper = useCallback(() => {
     api(`/v1/eye/patients/${patientId}/files`)
-      .then((payload) => setPaperFiles(payload.files.filter((item) => item.kind === "paper_chart" && item.paper?.summary)))
+      .then((payload) => {
+        setAllFiles(payload.files);
+        setPaperFiles(payload.files.filter((item) => item.kind === "paper_chart" && item.paper?.summary));
+      })
       .catch(() => {});
   }, [api, patientId]);
 
@@ -147,13 +157,22 @@ export function PatientChart({ patientId }) {
       <div className="chart-grid pt-grid">
         <div className="chart-main">
           <div aria-label="表示" className="pt-tabs" role="tablist">
-            <button aria-selected={view === "summary"} className="pt-tab" onClick={() => setView("summary")} role="tab" type="button">カルテ概要</button>
-            <button aria-selected={view === "va-iop"} className="pt-tab" onClick={() => setView("va-iop")} role="tab" type="button">視力眼圧</button>
+            {VIEWS.map(([key, label]) => (
+              <button aria-selected={view === key} className="pt-tab" key={key} onClick={() => setView(key)} role="tab" type="button">{label}</button>
+            ))}
             <Link className="pt-tab is-link" href={`/patients/${patientId}/images`}>画像 ›</Link>
           </div>
           {view === "va-iop" ? (
             <section aria-label="視力眼圧" className="panel pt-va-iop" role="tabpanel">
-              <VaIopView points={trend?.points || []} />
+              <VaIopView dense plotHeight={210} points={trend?.points || []} />
+            </section>
+          ) : view === "iol" ? (
+            <section aria-label="IOL" className="panel pt-iol" role="tabpanel">
+              <IolPanel canWrite={Boolean(context?.canWrite)} state={iolState} />
+            </section>
+          ) : view === "preop" ? (
+            <section aria-label="術前検査" className="panel pt-preop" role="tabpanel">
+              <PreopViewer encounters={[todayEncounter, latestFinalized]} files={allFiles} iolState={iolState} patientId={patientId} />
             </section>
           ) : (
             <div role="tabpanel">
@@ -202,7 +221,7 @@ export function PatientChart({ patientId }) {
       {uploading ? (
         <UploadDialog
           onClose={() => setUploading(false)}
-          onUploaded={() => { setFilesKey((value) => value + 1); reloadPaper(); }}
+          onUploaded={(file) => { setFilesKey((value) => value + 1); reloadPaper(); if (file?.kind === "face_photo") notifyPatientPhotoChanged(patientId); }}
           patientId={patientId}
         />
       ) : null}
@@ -227,7 +246,7 @@ function CourseBlock({ encounters, trend, today }) {
         ) : null}
       </div>
       <div className="pt-course-body">
-        {open || !hasPoints ? <div className="pt-course-chart"><TrendPanel trend={trend} /></div> : null}
+        {open || !hasPoints ? <div className="pt-course-chart"><TrendPanel band={isPhone ? 112 : 150} trend={trend} /></div> : null}
         <VisitTable encounters={encounters} today={today} trend={trend} />
       </div>
     </section>

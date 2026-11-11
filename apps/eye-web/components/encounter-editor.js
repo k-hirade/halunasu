@@ -250,7 +250,7 @@ export function EncounterEditor({ encounterId }) {
       if (sketch) copyFrom("sketch", source, { sketch, strokes: data.strokes !== false });
       return;
     }
-    if (["text", "left", "right"].includes(data.kind)) copyFrom(data.kind, source);
+    if (["text", "left", "right", "finding", "plan"].includes(data.kind)) copyFrom(data.kind, source, data);
   }
 
   // 選択中の束（無ければ新しい束）に行を入れる。legacy の 1 行の束は、入れる前に rpId を振る。

@@ -1,0 +1,166 @@
+/* 画像の比較「経過」（IMAGEnet 6 の Follow-up に倣う）: 上段＝経過（今回）、下段＝基準。
+ * 各段はその日の画像を種類の列で横に並べ、2 段で同じ列がそろう。components/image-compare.js。 */
+
+.cmp-followup {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.cmp-followup-row {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  min-width: 0;
+  padding: 8px 10px 10px;
+}
+
+.cmp-followup-row[data-role="followup"] {
+  border-color: var(--teal);
+  box-shadow: inset 3px 0 0 var(--teal);
+}
+
+.cmp-fu-head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-bottom: 6px;
+  min-width: 0;
+}
+
+.cmp-fu-label {
+  border-radius: 4px;
+  font-size: var(--fs-sm);
+  font-weight: 800;
+  padding: 2px 8px;
+}
+
+.cmp-fu-label.is-followup {
+  background: var(--teal);
+  color: var(--on-accent);
+}
+
+.cmp-fu-label.is-baseline {
+  background: var(--surface-muted);
+  border: 1px solid var(--line-strong);
+  color: var(--text);
+}
+
+.cmp-fu-dates {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+}
+
+.cmp-fu-dates .btn.btn-chip {
+  min-height: 32px;
+  min-width: 32px;
+}
+
+.cmp-page .cmp-fu-select {
+  font-size: var(--fs-md);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  min-height: 32px;
+  width: auto;
+}
+
+.cmp-fu-rule {
+  margin-left: auto;
+}
+
+.cmp-fu-cells {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(var(--fu-cols, 1), minmax(0, 1fr));
+  min-width: 0;
+}
+
+.cmp-fu-cell {
+  min-width: 0;
+}
+
+.cmp-fu-cell-head {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  margin-bottom: 3px;
+}
+
+.cmp-fu-files {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cmp-fu-file {
+  container-type: inline-size;
+  flex: 1 1 0;
+  margin: 0;
+  min-width: 0;
+}
+
+/* 2 段が 1366×768 の 1 画面に収まる高さ。セルの幅より高くしない。 */
+.cmp-page .cmp-followup .file-preview {
+  height: min(clamp(120px, calc((100dvh - 400px) / 2), 46vh), 100cqi);
+}
+
+.cmp-page .cmp-fu-cell > .file-preview.is-empty {
+  font-size: var(--fs-sm);
+  height: clamp(120px, calc((100dvh - 400px) / 2), 46vh);
+}
+
+.cmp-fu-file figcaption {
+  align-items: baseline;
+  color: var(--muted);
+  display: flex;
+  font-size: var(--fs-xs);
+  gap: 6px;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cmp-fu-eye {
+  font-weight: 700;
+}
+
+.cmp-fu-eye.eye-od {
+  color: var(--od);
+}
+
+.cmp-fu-eye.eye-os {
+  color: var(--os);
+}
+
+/* スマホ: 段は縦に積んだまま、その日の画像は段の中で横にスクロールする帯にする */
+@media (max-width: 599px) {
+  .cmp-fu-cells {
+    grid-auto-columns: 78%;
+    grid-auto-flow: column;
+    grid-template-columns: none;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    padding-bottom: 4px;
+    scroll-snap-type: x proximity;
+  }
+
+  .cmp-fu-cell {
+    scroll-snap-align: start;
+  }
+
+  .cmp-page .cmp-followup .file-preview,
+  .cmp-page .cmp-fu-cell > .file-preview.is-empty {
+    height: min(clamp(140px, calc((100dvh - var(--nav-h)) / 2 - 140px), 40vh), 100cqi);
+  }
+
+  .cmp-page .cmp-fu-cell > .file-preview.is-empty {
+    height: 140px;
+  }
+
+  .cmp-fu-rule {
+    margin-left: 0;
+  }
+}

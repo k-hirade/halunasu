@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { AllergyBadge } from "./patient-banner";
 import { useEyeApi } from "./eye-api";
+import { PatientPhoto } from "./patient-photo";
 import {
   activeDiagnoses,
   ageWithMonths,
@@ -41,6 +42,7 @@ export function PatientSummaryPane({ summary = null, loading = false, error = ""
       <div className="ps-grid">
         <section aria-label="カルテ情報" className="ps-cell ps-info">
           <h3>カルテ情報</h3>
+          {patient?.patientId ? <PatientPhoto name={patient.displayName} patientId={patient.patientId} size="lg" /> : null}
           {patient ? (
             <dl className="ps-dl">
               <div><dt>患者ID</dt><dd className="mono">{patient.primaryPatientNumber || "—"}</dd></div>
