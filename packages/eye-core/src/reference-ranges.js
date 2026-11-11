@@ -45,9 +45,9 @@ export const DEFAULT_REFERENCE_RANGES = Object.freeze({
     bmi: range(18.5, 24.9)
   }),
   exam: Object.freeze({
-    vau: range(1.0, null),
+    vau: range(null, null), // 裸眼は近視の人がほぼ外れるので既定では付けない（医院で設定できる）
     vac: range(1.0, null),
-    near: range(1.0, null),
+    near: range(0.7, null),
     iop: range(10, 21),
     s: range(-0.5, 0.5),
     c: range(-1.0, 1.0),
