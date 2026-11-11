@@ -337,9 +337,16 @@ export function ReceptionWorkspace() {
           onSend={() => setBilling((current) => ({ ...current, confirm: item }))}
         />
       );
-      case "progress": return <span className="rc-progress">{IN_CLINIC.includes(item.status) && encounter ? progressChips(encounter).map(([label, state], index) => (
-        <span className={`flow-step is-${state}`} key={`${label}${index}`} title={`${label}: ${state === "done" ? "済" : "未"}`}>{label}{state === "done" ? "✓" : "・"}</span>
-      )) : null}</span>;
+      // 表では 1 行に収めて幅を切るので、全部の項目は title で見られるようにする
+      case "progress": {
+        const chips = IN_CLINIC.includes(item.status) && encounter ? progressChips(encounter) : [];
+        const titleOf = ([label, state]) => `${label}: ${state === "done" ? "済" : "未"}`;
+        return (
+          <span className="rc-progress" title={chips.length ? chips.map(titleOf).join(" / ") : undefined}>
+            {chips.map((chip, index) => <span className={`flow-step is-${chip[1]}`} key={`${chip[0]}${index}`} title={titleOf(chip)}>{chip[0]}{chip[1] === "done" ? "✓" : "・"}</span>)}
+          </span>
+        );
+      }
       case "dilation": return <DilationChip minutes={dilationOf(item)} />;
       case "wait": {
         const wait = waitOf(item);
@@ -511,6 +518,12 @@ function useScrollEdges(ref, deps) {
       const max = element.scrollWidth - element.clientWidth;
       element.toggleAttribute("data-more-left", element.scrollLeft > 1);
       element.toggleAttribute("data-more-right", max - element.scrollLeft > 1);
+      // 固定した列（左の氏名・右の操作・上の見出し）の幅だけスクロールの余白を取る。
+      // Tab の移動や scrollIntoView で出てくる欄が、固定した列の下に隠れたままにならないようにする（カード表示では見出しが無いので 0）
+      const width = (selector) => Math.ceil(element.querySelector(selector)?.getBoundingClientRect().width || 0);
+      element.style.scrollPaddingLeft = `${width("thead th.rc-col-name")}px`;
+      element.style.scrollPaddingRight = `${width("thead th.rc-col-actions")}px`;
+      element.style.scrollPaddingTop = `${Math.ceil(element.querySelector("thead")?.getBoundingClientRect().height || 0)}px`;
     };
     update();
     element.addEventListener("scroll", update, { passive: true });

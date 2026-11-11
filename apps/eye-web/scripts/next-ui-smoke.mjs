@@ -1550,6 +1550,33 @@ async function runReceptionResponsiveChecks(browser) {
   assert.ok(Math.abs(after.y - before.y) <= 1, `the search input does not jump: ${before.y} -> ${after.y}`);
   await page.keyboard.press("Escape");
 
+  // 1366: オーダーの多い会計待の行も、ほかの行と同じ 1 行の高さ（進捗のチップを折り返さない）。
+  // ［会計］のボタンは、横にスクロールして出したとき右に固定した列の下に隠れない
+  await page.route(/\/v1\/eye\/appointments\?date=/u, async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    const target = body.appointments.find((item) => item.patientId);
+    if (target) {
+      target.status = "checkout";
+      target.displayStatus = "checkout";
+      const orders = ["視力検査", "眼圧検査", "OCT（視神経乳頭）", "細隙灯顕微鏡検査", "眼底検査"].map((name, index) => ({ orderId: `o${index}`, code: `c${index}`, name, kind: "exam", eye: "ou", status: index % 2 ? "ordered" : "performed" }));
+      body.encountersByPatient[target.patientId] = { encounterId: "enc_smoke_rows", status: "finalized", exam: {}, orders };
+    }
+    await route.fulfill({ response, json: body });
+  });
+  await page.reload();
+  const checkoutRow = page.locator(".rc-row.status-checkout").first();
+  await checkoutRow.locator(".rc-col-progress .flow-step").first().waitFor();
+  const rowHeights = await page.locator(".rc-row").evaluateAll((rows) => rows.map((row) => ({ checkout: row.classList.contains("status-checkout"), height: Math.round(row.getBoundingClientRect().height) })));
+  const normalHeight = rowHeights.find((item) => !item.checkout)?.height;
+  for (const item of rowHeights.filter((entry) => entry.checkout)) assert.equal(item.height, normalHeight, `the checkout row is as tall as a normal row at 1366: ${JSON.stringify(rowHeights)}`);
+  const sendButton = checkoutRow.getByRole("button", { name: "会計", exact: true });
+  await sendButton.scrollIntoViewIfNeeded();
+  const sendBox = await sendButton.boundingBox();
+  const actionsBox = await checkoutRow.locator("td.rc-col-actions").boundingBox();
+  assert.ok(sendBox.x + sendBox.width <= actionsBox.x + 1, `the billing button is not under the pinned actions column: ${JSON.stringify({ sendBox, actionsBox })}`);
+  await page.unrouteAll({ behavior: "wait" });
+
   assert.deepEqual(pageErrors, []);
   await context.close();
 }

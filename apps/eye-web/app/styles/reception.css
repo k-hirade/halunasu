@@ -449,23 +449,34 @@ span.rc-memo {
   white-space: nowrap;
 }
 
-/* 進捗のチップは折り返す（折り返さないと、オーダーの多い人の行で表の幅が大きく広がる） */
+/* 進捗のチップは 1 行に並べ、入りきらない分は切る（全部は title）。
+ * 折り返すとオーダーの多い会計待などの行だけが 2〜4 行の高さになり、表の行の高さがそろわない。
+ * 幅を切らないと、オーダーの多い人の行で表の幅が大きく広がる */
 .rc-progress {
   display: inline-flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 4px;
-  max-width: 18em;
-  white-space: normal;
+  max-width: 16em;
+  overflow: hidden;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.rc-progress > .flow-step {
+  flex: 0 0 auto;
 }
 
 .rc-progress:empty {
   display: none;
 }
 
+/* 会計の列は折り返さない（［失敗］［再試行］も 1 行） */
 .rc-billing {
   align-items: center;
   display: inline-flex;
+  flex-wrap: nowrap;
   gap: 6px;
+  white-space: nowrap;
 }
 
 .rc-billing .tag-danger {
@@ -1553,7 +1564,10 @@ fieldset.register-row > legend {
   .rc-table td[data-label]:not(.rc-col-no, .rc-col-name, .rc-col-status)::before {
     color: var(--muted);
     content: attr(data-label);
+    /* 進捗のチップが長くても見出し（「進捗」）は縦に割らない */
+    flex: none;
     font-size: var(--fs-xs);
+    white-space: nowrap;
   }
 
   .rc-table td:empty,
@@ -1563,6 +1577,14 @@ fieldset.register-row > legend {
 
   .rc-cell-edit {
     padding: 2px 4px;
+  }
+
+  /* カードでは行の高さをそろえる必要がないので、進捗のチップは折り返して全部出す */
+  .rc-progress {
+    flex-wrap: wrap;
+    max-width: none;
+    overflow: visible;
+    white-space: normal;
   }
 
   .rc-mobile-sort {

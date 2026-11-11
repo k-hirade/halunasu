@@ -619,8 +619,8 @@ async function prepare(browser) {
   const documentPath = new URL(page.url()).pathname;
   await page.getByLabel("宛先 医療機関").fill("県立中央病院");
   await page.waitForTimeout(2500);
-  // 確定済みのカルテ（版履歴・次へ の受付の状態の撮影用）は会計連携の準備で作る
-  const billingIds = wants("billing") || wants("editor") ? await seedBilling(page) : [];
+  // 確定済みのカルテ（版履歴・次へ の受付の状態の撮影用）は会計連携の準備で作る。受付一覧の会計待・会計済の行もここで入る
+  const billingIds = wants("billing") || wants("editor") || wants("reception") ? await seedBilling(page) : [];
   if (wants("settings")) await seedSettings(page);
   if (wants("patient") || wants("images")) await uploadSampleImages(page, patientHref);
   const storageState = await context.storageState();
