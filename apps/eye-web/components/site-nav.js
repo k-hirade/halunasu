@@ -39,7 +39,7 @@ export function screenName(pathname) {
 const DESTINATIONS = [
   { id: "reception", href: "/reception", label: "受付画面", match: (path) => path.startsWith("/reception") && !path.startsWith("/reception/schedule") },
   { id: "list", href: "/", label: "患者リスト", title: "患者リスト（診察）", match: (path) => path === "/", badge: true },
-  { id: "schedule", href: "/reception/schedule", label: "予約状況", match: (path) => path.startsWith("/reception/schedule") },
+  { id: "schedule", href: "/reception/schedule", label: "予約表", match: (path) => path.startsWith("/reception/schedule") },
   { id: "billing", href: "/billing", label: "会計連携", match: (path) => path.startsWith("/billing") }
 ];
 // 管理者だけの行き先（施設管理の中の画面）
