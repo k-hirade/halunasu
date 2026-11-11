@@ -305,7 +305,7 @@
   min-width: 240px;
 }
 
-.print-menu-list .btn {
+.more-menu-list.print-menu-list .btn {
   justify-content: flex-start;
   text-align: left;
   width: 100%;

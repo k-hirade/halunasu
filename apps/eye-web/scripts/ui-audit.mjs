@@ -429,9 +429,10 @@ const STATES = {
     run: async (page, view) => {
       await openRightPane(page, view);
       await page.locator(".chart-right").getByRole("tab", { name: "投薬", exact: true }).click();
-      await page.getByLabel("オーダーを検索").fill("ヒアルロン酸");
+      // よく使う薬剤は既定の用法を持つので、薬剤名をそのまま入れる（用法なし）
+      await page.getByLabel("オーダーを検索").fill("監査用の点眼");
       await page.waitForTimeout(900);
-      await page.locator(".chart-right .order-item").filter({ hasText: /ヒアルロン酸/u }).first().click();
+      await page.locator(".chart-right .order-item.is-free").click();
       if (view.width < 1280) await page.locator(".chart-right").getByRole("button", { name: "閉じる" }).click();
       const missing = page.locator(".usage-pill.is-missing").first();
       await missing.scrollIntoViewIfNeeded();
