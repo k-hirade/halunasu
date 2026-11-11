@@ -97,6 +97,7 @@ import { japanDate } from "./dates.js";
 import { buildFacilitySettings, effectiveFacility, facilitiesWithSettings, facilitySettingsView, pickFacility, validateFacilitySettingsInput } from "./facility.js";
 import { invalidateLearningCache, learningList } from "./learning.js";
 import { defaultMasterIndex, MASTER_SEARCH_LIMIT } from "./masters.js";
+import { commonModifiers } from "./modifier-common.js";
 import { createId } from "./ids.js";
 import {
   applyProfileUpdate,
@@ -104,6 +105,7 @@ import {
   diagnosesChanged,
   diagnosesForEncounter
 } from "./profiles.js";
+import { applyProfileSection, sectionAuditPayload, validateProfileSectionInput } from "./patient-sections.js";
 import { createBlobStoreFromEnv, MAX_FILE_BYTES, sniffContentType } from "./store/blob-store.js";
 import { createEyeStoreFromEnv } from "./store/create-store.js";
 
@@ -242,7 +244,10 @@ async function routeEyeApiRequest(input = {}) {
     const limit = rawLimit === null ? MASTER_SEARCH_LIMIT : Number(rawLimit);
     if (!Number.isInteger(limit) || limit < 1 || limit > MASTER_SEARCH_LIMIT) throw badRequest(`limit must be 1-${MASTER_SEARCH_LIMIT}`, "limit");
     const index = input.masterIndex || defaultMasterIndex();
-    const results = q ? index.search({ type, q, limit, eyeOnly: url.searchParams.get("eye") === "1" }) : [];
+    // 修飾語は common=1 のとき、語が空でも眼科でよく使う候補を返す（傷病名編集の右の一覧）
+    const results = q
+      ? index.search({ type, q, limit, eyeOnly: url.searchParams.get("eye") === "1" })
+      : type === "modifier" && url.searchParams.get("common") === "1" ? commonModifiers(index) : [];
     return ok({ type, q, results, available: index.available(type), version: index.meta?.masters?.[type]?.file || "" });
   }
 
@@ -376,6 +381,20 @@ async function routeEyeApiRequest(input = {}) {
       });
       return ok({ profile });
     }
+  }
+
+  // カルテ左の区画（アレルギー・副作用薬・常用薬・既往・バイタル・問診・サマリー）を 1 つずつ保存する。ほかの項目は変えない。
+  if (method === "PUT" && parts.length === 6 && matches(parts.slice(0, 3), ["v1", "eye", "patients"]) && parts[4] === "profile" && parts[5] === "sections") {
+    requireAccess(context, EYE_PROFILE_ROLES, "Patient profile access is required");
+    requirePlatformCsrf(input.headers || {}, context.session);
+    const patient = await requirePatient(platformStore, orgId, parts[3]);
+    const { expectedRevision, section, patch } = validateProfileSectionInput(input.body || {}, { actor, now });
+    const encounters = await eyeStore.listPatientEncounters(orgId, patient.patientId);
+    const current = await loadProfile(eyeStore, orgId, patient.patientId, encounters);
+    const profile = applyProfileSection({ current, patch, orgId, patientId: patient.patientId, actor, now });
+    await eyeStore.savePatientProfile(orgId, profile, expectedRevision);
+    await audit({ eventType: "eye.profile_section_updated", targetType: "patient", targetId: patient.patientId, patientId: patient.patientId, safePayload: sectionAuditPayload(section, profile) });
+    return ok({ profile });
   }
 
   // 患者メモだけを保存する（受付から使う）。ほかのプロファイルの項目は変えない。

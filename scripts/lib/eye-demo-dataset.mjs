@@ -83,7 +83,28 @@ export function buildEyeDemoDataset({ today }) {
     {
       key: "postop",
       profile: { allergies: [{ category: "drug", substance: "ヨード", reaction: "じんましん", severity: "severe" }], ophthalmicHistory: "右眼 白内障手術（PEA+IOL）" },
-      patient: { displayName: "模擬 和子", displayNameKana: "モギ カズコ", birthDate: "1950-01-21", sex: "female", primaryPatientNumber: "D003" },
+      patient: {
+        displayName: "模擬 和子", displayNameKana: "モギ カズコ", birthDate: "1950-01-21", sex: "female", primaryPatientNumber: "D003",
+        contact: { postalCode: "1000000", prefecture: "東京都", address1: "千代田区見本町1-2-3", phone1: "000-0000-0000" }
+      },
+      // カルテ左の 副作用薬等・バイタル・問診・サマリー（架空の値）
+      profileSections: {
+        adverseDrugs: [{ name: "ロキソプロフェンナトリウム錠60mg", reaction: "胃部不快感", onset: "2018" }],
+        regularMedications: [
+          { name: "アムロジピン錠5mg", usage: "1日1回 朝食後", current: true, note: "内科で処方" },
+          { name: "アトルバスタチン錠10mg", usage: "1日1回 夕食後", current: true, note: "内科で処方" }
+        ],
+        vitals: [
+          { date: day(-42), systolic: 148, diastolic: 86, pulse: 72, temperature: 36.4 },
+          { date: day(-35), systolic: 136, diastolic: 80, pulse: 70 },
+          { date: day(-28), systolic: 132, diastolic: 78, pulse: 68, temperature: 36.5 }
+        ],
+        interviews: [
+          { date: day(-42), text: "右眼のかすみが半年前から強くなった。夜の運転がまぶしい。" },
+          { date: day(0), text: "術後の見え方は良い。右眼のごろごろ感が少しある。" }
+        ],
+        summary: "右眼 白内障術後（PEA+IOL）。経過良好。ヨード造影剤でじんましんの既往あり。高血圧・脂質異常症で内科通院中。"
+      },
       visits: cataractVisits(day),
       appointment: { time: "10:00", purpose: "postop", note: "右眼 白内障術後5週" }
     },

@@ -28,7 +28,9 @@ export function createMasterIndex(data = {}) {
   return {
     counts: Object.fromEntries(MASTER_TYPES.map((type) => [type, tables[type].length])),
     available: (type) => tables[type].length > 0,
-    search: ({ type, q, limit = MASTER_SEARCH_LIMIT, eyeOnly = false }) => searchTable(tables[type] || [], { q, limit, eyeOnly })
+    search: ({ type, q, limit = MASTER_SEARCH_LIMIT, eyeOnly = false }) => searchTable(tables[type] || [], { q, limit, eyeOnly }),
+    // コードで 1 件を引く（修飾語の候補一覧など）。無ければ null
+    lookup: (type, code) => (tables[type] || []).find((entry) => String(entry.record.code) === String(code))?.record || null
   };
 }
 

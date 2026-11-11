@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { diagnosisName } from "@halunasu/eye-core";
 import { isSuspectedDiagnosis } from "@halunasu/eye-contracts";
 import { useEyeApi } from "./eye-api";
@@ -37,7 +37,9 @@ export function useSaveDiagnoses(patientId, profile, onSaved) {
 const monthStart = (iso) => `${String(iso || "").slice(0, 7)}-01`;
 
 // 左の「病名」タブ（デジカルの傷病名タブ）。表・新規登録（検索して［確定］［主病］［疑い］）・編集・一括転帰。
-export function DiagnosisTab({ profile, patientId, canEdit, encounterDate, onSaved, learning, addOpen, setAddOpen }) {
+// レセコン送信（デジカルの傷病名タブの［レセコン送信］）: 病名は確定のときに今日のカルテへ写り、会計連携の送信でレセコンへ渡る。
+// sendState が "finalized" なら onSend（カルテ画面の［送信］と同じ会計連携）を開き、"draft" なら確定が先であることを知らせる。
+export function DiagnosisTab({ profile, patientId, canEdit, encounterDate, onSaved, learning, addOpen, setAddOpen, onSend = null, sendState = "" }) {
   const save = useSaveDiagnoses(patientId, profile, onSaved);
   const [thisMonth, setThisMonth] = useState(true);
   const [checked, setChecked] = useState(() => new Set());
@@ -45,6 +47,7 @@ export function DiagnosisTab({ profile, patientId, canEdit, encounterDate, onSav
   const [bulk, setBulk] = useState(false);
   const [sortAsc, setSortAsc] = useState(false);
   const [error, setError] = useState("");
+  const [sendNote, setSendNote] = useState("");
   const all = profile?.diagnoses || [];
   const rows = useMemo(() => all
     .map((item, index) => ({ item, index }))
@@ -82,8 +85,26 @@ export function DiagnosisTab({ profile, patientId, canEdit, encounterDate, onSav
         ) : null}
         <span className="pane-tools-spacer" />
         <label className="check-line small"><input checked={thisMonth} onChange={(event) => setThisMonth(event.target.checked)} type="checkbox" />当月有効</label>
+        {onSend ? (
+          <button
+            className="btn btn-chip dx-send"
+            onClick={() => {
+              if (sendState === "finalized") {
+                setSendNote("");
+                onSend();
+              } else {
+                setSendNote("病名は、今日のカルテを確定（→ 次へ）したときにカルテへ写り、会計連携の送信でレセコンへ渡ります。確定のあとにもう一度押してください。");
+              }
+            }}
+            title="病名を会計連携（レセコン）へ送る"
+            type="button"
+          >
+            レセコン送信
+          </button>
+        ) : null}
         {canEdit ? <button aria-label="病名を追加" className="btn btn-chip" onClick={() => setAddOpen(true)} title="病名を追加（B）" type="button">＋</button> : null}
       </div>
+      {sendNote ? <p className="alert alert-ok small dx-send-note" role="status">{sendNote} <button className="btn btn-chip" onClick={() => setSendNote("")} type="button">閉じる</button></p> : null}
       {error ? <p className="alert alert-danger small" role="alert">{error}</p> : null}
       {rows.length === 0 ? <p className="empty">{all.length ? "当月有効の病名はありません。" : "登録された病名はありません。"}</p> : (
         <div className="table-scroll">
@@ -117,6 +138,7 @@ export function DiagnosisTab({ profile, patientId, canEdit, encounterDate, onSav
                     {diagnosisName(item)}
                     {item.code ? <span className="dx-code">{item.code}</span> : null}
                     {item.note ? <span className="muted small dx-note">{item.note}</span> : null}
+                    {item.department ? <span className="dx-inline-dept">{item.department}</span> : null}
                   </td>
                   <td>{EYE_LABELS[item.eye] ? EYE_LABELS[item.eye].slice(0, 1) : ""}</td>
                   <td className="dx-col-suspect">{isSuspectedDiagnosis(item) ? "疑" : ""}</td>
@@ -263,11 +285,12 @@ function DiagnosisEditDialog({ item, onSave, onCancel, onDelete }) {
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const search = useMasterSearch("modifier", query);
+  const common = useCommonModifiers();
+  const candidates = query.trim() ? search.results : common.results;
   const outcome = draft.status === "resolved" ? draft.outcome || "cured" : "";
   const set = (patch) => setDraft((current) => ({ ...current, ...patch }));
   const setOutcome = (value) => set(value ? { status: "resolved", outcome: value, endDate: draft.endDate || "" } : { status: "active", outcome: "", endDate: "" });
   const addModifier = (modifier) => set({ modifiers: [...draft.modifiers, { code: modifier.code, name: modifier.name, position: modifier.position === "suffix" ? "suffix" : "prefix" }] });
-  const quick = [["右", "prefix"], ["左", "prefix"], ["両", "prefix"]];
 
   async function submit(event) {
     event.preventDefault();
@@ -333,16 +356,20 @@ function DiagnosisEditDialog({ item, onSave, onCancel, onDelete }) {
           </div>
           <div className="dx-edit-modifiers">
             <h3>修飾語</h3>
-            <div className="chip-toggles">
-              {quick.map(([name, position]) => <button className="btn btn-chip" key={name} onClick={() => addModifier({ name, position })} type="button">{name}</button>)}
-            </div>
-            <input aria-label="修飾語を検索" className="input" onChange={(event) => setQuery(event.target.value)} placeholder="修飾語を検索（例: 急性・術後）" value={query} />
-            <ul className="dx-modifier-list">
-              {search.results.map((modifier) => (
+            <input aria-label="修飾語を検索" className="input" onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") event.preventDefault(); }} placeholder="修飾語を検索（例: 急性・術後）" value={query} />
+            <p className="muted small dx-modifier-hint">{query.trim() ? "押すと傷病名に付きます。" : "よく使う修飾語です。押すと傷病名に付きます（前 = 病名の前、後 = 病名の後）。"}</p>
+            <ul aria-label="修飾語の候補" className="dx-modifier-list dx-modifier-candidates">
+              {candidates.map((modifier) => (
                 <li key={modifier.code}>
-                  <button className="link-button" onClick={() => addModifier(modifier)} type="button">{modifier.name}<span className="muted small">（{modifier.position === "suffix" ? "後" : "前"}）</span></button>
+                  <button aria-label={`修飾語「${modifier.name}」を付ける（${modifier.position === "suffix" ? "後" : "前"}）`} className="dx-modifier-pick" onClick={() => addModifier(modifier)} type="button">
+                    <span aria-hidden="true" className={`dx-modifier-pos${modifier.position === "suffix" ? " is-suffix" : ""}`}>{modifier.position === "suffix" ? "後" : "前"}</span>
+                    <span>{modifier.name}</span>
+                  </button>
                 </li>
               ))}
+              {query.trim() && search.loading ? <li className="muted small">検索中…</li> : null}
+              {query.trim() && !search.loading && !search.results.length ? <li className="muted small">見つかりません。</li> : null}
+              {!query.trim() && common.error ? <li className="muted small">候補を読み込めませんでした。検索してください。</li> : null}
             </ul>
           </div>
         </div>
@@ -358,6 +385,20 @@ function DiagnosisEditDialog({ item, onSave, onCancel, onDelete }) {
       </form>
     </div>
   );
+}
+
+// 修飾語の候補（語が空のとき）。公開マスターから眼科でよく使うものを 1 回だけ読む。
+function useCommonModifiers() {
+  const api = useEyeApi();
+  const [state, setState] = useState({ results: [], error: "" });
+  useEffect(() => {
+    let cancelled = false;
+    api("/v1/eye/masters/search?type=modifier&common=1")
+      .then((payload) => { if (!cancelled) setState({ results: payload.results || [], error: "" }); })
+      .catch((error) => { if (!cancelled) setState({ results: [], error: error.message }); });
+    return () => { cancelled = true; };
+  }, [api]);
+  return state;
 }
 
 function BulkOutcomeDialog({ defaultDate, onSave, onCancel }) {

@@ -1,6 +1,7 @@
 import { isSuspectedDiagnosis } from "../../../packages/eye-contracts/src/index.js";
 import { sortByDate } from "../../../packages/eye-core/src/index.js";
 import { createId } from "./ids.js";
+import { carryExtraProfileKeys } from "./patient-sections.js";
 
 // 患者単位のプロファイル（アレルギー・副作用歴・傷病名・既往）。
 // まだ保存されていない患者は、確定済みカルテの病名から初期値を組み立てる（revision 0）。
@@ -55,6 +56,8 @@ export function applyProfileUpdate({ current, validated, orgId, patientId, actor
     contactLensUser: validated.contactLensUser,
     // 患者メモは送られたときだけ置き換える（この欄を知らない古い画面の保存で消さない）。
     patientMemo: validated.patientMemo ?? current?.patientMemo ?? "",
+    // 副作用薬・常用薬・バイタル・問診・サマリー（区画ごとの保存で足した項目）はこの保存では変えない
+    ...carryExtraProfileKeys(current),
     revision: (current?.revision || 0) + 1,
     derived: false,
     createdAt: current?.createdAt || now,

@@ -168,7 +168,7 @@ async function runDoctorFlow(browser) {
   assert.match(await page.locator(".dx-table .dx-code").first().innerText(), /^\d+$/u, "a master code is kept");
   // 編集: 修飾語（右）と補足
   await page.getByRole("button", { name: "原発開放隅角緑内障を編集" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "右", exact: true }).click();
+  await page.getByRole("dialog").getByRole("list", { name: "修飾語の候補" }).getByRole("button", { name: "修飾語「右」を付ける（前）" }).click();
   await page.getByRole("dialog").getByLabel("傷病名補足").fill("視野進行なし");
   await page.getByRole("dialog").getByRole("button", { name: "保存" }).click();
   await page.locator(".dx-table").getByText("右原発開放隅角緑内障").waitFor();
@@ -334,13 +334,14 @@ async function runDoctorFlow(browser) {
   // 左「検査」タブ: 視力・眼圧の表。値を押すと主訴・所見に日付付きで書き込む
   await page.locator(".chart-head").click();
   await page.keyboard.press("Shift+Digit6");
-  await page.locator(".exam-history-table").first().waitFor();
-  await page.getByRole("table", { name: "眼圧" }).getByRole("button", { name: "18" }).click();
-  assert.match(await page.getByRole("textbox", { name: "主訴・所見", exact: true }).inputValue(), /07\/28\(火\) 右眼 眼圧 18/u);
+  await page.getByRole("table", { name: "検査結果" }).waitFor();
+  await page.getByRole("table", { name: "検査結果" }).getByRole("row", { name: /R 眼圧/u }).getByRole("button", { name: "18" }).click();
+  assert.match(await page.getByRole("textbox", { name: "主訴・所見", exact: true }).inputValue(), /07\/28\(火\) R 眼圧 18 mmHg/u);
   // 薬歴: 薬剤 × 年月の ✓ を押すと診療履歴のそのカルテへ
   await page.keyboard.press("Shift+Digit8");
   await page.locator(".drug-matrix").getByRole("button", { name: /ラタノプロスト/u }).first().click();
   await page.locator(".history-card.is-highlighted").waitFor();
+  await runChartLeftChecks(page);
   await page.keyboard.press("ControlOrMeta+Enter");
   await page.getByRole("dialog", { name: /警告一覧/u }).getByText("前回から引き継ぎ").first().waitFor();
   await page.getByRole("dialog", { name: /警告一覧/u }).getByRole("button", { name: /次へ/u }).click();
@@ -689,7 +690,7 @@ async function runDoctorFlow(browser) {
 
   // 紹介状を作成・確定・印刷（左の「ファイル」タブの文書から）
   await page.getByRole("tab", { name: "ファイル" }).click();
-  await page.locator(".docs-create > summary").first().click();
+  await page.locator(".cl-files-tools .cl-menu > summary").filter({ hasText: "文書作成" }).click();
   await page.getByRole("button", { name: "紹介状を作成" }).click();
   await page.getByRole("heading", { name: /診療情報提供書/ }).waitFor();
   // 医療機関情報の入力が差出人に入る
@@ -1660,4 +1661,79 @@ async function assertExamLayoutFits(page) {
   const barHeight = await page.locator(".rd-bar").evaluate((node) => node.getBoundingClientRect().height);
   assert.ok(barHeight <= 64, `the exam bar is one row on landscape phones (${barHeight}px)`);
   await page.setViewportSize(original);
+}
+
+
+// ==== replicate-2 chart-left: カルテ左ペイン（デジカルの 2 段タブ・副作用薬等・バイタル・問診・サマリー・診療履歴の一覧・患者情報） ====
+async function runChartLeftChecks(page) {
+  const tabs = await page.locator(".chart-left .pane-tab").allInnerTexts();
+  assert.deepEqual(tabs.map((text) => text.replace(/\d+$/u, "").trim()), ["患者情報", "問診", "副作用薬等", "バイタル", "検査", "診療履歴", "薬歴", "ファイル", "サマリー", "病名"], "left tabs follow the DigiKar two-row order");
+  // 診療履歴の「一覧」: 日付 × 区分の表。行を押すとその日のカルテ 1 件だけを下に出す
+  await page.locator(".chart-head").click();
+  await page.keyboard.press("Shift+Digit7");
+  await page.locator(".history-tab .pane-tools").getByRole("button", { name: "一覧", exact: true }).click();
+  const matrix = page.getByRole("table", { name: "診療履歴の一覧" });
+  await matrix.waitFor();
+  assert.ok(await matrix.locator("tbody tr").count() >= 1, "the history matrix has a row per past chart");
+  await matrix.getByRole("columnheader", { name: "眼圧" }).waitFor();
+  assert.equal(await page.locator(".history-pane .history-card").count(), 1, "the matrix shows one chart at a time");
+  assert.ok(await matrix.locator("tbody tr").first().locator(".is-on").count() >= 1, "kinds with records are marked");
+  await page.locator(".history-tab .pane-tools").getByRole("button", { name: "一覧", exact: true }).click();
+  // 副作用薬等（Shift+4）: 常用薬を検索して登録 → 編集で用法を入れる
+  await page.locator(".chart-head").click();
+  await page.keyboard.press("Shift+Digit4");
+  await page.getByRole("heading", { name: "副作用薬", exact: true }).waitFor();
+  await page.getByRole("button", { name: "常用薬を追加" }).click();
+  const addDialog = page.getByRole("dialog", { name: "常用薬の追加" });
+  await addDialog.getByLabel("医薬品を検索").fill("アムロジピン");
+  await addDialog.locator(".cl-pick").first().click();
+  await addDialog.getByText(/登録しました: /u).waitFor();
+  await addDialog.getByRole("button", { name: "キャンセル" }).click();
+  const regularRow = page.locator(".cl-section").filter({ has: page.getByRole("heading", { name: "常用薬" }) }).locator("tbody tr").first();
+  await regularRow.getByRole("button", { name: /を編集$/u }).click();
+  await page.getByRole("dialog", { name: "常用薬の編集" }).getByLabel("用法等").fill("1日1回 朝食後");
+  await page.getByRole("dialog", { name: "常用薬の編集" }).getByRole("button", { name: "更新" }).click();
+  await regularRow.getByText("1日1回 朝食後").waitFor();
+  // アレルギーは区画ごとの編集で発症時期を持つ（既存のアレルギーは消えない）
+  await page.getByText("ペニシリン系").first().waitFor();
+  // バイタル（Shift+5）: 登録して複写 → 表に値が出て、主訴・所見に 1 行入る。基準値外は色分け
+  await page.locator(".chart-head").click();
+  await page.keyboard.press("Shift+Digit5");
+  await page.getByRole("button", { name: "バイタルを追加" }).click();
+  const vitalDialog = page.getByRole("dialog", { name: "バイタルの追加" });
+  await vitalDialog.getByLabel("血圧（上）").fill("152");
+  await vitalDialog.getByLabel("血圧（下）").fill("84");
+  await vitalDialog.getByLabel("体温").fill("36.6");
+  await vitalDialog.getByRole("button", { name: "登録して複写" }).click();
+  await vitalDialog.waitFor({ state: "detached" });
+  const vitalTable = page.getByRole("table", { name: "バイタル" });
+  await vitalTable.getByRole("row", { name: /血圧（上）/u }).locator(".cl-matrix-cell.is-high").waitFor();
+  assert.match(await page.getByRole("textbox", { name: "主訴・所見", exact: true }).inputValue(), /血圧 152\/84 mmHg 体温 36\.6 ℃/u);
+  await page.locator(".cl-graph-svg .cl-ref-line").first().waitFor({ state: "attached" });
+  // 問診（Shift+3）とサマリー（Shift+0）
+  await page.locator(".chart-head").click();
+  await page.keyboard.press("Shift+Digit3");
+  await page.getByRole("button", { name: "問診を追加" }).click();
+  await page.getByRole("dialog", { name: "問診の追加" }).getByLabel("問診の内容").fill("3日前から右眼のかすみ");
+  await page.getByRole("dialog", { name: "問診の追加" }).getByRole("button", { name: "登録" }).click();
+  await page.locator(".cl-entry").getByText("3日前から右眼のかすみ").waitFor();
+  await page.locator(".chart-head").click();
+  await page.keyboard.press("Shift+Digit0");
+  await page.getByRole("button", { name: "サマリーを編集" }).click();
+  await page.getByRole("dialog", { name: "サマリーの編集" }).getByLabel("サマリー").fill("緑内障で経過観察中。");
+  await page.getByRole("dialog", { name: "サマリーの編集" }).getByRole("button", { name: "更新" }).click();
+  await page.locator(".cl-summary-text").getByText("緑内障で経過観察中。").waitFor();
+  // 患者情報（Shift+1）: ラベルと値の表（住所・電話の行がある）
+  await page.locator(".chart-head").click();
+  await page.keyboard.press("Shift+Digit1");
+  const info = page.locator(".cl-info-table").first();
+  await info.getByRole("rowheader", { name: "住所" }).waitFor();
+  await info.getByRole("rowheader", { name: "電話番号" }).waitFor();
+  // 病名タブの［レセコン送信］: 未確定のあいだは確定が先であることを知らせる
+  await page.locator(".chart-head").click();
+  await page.keyboard.press("Shift+Minus");
+  await page.getByRole("button", { name: "レセコン送信" }).click();
+  await page.locator(".dx-send-note").waitFor();
+  await page.locator(".chart-head").click();
+  await page.keyboard.press("Shift+Digit7");
 }

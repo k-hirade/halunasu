@@ -13,6 +13,7 @@ import { buildAppointment } from "../../services/eye-api/src/appointments.js";
 import { buildDraftEncounter, finalizeEncounter } from "../../services/eye-api/src/encounters.js";
 import { createId } from "../../services/eye-api/src/ids.js";
 import { applyProfileUpdate } from "../../services/eye-api/src/profiles.js";
+import { validateProfileSectionInput } from "../../services/eye-api/src/patient-sections.js";
 import { buildEyeDemoDataset } from "./eye-demo-dataset.mjs";
 
 const DEMO_ACTOR = Object.freeze({ memberId: "demo-seed", loginId: "demo-seed", displayName: "デモデータ" });
@@ -122,7 +123,12 @@ async function savePatientProfile({ eyeStore, orgId, patient, entry }) {
       primary: index === 0
     }))
   });
-  const profile = applyProfileUpdate({ current: null, validated, orgId, patientId: patient.patientId, actor: DEMO_ACTOR, now: new Date().toISOString() });
+  const now = new Date().toISOString();
+  const profile = applyProfileUpdate({ current: null, validated, orgId, patientId: patient.patientId, actor: DEMO_ACTOR, now });
+  // カルテ左の区画（副作用薬・常用薬・バイタル・問診・サマリー）。ある患者だけ、区画ごとに確かめて足す
+  for (const [section, value] of Object.entries(entry.profileSections || {})) {
+    Object.assign(profile, validateProfileSectionInput({ expectedRevision: 0, section, value }, { actor: DEMO_ACTOR, now }).patch);
+  }
   await eyeStore.savePatientProfile(orgId, profile, 0);
 }
 

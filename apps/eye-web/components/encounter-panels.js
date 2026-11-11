@@ -5,21 +5,42 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { adherenceLabel, counsellingLabel, diagnosisName, groupRps, pupilLabel } from "@halunasu/eye-core";
 import { ALIGNMENT_LABELS, MOTILITY_LABELS, PLAN_ITEM_EYE_LABELS, RAPD_LABELS } from "@halunasu/eye-contracts";
 import { COPY_DRAG_TYPE, dateWithWeekday, ORDER_BADGES, RX_BADGES } from "./chart-shared";
-import { DocumentsPanel } from "./documents-panel";
-import { useEyeApi } from "./eye-api";
-import { FilesPanel } from "./files-panel";
-import { AllergyBadge } from "./patient-banner";
 import { SketchThumb } from "./sketch-pad";
-import { EYE_LABELS, formatDate, formatDateTime, formatShortDate, formatVisualAcuityLine, VISIT_TYPE_LABELS } from "../lib/format";
+import { formatTime } from "./encounter-sections";
+import { EYE_LABELS, formatDate, formatDateTime, formatVisualAcuityLine, VISIT_TYPE_LABELS } from "../lib/format";
 
-// 左のペイン「患者の情報」のタブ（デジカルの並び。code は Shift+数字のキー）。既定は診療履歴。
+// 患者情報・ファイルのタブは chart-left-*.js へ移した（カルテ画面の import はここからのまま）。
+export { PatientInfoTab } from "./chart-left-info";
+export { FilesTab } from "./chart-left-files";
+
+// 左のペイン「患者の情報」のタブ（デジカルの 2 段の並び。code は Shift+数字のキー）。既定は診療履歴。
+// 上段: 患者情報・問診・副作用薬等・バイタル・検査、下段: 診療履歴・薬歴・ファイル・サマリー・病名。
+// Shift+2（デジカルの保険等）は保険をレセコンで扱うため患者情報を開く。
 export const LEFT_TABS = [
-  { id: "info", label: "患者情報", codes: ["Digit1", "Digit3", "Digit4", "Digit5"], keyLabel: "Shift+1" },
+  { id: "info", label: "患者情報", codes: ["Digit1", "Digit2"], keyLabel: "Shift+1" },
+  { id: "interview", label: "問診", codes: ["Digit3"], keyLabel: "Shift+3" },
+  { id: "allergy", label: "副作用薬等", codes: ["Digit4"], keyLabel: "Shift+4" },
+  { id: "vitals", label: "バイタル", codes: ["Digit5"], keyLabel: "Shift+5" },
   { id: "exam", label: "検査", codes: ["Digit6"], keyLabel: "Shift+6" },
   { id: "history", label: "診療履歴", codes: ["Digit7"], keyLabel: "Shift+7" },
   { id: "drugs", label: "薬歴", codes: ["Digit8"], keyLabel: "Shift+8" },
-  { id: "files", label: "ファイル", codes: ["Digit9", "Digit0"], keyLabel: "Shift+9" },
+  { id: "files", label: "ファイル", codes: ["Digit9"], keyLabel: "Shift+9" },
+  { id: "summary", label: "サマリー", codes: ["Digit0"], keyLabel: "Shift+0" },
   { id: "diagnoses", label: "病名", codes: ["Minus"], keyLabel: "Shift+-" }
+];
+
+// 診療履歴の「一覧」（日付 × 区分の表）の区分。デジカルの区分に眼科の項目（視力・眼圧・所見・シェーマ）を足した。
+export const HISTORY_KINDS = [
+  { id: "sketch", short: "図", label: "シェーマ", has: (c) => Boolean(c.sketches?.length) },
+  { id: "va", short: "視", label: "視力", has: (c) => ["od", "os"].some((side) => c.exam?.[side]?.vaUncorrected || c.exam?.[side]?.vaCorrected) },
+  { id: "iop", short: "圧", label: "眼圧", has: (c) => ["od", "os"].some((side) => Number.isFinite(c.exam?.[side]?.iop)) },
+  { id: "find", short: "所", label: "所見", has: (c) => Boolean(c.findingsText || c.findings?.general || ["od", "os"].some((side) => Object.values(c.findings?.[side] || {}).some((value) => value !== "" && value !== null && value !== undefined))) },
+  { id: "drop", short: "点", label: "点眼・眼軟膏", has: (c) => (c.prescriptions || []).some((row) => row.kind === "eye_drop" || row.kind === "eye_ointment") },
+  { id: "oral", short: "内", label: "内服", has: (c) => (c.prescriptions || []).some((row) => row.kind === "oral") },
+  { id: "inj", short: "注", label: "注射", has: (c) => (c.prescriptions || []).some((row) => row.kind === "injection") },
+  { id: "exam", short: "検", label: "検査", has: (c) => (c.orders || []).some((row) => row.kind === "exam" && row.status !== "cancelled") },
+  { id: "proc", short: "処", label: "処置・手術", has: (c) => (c.orders || []).some((row) => row.kind === "procedure" && row.status !== "cancelled") },
+  { id: "other", short: "他", label: "その他（外用・眼鏡・CL）", has: (c) => Boolean(c.optical?.type) || (c.prescriptions || []).some((row) => row.kind === "other") }
 ];
 
 // 左列「変更点」: 前回の確定カルテから今回変わった所。
@@ -106,39 +127,75 @@ export function HistoryTab({ history, editable, onCopy, changes, previous, highl
   const [keyword, setKeyword] = useState("");
   const [showDiff, setShowDiff] = useState(false);
   const [showIndex, setShowIndex] = useState(false);
-  const shown = useMemo(() => {
+  const [picked, setPicked] = useState("");
+  const filtered = useMemo(() => {
     const word = keyword.trim();
     return word ? history.filter((item) => searchableText(item).includes(word)) : history;
   }, [history, keyword]);
-  const jump = (id) => document.getElementById(`hist-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  // 一覧（表）を開いているときは、表で選んだ 1 件だけを下に出す（デジカルの一覧表示）
+  const pickedId = showIndex ? (filtered.some((item) => item.encounterId === picked) ? picked : filtered[0]?.encounterId || "") : "";
+  const shown = pickedId ? filtered.filter((item) => item.encounterId === pickedId) : filtered;
 
   return (
     <div className="history-tab">
       <div className="pane-tools">
         <input aria-label="診療履歴の全文検索" className="input pane-search" onChange={(event) => setKeyword(event.target.value)} placeholder="キーワード（全文検索）" type="search" value={keyword} />
         <button aria-pressed={showDiff} className="btn btn-chip" onClick={() => setShowDiff(!showDiff)} type="button">前回との差分{changes.length ? ` ${changes.length}` : ""}</button>
-        <button aria-expanded={showIndex} className="btn btn-chip" onClick={() => setShowIndex(!showIndex)} type="button">一覧</button>
+        <button aria-pressed={showIndex} className="btn btn-chip" onClick={() => setShowIndex(!showIndex)} title="日付 × 区分の一覧表を出す（行を押すとその日のカルテ）" type="button">一覧</button>
       </div>
       {showDiff ? <div className="history-diff"><ChangesPanel changes={changes} previous={previous} /></div> : null}
-      {showIndex && history.length ? (
-        <ul className="history-index">
-          {history.map((item) => (
-            <li key={item.encounterId}>
-              <button className="link-button" onClick={() => jump(item.encounterId)} type="button">
-                {formatShortDate(item.encounterDate)} {VISIT_TYPE_LABELS[item.visitType] || ""}
-                <span className="muted small"> {(item.content?.diagnoses || []).find((dx) => dx.primary)?.name || ""}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      {showIndex && filtered.length ? <HistoryMatrix history={filtered} onPick={setPicked} pickedId={pickedId} /> : null}
       {!history.length ? <p className="empty">確定済みの過去カルテはありません。</p> : null}
-      {history.length && !shown.length ? <p className="empty">「{keyword}」を含むカルテはありません。</p> : null}
+      {history.length && !filtered.length ? <p className="empty">「{keyword}」を含むカルテはありません。</p> : null}
       <ol className="history-pane">
         {shown.map((encounter) => (
           <HistoryCard editable={editable} encounter={encounter} highlighted={highlightId === encounter.encounterId} key={encounter.encounterId} onCopy={onCopy} />
         ))}
       </ol>
+    </div>
+  );
+}
+
+// 診療履歴の一覧表（日付 × 区分）。● はその日のカルテにその区分の記録があること。行を押すと下にその日のカルテを出す。
+// ↑↓ キーで前後の日へ移れる。
+export function HistoryMatrix({ history, pickedId, onPick }) {
+  const move = (event, index) => {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    event.preventDefault();
+    const next = history[index + (event.key === "ArrowDown" ? 1 : -1)];
+    if (!next) return;
+    onPick(next.encounterId);
+    event.currentTarget.closest("tbody")?.querySelector(`[data-hist="${next.encounterId}"]`)?.focus();
+  };
+  return (
+    <div className="table-scroll history-matrix-wrap">
+      <table aria-label="診療履歴の一覧" className="data-table history-matrix">
+        <thead>
+          <tr>
+            <th className="hm-date" scope="col">日付</th>
+            <th className="hm-kind" scope="col" title="初診・再診">区分</th>
+            {HISTORY_KINDS.map((kind) => <th aria-label={kind.label} className="hm-kind" key={kind.id} scope="col" title={kind.label}>{kind.short}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {history.map((encounter, index) => {
+            const content = encounter.content || {};
+            const active = encounter.encounterId === pickedId;
+            return (
+              <tr aria-selected={active} className={active ? "is-picked" : ""} key={encounter.encounterId} onClick={() => onPick(encounter.encounterId)}>
+                <th className="hm-date" scope="row">
+                  <button aria-pressed={active} className="hm-pick" data-hist={encounter.encounterId} onClick={() => onPick(encounter.encounterId)} onKeyDown={(event) => move(event, index)} type="button">{formatDate(encounter.encounterDate)}</button>
+                </th>
+                <td className="hm-kind">{VISIT_TYPE_LABELS[encounter.visitType]?.slice(0, 1) || ""}</td>
+                {HISTORY_KINDS.map((kind) => {
+                  const has = kind.has(content);
+                  return <td className={`hm-kind${has ? " is-on" : ""}`} key={kind.id}>{has ? <span aria-label={`${kind.label}あり`} role="img">●</span> : ""}</td>;
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -179,7 +236,12 @@ function HistoryCard({ encounter, editable, onCopy, highlighted }) {
         <div className="history-card-title">
           <strong>{dateWithWeekday(encounter.encounterDate)}</strong>
           <span className="tag">{VISIT_TYPE_LABELS[encounter.visitType] || "受診"}</span>
-          <span className="muted small">眼科 {encounter.finalizedBy?.displayName || ""} 確定 v{encounter.versionCount}</span>
+          <span className="history-meta">
+            <span>眼科</span>
+            {encounter.finalizedBy?.displayName ? <span>{encounter.finalizedBy.displayName}</span> : null}
+            {encounter.finalizedAt ? <span>確定 {formatTime(encounter.finalizedAt)}</span> : null}
+            <span>v{encounter.versionCount}</span>
+          </span>
         </div>
         <span className="history-card-actions">
           {editable && rightHas ? (
@@ -264,7 +326,8 @@ function HistoryCard({ encounter, editable, onCopy, highlighted }) {
                 ) : (
                   <span className="history-group-row" key={index}>
                     <span className="rp-badge">{RX_BADGES[row.kind] || "薬"}</span>
-                    {row.name}{row.issued !== false && row.quantity ? ` ${row.quantity}${row.unit || ""}` : ""}{row.issued === false ? "（今回なし）" : ""}
+                    <span className="hg-name">{row.name}</span>
+                    <span className="hg-qty">{row.issued === false ? "今回なし" : row.quantity ? `${row.quantity}${row.unit || ""}` : ""}</span>
                   </span>
                 )))}
                 <span className="history-group-foot">
@@ -372,71 +435,3 @@ export function DrugHistoryTab({ history, onJump }) {
     </div>
   );
 }
-
-// 左「患者情報」: アレルギー・既往・CL・患者メモ（患者メモはここで直せる）。
-export function PatientInfoTab({ patient, profile, context, onEditProfile, onProfileSaved }) {
-  const api = useEyeApi();
-  const [memo, setMemo] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const current = profile?.patientMemo || "";
-  async function saveMemo() {
-    setBusy(true);
-    setError("");
-    try {
-      const payload = await api(`/v1/eye/patients/${patient.patientId}/memo`, { method: "PUT", body: { expectedRevision: profile?.revision || 0, patientMemo: memo } });
-      onProfileSaved(payload.profile);
-      setMemo(null);
-    } catch (nextError) {
-      setError(nextError.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <div className="info-tab">
-      <dl className="info-list">
-        <dt>アレルギー</dt>
-        <dd><AllergyBadge profile={profile} /></dd>
-        <dt>全身既往・内服</dt>
-        <dd className="pre">{profile?.medicalHistory || <span className="muted">未記入</span>}</dd>
-        <dt>眼科既往</dt>
-        <dd className="pre">{profile?.ophthalmicHistory || <span className="muted">未記入</span>}</dd>
-        <dt>CL</dt>
-        <dd>{profile?.contactLensUser ? "装用" : "—"}</dd>
-        <dt>生年月日</dt>
-        <dd>{patient.birthDate ? formatDate(patient.birthDate) : "—"}</dd>
-      </dl>
-      {context?.canEditProfile ? <button className="btn btn-chip" onClick={onEditProfile} type="button">アレルギー・既往を編集</button> : null}
-      <section className="info-memo">
-        <h3>患者メモ</h3>
-        {memo === null ? (
-          <>
-            <p className="pre">{current || <span className="muted">メモはありません。</span>}</p>
-            {context?.canReceive ? <button className="btn btn-chip" onClick={() => setMemo(current)} type="button">患者メモを編集</button> : null}
-          </>
-        ) : (
-          <>
-            <textarea aria-label="患者メモ" autoFocus className="input" maxLength={2000} onChange={(event) => setMemo(event.target.value)} rows={3} value={memo} />
-            {error ? <p className="alert alert-danger small">{error}</p> : null}
-            <span className="row-line">
-              <button className="btn btn-ghost" onClick={() => setMemo(null)} type="button">キャンセル</button>
-              <button className="btn btn-primary" disabled={busy} onClick={saveMemo} type="button">保存</button>
-            </span>
-          </>
-        )}
-      </section>
-    </div>
-  );
-}
-
-// 左「ファイル」: 文書（紹介状など）と画像・取り込みファイル。
-export function FilesTab({ patientId, encounterId, context, onUpload, reloadKey }) {
-  return (
-    <div className="files-tab">
-      <DocumentsPanel canWrite={Boolean(context?.canWriteDocuments)} encounterId={encounterId} patientId={patientId} />
-      <FilesPanel context={context} onUpload={context?.canWriteDocuments ? onUpload : null} patientId={patientId} reloadKey={reloadKey} />
-    </div>
-  );
-}
-
