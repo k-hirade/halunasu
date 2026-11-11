@@ -1,0 +1,777 @@
+/*
+ * カルテの中央・右のオーダー・右下の操作帯・カルテのダイアログ（replicate-2 chart-main）。
+ * chart-editor.css のあとに読み込むので、同じ強さの指定はこちらが勝つ。色はトークンだけを使う。
+ */
+
+/* ---- 3 ペイン: 右（オーダー）は 300px を下回らない（右下の 5 つの大きいボタンが 1 列に入る幅） ---- */
+@media (min-width: 1280px) and (min-height: 501px) {
+  .chart-shell {
+    grid-template-columns: minmax(0, 34fr) minmax(0, 46fr) minmax(300px, 20fr);
+  }
+}
+
+/* ---- 13: 中央は 主訴・所見 ｜ 処置・行為 の 2 列が下まで伸びる（デジカル p.28）。検査の帯は上（トプコン）で畳める ---- */
+@media (min-width: 768px) and (min-height: 501px) {
+  .chart-center {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .chart-center > * {
+    flex: 0 0 auto;
+  }
+
+  .chart-center > .chart-columns {
+    flex: 1 0 auto;
+    min-height: 320px;
+  }
+}
+
+/* 下書き（受診日より前のカルテ）の札 */
+.chart-tab.is-draft-label {
+  background: var(--amber-soft);
+  border-color: var(--amber-line);
+  color: var(--amber);
+}
+
+.chart-head .actionbar-more > summary {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+  min-width: 36px;
+}
+
+/* 見出しの 1 段目（日付・保存・版履歴・…・定期登録・セット登録）が 1366px で 1 段に収まるよう、ボタンを詰める */
+.chart-head-line:first-child {
+  gap: 4px 6px;
+}
+
+.chart-head-line:first-child .btn.btn-chip {
+  font-size: var(--fs-xs);
+  padding: 2px 8px;
+}
+
+/* 1280px 未満（タブレット・タッチ）では見出しのボタンも 32px 以上 */
+@media (max-width: 1279px), (pointer: coarse) {
+  .chart-head .btn.btn-chip,
+  .chart-head .actionbar-more > summary {
+    min-height: 32px;
+  }
+}
+
+.chart-head .actionbar-more > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* ---- カルテガイド（トプコン: 記入状況で色の変わるボタン） ---- */
+.chart-guide {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-top: 2px;
+}
+
+.chart-guide-item {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  gap: 3px;
+  min-height: 26px;
+  padding: 0 8px;
+}
+
+.chart-guide-item:hover {
+  border-color: var(--teal);
+}
+
+.chart-guide-item.is-done {
+  background: var(--teal-soft);
+  border-color: var(--teal);
+  color: var(--teal-dark);
+}
+
+.chart-guide-item.is-warn {
+  background: var(--amber-soft);
+  border-color: var(--amber-line);
+  color: var(--amber);
+}
+
+.chart-guide-mark {
+  display: inline-block;
+  font-weight: 800;
+  min-width: 0.8em;
+  text-align: center;
+}
+
+@media (max-width: 1279px), (pointer: coarse) {
+  .chart-guide-item {
+    min-height: 32px;
+  }
+
+  .exam-band-toggle {
+    height: 32px;
+    width: 32px;
+  }
+
+  .phrase-tile-eyes .btn.btn-chip {
+    min-height: 32px;
+  }
+
+  .rp-comment-head .btn.btn-chip {
+    min-height: 36px;
+    min-width: 36px;
+  }
+}
+
+/* ---- 検査の帯を畳む ---- */
+.exam-band-toggle {
+  align-items: center;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text-soft);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: var(--fs-sm);
+  height: 28px;
+  justify-content: center;
+  width: 28px;
+}
+
+.exam-band.is-collapsed {
+  padding-bottom: 6px;
+}
+
+.exam-band-summary {
+  color: var(--text-soft);
+  font-size: var(--fs-sm);
+  margin: 4px 0 0;
+}
+
+/* ---- 35: 右下の操作帯（大きい絵＋文字のボタン） ---- */
+.chart-actionbar.is-iconbar {
+  flex-wrap: nowrap;
+  gap: 4px;
+  justify-content: space-between;
+  padding: 6px 8px;
+}
+
+.chart-actionbar.is-iconbar .actionbar-group {
+  display: inline-flex;
+  flex: 0 1 auto;
+  gap: 4px;
+  min-width: 0;
+}
+
+.action-tile {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  color: var(--teal-dark);
+  cursor: pointer;
+  display: inline-flex;
+  flex-direction: column;
+  font: inherit;
+  gap: 1px;
+  justify-content: center;
+  list-style: none;
+  min-height: 52px;
+  min-width: 52px;
+  padding: 4px 2px;
+  position: relative;
+}
+
+.action-tile::-webkit-details-marker {
+  display: none;
+}
+
+.action-tile:hover:not(:disabled) {
+  background: var(--teal-soft);
+  border-color: var(--teal);
+}
+
+.action-tile:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.action-tile:disabled {
+  background: var(--surface-muted);
+  border-color: var(--line);
+  color: var(--muted);
+  cursor: default;
+}
+
+.action-tile-label {
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+/* 送れるときの［送信］と［次へ］は塗りのボタン */
+.action-tile.is-send.is-ready,
+.action-tile.is-next {
+  background: var(--teal);
+  border-color: var(--teal);
+  color: var(--on-accent);
+}
+
+.action-tile.is-send.is-ready:hover,
+.action-tile.is-next:hover {
+  background: var(--teal-dark);
+  border-color: var(--teal-dark);
+  color: var(--on-accent);
+}
+
+.action-tile-badge.finalize-count {
+  line-height: 1.4;
+  padding: 0 5px;
+  position: absolute;
+  right: -4px;
+  top: -6px;
+  border: 1px solid var(--amber-line);
+}
+
+.action-tile-badge.finalize-count.is-alert {
+  border-color: var(--red-line);
+}
+
+/* 1280px 以上（右ペインの下）: 5 つを同じ幅で 1 列に。前の［→ 次へ］を 2 段目に大きくする指定は使わない */
+@media (min-width: 1280px) and (min-height: 501px) {
+  .chart-actionbar.is-iconbar .actionbar-group:last-child {
+    display: inline-flex;
+    flex: 0 1 auto;
+  }
+
+  .chart-actionbar.is-iconbar .actionbar-group {
+    flex: 2 1 0;
+  }
+
+  .chart-actionbar.is-iconbar .actionbar-group.is-end {
+    flex: 3 1 0;
+    justify-content: flex-end;
+  }
+
+  .chart-actionbar.is-iconbar .action-tile,
+  .chart-actionbar.is-iconbar .actionbar-print {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .chart-actionbar.is-iconbar .actionbar-print > .action-tile {
+    width: 100%;
+  }
+
+  .chart-actionbar.is-iconbar .next-button {
+    grid-column: auto;
+  }
+}
+
+/* 1280px 未満（画面下の帯）: ボタンは同じ大きさ、左右の 2 つのかたまり */
+@media (max-width: 1279px), (max-height: 500px) {
+  .chart-actionbar.is-iconbar .action-tile {
+    min-width: 64px;
+  }
+}
+
+@media (max-width: 767px) {
+  .chart-actionbar.is-iconbar .action-tile {
+    min-height: 48px;
+    min-width: 56px;
+  }
+}
+
+/* スマホ横（高さ 500px 以下）: 絵と文字を横に並べて帯を低くする */
+@media (max-height: 500px) {
+  .chart-actionbar.is-iconbar .action-tile {
+    flex-direction: row;
+    gap: 4px;
+    min-height: 44px;
+    padding: 2px 10px;
+  }
+}
+
+.chart-actionbar .print-menu-list {
+  min-width: 240px;
+}
+
+.print-menu-list .btn {
+  justify-content: flex-start;
+  text-align: left;
+  width: 100%;
+}
+
+/* 次回の候補の文（「候補 4週後」と説明）は、折り返しても文字の箱が重ならないよう並べる */
+.rp-group.is-plan .suggestion > span {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 6px;
+  min-width: 0;
+}
+
+/* ---- 29: 用法の未入力は目立つ色のボタン（デジカルの「用法を選択してください」） ---- */
+.usage-pill.is-missing {
+  background: var(--red);
+  border-color: var(--red);
+  color: var(--on-accent);
+}
+
+/* ---- 25: 点数・薬価 ---- */
+.rp-points,
+.order-points {
+  color: var(--text-soft);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  margin-left: auto;
+  padding-left: 6px;
+  white-space: nowrap;
+}
+
+/* ---- 26: 学習リストの束は点線の枠（用法・日数ごとのまとまり） ---- */
+.order-bundle.is-learned {
+  border: 1px dashed var(--line-strong);
+  border-radius: 8px;
+  margin: 0 0 6px;
+  padding: 6px 8px;
+}
+
+.order-bundle.is-learned .order-bundle-foot {
+  border-top: 1px dotted var(--line);
+  padding-top: 2px;
+}
+
+.order-bundle.is-learned:hover:not(:disabled) {
+  border-color: var(--teal);
+}
+
+.order-bundle-name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* ---- 25: 右下の「定期」（畳める） ---- */
+.order-regular {
+  border-top: 1px solid var(--line);
+  flex: 0 0 auto;
+  margin: 6px -8px -12px;
+  padding: 0 8px 8px;
+}
+
+.order-regular-head {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  font-size: var(--fs-sm);
+  font-weight: 800;
+  gap: 6px;
+  list-style: none;
+  min-height: 36px;
+}
+
+.order-regular-head::-webkit-details-marker {
+  display: none;
+}
+
+.order-regular-head::after {
+  color: var(--muted);
+  content: "▾";
+  margin-left: auto;
+}
+
+.order-regular:not([open]) > .order-regular-head::after {
+  content: "▸";
+}
+
+.order-regular-body {
+  display: grid;
+  gap: 2px;
+  max-height: 30vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.order-regular-row {
+  align-items: center;
+  display: flex;
+  gap: 4px;
+}
+
+.order-regular-row .order-regular-apply {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.order-regular-row.is-due .order-regular-apply {
+  background: var(--amber-soft);
+}
+
+/* ---- 31: 定型文はボタンの並び（トプコンの所見入力サポート） ---- */
+.phrase-tiles {
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.phrase-tile {
+  align-content: center;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  display: grid;
+  font: inherit;
+  font-size: var(--fs-sm);
+  gap: 4px;
+  min-height: 40px;
+  padding: 4px 6px;
+  text-align: left;
+}
+
+button.phrase-tile:hover:not(:disabled) {
+  background: var(--teal-soft);
+  border-color: var(--teal);
+}
+
+.phrase-tile:disabled {
+  cursor: default;
+}
+
+.phrase-tile.is-eye {
+  cursor: default;
+}
+
+.phrase-tile-label {
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.phrase-tile-eyes {
+  display: flex;
+  gap: 2px;
+}
+
+.phrase-tile-eyes .btn.btn-chip {
+  flex: 1 1 0;
+  font-size: var(--fs-xs);
+  min-height: 28px;
+  min-width: 0;
+  padding: 0 4px;
+}
+
+/* ---- 36: 警告一覧（種類の印と行ごとの無効化） ---- */
+.warn-kind-line {
+  align-items: center;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.warn-icon {
+  display: inline-flex;
+}
+
+.warn-icon.is-blocker {
+  color: var(--red);
+}
+
+.warn-icon.is-high {
+  color: var(--amber);
+}
+
+.warn-icon.is-low {
+  color: var(--blue-ink);
+}
+
+.warn-level.is-low {
+  color: var(--text-soft);
+}
+
+.warn-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.warnings-hidden {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ---- 49: 会計送信の確認（送る中身） ---- */
+.dialog.send-dialog {
+  max-width: 600px;
+}
+
+.send-who {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.send-items {
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  margin: 8px 0;
+  max-height: 40vh;
+  overflow-y: auto;
+  padding: 8px 10px;
+}
+
+.send-group {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 5em minmax(0, 1fr);
+}
+
+.send-category {
+  color: var(--text-soft);
+  font-size: var(--fs-sm);
+  font-weight: 800;
+}
+
+.send-rows {
+  display: grid;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.send-rows li {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+}
+
+.send-name {
+  font-weight: 700;
+}
+
+/* ---- 38: ショートカット一覧（文字を大きく、余白を少なく。1 行に 操作 … キー） ---- */
+.dialog.shortcut-dialog {
+  --dialog-pad-x: 16px;
+  --dialog-pad-y: 12px;
+  max-width: 980px;
+}
+
+.shortcut-dialog h2 {
+  margin-bottom: 6px;
+}
+
+.shortcut-dialog .shortcut-cols {
+  gap: 8px;
+  grid-template-columns: minmax(0, 2.4fr) minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.shortcut-dialog .shortcut-cols h3 {
+  font-size: var(--fs-md);
+  margin: 0 0 4px;
+}
+
+.shortcut-common-cols {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.shortcut-dialog .shortcut-list {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: var(--fs-md);
+  gap: 0;
+}
+
+.shortcut-dialog .shortcut-list > div {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  min-height: 34px;
+  padding: 2px 8px;
+}
+
+.shortcut-dialog .shortcut-list > div:last-child {
+  border-bottom: 0;
+}
+
+.shortcut-dialog .shortcut-list dt {
+  flex: 0 0 auto;
+}
+
+.shortcut-dialog .shortcut-list kbd {
+  font-size: var(--fs-sm);
+}
+
+.shortcut-foot {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.shortcut-foot p {
+  margin: 0;
+}
+
+@media (max-width: 1023px) {
+  .shortcut-dialog .shortcut-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .shortcut-common-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ラジオの行は押しやすい高さ */
+.regular-dialog .check-line,
+.rp-comment-dialog .check-line {
+  margin: 0;
+  min-height: 36px;
+}
+
+/* ---- 検査依頼 ---- */
+.exam-request-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.exam-request-items {
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+}
+
+.exam-request-item {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  font-size: var(--fs-sm);
+  gap: 6px;
+  min-height: 40px;
+  padding: 4px 8px;
+}
+
+.exam-request-item.is-picked {
+  background: var(--teal-soft);
+  border-color: var(--teal);
+}
+
+.exam-request-eye {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* ---- 定期登録 ---- */
+.regular-repeat {
+  display: grid;
+  gap: 4px;
+}
+
+.regular-repeat .check-line {
+  flex-wrap: wrap;
+}
+
+.regular-months {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+}
+
+.regular-summary {
+  background: var(--surface-muted);
+  border-radius: 8px;
+  margin-top: 8px;
+  max-height: 24vh;
+  overflow-y: auto;
+  padding: 6px 10px;
+}
+
+/* ---- 30: コメント追加（記載先 → キーワード → 押して入れる） ---- */
+.dialog.rp-comment-dialog {
+  display: grid;
+  gap: 10px;
+  max-width: 560px;
+}
+
+.rp-comment-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.rp-comment-head h2 {
+  margin: 0;
+}
+
+.rp-comment-scope-pick {
+  align-items: center;
+  background: var(--surface-muted);
+  border-radius: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  padding: 8px 10px;
+}
+
+.rp-comment-list {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  list-style: none;
+  margin: 0;
+  max-height: 40vh;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.rp-comment-list li + li {
+  border-top: 1px solid var(--line);
+}
+
+.rp-comment-choice {
+  background: none;
+  border: 0;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  min-height: 40px;
+  padding: 6px 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.rp-comment-choice:hover {
+  background: var(--teal-soft);
+}
+
+.rp-comment-choice.is-free {
+  color: var(--teal-dark);
+  font-weight: 700;
+}

@@ -255,6 +255,7 @@ async function runDoctorFlow(browser) {
   await page.getByRole("dialog").getByRole("button", { name: "閉じる" }).click();
   await assertEditorPopoversFit(page);
   await assertEditorResponsiveB(page);
+  await assertChartMainRep2(page);
   // S で保存
   await page.keyboard.press("s");
   await page.getByText("保存しました。").waitFor({ timeout: 15_000 });
@@ -277,6 +278,7 @@ async function runDoctorFlow(browser) {
   await page.getByRole("dialog", { name: /警告一覧|カルテを確定します/u }).getByRole("button", { name: /次へ/u }).click();
   await page.getByRole("dialog", { name: "患者ステータス選択" }).getByRole("button", { name: "決定" }).click();
   await page.getByText("確定 v2").first().waitFor();
+  await assertChartMainSendRep2(page);
   await page.getByRole("button", { name: /^版履歴/u }).first().click();
   assert.equal(await page.getByRole("dialog", { name: "版履歴" }).getByRole("link", { name: /^v\d$/u }).count(), 2, "both versions are kept");
   await page.getByRole("dialog").getByRole("button", { name: "閉じる" }).click();
@@ -632,7 +634,8 @@ async function runDoctorFlow(browser) {
   await page.getByText("セット「緑内障 定期」を追加しました。").waitFor();
   await page.locator(".rp-group.is-order").first().waitFor();
   await page.getByRole("tab", { name: "定型文" }).click();
-  await page.locator(".phrase-row").getByRole("button", { name: "挿入" }).click();
+  // 定型文はボタンの並び（トプコン）。眼ごとでない文はボタンを押すとそのまま入る
+  await page.locator("button.phrase-tile").click();
   assert.match(await page.getByRole("textbox", { name: "方針", exact: true }).inputValue(), /点眼継続。\n次回同様。/u);
   // 現在のカルテからセット（フォルダもその場で作る）→ セットタブの先頭に入る
   await page.getByRole("button", { name: "セット登録" }).click();
@@ -1660,4 +1663,101 @@ async function assertExamLayoutFits(page) {
   const barHeight = await page.locator(".rd-bar").evaluate((node) => node.getBoundingClientRect().height);
   assert.ok(barHeight <= 64, `the exam bar is one row on landscape phones (${barHeight}px)`);
   await page.setViewportSize(original);
+}
+
+// ---- replicate-2 chart-main（docs/eye-ux/rep2-chart-main-20261111.md） ----
+// 中央（検査の帯を畳む・カルテガイド）、右下の 5 つの大きいボタン、Rp のコメント追加ダイアログ、用法の未入力、
+// 検査依頼、定期の登録・削除、印刷メニュー、警告一覧の無効化。下書きの初診カルテ（1366 幅）で確かめ、入れたものは消して戻す。
+async function assertChartMainRep2(page) {
+  const bar = page.getByRole("toolbar", { name: "カルテの操作" });
+  for (const name of ["送信", "検査依頼", "保存"]) await bar.getByRole("button", { name, exact: true }).waitFor();
+  await bar.locator('summary[aria-label="印刷"]').waitFor();
+  assert.equal(await bar.getByRole("button", { name: "送信", exact: true }).isDisabled(), true, "send waits for a finalized chart");
+  // カルテガイド: 主訴（自由記載あり）は入力済み
+  assert.match(await page.getByRole("navigation", { name: "カルテガイド" }).getByRole("button", { name: /^主訴/u }).getAttribute("class"), /is-done/u);
+  // 検査の帯は畳める（もう一度押すと開く）
+  await page.getByRole("button", { name: "検査の欄を畳む" }).click();
+  await page.locator(".exam-band.is-collapsed").waitFor();
+  await page.getByRole("button", { name: "検査の欄を開く" }).click();
+  // Rp のコメント追加ダイアログ: 記載先（カルテのみ）→ キーワード → 押すと入る
+  const firstRp = page.locator(".rp-group.is-rx").first();
+  await firstRp.locator('summary[aria-label="点眼の操作"]').first().click();
+  await page.getByRole("button", { name: /コメントを追加（探す/u }).first().click();
+  const commentDialog = page.getByRole("dialog", { name: "コメント追加" });
+  await commentDialog.getByRole("radio", { name: "カルテのみ" }).check();
+  await commentDialog.getByLabel("コメントを探す").fill("冷所");
+  await commentDialog.getByRole("button", { name: "冷所保存" }).click();
+  await commentDialog.waitFor({ state: "detached" });
+  const added = firstRp.locator(".rp-row.is-comment").filter({ has: page.locator(".rp-comment-scope", { hasText: "カルテのみ" }) });
+  assert.equal(await added.getByLabel("コメント", { exact: true }).inputValue(), "冷所保存");
+  await added.getByRole("button", { name: "コメント「冷所保存」を削除" }).click();
+  // 用法の未入力は目立つボタン: 選択を外して新しい Rp に薬を入れる → 赤いボタン → その Rp を消す
+  if (await page.locator(".rp-group.is-rx.is-selected").count()) await firstRp.locator(".rp-name").first().click();
+  await page.locator(".chart-head").click();
+  await page.keyboard.press("3");
+  await page.getByLabel("オーダーを検索").fill("ヒアルロン酸");
+  await page.locator(".order-item").filter({ hasText: /ヒアルロン酸/u }).first().click();
+  const newRp = page.locator(".rp-group.is-rx").nth(1);
+  await newRp.locator("summary.usage-pill.is-missing").waitFor();
+  await newRp.getByRole("button", { name: "Rp2を削除" }).click();
+  assert.equal(await page.locator(".rp-group.is-rx").count(), 1);
+  await page.getByLabel("オーダーを検索").fill("");
+  // 検査依頼: 項目を選ぶと今日のカルテに予定として入る（この患者は受付が無いので受付は変えない）
+  await bar.getByRole("button", { name: "検査依頼", exact: true }).click();
+  const request = page.getByRole("dialog", { name: "検査依頼" });
+  await request.getByText(/本日の受付が見つからない/u).waitFor();
+  await request.getByRole("checkbox", { name: "眼圧検査" }).check();
+  await request.getByRole("button", { name: "1件を依頼" }).click();
+  await page.getByText(/検査依頼: 眼圧検査を予定に入れました。/u).waitFor({ timeout: 15_000 });
+  const requested = page.locator(".rp-group.is-order").filter({ hasText: "眼圧検査" }).first();
+  await requested.locator(".order-status-planned").waitFor();
+  await requested.locator("summary.rp-badge").first().click();
+  await requested.locator("details[open] .more-menu-list").getByRole("button", { name: "削除", exact: true }).click();
+  assert.equal(await page.locator(".rp-group.is-order").filter({ hasText: "眼圧検査" }).count(), 0);
+  // 定期: 今のカルテから登録 → 右下の「定期」に出る → 編集から削除
+  await page.getByRole("button", { name: "定期登録" }).click();
+  const regular = page.getByRole("dialog", { name: "定期登録" });
+  await regular.getByText(/処方 ラタノプロスト/u).first().waitFor();
+  await regular.getByLabel("定期の名前").fill("スモーク定期");
+  await regular.getByRole("radio", { name: /毎回/u }).check();
+  await regular.getByRole("button", { name: "登録" }).click();
+  await page.getByText("定期「スモーク定期」を登録しました（毎回）。").waitFor({ timeout: 15_000 });
+  const regularSection = page.locator(".order-regular");
+  if (!(await page.locator(".order-regular[open]").count())) await regularSection.locator("summary").click();
+  await regularSection.getByText("スモーク定期").waitFor();
+  await regularSection.getByText("毎回").first().waitFor();
+  await regularSection.getByRole("button", { name: "定期「スモーク定期」を編集" }).click();
+  await page.getByRole("dialog", { name: "定期の編集" }).getByRole("button", { name: "この定期を削除" }).click();
+  await page.getByText("定期「スモーク定期」を削除しました。").waitFor();
+  assert.equal(await regularSection.getByText("スモーク定期").count(), 0);
+  // 印刷メニュー: 作れる帳票だけ。条件がそろわないものは押せない
+  await page.locator(".actionbar-print > summary").click();
+  const printMenu = page.locator(".actionbar-print .more-menu-list");
+  await printMenu.getByRole("link", { name: "カルテ（2 号紙）" }).waitFor();
+  await printMenu.getByRole("button", { name: "紹介状・診断書などの文書…" }).waitFor();
+  assert.equal(await printMenu.getByRole("button", { name: "会計連絡票（確定後）" }).isDisabled(), true);
+  await page.locator(".actionbar-print > summary").click();
+  // 警告一覧: 行ごとに無効化でき、元に戻せる
+  await bar.getByRole("button", { name: /次へ/u }).click();
+  const warnings = page.getByRole("dialog", { name: /警告一覧/u });
+  const rows = warnings.locator(".warnings-table tbody tr");
+  await rows.first().waitFor();
+  const before = await rows.count();
+  await warnings.getByRole("button", { name: /を無効化$/u }).first().click();
+  assert.equal(await rows.count(), before - 1, "a dismissed warning leaves the table");
+  await warnings.getByText(/無効化した確認 1件/u).waitFor();
+  await warnings.getByRole("button", { name: "元に戻す" }).click();
+  assert.equal(await rows.count(), before);
+  await warnings.getByRole("button", { name: "戻って編集" }).click();
+}
+
+// 確定済みのカルテ: ［¥ 送信］が押せ、確認ダイアログに会計連携と同じ品目が出る（ここでは送らない）
+async function assertChartMainSendRep2(page) {
+  const send = page.getByRole("toolbar", { name: "カルテの操作" }).getByRole("button", { name: "送信", exact: true });
+  assert.equal(await send.isDisabled(), false, "send is ready on a finalized chart");
+  assert.match(await send.getAttribute("class"), /is-ready/u);
+  await send.click();
+  const dialog = page.getByRole("dialog", { name: /会計情報をレセコンへ送りますか/u });
+  await dialog.getByRole("table", { name: "送る内容" }).getByText(/ラタノプロスト/u).first().waitFor({ timeout: 15_000 });
+  await dialog.getByRole("button", { name: "キャンセル" }).click();
 }

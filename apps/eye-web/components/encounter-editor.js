@@ -10,11 +10,12 @@ import { ActsColumn } from "./chart-rp";
 import { DiagnosisTab, useSaveDiagnoses, DEFAULT_DEPARTMENT } from "./chart-diagnoses";
 import { ExamBand, ExamHistoryTab } from "./chart-exam-band";
 import { FindingsColumn } from "./chart-findings";
-import { ORDER_CATEGORIES, OrderPanel } from "./chart-order-panel";
-import { insertAtCursor, isTypingTarget, newRpId, orderFromItem, prescriptionFromDrug, useLearningList, dateWithWeekday } from "./chart-shared";
+import { ExamRequestIcon, MoreIcon, NextIcon, PrintIcon, SaveIcon, YenIcon } from "./chart-icons";
+import { ORDER_CATEGORIES, OrderPanel, regularRepeatLabel } from "./chart-order-panel";
+import { closeMenu, insertAtCursor, isTypingTarget, newOrderId, newRpId, orderFromItem, prescriptionFromDrug, useLearningList, dateWithWeekday } from "./chart-shared";
 import {
-  AmendDialog, CloseResultDialog, ConfirmDialog, RESOLVED_IN_DIALOG, SaveIndicator, SendDialog, SetCreateDialog, ShortcutHelpDialog,
-  StatusChoiceDialog, WarningsDialog
+  AmendDialog, CloseResultDialog, ConfirmDialog, ExamRequestDialog, RegularOrderDialog, RESOLVED_IN_DIALOG, SaveIndicator, SendDialog, SetCreateDialog,
+  ShortcutHelpDialog, StatusChoiceDialog, warningKey, WarningsDialog
 } from "./encounter-dialogs";
 import { DrugHistoryTab, FilesTab, HistoryTab, LEFT_TABS, PatientInfoTab, VersionsPanel } from "./encounter-panels";
 import { getIn, hasExamValues, setIn } from "./encounter-sections";
@@ -25,8 +26,9 @@ import { openPatientSearch, SHORTCUT_HELP_EVENT } from "./patient-search";
 import { useEncounterDraft } from "./use-encounter-draft";
 import { useMeasuredHeight } from "./use-measured-height";
 import { useMediaQuery } from "./use-media-query";
-import { addDays, formatDate, formatDateTime, phraseTargetPath, VISIT_TYPE_LABELS } from "../lib/format";
+import { addDays, formatDate, formatDateTime, phraseTargetPath, prescriptionText, todayIso, VISIT_TYPE_LABELS } from "../lib/format";
 import { applyCopy, appendRpRows } from "../lib/chart-copy";
+import { chartGuide, GUIDE_STATE_LABELS } from "../lib/chart-guide";
 
 const SIDES = ["od", "os"];
 // 次へ（→）で選ぶ受付の状態。再計待は表示用の派生、取消はカルテのある受付にはできないので出さない。
@@ -34,6 +36,8 @@ const NEXT_STATUS_MENU = APPOINTMENT_STATUS_MENU.filter((status) => status !== "
 // 3 ペイン（右も常に表示）と、左を常に表示する条件。chart-editor.css の @media とそろえる。
 const WIDE_QUERY = "(min-width: 1280px) and (min-height: 501px)";
 const MEDIUM_QUERY = "(min-width: 768px) and (min-height: 501px)";
+// 検査依頼で受付を移す状態（検査室の「検査中」の列に並ぶ）
+const EXAM_REQUEST_STATUS = "in_exam";
 
 // カルテ画面（デジカルの 3 ペイン）。左「患者の情報」・中央「本日のカルテ（主訴・所見｜処置・行為）」・右「オーダー」と、
 // 右下の操作（保存・印刷・→次へ）。眼科の検査値と次回予定の作法はトプコンに合わせる。
@@ -58,11 +62,16 @@ export function EncounterEditor({ encounterId }) {
   const [sets, setSets] = useState(null);
   const [highlight, setHighlight] = useState("");
   const [now, setNow] = useState(Date.now());
+  // 警告一覧で［無効化］した確認（このカルテを開いている間だけ覚える）
+  const [dismissed, setDismissed] = useState(() => new Set());
+  // 定期（この患者の定期。右下の「定期」）と、その登録・編集のダイアログ
+  const [regular, setRegular] = useState({ items: [], loading: true, error: "" });
+  const [regularDialog, setRegularDialog] = useState(null);
+  // 検査依頼（受付を探してから選ぶ）
+  const [examRequest, setExamRequest] = useState(null);
   // 高さ 500px 以下（スマホ横）は幅があっても 3 ペインにせず、スマホと同じ「ページ全体のスクロール＋左右は引き出し」にする
   const wide = useMediaQuery(WIDE_QUERY, true);
   const medium = useMediaQuery(MEDIUM_QUERY, true);
-  // スマホ縦（767px 以下）は操作帯を 1 段にするため、送信を「…」の中へ移す
-  const phone = useMediaQuery("(max-width: 767px)", false);
   // 下の操作帯の高さ（スマホでは 1〜2 段）を本文の下の余白に使う
   const actionbarRef = useMeasuredHeight("--actionbar-h");
   const findingsRef = useRef(null);
@@ -92,6 +101,22 @@ export function EncounterEditor({ encounterId }) {
       return { blockers: [], warnings: [] };
     }
   }, [content, encounter?.examConfirmations]);
+  // 無効化した確認を除いた確認事項（次へのバッジと警告一覧に使う）
+  const activeWarnings = useMemo(() => readiness.warnings.filter((item) => !dismissed.has(warningKey(item))), [readiness.warnings, dismissed]);
+
+  // この患者の定期（受診日を渡すと「今回の対象」が付く）
+  const regularPatientId = detail?.encounter?.patientId || "";
+  const regularDate = meta?.encounterDate || "";
+  const loadRegular = useCallback(async () => {
+    if (!regularPatientId) return;
+    try {
+      const payload = await api(`/v1/eye/patients/${regularPatientId}/regular-orders?date=${encodeURIComponent(regularDate)}`);
+      setRegular({ items: payload.regularOrders || [], loading: false, error: "" });
+    } catch (nextError) {
+      setRegular((current) => ({ ...current, loading: false, error: nextError.message }));
+    }
+  }, [api, regularPatientId, regularDate]);
+  useEffect(() => { loadRegular(); }, [loadRegular]);
 
   const openLeft = useCallback((tab) => {
     setLeftTab(tab);
@@ -137,6 +162,7 @@ export function EncounterEditor({ encounterId }) {
     save: () => { save().then((ok) => ok && setNotice("保存しました。")); },
     next: startNext,
     send: () => openSend(),
+    examRequest: () => openExamRequest(),
     attach: () => { if (context?.canWriteDocuments) { openLeft("files"); setUploadOpen(true); } },
     diagnosis: () => { if (context?.canEditDiagnoses) { openLeft("diagnoses"); setDxAddOpen(true); } },
     help: () => setDialog("shortcuts")
@@ -171,7 +197,7 @@ export function EncounterEditor({ encounterId }) {
         return;
       }
       const key = event.key.toLowerCase();
-      const single = { s: actions.save, q: actions.next, k: actions.send, a: actions.attach, b: actions.diagnosis, e: () => openLeft("exam") }[key];
+      const single = { s: actions.save, q: actions.next, k: actions.send, r: actions.examRequest, a: actions.attach, b: actions.diagnosis, e: () => openLeft("exam") }[key];
       if (single) {
         event.preventDefault();
         single();
@@ -219,13 +245,138 @@ export function EncounterEditor({ encounterId }) {
   const finalizedView = encounter.status === "finalized";
   const dirtyMark = saveState === "dirty" || saveState === "saving" ? "*" : "";
 
+  // 受診日より前に作った下書き（デジカルの予約済みの下書きカルテ）。会計送信・検査依頼はできない。
+  const futureDraft = meta.encounterDate > todayIso();
+  const sendable = Boolean(context?.canReceive) && finalizedView && !encounter.amendment && !futureDraft;
+  const examRequestable = Boolean(context?.canWrite) && editable && !futureDraft;
+  const guide = chartGuide(content, { profile, confirmations: encounter.examConfirmations || null });
+  const highWarnings = readiness.blockers.length + activeWarnings.filter((item) => item.level === "high").length;
+
   function openSend() {
     if (!context?.canReceive) return;
-    if (encounter.status !== "finalized") {
+    if (futureDraft) {
+      setNotice("受診日より前の下書きカルテは会計へ送れません。");
+      return;
+    }
+    if (encounter.status !== "finalized" || encounter.amendment) {
       setNotice("会計へ送れるのは確定済みのカルテです（→ 次へ で確定します）。");
       return;
     }
     setDialog("send");
+  }
+
+  function downloadCsv(data, name) {
+    const url = URL.createObjectURL(new Blob([data], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = name;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  // 検査依頼: 受付を探してからダイアログを出す（同じ患者・同じ日の有効な受付。診察中を優先）
+  async function openExamRequest() {
+    if (!examRequestable) {
+      if (futureDraft) setNotice("検査依頼は受診日の当日にできます。");
+      return;
+    }
+    setExamRequest({ loading: true, appointment: null, error: "" });
+    try {
+      const payload = await api(`/v1/eye/appointments?date=${encodeURIComponent(meta.encounterDate)}`);
+      const mine = (payload.appointments || []).filter((item) => item.patientId === encounter.patientId && isActiveAppointmentStatus(item.status));
+      const rank = (item) => ["in_consult", "waiting_doctor", "in_exam", "in_treatment", "checked_in"].indexOf(item.status);
+      const appointment = [...mine].sort((left, right) => (rank(left) < 0 ? 99 : rank(left)) - (rank(right) < 0 ? 99 : rank(right)))[0] || null;
+      setExamRequest({ loading: false, appointment, error: "" });
+    } catch (nextError) {
+      setExamRequest({ loading: false, appointment: null, error: nextError.message });
+    }
+  }
+
+  async function submitExamRequest({ items, eye }) {
+    const planned = new Set((content.orders || []).filter((row) => row.kind !== "comment" && row.status === "planned").map((row) => row.code).filter(Boolean));
+    const rpId = newRpId();
+    const rows = items.filter((item) => !planned.has(item.code)).map((item) => ({ ...orderFromItem(item, rpId), orderId: newOrderId(), eye: item.requiresEye === false ? "" : eye }));
+    if (!rows.length) {
+      setExamRequest(null);
+      return;
+    }
+    const saved = await saveWith((current) => ({ ...current, orders: [...(current.orders || []), ...rows] }));
+    if (!saved) {
+      setExamRequest((current) => (current ? { ...current, error: "カルテを保存できませんでした。" } : current));
+      return;
+    }
+    const appointment = examRequest?.appointment;
+    let moved = "";
+    if (appointment && context?.canReceive && appointment.status !== EXAM_REQUEST_STATUS) {
+      try {
+        await api(`/v1/eye/appointments/${appointment.appointmentId}/status`, { method: "POST", body: { status: EXAM_REQUEST_STATUS, expectedRevision: appointment.revision } });
+        moved = ` 受付を「${APPOINTMENT_STATUS_LABELS[EXAM_REQUEST_STATUS]}」にしました。`;
+      } catch (nextError) {
+        moved = ` 受付の状態は変えられませんでした（${nextError.message}）。`;
+      }
+    }
+    setExamRequest(null);
+    setNotice(`検査依頼: ${rows.map((row) => row.name).join("・")}を予定に入れました。${moved}`);
+  }
+
+  // 定期: 今のカルテから登録・名前と繰り返しの変更・削除・カルテへ入れる
+  function regularSummary() {
+    return [
+      ...content.prescriptions.filter((row) => row.kind !== "comment" && row.name).map((row) => `処方 ${prescriptionText(row)}`),
+      ...(content.orders || []).filter((row) => row.kind !== "comment" && row.status !== "cancelled").map((row) => `検査・処置 ${row.name}`)
+    ];
+  }
+
+  async function submitRegular(values) {
+    try {
+      if (regularDialog.mode === "create") {
+        if (!(await save())) throw new Error("カルテを保存できませんでした。");
+        await api(`/v1/eye/patients/${encounter.patientId}/regular-orders`, { method: "POST", body: { encounterId, ...values } });
+        setNotice(`定期「${values.name}」を登録しました（${regularRepeatLabel(values)}）。`);
+      } else {
+        await api(`/v1/eye/regular-orders/${regularDialog.item.setId}`, { method: "PATCH", body: values });
+        setNotice(`定期「${values.name}」を更新しました。`);
+      }
+      setRegularDialog(null);
+      await loadRegular();
+    } catch (nextError) {
+      setRegularDialog((current) => (current ? { ...current, error: nextError.message } : current));
+    }
+  }
+
+  async function deleteRegular() {
+    try {
+      await api(`/v1/eye/regular-orders/${regularDialog.item.setId}`, { method: "PATCH", body: { active: false } });
+      setNotice(`定期「${regularDialog.item.name}」を削除しました。`);
+      setRegularDialog(null);
+      await loadRegular();
+    } catch (nextError) {
+      setRegularDialog((current) => (current ? { ...current, error: nextError.message } : current));
+    }
+  }
+
+  async function applyRegular(item) {
+    await applySet({ name: item.name, prescriptions: item.prescriptions, orders: item.orders, plan: "", diagnoses: [] });
+    setNotice(`定期「${item.name}」を入れました。`);
+    try {
+      await api(`/v1/eye/regular-orders/${item.setId}`, { method: "PATCH", body: { appliedDate: meta.encounterDate } });
+      await loadRegular();
+    } catch {
+      // 「入れた」の記録が残せなくても、カルテへの追加はそのまま
+    }
+  }
+
+  function jumpTo(item) {
+    if (item.id === "diagnosis") {
+      openLeft("diagnoses");
+      return;
+    }
+    const element = document.getElementById(item.target);
+    if (!element) return;
+    if (element.tagName === "DETAILS") element.open = true;
+    element.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
   function copyFrom(kind, source, payload = {}) {
@@ -358,12 +509,15 @@ export function EncounterEditor({ encounterId }) {
 
   // 次へ: 警告を見たうえで進む。検査値の確認・引き継ぎ処方の確認をここで済ませてから、受付の状態を選ぶ。
   async function proceedWarnings() {
-    if (content.prescriptions.some((item) => item.carriedOver)) {
+    // ［無効化］した確認は、ここでまとめて済ませずにそのまま残す（確定の記録に警告として残る）
+    const skipped = new Set(readiness.warnings.filter((item) => dismissed.has(warningKey(item))).map((item) => `${item.code}|${item.field || ""}`));
+    if (content.prescriptions.some((item) => item.carriedOver) && !skipped.has("prescription_carried_over|content.prescriptions")) {
       const saved = await saveWith((current) => ({ ...current, prescriptions: current.prescriptions.map((item) => ({ ...item, carriedOver: false })) }));
       if (!saved) return;
     }
     const confirmations = encounter.examConfirmations || {};
     for (const side of SIDES) {
+      if (skipped.has(`exam_unconfirmed|content.exam.${side}`)) continue;
       if (!confirmations[side] && hasExamValues(content.exam[side])) {
         if (!(await confirmExam(side, true))) return;
       }
@@ -483,10 +637,25 @@ export function EncounterEditor({ encounterId }) {
           <div className="chart-head">
             <div className="chart-head-line">
               <strong className="chart-date">{dateWithWeekday(meta.encounterDate)}</strong>
+              {futureDraft ? <span className="chart-tab is-draft-label" title="受診日より前に作った下書きのカルテです。会計送信・検査依頼は受診日にできます。">下書き</span> : null}
               <span className="chart-tab" title={dirtyMark ? "保存していない変更があります" : undefined}>{dirtyMark}外来 {VISIT_TYPE_LABELS[meta.visitType] || ""}</span>
               <span className="chart-head-spacer" />
               {editable ? <SaveIndicator onRetry={save} state={saveState} /> : null}
               <button className="btn btn-chip" onClick={() => setDialog("versions")} type="button">版履歴{detail.versions.length ? ` v${detail.versions.length}` : ""}</button>
+              {/* その他の操作（版履歴・下書きの破棄・修正）。右下の操作帯はデジカルと同じ 5 つの大きいボタンだけにする */}
+              <details className="more-menu actionbar-more">
+                <summary aria-label="その他の操作" className="btn btn-chip"><MoreIcon /></summary>
+                <div className="more-menu-list">
+                  <button className="btn btn-ghost" onClick={(event) => { event.currentTarget.closest("details").open = false; setDialog("versions"); }} type="button">版履歴</button>
+                  {encounter.status === "draft" && encounter.versionCount === 0 && context?.canWrite ? (
+                    <button className="btn btn-ghost danger-text" onClick={(event) => { event.currentTarget.closest("details").open = false; setDialog("discard"); }} type="button">下書きを破棄</button>
+                  ) : null}
+                  {finalizedView && context?.canFinalize && !editable ? (
+                    <button className="btn btn-ghost" onClick={(event) => { event.currentTarget.closest("details").open = false; setDialog("amend"); }} type="button">修正する（理由を残す）</button>
+                  ) : null}
+                </div>
+              </details>
+              {context?.canManageSets && editable ? <button className="btn btn-chip" onClick={() => setRegularDialog({ mode: "create", error: "" })} title="この患者の定期にする（次回・毎回・Nか月ごとに右下へ出す）" type="button">定期登録</button> : null}
               {context?.canManageSets && editable ? <button className="btn btn-chip" onClick={() => setDialog("set-create")} type="button">セット登録</button> : null}
             </div>
             <div className="chart-head-line is-sub">
@@ -498,6 +667,22 @@ export function EncounterEditor({ encounterId }) {
               <span className="muted small chart-head-editors">記載 {encounter.updatedBy?.displayName || encounter.createdBy?.displayName || ""}{encounter.updatedAt ? ` ${formatDateTime(encounter.updatedAt).slice(11)}` : ""}</span>
               {editable && !finalizedView ? <button aria-label={`診療日・区分を変える（${formatDate(meta.encounterDate)} ${VISIT_TYPE_LABELS[meta.visitType]}）`} className="btn btn-chip" onClick={() => setDialog("visit")} type="button">✎</button> : null}
             </div>
+            {/* カルテガイド（トプコン）: 項目ごとの記入状況をボタンの色で出す。押すとその欄へ移る */}
+            <nav aria-label="カルテガイド" className="chart-guide">
+              {guide.map((item) => (
+                <button
+                  aria-label={`${item.label}（${GUIDE_STATE_LABELS[item.state]}${item.hint ? `・${item.hint}` : ""}）`}
+                  className={`chart-guide-item is-${item.state}`}
+                  key={item.id}
+                  onClick={() => jumpTo(item)}
+                  title={`${GUIDE_STATE_LABELS[item.state]}${item.hint ? `（${item.hint}）` : ""}`}
+                  type="button"
+                >
+                  <span aria-hidden="true" className="chart-guide-mark">{item.state === "done" ? "✓" : item.state === "warn" ? "!" : ""}</span>
+                  {item.label}
+                </button>
+              ))}
+            </nav>
           </div>
           {encounter.amendment ? (
             <p className="alert alert-warn chart-alert">確定済み v{encounter.versionCount} を修正中です（理由: {encounter.amendment.reason}）。→ 次へ で確定すると v{encounter.versionCount + 1} になり、前の版も残ります。</p>
@@ -573,7 +758,10 @@ export function EncounterEditor({ encounterId }) {
             onCreateSet={() => setDialog("set-create")}
             onInsertPhrase={insertPhrase}
             orderSets={orderSets}
+            onApplyRegular={applyRegular}
+            onEditRegular={context?.canManageSets ? (item) => setRegularDialog({ mode: "edit", item, error: "" }) : null}
             phrases={bootstrap.phrases}
+            regular={regular}
             searchRef={searchRef}
             selectedRp={selectedRp}
             setCategory={setCategory}
@@ -581,47 +769,72 @@ export function EncounterEditor({ encounterId }) {
           />
         </aside>
 
-        <div aria-label="カルテの操作" className="chart-actionbar" data-fixed-bar="bottom" ref={actionbarRef} role="toolbar">
-          <span className="actionbar-group">
-            {context?.canReceive && !phone ? (
-              <button className="btn btn-ghost" disabled={!finalizedView} onClick={openSend} title={finalizedView ? "会計へ送信（K）" : "確定後に送信できます"} type="button">送信</button>
+        {/* 右下の操作帯（デジカル: 左に送信¥・検査依頼、右に保存・印刷・次へ。大きい絵＋文字のボタン） */}
+        <div aria-label="カルテの操作" className="chart-actionbar is-iconbar" data-fixed-bar="bottom" ref={actionbarRef} role="toolbar">
+          <span className="actionbar-group is-start">
+            {context?.canReceive ? (
+              <button
+                aria-label="送信"
+                className={`action-tile is-send${sendable ? " is-ready" : ""}`}
+                disabled={!sendable}
+                onClick={openSend}
+                title={sendable ? "会計へ送信（K）" : futureDraft ? "受診日より前の下書きは送れません" : "確定後に送信できます"}
+                type="button"
+              >
+                <YenIcon /><span className="action-tile-label">送信</span>
+              </button>
             ) : null}
-            <details className="more-menu actionbar-more">
-              <summary aria-label="その他の操作" className="btn btn-ghost">…</summary>
-              <div className="more-menu-list">
-                {context?.canReceive && phone ? (
-                  <button className="btn btn-ghost" disabled={!finalizedView} onClick={(event) => { event.currentTarget.closest("details").open = false; openSend(); }} title={finalizedView ? "会計へ送信（K）" : "確定後に送信できます"} type="button">{finalizedView ? "会計へ送信" : "会計へ送信（確定後）"}</button>
-                ) : null}
-                <button className="btn btn-ghost" onClick={(event) => { event.currentTarget.closest("details").open = false; setDialog("versions"); }} type="button">版履歴</button>
-                {encounter.status === "draft" && encounter.versionCount === 0 && context?.canWrite ? (
-                  <button className="btn btn-ghost danger-text" onClick={(event) => { event.currentTarget.closest("details").open = false; setDialog("discard"); }} type="button">下書きを破棄</button>
-                ) : null}
-                {finalizedView && context?.canFinalize && !editable ? (
-                  <button className="btn btn-ghost" onClick={(event) => { event.currentTarget.closest("details").open = false; setDialog("amend"); }} type="button">修正する（理由を残す）</button>
-                ) : null}
-              </div>
-            </details>
+            {context?.canWrite ? (
+              <button
+                aria-label="検査依頼"
+                className="action-tile"
+                disabled={!examRequestable}
+                onClick={openExamRequest}
+                title={examRequestable ? "検査室へ検査を依頼（R）" : futureDraft ? "検査依頼は受診日にできます" : "編集できるカルテで依頼できます"}
+                type="button"
+              >
+                <ExamRequestIcon /><span className="action-tile-label">検査依頼</span>
+              </button>
+            ) : null}
           </span>
-          <span className="actionbar-group">
-            {editable ? <button className="btn btn-ghost" onClick={() => keyActions.current.save()} title="保存（S）" type="button">保存</button> : null}
+          <span className="actionbar-group is-end">
+            {editable ? (
+              <button aria-label="保存" className="action-tile" onClick={() => keyActions.current.save()} title="保存（S）" type="button">
+                <SaveIcon /><span className="action-tile-label">保存</span>
+              </button>
+            ) : null}
             <details className="more-menu actionbar-print">
-              <summary className="btn btn-ghost">印刷</summary>
-              <div className="more-menu-list">
-                <a className="btn btn-ghost" href={`/encounters/${encounterId}/print`} rel="noreferrer" target="_blank">カルテ（2 号紙）</a>
-                {content.optical?.issue ? <a className="btn btn-ghost" href={`/encounters/${encounterId}/optical`} rel="noreferrer" target="_blank">{content.optical.type === "contact" ? "CL 指示書" : "眼鏡処方箋"}</a> : null}
+              <summary aria-label="印刷" className="action-tile"><PrintIcon /><span className="action-tile-label">印刷</span></summary>
+              {/* 印刷できる帳票（実際に作れるものだけ）。条件がそろわないものは理由を添えて押せなくする */}
+              <div className="more-menu-list print-menu-list">
+                <a className="btn btn-ghost" href={`/encounters/${encounterId}/print`} onClick={closeMenu} rel="noreferrer" target="_blank">カルテ（2 号紙）</a>
+                {detail.versions.length ? (
+                  <a className="btn btn-ghost" href={`/encounters/${encounterId}/print?version=${detail.versions.length}`} onClick={closeMenu} rel="noreferrer" target="_blank">カルテ（2 号紙・確定 v{detail.versions.length}）</a>
+                ) : null}
+                {content.optical?.issue && content.optical.type ? (
+                  <a className="btn btn-ghost" href={`/encounters/${encounterId}/optical`} onClick={closeMenu} rel="noreferrer" target="_blank">{content.optical.type === "contact" ? "CL 指示書" : "眼鏡処方箋"}</a>
+                ) : (
+                  <button className="btn btn-ghost" disabled title="処置・行為の眼鏡・CL 欄で「発行する」にすると印刷できます" type="button">眼鏡処方箋・CL 指示書（未発行）</button>
+                )}
+                {context?.canWriteDocuments ? (
+                  <button className="btn btn-ghost" onClick={(event) => { closeMenu(event); openLeft("files"); }} type="button">紹介状・診断書などの文書…</button>
+                ) : null}
+                {context?.canReceive ? (
+                  finalizedView ? <Link className="btn btn-ghost" href={`/billing?date=${meta.encounterDate}`} onClick={closeMenu}>会計連絡票（会計連携で印刷）</Link>
+                    : <button className="btn btn-ghost" disabled title="確定すると会計連携の画面で印刷できます" type="button">会計連絡票（確定後）</button>
+                ) : null}
               </div>
             </details>
             {context?.canFinalize ? (
               <button
-                className="btn btn-primary next-button"
+                aria-label={`次へ${highWarnings ? `（要確認 ${highWarnings}）` : ""}`}
+                className="action-tile is-next next-button"
                 onClick={startNext}
-                title={`${[...readiness.blockers, ...readiness.warnings].map((item) => item.message).join("\n")}${readiness.blockers.length + readiness.warnings.length ? "\n" : ""}次へ（Q・⌘/Ctrl+Enter）`}
+                title={`${[...readiness.blockers, ...activeWarnings].map((item) => item.message).join("\n")}${readiness.blockers.length + activeWarnings.length ? "\n" : ""}次へ（Q・⌘/Ctrl+Enter）`}
                 type="button"
               >
-                → 次へ
-                {readiness.blockers.length + readiness.warnings.filter((item) => item.level === "high").length ? (
-                  <span className={`finalize-count${readiness.blockers.length ? " is-alert" : ""}`}>要確認 {readiness.blockers.length + readiness.warnings.filter((item) => item.level === "high").length}</span>
-                ) : null}
+                <NextIcon /><span className="action-tile-label">次へ</span>
+                {highWarnings ? <span className={`finalize-count action-tile-badge${readiness.blockers.length ? " is-alert" : ""}`}>{highWarnings}</span> : null}
               </button>
             ) : null}
           </span>
@@ -673,14 +886,17 @@ export function EncounterEditor({ encounterId }) {
       ) : null}
       {dialog === "send" ? (
         <SendDialog
-          encounterDate={formatDate(meta.encounterDate)}
+          encounterDate={meta.encounterDate}
+          encounterId={encounterId}
           error={error}
           onCancel={() => setDialog(null)}
           onSend={async () => {
             try {
               const payload = await api("/v1/eye/billing/send", { method: "POST", body: { date: meta.encounterDate, encounterId } });
+              // 会計連携の画面と同じく、レセコンが取り込む CSV をその場で保存する
+              if (payload.csv) downloadCsv(payload.csv, `eye-billing-${meta.encounterDate}-${String(payload.handoff?.handoffId || "").slice(-6)}.csv`);
               setDialog(null);
-              setNotice(`会計へ送信しました。${payload.appointmentMoved ? "受付を「会計済」にしました。" : ""}${payload.appointmentError ? payload.appointmentError.message : ""}`);
+              setNotice(`会計へ送信しました（CSV を保存）。${payload.appointmentMoved ? "受付を「会計済」にしました。" : ""}${payload.appointmentError ? payload.appointmentError.message : ""}`);
             } catch (nextError) {
               setError(nextError.message);
             }
@@ -727,9 +943,12 @@ export function EncounterEditor({ encounterId }) {
           content={content}
           error={error}
           onCancel={() => setFlow(null)}
+          dismissed={dismissed}
+          onDismiss={(key) => setDismissed((current) => new Set([...current, key]))}
           onFix={fixWarning}
           onProceed={proceedWarnings}
-          proceedLabel={readiness.warnings.some((item) => RESOLVED_IN_DIALOG.has(item.code)) ? "確認して次へ" : "次へ"}
+          onRestore={() => setDismissed(new Set())}
+          proceedLabel={activeWarnings.some((item) => RESOLVED_IN_DIALOG.has(item.code)) ? "確認して次へ" : "次へ"}
           readiness={readiness}
           version={encounter.versionCount + 1}
         />
@@ -768,6 +987,32 @@ export function EncounterEditor({ encounterId }) {
           onCancel={() => setBooking({ open: false, saved: null })}
           onSaved={(appointment) => setBooking({ open: false, saved: appointment })}
           title="次回予約"
+        />
+      ) : null}
+      {examRequest ? (
+        <ExamRequestDialog
+          appointment={examRequest.appointment ? { ...examRequest.appointment, label: APPOINTMENT_STATUS_LABELS[examRequest.appointment.displayStatus || examRequest.appointment.status] || "" } : null}
+          appointmentLoading={examRequest.loading}
+          catalog={bootstrap.orderCatalog}
+          error={examRequest.error}
+          onCancel={() => setExamRequest(null)}
+          onSubmit={submitExamRequest}
+          plannedCodes={new Set((content.orders || []).filter((row) => row.kind !== "comment" && row.status === "planned").map((row) => row.code).filter(Boolean))}
+          statusLabel={APPOINTMENT_STATUS_LABELS[EXAM_REQUEST_STATUS]}
+        />
+      ) : null}
+      {regularDialog ? (
+        <RegularOrderDialog
+          error={regularDialog.error}
+          initial={regularDialog.item || {}}
+          mode={regularDialog.mode}
+          onCancel={() => setRegularDialog(null)}
+          onDelete={regularDialog.mode === "edit" ? deleteRegular : null}
+          onSubmit={submitRegular}
+          summary={regularDialog.mode === "create" ? regularSummary() : [
+            ...regularDialog.item.prescriptions.filter((row) => row.kind !== "comment").map((row) => `処方 ${prescriptionText(row)}`),
+            ...regularDialog.item.orders.filter((row) => row.kind !== "comment").map((row) => `検査・処置 ${row.name}`)
+          ]}
         />
       ) : null}
       {uploadOpen ? (

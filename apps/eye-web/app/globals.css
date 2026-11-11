@@ -10,6 +10,7 @@
 @import "./styles/documents.css";
 @import "./styles/exam.css";
 @import "./styles/chart-editor.css";
+@import "./styles/chart-main.css";
 
 /*
  * 眼科カルテのデザイントークン（唯一の定義元）。
