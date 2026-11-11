@@ -10,5 +10,5 @@ export const COMMON_MODIFIER_CODES = Object.freeze([
 
 export function commonModifiers(index, limit = COMMON_MODIFIER_CODES.length) {
   if (!index?.lookup) return [];
-  return COMMON_MODIFIER_CODES.map((code) => index.lookup("modifier", code)).filter(Boolean).slice(0, limit).map((record) => ({ ...record, match: "common" }));
+  return COMMON_MODIFIER_CODES.map((code) => index.lookupOne("modifier", code)).filter(Boolean).slice(0, limit).map((record) => ({ ...record, match: "common" }));
 }

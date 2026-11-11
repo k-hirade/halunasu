@@ -106,8 +106,8 @@ test("returns common eye modifiers when the modifier query is empty and common=1
     { code: "9999", name: "その他", kana: "ソノタ", position: "suffix" }
   ] });
   assert.deepEqual(commonModifiers(index).map((item) => item.name), ["右", "左", "術後"]);
-  assert.equal(index.lookup("modifier", "9999").name, "その他");
-  assert.equal(index.lookup("modifier", "0000"), null);
+  assert.equal(index.lookupOne("modifier", "9999").name, "その他");
+  assert.equal(index.lookupOne("modifier", "0000"), null);
 
   const stores = createStores();
   const doctor = await signedHeaders(stores.platformStore, "doctor");
