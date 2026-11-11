@@ -17,6 +17,7 @@
 @import "./styles/eye.css";
 @import "./styles/eye-schema.css";
 @import "./styles/eye-images.css";
+@import "./styles/rep2-reconcile.css";
 
 /*
  * 眼科カルテのデザイントークン（唯一の定義元）。

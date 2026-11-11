@@ -1,0 +1,173 @@
+/* replicate-2 の統合（受付ラベル・マークの設定、診療時間の予約表への反映、患者帯の副作用薬） */
+
+/* 患者帯: 副作用薬はアレルギーの隣に短く（長い名前は省略。全部は title と読み上げ） */
+.adverse-badge {
+  display: inline-block;
+  max-width: 24em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.patient-banner.is-compact .adverse-badge {
+  font-size: var(--fs-sm);
+  max-width: 16em;
+}
+
+@media (max-width: 767px) {
+  .patient-banner .adverse-badge {
+    max-width: 100%;
+  }
+}
+
+/* 患者ページの概要（カルテ情報）: アレルギーの下に並べる */
+.ps-allergy {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.ps-pane .adverse-badge {
+  max-width: 100%;
+}
+
+/* 施設管理の患者マークの色（受付の画面と同じ名前） */
+.admin-chip.tone-green { background: var(--green-soft); border-color: var(--green-line); color: var(--green); }
+.admin-chip.tone-neutral { background: var(--surface-muted); color: var(--text-soft); }
+
+/* 受付一覧（表の表示の幅）: 1366×768 で既定の列が横にスクロールせずに入るよう、見出しと升目の余白を詰める。
+ * 見出しの幅（並べ替えのボタン）が多くの列の幅を決めているため、ボタンの左右の余白と印との間を小さくする。
+ * 進捗・受付メモは 1 行で切る（全部は title）幅を少し狭くする */
+@media (min-width: 901px) {
+  .rc-table th {
+    padding: 0;
+  }
+
+  .rc-table th .rc-sort {
+    gap: 2px;
+    padding-left: 3px;
+    padding-right: 3px;
+  }
+
+  .rc-table td {
+    padding-left: 3px;
+    padding-right: 3px;
+  }
+
+  .rc-table .rc-progress {
+    max-width: 7em;
+  }
+
+  .rc-table .rc-memo > span:first-child,
+  .rc-table span.rc-memo {
+    max-width: 7em;
+  }
+}
+
+/* タッチの端末（タブレット・スマホ）: replicate-2 で増えた小さな操作のタップ領域を 32px 以上にする */
+@media (pointer: coarse) {
+  .rc-marks-edit {
+    min-height: 32px;
+    min-width: 32px;
+  }
+
+  .rc-location {
+    min-height: 32px;
+  }
+
+  .rc-label-remove {
+    min-height: 32px;
+    min-width: 32px;
+  }
+
+  .ps-option-all,
+  .cl-matrix-check {
+    min-height: 32px;
+  }
+
+  /* chart-main.css の基本の 28px より後に置く（同じ強さなので後ろが勝つ） */
+  .exam-band-toggle {
+    height: 32px;
+    width: 32px;
+  }
+
+  .cl-cell-button {
+    min-height: 32px;
+    min-width: 32px;
+  }
+
+  .hm-pick,
+  .rd-report-index-link {
+    min-height: 32px;
+  }
+
+  .cl-files-foot a,
+  .preop-files-link {
+    align-items: center;
+    display: inline-flex;
+    min-height: 32px;
+  }
+
+  .data-table.cl-files-table td a {
+    display: inline-block;
+    min-width: 32px;
+  }
+}
+
+/* 左「副作用薬等」の表: 左の欄が狭い幅（タブレット縦など）では、右端の［✎］が欄の外で切れないよう升目を詰めて折り返す */
+@media (max-width: 1100px) {
+  .data-table.cl-table th,
+  .data-table.cl-table td {
+    overflow-wrap: anywhere;
+    padding-left: 3px;
+    padding-right: 3px;
+  }
+
+  .data-table.cl-table .cl-nowrap {
+    white-space: normal;
+  }
+}
+
+/* 院内掲示は画面全体を覆う（患者が見る画面）。下に隠れたヘッダーの操作が Tab で届かないよう、掲示の間はヘッダーを出さない */
+body:has(.rcd-board) header.eh {
+  display: none;
+}
+
+/* 予約登録の中の予約状況: 900px 以下は 1 列（reception-rep2.css の 2 列の指定が reception.css の 1 列より強かった） */
+@media (max-width: 900px) {
+  .ap-calendar .bk-cal {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* 予約状況: 診療時間の外・休診日の枠は斜線で押せない（予約が入っていれば件数は出す） */
+.bk-slot.is-closed,
+div.bk-slot.is-closed:hover {
+  background: repeating-linear-gradient(135deg, var(--surface-muted) 0 6px, var(--surface) 6px 12px);
+}
+
+div.bk-slot.is-closed {
+  cursor: default;
+}
+
+.bk-day-head.is-closed {
+  color: var(--muted);
+}
+
+.bk-closed-tag {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  display: inline-block;
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+  margin-left: 4px;
+  padding: 0 4px;
+}
+
+/* 予約登録: 診療時間外・休診日の注意（登録は止めない） */
+.ap-hours-note {
+  color: var(--amber);
+  flex-basis: 100%;
+  font-size: var(--fs-sm);
+}

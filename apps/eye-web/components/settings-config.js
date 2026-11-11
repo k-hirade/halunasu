@@ -4,8 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import { useEyeApi } from "./eye-api";
 import { clearPrintSettings } from "./print-settings";
 import { SectionHead, SettingsDialog } from "./settings-master";
+import { clearClinicHoursCache } from "./use-clinic-hours";
 import { formatDateTime } from "../lib/format";
-import { DOC_TYPE_LABELS, hoursText, LABEL_TONE_OPTIONS, newRowKey, SLOT_MINUTE_OPTIONS, stripNewIds, TEMPLATE_PLACEHOLDERS, WEEKDAY_LABELS } from "../lib/admin";
+import { DOC_TYPE_LABELS, hoursText, MARK_TONE_OPTIONS, newRowKey, SLOT_MINUTE_OPTIONS, stripNewIds, TEMPLATE_PLACEHOLDERS, WEEKDAY_LABELS } from "../lib/admin";
 import { HONORIFIC_OPTIONS } from "../lib/paper";
 
 // 施設管理の追加の項目（デジカルの施設管理のメニューに合わせて増やしたもの）。
@@ -64,7 +65,7 @@ function useFlash() {
 }
 
 // 一覧（表）＋ 右上の［＋ 新規登録］＋ 行の［編集］→ ダイアログ。消さずに「使わない」にする（記録が参照しているため）。
-function ConfigList({ label, items, idKey, columns, fields, emptyText, addLabel, canEdit, onSaveItems, newItem, validate }) {
+function ConfigList({ label, items, idKey, columns, fields, emptyText, addLabel, canEdit, onSaveItems, newItem, validate, prepare = stripNewIds }) {
   const [editing, setEditing] = useState(null); // { draft, isNew }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -79,7 +80,7 @@ function ConfigList({ label, items, idKey, columns, fields, emptyText, addLabel,
     setError("");
     try {
       const next = editing.isNew ? [...items, editing.draft] : items.map((item) => (item[idKey] === editing.draft[idKey] ? editing.draft : item));
-      await onSaveItems(stripNewIds(next, idKey));
+      await onSaveItems(prepare(next, idKey));
       setEditing(null);
     } catch (nextError) {
       setError(nextError.message);
@@ -160,10 +161,6 @@ function ConfigField({ field, draft, setDraft }) {
       {field.hint ? <small className="muted">{field.hint}</small> : null}
     </label>
   );
-}
-
-function ToneChip({ tone, children }) {
-  return <span className={`admin-chip tone-${tone || "gray"}`}>{children}</span>;
 }
 
 /* ───────── 文書雛形（デジカル p.212） ───────── */
@@ -264,50 +261,128 @@ export function LabListsSection({ canEdit }) {
 
 /* ───────── 受付ラベル・患者マーク ───────── */
 
+// 保存先は受付の設定（/v1/eye/reception-settings）。受付の画面（受付メモのラベル・行頭のマーク）が読むのと同じ値。
+// 以前この画面が施設管理の設定に保存した値は、API が読むときに取り込む。
+function useReceptionSettingsConfig() {
+  const api = useEyeApi();
+  const [data, setData] = useState(null);
+  const [error, setError] = useState("");
+  const [unsupported, setUnsupported] = useState(false);
+  const toData = (settings) => ({ revision: settings.revision, updatedAt: settings.updatedAt, updatedBy: settings.updatedBy, value: { labels: settings.labels || [], marks: settings.marks || [] } });
+  useEffect(() => {
+    let cancelled = false;
+    api("/v1/eye/reception-settings")
+      .then((payload) => { if (!cancelled) setData(toData(payload.settings)); })
+      .catch((nextError) => {
+        if (cancelled) return;
+        if (nextError.status === 404) setUnsupported(true);
+        else setError(nextError.message);
+      });
+    return () => { cancelled = true; };
+  }, [api]);
+  const save = useCallback(async (patch) => {
+    const payload = await api("/v1/eye/reception-settings", { method: "PUT", body: { expectedRevision: data?.revision || 0, ...patch } });
+    setData(toData(payload.settings));
+    return payload;
+  }, [api, data?.revision]);
+  return { data, error, unsupported, save };
+}
+
+// 新しいマークの key（英小文字・数字・_ で 24 文字まで。患者に付けた印はこの key で残る）
+function withMarkKeys(items) {
+  return items.map((item) => (String(item.key || "").startsWith("new_") ? { ...item, key: `m_${item.key.slice(4)}` } : item));
+}
+
+function ReceptionLabelList({ labels, canEdit, onSave }) {
+  const [editing, setEditing] = useState(null); // { index（新規は -1）, name }
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function submit() {
+    const name = editing.name.replace(/\s+/gu, " ").trim();
+    if (!name) { setError("ラベル名を入れてください。"); return; }
+    if (labels.some((label, index) => label === name && index !== editing.index)) { setError("同じ名前のラベルがあります。"); return; }
+    setBusy(true);
+    setError("");
+    try {
+      await onSave(editing.index < 0 ? [...labels, name] : labels.map((label, index) => (index === editing.index ? name : label)), "受付ラベルを保存しました。");
+      setEditing(null);
+    } catch (nextError) {
+      setError(nextError.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="admin-list">
+      <div className="admin-list-head">
+        <h3>受付ラベル<span className="settings-head-count">{labels.length}</span></h3>
+        {canEdit ? <button className="btn btn-primary btn-sm" onClick={() => { setError(""); setEditing({ index: -1, name: "" }); }} type="button">＋ ラベルを追加</button> : null}
+      </div>
+      {labels.length ? (
+        <div className="admin-table-wrap">
+          <table className="data-table admin-table">
+            <thead><tr><th scope="col">ラベル</th>{canEdit ? <th aria-label="操作" scope="col" /> : null}</tr></thead>
+            <tbody>
+              {labels.map((label, index) => (
+                <tr key={label}>
+                  <td><span className="admin-chip tone-gray">{label}</span></td>
+                  {canEdit ? (
+                    <td className="admin-edit">
+                      <button aria-label={`${label}を編集`} className="btn btn-ghost btn-sm" onClick={() => { setError(""); setEditing({ index, name: label }); }} type="button">✎ 編集</button>
+                      <button aria-label={`${label}を候補から外す`} className="btn btn-ghost btn-sm" onClick={() => onSave(labels.filter((_, at) => at !== index), `「${label}」を候補から外しました。`).catch((nextError) => setError(nextError.message))} type="button">外す</button>
+                    </td>
+                  ) : null}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : <p className="empty master-empty">受付ラベルはまだありません。</p>}
+      {error && !editing ? <p className="alert alert-danger" role="alert">{error}</p> : null}
+      <p className="muted small">外しても、これまでの受付に付けたラベルはそのまま残ります。名前を変えると、これから付けるラベルの名前が変わります。</p>
+      {editing ? (
+        <SettingsDialog busy={busy} error={error} onClose={() => setEditing(null)} onSubmit={submit} title={editing.index < 0 ? "受付ラベルの登録" : "受付ラベルの編集"}>
+          <div className="admin-form">
+            <label className="field">
+              <span>ラベル名<em>必須</em></span>
+              <input aria-label="ラベル名" autoComplete="off" className="input" maxLength={20} onChange={(event) => setEditing((current) => ({ ...current, name: event.target.value }))} placeholder="例: 散瞳予定" value={editing.name} />
+            </label>
+          </div>
+        </SettingsDialog>
+      ) : null}
+    </div>
+  );
+}
+
 export function ReceptionLabelsSection({ canEdit }) {
-  const config = useClinicConfig("receptionLabels");
+  const config = useReceptionSettingsConfig();
   const [flash, setFlash] = useFlash();
   const value = config.data?.value || { labels: [], marks: [] };
-  const save = async (patch, message) => { await config.save({ ...value, ...patch }); setFlash(message); };
+  const save = async (patch, message) => { await config.save(patch); setFlash(message); };
+  const toneLabel = (tone) => MARK_TONE_OPTIONS.find(([value]) => value === tone)?.[1] || "灰";
   return (
-    <ConfigFrame config={config} description="受付の画面で使う札です。受付ラベルは受付メモに付け（例: 要散瞳・検査のみ）、患者マークは氏名の横に出します（例: 車椅子・難聴）。" title="受付ラベル・患者マーク">
+    <ConfigFrame config={config} description="受付の画面で使う札です。受付ラベルは受付メモに付け（例: 散瞳予定・紹介状あり）、患者マークは受付一覧の行頭と患者検索に出します（例: 車椅子・難聴）。受付メモの［＋］から足したラベルもここに並びます。" title="受付ラベル・患者マーク">
       {flash ? <p className="alert alert-ok" role="status">{flash}</p> : null}
-      <ConfigList
-        addLabel="ラベルを追加"
-        canEdit={canEdit}
-        columns={[
-          { label: "ラベル", render: (item) => <ToneChip tone={item.tone}>{item.name}</ToneChip>, text: (item) => item.name },
-          { label: "色", render: (item) => LABEL_TONE_OPTIONS.find(([tone]) => tone === item.tone)?.[1] || "" }
-        ]}
-        emptyText="受付ラベルはまだありません。"
-        fields={[
-          { key: "name", label: "ラベル名", required: true, max: 20, placeholder: "例: 要散瞳" },
-          { key: "tone", label: "色", type: "select", options: LABEL_TONE_OPTIONS }
-        ]}
-        idKey="labelId"
-        items={value.labels}
-        label="受付ラベル"
-        newItem={() => ({ name: "", tone: "teal" })}
-        onSaveItems={(labels) => save({ labels }, "受付ラベルを保存しました。")}
-      />
+      <ReceptionLabelList canEdit={canEdit} labels={value.labels} onSave={(labels, message) => save({ labels }, message)} />
       <ConfigList
         addLabel="マークを追加"
         canEdit={canEdit}
         columns={[
-          { label: "マーク", render: (item) => <span className="admin-mark-cell"><ToneChip tone={item.tone}>{item.symbol}</ToneChip>{item.name}</span>, text: (item) => item.name },
-          { label: "色", render: (item) => LABEL_TONE_OPTIONS.find(([tone]) => tone === item.tone)?.[1] || "" }
+          { label: "マーク", render: (item) => <span className="admin-mark-cell"><span aria-hidden="true" className={`rc-mark tone-${item.tone || "neutral"}`}>{item.symbol}</span>{item.label}</span>, text: (item) => item.label },
+          { label: "色", render: (item) => toneLabel(item.tone) }
         ]}
         emptyText="患者マークはまだありません。"
         fields={[
-          { key: "name", label: "マークの名前", required: true, max: 20, placeholder: "例: 車椅子" },
+          { key: "label", label: "マークの名前", required: true, max: 12, placeholder: "例: 車椅子" },
           { key: "symbol", label: "表示する字（1〜2文字）", required: true, max: 2, placeholder: "例: 車" },
-          { key: "tone", label: "色", type: "select", options: LABEL_TONE_OPTIONS }
+          { key: "tone", label: "色", type: "select", options: MARK_TONE_OPTIONS }
         ]}
-        idKey="markId"
+        idKey="key"
         items={value.marks}
         label="患者マーク"
-        newItem={() => ({ name: "", symbol: "", tone: "blue" })}
-        onSaveItems={(marks) => save({ marks }, "患者マークを保存しました。")}
+        newItem={() => ({ label: "", symbol: "", tone: "blue" })}
+        onSaveItems={(marks) => save({ marks: marks.map(({ active, ...mark }) => (active === false ? { ...mark, active: false } : mark)) }, "患者マークを保存しました。")}
+        prepare={withMarkKeys}
       />
     </ConfigFrame>
   );
@@ -329,6 +404,7 @@ export function ClinicHoursSection({ canEdit }) {
     try {
       const days = Object.fromEntries(Object.entries(editing.days).map(([day, ranges]) => [day, ranges.filter((range) => range.from || range.to)]));
       await config.save({ ...editing, days });
+      clearClinicHoursCache();
       setEditing(null);
       setFlash("診療時間を保存しました。");
     } catch (nextError) {
@@ -343,7 +419,7 @@ export function ClinicHoursSection({ canEdit }) {
     <ConfigFrame
       action={canEdit ? <button className="btn btn-ghost" onClick={() => { setError(""); setEditing(JSON.parse(JSON.stringify(value))); }} type="button">✎ 編集</button> : null}
       config={config}
-      description="曜日ごとの診療時間と、予約の1枠の長さです。予約・受付の画面がこの値を読みます（未設定なら従来どおり 8〜18 時・30 分）。"
+      description="曜日ごとの診療時間と、予約の1枠の長さです。予約状況の表（枠の長さ・休診の枠）と予約登録（時刻の刻み・時間外の注意）がこの値を読みます（未設定なら従来どおり 8〜18 時・30 分）。祝日の行は、祝日の暦を持っていないため今は予約の表に使っていません。"
       title="診療時間・予約枠"
     >
       {flash ? <p className="alert alert-ok" role="status">{flash}</p> : null}

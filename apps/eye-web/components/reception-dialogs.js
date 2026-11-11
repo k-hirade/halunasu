@@ -263,7 +263,8 @@ export function MarksDialog({ patientName, definitions, selected, onCancel, onSa
         <p className="muted small">患者に付ける印です。毎回の受付の行頭に出ます。</p>
         {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
         <div className="rc-marks-grid">
-          {definitions.map((mark) => (
+          {/* 使わないマーク（施設管理で外したもの）は、付いている患者のときだけ出す（外せるように） */}
+          {definitions.filter((mark) => mark.active !== false || selected.includes(mark.key)).map((mark) => (
             <label className={`rc-mark-option${keys.includes(mark.key) ? " is-on" : ""}`} key={mark.key}>
               <input checked={keys.includes(mark.key)} onChange={() => toggle(mark.key)} type="checkbox" />
               <span aria-hidden="true" className={`rc-mark tone-${MARK_TONES.includes(mark.tone) ? mark.tone : "neutral"}`}>{mark.symbol}</span>

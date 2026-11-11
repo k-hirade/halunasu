@@ -519,8 +519,8 @@ export function ReceptionWorkspace() {
             <tr>
               {columns.map((column) => (
                 <th aria-sort={sort.key === column.key ? (sort.dir === "asc" ? "ascending" : "descending") : undefined} className={`rc-col-${column.key}`} key={column.key} scope="col">
-                  <button className="rc-sort" onClick={() => toggleSort(column.key)} type="button">
-                    {column.label}
+                  <button aria-label={column.short ? column.label : undefined} className="rc-sort" onClick={() => toggleSort(column.key)} title={column.short ? column.label : undefined} type="button">
+                    {column.short || column.label}
                     <span aria-hidden="true" className="rc-sort-mark">{sort.key === column.key ? (sort.dir === "asc" ? "▲" : "▼") : "↕"}</span>
                   </button>
                 </th>

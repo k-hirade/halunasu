@@ -1,15 +1,15 @@
 // 施設管理の追加の設定（デジカルの施設管理の項目に合わせる）。医院ごとに、項目（section）ごとに 1 件を版つきで持つ。
 //   docTemplates     文書雛形（紹介状などの本文のひな形。文書の画面で「雛形から作る」に使う）
 //   labLists         検査会社と院内検査項目（院内検査項目はカルテのオーダーの候補に加わる）
-//   receptionLabels  受付ラベル・患者マーク（受付の画面が読む。受付メモのラベル・氏名の横のマーク）
 //   clinicHours      診療時間・予約枠（予約の画面が読む）
 //   printSettings    帳票設定（紙の印字の選択）
 //   otherSettings    その他設定（文書の既定の入力方法・操作記録の既定の期間）
+// 受付ラベル・患者マークは受付の設定（reception.js の /v1/eye/reception-settings）だけに保存する。以前この API の
+// receptionLabels に保存した値は、受付の設定を読むときに取り込む（mergeLegacyReceptionLabels）。この API の receptionLabels は 404。
 // 読むのは眼科の役割を持つ全員、直すのは管理者。どれも追加の値で、保存していなければ既定の値を返す（従来の動きのまま）。
 
-export const CLINIC_CONFIG_SECTIONS = Object.freeze(["docTemplates", "labLists", "receptionLabels", "clinicHours", "printSettings", "otherSettings"]);
+export const CLINIC_CONFIG_SECTIONS = Object.freeze(["docTemplates", "labLists", "clinicHours", "printSettings", "otherSettings"]);
 export const DOC_TEMPLATE_TYPES = Object.freeze(["referral", "reply", "certificate", "other"]);
-export const LABEL_TONES = Object.freeze(["teal", "blue", "amber", "red", "gray"]);
 export const WEEKDAYS = Object.freeze(["mon", "tue", "wed", "thu", "fri", "sat", "sun", "holiday"]);
 export const SLOT_MINUTES = Object.freeze([10, 15, 20, 30, 60]);
 export const HONORIFICS = Object.freeze(["御侍史", "御机下", "先生", "殿", "御中"]);
@@ -26,7 +26,6 @@ export function defaultClinicConfig(section) {
   switch (section) {
     case "docTemplates": return { templates: [] };
     case "labLists": return { companies: [], items: [] };
-    case "receptionLabels": return { labels: [], marks: [] };
     case "clinicHours": return { slotMinutes: 30, days: Object.fromEntries(WEEKDAYS.map((day) => [day, []])), note: "" };
     case "printSettings": return { defaultHonorific: "御侍史", letterSeal: true, billingSlipDiagnoses: true, footerNote: "" };
     case "otherSettings": return { documentInputMode: "text", auditDefaultRange: "7d" };
@@ -95,29 +94,6 @@ const VALIDATORS = {
       };
     });
     return { companies: uniqueBy(companies, "companyId"), items: uniqueBy(items, "itemId") };
-  },
-  receptionLabels(value, id) {
-    const labels = list(value.labels, "labels").map((item, index) => {
-      const field = `labels.${index}`;
-      return {
-        labelId: optionalId(item.labelId, `${field}.labelId`) || id("erlb"),
-        name: requiredText(item.name, `${field}.name`, 20),
-        tone: enumOf(item.tone, LABEL_TONES, `${field}.tone`, "gray"),
-        active: item.active !== false
-      };
-    });
-    const marks = list(value.marks, "marks").map((item, index) => {
-      const field = `marks.${index}`;
-      const symbol = requiredText(item.symbol, `${field}.symbol`, 2);
-      return {
-        markId: optionalId(item.markId, `${field}.markId`) || id("epmk"),
-        name: requiredText(item.name, `${field}.name`, 20),
-        symbol,
-        tone: enumOf(item.tone, LABEL_TONES, `${field}.tone`, "gray"),
-        active: item.active !== false
-      };
-    });
-    return { labels: uniqueBy(labels, "labelId"), marks: uniqueBy(marks, "markId") };
   },
   clinicHours(value) {
     const slotMinutes = value.slotMinutes === undefined ? 30 : value.slotMinutes;

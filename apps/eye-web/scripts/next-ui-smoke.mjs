@@ -42,6 +42,7 @@ try {
     await runReceptionRep2Flow(browser);
     await runOrthoptistFlow(browser);
     await runReceptionResponsiveChecks(browser);
+    await runRep2ReconcileChecks(browser);
   } finally {
     await browser.close().catch(() => null);
   }
@@ -852,8 +853,10 @@ async function runReceptionFlow(browser) {
   assert.equal(await page.locator(".flow-chips, .flow-group").count(), 0, "no grouped list and no count chips");
   const headers = await table.locator("thead .rc-sort").allInnerTexts();
   // 先頭はトプコンの患者マーク、ステータスの後はトプコンの場所（replicate-2）
-  assert.deepEqual(headers.map((text) => text.replace(/[▲▼↕]/gu, "").trim()).slice(0, 10), ["マーク", "番号", "予約時間", "受付時間", "ステータス", "場所", "患者番号", "氏名", "生年月日", "年齢"]);
-  assert.deepEqual(headers.map((text) => text.replace(/[▲▼↕]/gu, "").trim()).slice(-4), ["会計", "進捗", "散瞳", "待ち時間"]);
+  // 生年月日・目的は既定で隠す（デジカルの既定の表示に無い列。1366×768 で横にスクロールしない。絞り込みの「表示する列」で出せる）
+  assert.deepEqual(headers.map((text) => text.replace(/[▲▼↕]/gu, "").trim()).slice(0, 10), ["マーク", "番号", "予約時間", "受付時間", "ステータス", "場所", "患者番号", "氏名", "年齢", "診療科"]);
+  assert.deepEqual(headers.map((text) => text.replace(/[▲▼↕]/gu, "").trim()).slice(-4), ["会計", "進捗", "散瞳", "待ち"]);
+  assert.equal(await table.getByRole("button", { name: "待ち時間", exact: true }).count(), 1, "the short heading keeps the full name for screen readers");
   await page.getByText("全 0件").waitFor();
 
   // 予約（2 列のダイアログ）: 予約状況の枠を押すと予約日・予約時間に入る。医師・診療科を選ぶ
@@ -932,7 +935,7 @@ async function runReceptionFlow(browser) {
   await page.getByText("0 / 2件").waitFor();
   await filter.getByRole("checkbox", { name: "待ち時間" }).uncheck();
   assert.equal(await table.locator("th.rc-col-wait").count(), 0);
-  assert.deepEqual(JSON.parse(await page.evaluate(() => window.localStorage.getItem("halunasu-eye-reception-columns"))), ["wait"]);
+  assert.deepEqual(JSON.parse(await page.evaluate(() => window.localStorage.getItem("halunasu-eye-reception-columns"))).sort(), ["birth", "purpose", "wait"]);
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "絞り込みを解除" }).click();
   await page.getByText("全 2件").waitFor();
@@ -2114,7 +2117,9 @@ async function assertChartMainRep2(page) {
   await regularSection.getByRole("button", { name: "定期「スモーク定期」を編集" }).click();
   await page.getByRole("dialog", { name: "定期の編集" }).getByRole("button", { name: "この定期を削除" }).click();
   await page.getByText("定期「スモーク定期」を削除しました。").waitFor();
-  assert.equal(await regularSection.getByText("スモーク定期").count(), 0);
+  // 通知は一覧の読み直しより先に出るので、行が消えるのを待つ
+  await regularSection.locator(".order-regular-row", { hasText: "スモーク定期" }).waitFor({ state: "detached" });
+  assert.equal(await regularSection.locator(".order-regular-row", { hasText: "スモーク定期" }).count(), 0);
   // 印刷メニュー: 作れる帳票だけ。条件がそろわないものは押せない
   await page.locator(".actionbar-print > summary").click();
   const printMenu = page.locator(".actionbar-print .more-menu-list");
@@ -2145,4 +2150,113 @@ async function assertChartMainSendRep2(page) {
   const dialog = page.getByRole("dialog", { name: /会計情報をレセコンへ送りますか/u });
   await dialog.getByRole("table", { name: "送る内容" }).getByText(/ラタノプロスト/u).first().waitFor({ timeout: 15_000 });
   await dialog.getByRole("button", { name: "キャンセル" }).click();
+}
+
+// ---- replicate-2 の統合: 受付ラベル・患者マークの保存先は受付の設定 1 つ、診療時間・予約枠を予約状況と予約登録に使う、
+// 受付一覧は 1366×768 で横にスクロールしない、副作用薬は患者帯のアレルギーの隣 ----
+async function runRep2ReconcileChecks(browser) {
+  const context = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+  const page = await context.newPage();
+  const pageErrors = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await login(page, "director");
+  if (!(await page.locator("header.eh").waitFor({ timeout: 8000 }).then(() => true).catch(() => false))) {
+    await page.waitForTimeout(31_000);
+    await page.getByLabel("6桁コード").fill(currentLocalTotp());
+    await page.getByRole("button", { name: "確認" }).click();
+    await page.locator("header.eh").waitFor();
+  }
+  const call = (method, path, body) => page.evaluate(async ({ method, path, body }) => {
+    const csrf = decodeURIComponent((document.cookie.match(/(?:^|; )halunasu_csrf=([^;]*)/u) || [])[1] || "");
+    const response = await fetch(`/api/eye${path}`, { method, credentials: "include", headers: { "content-type": "application/json", "x-csrf-token": csrf }, body: body ? JSON.stringify(body) : undefined });
+    return { status: response.status, body: await response.json().catch(() => ({})) };
+  }, { method, path, body });
+
+  // 受付ラベル・患者マーク: 施設管理の画面は受付の設定（受付メモの［＋］で足したラベルも並ぶ）を読み書きする
+  await page.goto(`${baseUrl}/settings#labels`);
+  const section = page.getByRole("region", { name: "受付ラベル・患者マーク" });
+  await section.getByText("発熱あり", { exact: true }).waitFor();
+  await section.getByRole("button", { name: "＋ ラベルを追加" }).click();
+  const labelDialog = page.getByRole("dialog", { name: "受付ラベルの登録" });
+  await labelDialog.getByLabel("ラベル名").fill("要再検");
+  await labelDialog.getByRole("button", { name: "保存", exact: true }).click();
+  await page.getByText("受付ラベルを保存しました。").waitFor();
+  await section.getByRole("button", { name: "＋ マークを追加" }).click();
+  const markDialog = page.getByRole("dialog", { name: "患者マークの登録" });
+  await markDialog.getByLabel("マークの名前").fill("杖");
+  await markDialog.getByLabel("表示する字（1〜2文字）").fill("杖");
+  await markDialog.getByRole("button", { name: "保存", exact: true }).click();
+  await page.getByText("患者マークを保存しました。").waitFor();
+  const settings = (await call("GET", "/v1/eye/reception-settings")).body.settings;
+  assert.ok(settings.labels.includes("要再検") && settings.labels.includes("発熱あり"), "labels are saved to the reception settings");
+  const cane = settings.marks.find((mark) => mark.label === "杖");
+  assert.match(cane?.key || "", /^m_[a-z0-9]+$/u, "a new mark gets a stable key");
+  assert.equal((await call("GET", "/v1/eye/clinic-config/receptionLabels")).status, 404, "there is no second copy in clinic-config");
+  // 施設管理で「使う」を外したマークは、付ける候補に出ない
+  await section.getByRole("button", { name: "杖を編集" }).click();
+  const markEdit = page.getByRole("dialog", { name: "患者マークの編集" });
+  await markEdit.getByRole("checkbox", { name: /^使う/u }).uncheck();
+  await markEdit.getByRole("button", { name: "保存", exact: true }).click();
+  await page.getByText("患者マークを保存しました。").waitFor();
+  assert.equal((await call("GET", "/v1/eye/reception-settings")).body.settings.marks.find((mark) => mark.key === cane.key).active, false);
+
+  // 診療時間・予約枠: 15 分枠、9:00〜11:30。同じ週のほかの 1 日を休診にする
+  const jst = new Date(Date.now() + 9 * 3600000);
+  const today = jst.toISOString().slice(0, 10);
+  const weekday = jst.getUTCDay();
+  const keys = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+  const closedIndex = weekday === 6 ? 5 : weekday + 1;
+  const closedDate = new Date(Date.parse(`${today}T00:00:00Z`) + (closedIndex - weekday) * 86400000).toISOString().slice(0, 10);
+  const hours = (await call("GET", "/v1/eye/clinic-config/clinicHours")).body;
+  const days = Object.fromEntries(keys.map((key, index) => [key, index === closedIndex ? [] : [{ from: "09:00", to: "11:30" }]]));
+  const savedHours = await call("PUT", "/v1/eye/clinic-config/clinicHours", { expectedRevision: hours.revision, value: { slotMinutes: 15, days, note: "" } });
+  assert.equal(savedHours.status, 200);
+  await page.goto(`${baseUrl}/reception/schedule`);
+  await page.getByRole("heading", { name: "予約状況", exact: true }).waitFor();
+  const dayLabel = (iso) => `${Number(iso.slice(5, 7))}月${Number(iso.slice(8, 10))}日\\(.\\)`;
+  await page.getByRole("button", { name: new RegExp(`^${dayLabel(today)} 9:15 予約\\d+件$`, "u") }).waitFor();
+  assert.equal(await page.getByRole("img", { name: new RegExp(`^${dayLabel(today)} 11:30 休診$`, "u") }).count(), 1, "a slot after closing time cannot be booked");
+  assert.equal(await page.locator(".bk-hour").filter({ hasText: /^8:00$/u }).count(), 0, "the grid starts at the clinic opening hour");
+  assert.equal(await page.getByRole("img", { name: new RegExp(`^${dayLabel(closedDate)} 10:00 休診$`, "u") }).count(), 1, "a closed day cannot be booked");
+  assert.equal(await page.locator(".bk-day-head.is-closed .bk-closed-tag").count(), 1);
+  await page.getByRole("button", { name: new RegExp(`^${dayLabel(today)} 9:15 予約\\d+件$`, "u") }).click();
+  const booking = page.getByRole("dialog", { name: "予約登録" });
+  assert.equal(await booking.getByLabel("予約時間").inputValue(), "09:15");
+  assert.equal(await booking.getByLabel("予約時間").getAttribute("step"), "900", "the time input steps by the slot length");
+  await booking.getByLabel("予約時間").fill("13:00");
+  await booking.getByText(/診療時間外です/u).waitFor();
+  await booking.getByRole("button", { name: "キャンセル" }).click();
+  // 元に戻す（未設定なら 8〜18 時・30 分）
+  await call("PUT", "/v1/eye/clinic-config/clinicHours", { expectedRevision: savedHours.body.revision, value: { slotMinutes: 30, days: Object.fromEntries(keys.map((key) => [key, []])), note: "" } });
+
+  // 受付一覧: 1366×768 で既定の列は横にスクロールしない。生年月日は「表示する列」で出せる
+  await page.evaluate(() => window.localStorage.removeItem("halunasu-eye-reception-columns"));
+  await page.goto(`${baseUrl}/reception`);
+  const table = page.getByRole("table", { name: "受付一覧" });
+  await page.locator(".rc-row").first().waitFor();
+  assert.equal(await table.locator("th.rc-col-birth").count(), 0, "the birth date column is hidden by default");
+  const fits = await page.locator(".rc-table-wrap").evaluate((node) => ({ scroll: node.scrollWidth, client: node.clientWidth }));
+  assert.ok(fits.scroll <= fits.client + 1, `the reception table fits at 1366x768: ${JSON.stringify(fits)}`);
+  await page.getByRole("button", { name: "▼ 絞り込み" }).click();
+  await page.getByRole("dialog", { name: "絞り込み" }).getByRole("checkbox", { name: "生年月日" }).check();
+  await table.locator("th.rc-col-birth").waitFor();
+  await page.keyboard.press("Escape");
+  await page.evaluate(() => window.localStorage.removeItem("halunasu-eye-reception-columns"));
+
+  // 副作用薬は患者帯のアレルギーの隣に短く（どの画面でも見える）
+  const found = (await call("POST", "/v1/eye/patients/search", { q: "試験" })).body.patients[0];
+  const profile = (await call("GET", `/v1/eye/patients/${found.patientId}/profile`)).body.profile;
+  const savedProfile = await call("PUT", `/v1/eye/patients/${found.patientId}/profile/sections`, { expectedRevision: profile.revision || 0, section: "adverseDrugs", value: [{ name: "ロキソプロフェン", reaction: "胃痛" }, { name: "アトロピン点眼", reaction: "" }, { name: "セフカペン", reaction: "発疹" }] });
+  assert.equal(savedProfile.status, 200);
+  await page.goto(`${baseUrl}/patients/${found.patientId}`);
+  const badge = page.locator(".patient-banner .adverse-badge");
+  await badge.waitFor();
+  assert.equal((await badge.innerText()).trim(), "副作用薬: ロキソプロフェン、アトロピン点眼 ほか1");
+  assert.match(await badge.getAttribute("title"), /ロキソプロフェン（胃痛）、アトロピン点眼、セフカペン（発疹）/u);
+  const flags = await page.locator(".patient-banner-flags").boundingBox();
+  const badgeBox = await badge.boundingBox();
+  assert.ok(badgeBox.x + badgeBox.width <= flags.x + flags.width + 1, "the adverse drug badge stays inside the banner");
+
+  assert.deepEqual(pageErrors, []);
+  await context.close();
 }

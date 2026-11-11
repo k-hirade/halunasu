@@ -128,7 +128,8 @@ export const TEMPLATE_PLACEHOLDERS = ["患者氏名", "フリガナ", "生年月
 export const DOC_TYPE_LABELS = { referral: "紹介状", reply: "返書", certificate: "診断書", other: "その他" };
 
 // ───────── 受付ラベル・患者マーク・診療時間 ─────────
-export const LABEL_TONE_OPTIONS = [["teal", "緑"], ["blue", "青"], ["amber", "黄"], ["red", "赤"], ["gray", "灰"]];
+// 患者マークの色（受付の画面の rc-mark と同じ名前）
+export const MARK_TONE_OPTIONS = [["teal", "青緑"], ["blue", "青"], ["green", "緑"], ["amber", "黄"], ["red", "赤"], ["neutral", "灰"]];
 export const WEEKDAY_LABELS = [["mon", "月"], ["tue", "火"], ["wed", "水"], ["thu", "木"], ["fri", "金"], ["sat", "土"], ["sun", "日"], ["holiday", "祝"]];
 export const SLOT_MINUTE_OPTIONS = [10, 15, 20, 30, 60];
 

@@ -24,22 +24,28 @@ export const RECEPTION_COLUMNS = Object.freeze([
   { key: "billing", label: "会計" },
   { key: "progress", label: "進捗" },
   { key: "dilation", label: "散瞳" },
-  { key: "wait", label: "待ち時間" }
+  { key: "wait", label: "待ち時間", short: "待ち" }
 ]);
 
 // スマホ幅の端末で、まだ列を選んでいないときに隠しておく列（氏名・状態・待ちを 1 画面に収める）
 export const NARROW_HIDDEN_COLUMNS = Object.freeze(["checkin", "location", "number", "birth", "department", "doctor", "previous", "patientMemo"]);
 export const NARROW_MAX_WIDTH = 720;
+// どの幅でも、まだ列を選んでいないときは隠しておく列（絞り込みの「表示する列」でいつでも出せる）。
+// デジカルの受付一覧の既定の表示に無い列で、1366×768 で既定の列が横にスクロールせずに入るようにする。
+// 生年月日は年齢の列で足りる。目的はデジカルでは保険の位置の列で、初診かどうかは前回受付日の「初」で分かる。
+// 場所（トプコン）は行の中で変える操作があるので隠さない
+export const WIDE_HIDDEN_COLUMNS = Object.freeze(["birth", "purpose"]);
 // 1366px 未満（1280 のノート PC・タブレット）で、まだ列を選んでいないときに隠しておく列。
-// 会計・進捗・行の操作が最初の表示で見えるよう、受付の操作に要らない列を外す（絞り込みの「表示する列」で戻せる）
-export const MEDIUM_HIDDEN_COLUMNS = Object.freeze(["department", "doctor", "patientMemo"]);
+// 会計・進捗・行の操作が最初の表示で見えるよう、受付の操作に要らない列を外す（絞り込みの「表示する列」で戻せる）。
+// 診療科・医師・患者メモを外した分、目的は出す
+export const MEDIUM_HIDDEN_COLUMNS = Object.freeze(["birth", "department", "doctor", "patientMemo"]);
 export const MEDIUM_MAX_WIDTH = 1365;
 
 // 画面幅ごとの既定の隠す列（端末に記憶した列があればそちらを使う）
 export function defaultHiddenColumns(width) {
   if (width <= NARROW_MAX_WIDTH) return [...NARROW_HIDDEN_COLUMNS];
   if (width <= MEDIUM_MAX_WIDTH) return [...MEDIUM_HIDDEN_COLUMNS];
-  return [];
+  return [...WIDE_HIDDEN_COLUMNS];
 }
 export const DEFAULT_SORT = Object.freeze({ key: "no", dir: "asc" });
 // 取消は既定で出さない（デジカルも取消した受付は一覧から消え、受付編集履歴で見る）

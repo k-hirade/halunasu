@@ -635,6 +635,19 @@ Object.assign(STATES, {
   "settings-hours-edit": settingsButton("settingsHours", "✎ 編集"),
   "settings-labels": { path: "settingsLabels" },
   "settings-labels-edit": settingsButton("settingsLabels", "＋ ラベルを追加"),
+  // ---- replicate-2 の統合（rep2-reconcile）: 施設管理の受付ラベル・患者マークは受付の設定を読み書きする。診療時間を予約状況・予約登録に使う ----
+  "settings-labels-mark-edit": settingsButton("settingsLabels", "＋ マークを追加"),
+  "reception-schedule-hours": { path: "schedule", run: async (page) => { await withAuditClinicHours(page); } },
+  "reception-schedule-hours-booking": {
+    path: "schedule",
+    run: async (page) => {
+      await withAuditClinicHours(page);
+      await page.locator("button.bk-slot:not(.is-past)").filter({ hasNot: page.locator(".bk-count") }).first().click();
+      const dialog = page.getByRole("dialog", { name: "予約登録" });
+      await dialog.getByLabel("予約時間").fill("13:00");
+      await page.waitForTimeout(200);
+    }
+  },
   "settings-lab": { path: "settingsLab" },
   "settings-lab-edit": settingsButton("settingsLab", "＋ 院内検査項目を追加"),
   "settings-templates": { path: "settingsTemplates" },
@@ -978,6 +991,30 @@ async function seedReceptionRep2(page) {
     await apiCall(page, "POST", `/v1/eye/appointments/${item.appointmentId}/status`, { expectedRevision: item.revision, status: "waiting_doctor" }).catch(() => null);
   }
   return { booked: booked?.appointmentId || "", visit: visit?.appointmentId || "" };
+}
+
+// 撮影用の診療時間（この画面だけ API の応答を差し替える。ほかの状態の撮影には影響しない）:
+// 15 分枠、月火木金 9:00〜12:30・14:30〜18:00、水・土は午前だけ、日曜は休診
+function auditClinicHours() {
+  return {
+  slotMinutes: 15,
+  days: {
+    mon: [{ from: "09:00", to: "12:30" }, { from: "14:30", to: "18:00" }],
+    tue: [{ from: "09:00", to: "12:30" }, { from: "14:30", to: "18:00" }],
+    wed: [{ from: "09:00", to: "12:30" }],
+    thu: [{ from: "09:00", to: "12:30" }, { from: "14:30", to: "18:00" }],
+    fri: [{ from: "09:00", to: "12:30" }, { from: "14:30", to: "18:00" }],
+    sat: [{ from: "09:00", to: "12:30" }],
+    sun: [],
+    holiday: []
+  },
+  note: "日曜・祝日は休診"
+  };
+}
+async function withAuditClinicHours(page) {
+  await page.route(/\/v1\/eye\/clinic-config\/clinicHours$/u, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ section: "clinicHours", value: auditClinicHours(), revision: 1, updatedAt: "", updatedBy: null }) }));
+  await page.reload({ waitUntil: "networkidle" });
+  await page.locator(".bk-day-head.is-closed").first().waitFor();
 }
 
 // 画面の中から eye-api を呼ぶ（ログインの Cookie と CSRF をそのまま使う）。

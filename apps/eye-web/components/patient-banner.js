@@ -22,6 +22,7 @@ export function PatientBanner({ patient, profile, context, onProfileSaved, actio
   const flags = (
     <div className="patient-banner-flags">
       <AllergyBadge profile={profile} />
+      <AdverseDrugBadge profile={profile} />
       {active.slice(0, shown).map((item) => (
         <span className={`tag ${isSuspectedDiagnosis(item) ? "tag-warn" : ""}`} key={item.diagnosisId || item.name}>
           {item.primary ? "★" : ""}{EYE_LABELS[item.eye]} {item.name}{isSuspectedDiagnosis(item) ? "（疑い）" : ""}
@@ -75,6 +76,19 @@ export function AllergyBadge({ profile }) {
   }
   if (profile.noKnownAllergies) return <span className="allergy-badge is-none">アレルギーなし（確認済み）</span>;
   return <span className="allergy-badge is-unknown">アレルギー未確認</span>;
+}
+
+// 副作用薬（左「副作用薬等」で登録した薬）。デジカルと同じく注意として、アレルギーの隣に短く出す（2 つまで。残りは「ほか n」と title）。
+export function AdverseDrugBadge({ profile, max = 2 }) {
+  const drugs = (profile?.adverseDrugs || []).filter((item) => item?.name);
+  if (!drugs.length) return null;
+  const text = (item) => `${item.name}${item.reaction ? `（${item.reaction}）` : ""}`;
+  const full = drugs.map(text).join("、");
+  return (
+    <span aria-label={`副作用薬: ${full}`} className="allergy-badge adverse-badge" role="status" title={`副作用薬: ${full}`}>
+      副作用薬: {drugs.slice(0, max).map((item) => item.name).join("、")}{drugs.length > max ? ` ほか${drugs.length - max}` : ""}
+    </span>
+  );
 }
 
 // カルテの「既往」の行からも同じダイアログを開く（追加の export。患者帯の表示・props は変えていない）。

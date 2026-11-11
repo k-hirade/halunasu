@@ -84,7 +84,7 @@ import {
   buildAppointment,
   isActiveAppointment
 } from "./appointments.js";
-import { advancedPatientSearch, loadPatientMarks, parseAdvancedSearch, routeReception } from "./reception.js";
+import { advancedPatientSearch, loadPatientMarks, loadReceptionSettings, parseAdvancedSearch, routeReception } from "./reception.js";
 import { billingCsv, buildBillingEncounter, handoffListItem, handoffSnapshotOf, handoffStatus } from "./billing.js";
 import {
   applyDocumentUpdate,
@@ -238,8 +238,8 @@ async function routeEyeApiRequest(input = {}) {
       loadEyeStaff(platformStore, eyeStore, orgId).catch(() => []),
       // 医療機関情報（設定）。読めなくても起動は止めず、基本の施設情報で紙を作る。
       loadFacilitySettings(eyeStore, orgId),
-      // 施設管理の追加の設定（受付ラベル・帳票設定など）。読めなくても起動は止めず、既定の値を使う。
-      loadClinicConfig(eyeStore, orgId, ["labLists", "receptionLabels", "clinicHours", "printSettings", "otherSettings"])
+      // 施設管理の追加の設定（診療時間・帳票設定など。受付ラベル・患者マークは受付の設定 /v1/eye/reception-settings）。読めなくても起動は止めず、既定の値を使う。
+      loadClinicConfig(eyeStore, orgId, ["labLists", "clinicHours", "printSettings", "otherSettings"])
     ]);
     const printNames = Object.fromEntries(staff.map((item) => [item.memberId, item.resolvedName]));
     return ok({
@@ -249,7 +249,7 @@ async function routeEyeApiRequest(input = {}) {
       facilitySettings: facilitySettingsView(facilitySettings),
       // オーダーの候補 = 既定の候補 + 施設管理の院内検査項目（有効なもの）
       drugPresets, orderSets, setFolders, phrases, orderCatalog: [...DEFAULT_ORDER_CATALOG, ...labCatalogItems(clinicConfig.labLists.value)], printNames,
-      clinicConfig: { receptionLabels: clinicConfig.receptionLabels.value, clinicHours: clinicConfig.clinicHours.value, printSettings: clinicConfig.printSettings.value, otherSettings: clinicConfig.otherSettings.value } });
+      clinicConfig: { clinicHours: clinicConfig.clinicHours.value, printSettings: clinicConfig.printSettings.value, otherSettings: clinicConfig.otherSettings.value } });
   }
 
   // 公開マスター（医薬品・傷病名・修飾語・診療行為）の検索。語は患者の情報ではないので URL で受け取る。
@@ -358,11 +358,11 @@ async function routeEyeApiRequest(input = {}) {
     const patients = await platformStore.listPatients(orgId);
     const bundles = [];
     for (const patient of patients) bundles.push(await exportPatient(eyeStore, orgId, patient));
-    const [drugPresets, orderSets, setFolders, phrases, facilitySettings, clinicConfig] = await Promise.all([eyeStore.listDrugPresets(orgId), eyeStore.listOrderSets(orgId), eyeStore.listSetFolders(orgId), eyeStore.listPhrases(orgId), loadFacilitySettings(eyeStore, orgId), loadClinicConfig(eyeStore, orgId)]);
+    const [drugPresets, orderSets, setFolders, phrases, facilitySettings, clinicConfig, receptionSettings] = await Promise.all([eyeStore.listDrugPresets(orgId), eyeStore.listOrderSets(orgId), eyeStore.listSetFolders(orgId), eyeStore.listPhrases(orgId), loadFacilitySettings(eyeStore, orgId), loadClinicConfig(eyeStore, orgId), loadReceptionSettings(eyeStore, orgId)]);
     await audit({ eventType: "eye.clinic_exported", targetType: "organization", targetId: orgId, safePayload: { patientCount: bundles.length } });
     // 施設管理の追加の設定は保存したものだけを入れる（形は { 項目: { value, revision } }）
     const savedConfig = Object.fromEntries(Object.entries(clinicConfig).filter(([, item]) => item.revision > 0));
-    return ok({ format: "halunasu-eye-export-v1", exportedAt: now, orgId, settings: { drugPresets, orderSets, setFolders, phrases, ...(facilitySettings ? { facilitySettings: facilitySettingsView(facilitySettings) } : {}), ...(Object.keys(savedConfig).length ? { clinicConfig: savedConfig } : {}) }, patients: bundles });
+    return ok({ format: "halunasu-eye-export-v1", exportedAt: now, orgId, settings: { drugPresets, orderSets, setFolders, phrases, ...(facilitySettings ? { facilitySettings: facilitySettingsView(facilitySettings) } : {}), ...(Object.keys(savedConfig).length ? { clinicConfig: savedConfig } : {}), ...(receptionSettings.revision > 0 || receptionSettings.legacyRevision ? { receptionSettings } : {}) }, patients: bundles });
   }
 
   if (method === "POST" && matches(parts, ["v1", "eye", "patients"])) {

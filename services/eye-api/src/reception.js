@@ -25,6 +25,7 @@ export const DEFAULT_PATIENT_MARKS = Object.freeze([
 const MAX_LABELS = 40;
 const MAX_LABEL_LENGTH = 20;
 const MAX_MARKS = 20;
+const MAX_MARK_LABEL_LENGTH = 12;
 const MARK_KEY = /^[a-z0-9_-]{1,24}$/u;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/u;
 const ADVANCED_SCAN_LIMIT = 3000;
@@ -32,14 +33,45 @@ const ADVANCED_RANGE_DAYS = 3660;
 
 // ---- 受付の設定 ----
 
-export function receptionSettingsView(settings) {
-  return {
+// 受付ラベル・患者マークの保存先はここ（eye_reception_settings）だけ。施設管理の「受付ラベル・患者マーク」もこの API を読み書きする。
+// legacy: 施設管理の設定（clinic-config の receptionLabels）に以前保存された値。まだ取り込んでいなければ読むときに足す（消さない）。
+export function receptionSettingsView(settings, legacy = null) {
+  const view = {
     labels: Array.isArray(settings?.labels) ? settings.labels : [...DEFAULT_RECEPTION_LABELS],
     marks: Array.isArray(settings?.marks) ? settings.marks : DEFAULT_PATIENT_MARKS.map((mark) => ({ ...mark })),
     revision: settings?.revision || 0,
     updatedAt: settings?.updatedAt || "",
     updatedBy: settings?.updatedBy || null
   };
+  return mergeLegacyReceptionLabels(view, legacy, settings?.legacyRevision || 0);
+}
+
+const LEGACY_TONES = { teal: "teal", blue: "blue", amber: "amber", red: "red", gray: "neutral" };
+
+// 施設管理（clinic-config receptionLabels: labels[{ labelId, name, tone, active }], marks[{ markId, name, symbol, tone, active }]）の値を、
+// 受付の設定の形（labels: 名前の配列、marks: [{ key, label, symbol, tone, active? }]）に直して足す。名前が同じものは足さない。
+// 取り込んだ版（legacyRevision）を受付の設定の保存時に記録するので、受付の設定で消したものが戻ってくることはない。
+export function mergeLegacyReceptionLabels(view, legacy, mergedRevision = 0) {
+  if (!legacy?.value || !(legacy.revision > mergedRevision)) return view;
+  const labels = [...view.labels];
+  for (const item of Array.isArray(legacy.value.labels) ? legacy.value.labels : []) {
+    const name = String(item?.name || "").replace(/\s+/gu, " ").trim().slice(0, MAX_LABEL_LENGTH);
+    if (name && !labels.includes(name) && labels.length < MAX_LABELS) labels.push(name);
+  }
+  const marks = [...view.marks];
+  const keys = new Set(marks.map((mark) => mark.key));
+  const names = new Set(marks.map((mark) => mark.label));
+  for (const item of Array.isArray(legacy.value.marks) ? legacy.value.marks : []) {
+    const label = String(item?.name || "").replace(/\s+/gu, " ").trim().slice(0, MAX_MARK_LABEL_LENGTH);
+    const symbol = [...String(item?.symbol || "").trim()].slice(0, 2).join("");
+    if (!label || !symbol || names.has(label) || marks.length >= MAX_MARKS) continue;
+    let key = `c_${String(item.markId || "").toLowerCase().replace(/[^a-z0-9_-]/gu, "")}`.slice(0, 24);
+    for (let suffix = 2; !MARK_KEY.test(key) || keys.has(key); suffix += 1) key = `c_mark${marks.length}_${suffix}`.slice(0, 24);
+    keys.add(key);
+    names.add(label);
+    marks.push({ key, label, symbol, tone: LEGACY_TONES[item.tone] || "neutral", ...(item.active === false ? { active: false } : {}) });
+  }
+  return { ...view, labels, marks, legacyRevision: legacy.revision };
 }
 
 export function validateReceptionSettingsInput(input = {}) {
@@ -57,11 +89,12 @@ export function validateReceptionSettingsInput(input = {}) {
       if (!MARK_KEY.test(key) || keys.has(key)) throw validationError("mark key must be unique lower-case letters, digits, _ or -", `marks.${index}.key`);
       keys.add(key);
       const label = String(mark.label || "").replace(/\s+/gu, " ").trim();
-      if (!label || label.length > 12) throw validationError("mark label must be 1-12 characters", `marks.${index}.label`);
+      if (!label || label.length > MAX_MARK_LABEL_LENGTH) throw validationError(`mark label must be 1-${MAX_MARK_LABEL_LENGTH} characters`, `marks.${index}.label`);
       const symbol = String(mark.symbol || "").trim();
       if (!symbol || [...symbol].length > 2) throw validationError("mark symbol must be 1-2 characters", `marks.${index}.symbol`);
       const tone = MARK_TONES.includes(mark.tone) ? mark.tone : "neutral";
-      return { key, label, symbol, tone };
+      // active: false は「新しく付ける候補に出さない」だけ（付いている患者の表示は続ける）。省略は使う
+      return { key, label, symbol, tone, ...(mark.active === false ? { active: false } : {}) };
     });
   }
   return result;
@@ -254,6 +287,15 @@ export async function advancedPatientSearch({ platformStore, eyeStore, orgId, op
   return { patients: results, truncated };
 }
 
+// 施設管理（clinic-config）に以前保存された受付ラベル・患者マーク。読めなくても受付は止めない。
+export async function loadLegacyReceptionLabels(eyeStore, orgId) {
+  return Promise.resolve().then(() => eyeStore.getClinicConfig?.(orgId, "receptionLabels") ?? null).catch(() => null);
+}
+
+export async function loadReceptionSettings(eyeStore, orgId) {
+  return receptionSettingsView(eyeStore.getReceptionSettings ? await eyeStore.getReceptionSettings(orgId) : null, await loadLegacyReceptionLabels(eyeStore, orgId));
+}
+
 // ---- ルート ----
 
 export async function routeReception({ method, parts, url, input, context, orgId, actor, now, audit, eyeStore, platformStore, helpers }) {
@@ -263,7 +305,8 @@ export async function routeReception({ method, parts, url, input, context, orgId
     requireAccess(context, EYE_RECEPTION_ROLES, "Reception access is required");
     requirePlatformCsrf(input.headers || {}, context.session);
   };
-  const loadSettings = async () => receptionSettingsView(eyeStore.getReceptionSettings ? await eyeStore.getReceptionSettings(orgId) : null);
+  const loadLegacy = () => loadLegacyReceptionLabels(eyeStore, orgId);
+  const loadSettings = () => loadReceptionSettings(eyeStore, orgId);
 
   if (is("v1", "eye", "reception-settings")) {
     if (method === "GET") return ok({ settings: await loadSettings() });
@@ -271,10 +314,12 @@ export async function routeReception({ method, parts, url, input, context, orgId
       requireWrite();
       const validated = validateReceptionSettingsInput(input.body || {});
       const current = await eyeStore.getReceptionSettings(orgId);
-      const view = receptionSettingsView(current);
+      const view = receptionSettingsView(current, await loadLegacy());
+      const legacyRevision = view.legacyRevision ?? current?.legacyRevision;
       const saved = await eyeStore.saveReceptionSettings(orgId, {
         labels: validated.labels ?? view.labels,
         marks: validated.marks ?? view.marks,
+        ...(legacyRevision ? { legacyRevision } : {}),
         revision: (current?.revision || 0) + 1,
         createdAt: current?.createdAt || now,
         updatedAt: now,

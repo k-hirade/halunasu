@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AllergyBadge } from "./patient-banner";
+import { AdverseDrugBadge, AllergyBadge } from "./patient-banner";
 import { useEyeApi } from "./eye-api";
 import { PatientPhoto } from "./patient-photo";
 import {
@@ -52,7 +52,7 @@ export function PatientSummaryPane({ summary = null, loading = false, error = ""
               <div><dt>前回来院</dt><dd>{lastVisit ? <Breakable parts={[formatDate(lastVisit), `（${elapsedLabel(lastVisit, date)}経過）`]} /> : "初診"}</dd></div>
             </dl>
           ) : empty}
-          {profile ? <div className="ps-allergy"><AllergyBadge profile={profile} /></div> : null}
+          {profile ? <div className="ps-allergy"><AllergyBadge profile={profile} /><AdverseDrugBadge profile={profile} /></div> : null}
         </section>
         <section aria-label="本日予定" className="ps-cell ps-plan">
           <h3>本日予定</h3>

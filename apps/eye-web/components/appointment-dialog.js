@@ -5,8 +5,10 @@ import { useEffect, useRef, useState } from "react";
 import { BookingCalendar } from "./booking-calendar";
 import { useEyeApi } from "./eye-api";
 import { formatDayButton } from "./mini-calendar";
+import { useClinicSchedule } from "./use-clinic-hours";
 import { DEFAULT_DEPARTMENTS, doctorName, useDoctors } from "./use-doctors";
 import { APPOINTMENT_PURPOSE_LABELS, APPOINTMENT_STATUS_LABELS, patientLine, todayIso } from "../lib/format";
+import { outsideHoursNotice } from "../lib/booking-hours";
 import { receptionPrintHref } from "../lib/reception-extras";
 
 // 予約登録・受付登録・受付編集（デジカルの予約登録ダイアログと受付登録ダイアログ）。
@@ -17,6 +19,7 @@ import { receptionPrintHref } from "../lib/reception-extras";
 export function AppointmentDialog({ title, initial = {}, fixedPatient = null, appointment: editing = null, onCancel, onSaved }) {
   const api = useEyeApi();
   const doctors = useDoctors();
+  const schedule = useClinicSchedule();
   const [form, setForm] = useState(() => formFrom(editing, initial));
   const [editingItem, setEditingItem] = useState(editing);
   const [patient, setPatient] = useState(fixedPatient || (editing?.patientId ? snapshotPatient(editing) : null));
@@ -256,8 +259,10 @@ export function AppointmentDialog({ title, initial = {}, fixedPatient = null, ap
       <div className="ap-row">
         <label className="ap-label" htmlFor="ap-time">予約時間</label>
         <div className="ap-value ap-time">
-          <input className="input" id="ap-time" onChange={(event) => setForm({ ...form, time: event.target.value })} step="300" type="time" value={form.time} />
+          {/* 刻みは施設管理の予約枠（未設定は 5 分）。診療時間外・休診日は注意だけ出す（登録はできる） */}
+          <input className="input" id="ap-time" onChange={(event) => setForm({ ...form, time: event.target.value })} step={schedule.configured ? schedule.slotMinutes * 60 : 300} type="time" value={form.time} />
           <span className="muted small">空欄でも登録できます</span>
+          {!walkIn && outsideHoursNotice(schedule, form.date, form.time) ? <span className="ap-hours-note" role="status">{outsideHoursNotice(schedule, form.date, form.time)}</span> : null}
         </div>
       </div>
       <div className="ap-row">

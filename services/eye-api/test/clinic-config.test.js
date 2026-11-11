@@ -27,24 +27,22 @@ test("clinic config sections default, save with revisions by administrators only
   assert.equal(empty.body.clinicConfig.otherSettings.revision, 0);
   assert.equal((await request(stores, "GET", "/v1/eye/clinic-config/unknown", undefined, clerk)).statusCode, 404);
 
-  // 受付ラベル・患者マーク（受付の画面が読む）
-  const labels = { expectedRevision: 0, value: { labels: [{ name: "要散瞳", tone: "amber" }, { name: "車椅子", tone: "blue" }], marks: [{ name: "難聴", symbol: "耳", tone: "red" }] } };
-  assert.equal((await request(stores, "PUT", "/v1/eye/clinic-config/receptionLabels", labels, doctor)).statusCode, 403, "only administrators change settings");
+  // 受付ラベル・患者マークは受付の設定（/v1/eye/reception-settings）だけに保存する。この API の項目ではない
+  assert.equal((await request(stores, "GET", "/v1/eye/clinic-config/receptionLabels", undefined, clerk)).statusCode, 404);
+  assert.equal((await request(stores, "PUT", "/v1/eye/clinic-config/receptionLabels", { expectedRevision: 0, value: { labels: [{ name: "要散瞳" }] } }, director)).statusCode, 404);
+  assert.equal(empty.body.clinicConfig.receptionLabels, undefined);
+  const doctorWrite = await request(stores, "PUT", "/v1/eye/clinic-config/printSettings", { expectedRevision: 0, value: { letterSeal: false } }, doctor);
+  assert.equal(doctorWrite.statusCode, 403, "only administrators change settings");
   const { "x-csrf-token": _csrf, ...withoutCsrf } = director;
-  assert.equal((await request(stores, "PUT", "/v1/eye/clinic-config/receptionLabels", labels, withoutCsrf)).statusCode, 403);
-  assert.equal((await request(stores, "PUT", "/v1/eye/clinic-config/receptionLabels", { expectedRevision: 0, value: { labels: [{ name: "" }] } }, director)).body.field, "labels.0.name");
-  assert.equal((await request(stores, "PUT", "/v1/eye/clinic-config/receptionLabels", { expectedRevision: 0, value: { labels: [{ name: "x", tone: "pink" }] } }, director)).statusCode, 400);
-  const savedLabels = await request(stores, "PUT", "/v1/eye/clinic-config/receptionLabels", labels, director);
-  assert.equal(savedLabels.statusCode, 200);
-  assert.equal(savedLabels.body.revision, 1);
-  assert.match(savedLabels.body.value.labels[0].labelId, /^erlb_/u);
-  assert.equal(savedLabels.body.value.marks[0].symbol, "耳");
-  assert.equal(savedLabels.body.updatedBy.loginId, "eye-director");
-  assert.equal((await request(stores, "PUT", "/v1/eye/clinic-config/receptionLabels", labels, director)).statusCode, 409, "stale revision is rejected");
-  // ID を付けて送り直すと同じ ID のまま（受付の記録が参照し続けられる）
-  const renamed = await request(stores, "PUT", "/v1/eye/clinic-config/receptionLabels", { expectedRevision: 1, value: { ...savedLabels.body.value, labels: savedLabels.body.value.labels.map((item, index) => (index === 0 ? { ...item, name: "散瞳予定" } : item)) } }, director);
-  assert.equal(renamed.body.value.labels[0].labelId, savedLabels.body.value.labels[0].labelId);
-  assert.equal(renamed.body.value.labels[0].name, "散瞳予定");
+  assert.equal((await request(stores, "PUT", "/v1/eye/clinic-config/printSettings", { expectedRevision: 0, value: { letterSeal: false } }, withoutCsrf)).statusCode, 403);
+  const print = await request(stores, "PUT", "/v1/eye/clinic-config/printSettings", { expectedRevision: 0, value: { defaultHonorific: "先生", footerNote: "散瞳後は運転しないでください" } }, director);
+  assert.equal(print.statusCode, 200);
+  assert.equal(print.body.revision, 1);
+  assert.equal(print.body.updatedBy.loginId, "eye-director");
+  assert.equal((await request(stores, "PUT", "/v1/eye/clinic-config/printSettings", { expectedRevision: 0, value: {} }, director)).statusCode, 409, "stale revision is rejected");
+  assert.equal((await request(stores, "PUT", "/v1/eye/clinic-config/printSettings", { expectedRevision: 1, value: { defaultHonorific: "様" } }, director)).statusCode, 400);
+  const print2 = await request(stores, "PUT", "/v1/eye/clinic-config/printSettings", { expectedRevision: 1, value: { ...print.body.value, letterSeal: false } }, director);
+  assert.equal(print2.body.revision, 2);
 
   // 院内検査項目はオーダーの候補に加わる（停止中は出さない）
   const lab = await request(stores, "PUT", "/v1/eye/clinic-config/labLists", { value: { companies: [{ companyId: "c1", name: "中央検査センター", phone: "03-1111-2222" }], items: [{ name: "血液検査（糖尿病）", kind: "exam", requiresEye: false, companyId: "c1" }, { name: "停止中の項目", active: false }] } }, director);
@@ -57,8 +55,8 @@ test("clinic config sections default, save with revisions by administrators only
   assert.match(added.code, /^lab:/u);
   assert.equal(added.requiresEye, false);
   assert.equal(added.labCompany, "中央検査センター");
-  assert.equal(boot.body.clinicConfig.receptionLabels.labels[0].name, "散瞳予定");
-  assert.equal(boot.body.clinicConfig.printSettings.letterSeal, true);
+  assert.equal(boot.body.clinicConfig.receptionLabels, undefined);
+  assert.equal(boot.body.clinicConfig.printSettings.letterSeal, false);
 
   // 診療時間: 重なりと逆順は止める
   assert.equal((await request(stores, "PUT", "/v1/eye/clinic-config/clinicHours", { value: { slotMinutes: 15, days: { mon: [{ from: "09:00", to: "12:30" }, { from: "12:00", to: "18:00" }] } } }, director)).statusCode, 400);
@@ -69,13 +67,13 @@ test("clinic config sections default, save with revisions by administrators only
   assert.deepEqual(hours.body.value.days.thu, []);
 
   const exported = await request(stores, "GET", "/v1/eye/export", undefined, director);
-  assert.equal(exported.body.settings.clinicConfig.receptionLabels.revision, 2);
+  assert.equal(exported.body.settings.clinicConfig.printSettings.revision, 2);
+  assert.equal(exported.body.settings.receptionSettings, undefined, "unsaved reception settings are not exported");
   assert.equal(exported.body.settings.clinicConfig.docTemplates, undefined, "only saved sections are exported");
   const logs = await request(stores, "GET", "/v1/eye/audit-logs?category=settings", undefined, director);
-  const log = logs.body.auditLogs.find((item) => item.eventType === "eye.clinic_config_saved" && item.targetId === "receptionLabels");
+  const log = logs.body.auditLogs.find((item) => item.eventType === "eye.clinic_config_saved" && item.targetId === "printSettings");
   assert.ok(log);
-  assert.deepEqual(log.safePayload.counts, { labels: 2, marks: 1 });
-  assert.equal(JSON.stringify(log.safePayload).includes("散瞳"), false, "names are not written to the audit log");
+  assert.equal(JSON.stringify(log.safePayload).includes("散瞳"), false, "free text is not written to the audit log");
 });
 
 test("facility settings accept kana, representative, prescription route and invoice number", async () => {
