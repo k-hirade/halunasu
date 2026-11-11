@@ -45,6 +45,11 @@
 - 一括予約（06 の右下）: 複数の患者を選んで同じ枠に予約する機能は、患者検索の選択の仕組みが無いので今回は見送り。
 - マーク・ラベルの定義を設定画面で編集する UI: 設定画面は別の担当。ラベルは受付メモの［＋］から足せる。マークの定義は API（PUT reception-settings）で変えられ、既定の 8 種で始まる。
 
+## 残っている判断
+
+- 1366px で表の右の列（会計・進捗・散瞳・待ち時間）が横スクロールになる（比較 01 の指摘）。マーク・場所の列を足したので以前より広い。デジカルの受付一覧には生年月日の列が無いので、1366px 以上でも生年月日を既定で隠せば収まる見込み。ただし「1366px 以上は既定で全部の列を出す」はテスト（test/reception-responsive.test.mjs）で決めてあるので、今回は変えていない。
+- 患者マークの定義の編集画面（設定）。今は既定の 8 種と API だけ。
+
 ## ui-audit の状態名
 
 `reception-places`・`reception-status-menu`（-dark）・`reception-cancel`・`reception-memo-labels`・`reception-patient-memo`・`reception-marks`・`reception-history`・`reception-day-history`・`reception-search-options`・`reception-search-options-applied`・`reception-print-booking`・`reception-print-visit`・`reception-display`（-dark）。既存の `reception`・`reception-memo`・`reception-rowmenu`・`reception-walkin`・`reception-booking`・`reception-add-booking`・`reception-booking-calendar`・`reception-register`・`reception-search-results`・`reception-schedule` は新しい形で撮れる。

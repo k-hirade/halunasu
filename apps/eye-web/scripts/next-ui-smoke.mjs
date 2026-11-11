@@ -1375,6 +1375,7 @@ async function runReceptionRep2Flow(browser) {
   await memo.getByRole("button", { name: "紹介状あり", exact: true }).click();
   await memo.getByLabel("新しいラベル").fill("発熱あり");
   await memo.getByRole("button", { name: "足す" }).click();
+  await memo.getByRole("listitem").filter({ hasText: "発熱あり" }).waitFor();
   await memo.getByLabel("受付メモ", { exact: true }).fill("隔離室で待機");
   await memo.getByRole("button", { name: "登録" }).click();
   await memo.waitFor({ state: "detached" });

@@ -152,13 +152,13 @@ const STATES = {
   "reception-schedule": { path: "schedule" },
   "reception-schedule-dark": { path: "schedule" },
   // ---- replicate-2（受付）: 比較 PNG 01〜11 と「対応する画面がない機能」の撮影 ----
-  "reception-places": { path: "reception", run: async (page) => { await page.getByRole("tab", { name: /^受付\d/u }).click(); } },
+  "reception-places": { path: "reception", run: async (page) => { await page.locator(".rc-place-tab").nth(1).click(); } },
   "reception-status-menu": { path: "reception", run: async (page) => { await page.locator(".rc-row button.rc-status:not(:disabled)").first().click(); await page.getByRole("menu").first().waitFor(); } },
   "reception-status-menu-dark": { path: "reception", run: async (page) => { await page.locator(".rc-row button.rc-status:not(:disabled)").first().click(); await page.getByRole("menu").first().waitFor(); } },
   "reception-cancel": { path: "reception", run: async (page) => { await page.locator(".rc-row button.rc-status:not(:disabled)").first().click(); await page.getByRole("menuitemradio", { name: "受付取消" }).first().click(); await page.getByRole("alertdialog").waitFor(); } },
   "reception-memo-labels": { path: "reception", run: async (page) => { await page.locator(".rc-row").getByRole("button", { name: /の受付メモ/u }).first().click(); await page.getByRole("button", { name: "ラベルを追加" }).click(); } },
-  "reception-patient-memo": { path: "reception", run: async (page) => { await page.locator(".rc-row").getByRole("button", { name: /の患者メモ/u }).first().click(); await page.getByRole("dialog").first().waitFor(); } },
-  "reception-marks": { path: "reception", run: async (page) => { await page.locator(".rc-row .rc-marks-edit").first().click(); await page.getByRole("dialog", { name: /患者マーク/u }).waitFor(); } },
+  "reception-patient-memo": { path: "reception", run: async (page) => { await openRowMenuItem(page, "患者メモ"); await page.getByRole("dialog").first().waitFor(); } },
+  "reception-marks": { path: "reception", run: async (page) => { await openRowMenuItem(page, "患者マーク"); await page.getByRole("dialog", { name: /患者マーク/u }).waitFor(); } },
   "reception-history": { path: "reception", run: async (page) => { await page.locator(".rc-row summary[aria-label$='のその他の操作']").first().click(); await page.getByRole("button", { name: "受付編集履歴", exact: true }).first().click(); await page.getByRole("dialog").first().waitFor(); await page.waitForTimeout(500); } },
   "reception-day-history": { path: "reception", run: async (page) => { await page.getByRole("button", { name: "編集履歴", exact: true }).click(); await page.getByRole("dialog").first().waitFor(); } },
   "reception-search-options": {
@@ -540,6 +540,23 @@ async function openPassword(page, view) {
   return dialog;
 }
 
+// replicate-2: 行の「…」から項目を開く（その項目がある最初の行）
+async function openRowMenuItem(page, label) {
+  const rows = page.locator(".rc-row");
+  const count = await rows.count();
+  for (let index = 0; index < count; index += 1) {
+    const row = rows.nth(index);
+    await row.locator("summary").click();
+    const item = row.getByRole("button", { name: label, exact: true });
+    if (await item.count()) {
+      await item.click();
+      return;
+    }
+    await row.locator("summary").click();
+  }
+  throw new Error(`no row has ${label}`);
+}
+
 async function openRowBooking(page) {
   await page.locator(".rc-row", { hasText: "見本 花子" }).getByRole("button", { name: /の次回予約$/u }).first().click();
   const dialog = page.getByRole("dialog", { name: "予約登録" });
@@ -576,10 +593,11 @@ async function prepare(browser) {
   // 過去カルテのあるデモ患者で撮る。未受付なら受付してからカルテを開く。
   const row = page.locator(".rc-row", { hasText: "模擬 和子" });
   await row.waitFor();
-  // 予約済ならステータスのプルダウンで受付中にしてから、氏名を押してカルテを開く（来院済みの行はカルテを作って開く）
-  if ((await row.locator("select.rc-status").inputValue()) === "booked") {
-    await row.locator("select.rc-status").selectOption("checked_in");
-    await row.locator("select.rc-status.is-checked_in").waitFor();
+  // 予約済ならステータスのメニューで受付中にしてから、氏名を押してカルテを開く（来院済みの行はカルテを作って開く）
+  if ((await row.locator("button.rc-status").getAttribute("data-status")) === "booked") {
+    await row.locator("button.rc-status").click();
+    await row.getByRole("menuitemradio", { name: "受付中", exact: true }).click();
+    await row.locator("button.rc-status.is-checked_in").waitFor();
   }
   await row.locator(".rc-name").click();
   await page.waitForURL(/\/encounters\//u);

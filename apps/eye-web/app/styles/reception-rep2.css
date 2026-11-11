@@ -409,8 +409,13 @@ button.rc-status:disabled .rc-status-caret {
   white-space: nowrap;
 }
 
-.rc-history-change {
+.rc-history-table td {
+  white-space: nowrap;
+}
+
+.rc-history-table td.rc-history-change {
   min-width: 240px;
+  white-space: normal;
 }
 
 .dialog-backdrop.rc-history-detail-backdrop {
@@ -966,7 +971,7 @@ button.rc-status:disabled .rc-status-caret {
   align-content: start;
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(auto-fill, minmax(clamp(96px, 12vw, 200px), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(clamp(110px, 13vw, 220px), 1fr));
   list-style: none;
   margin: 0;
   padding: 0;
@@ -980,7 +985,7 @@ button.rc-status:disabled .rc-status-caret {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 8px;
-  font-size: clamp(36px, 6vw, 96px);
+  font-size: clamp(32px, 4.6vw, 80px);
   font-variant-numeric: tabular-nums;
   font-weight: 800;
   line-height: 1.2;
@@ -1013,6 +1018,29 @@ button.rc-status:disabled .rc-status-caret {
   .rcd-arrow {
     display: none;
   }
+}
+
+/* 受付一覧のカード（900px 以下）: マークは 1 段目の先頭（番号の前）に、見出しなしで置く。無ければ出さない（「…」の［患者マーク］から付ける） */
+@media (max-width: 900px) {
+  .rc-table td.rc-col-marks {
+    order: -5;
+    width: auto;
+  }
+
+  .rc-table td.rc-col-marks::before {
+    content: none !important;
+  }
+
+  .rc-table td.rc-col-marks:has(.rc-mark-empty) {
+    display: none;
+  }
+}
+
+/* ステータスのメニューの点は、選ぶ前でも状態が分かる濃さに */
+.rc-status-menu .rc-dot {
+  border-width: 3px;
+  height: 12px;
+  width: 12px;
 }
 
 /* 場所の選択は「暗室 ▾」が読める幅にする（表が横に広がらないよう余白は小さく） */

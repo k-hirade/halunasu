@@ -153,6 +153,7 @@ export function ReceptionMemoDialog({ appointment, labels: allLabels, onAddLabel
   const [text, setText] = useState(initialText);
   const [picking, setPicking] = useState(false);
   const [newLabel, setNewLabel] = useState("");
+  const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   useEscape(() => (picking ? setPicking(false) : onCancel()), busy);
@@ -162,8 +163,9 @@ export function ReceptionMemoDialog({ appointment, labels: allLabels, onAddLabel
   async function addNew(event) {
     event.preventDefault();
     const label = newLabel.replace(/\s+/gu, " ").trim();
-    if (!label) return;
+    if (!label || adding) return;
     setError("");
+    setAdding(true);
     try {
       if (!allLabels.includes(label)) await onAddLabel(label);
       setLabels((current) => (current.includes(label) ? current : [...current, label]));
@@ -171,6 +173,8 @@ export function ReceptionMemoDialog({ appointment, labels: allLabels, onAddLabel
       setPicking(false);
     } catch (nextError) {
       setError(nextError.message);
+    } finally {
+      setAdding(false);
     }
   }
 
@@ -220,14 +224,14 @@ export function ReceptionMemoDialog({ appointment, labels: allLabels, onAddLabel
                 placeholder="新しいラベル（医院の一覧に足します）"
                 value={newLabel}
               />
-              <button className="btn btn-ghost btn-sm" disabled={!newLabel.trim()} onClick={addNew} type="button">足す</button>
+              <button className="btn btn-ghost btn-sm" disabled={!newLabel.trim() || adding} onClick={addNew} type="button">{adding ? "足しています…" : "足す"}</button>
             </div>
           </div>
         ) : null}
         <textarea aria-label="受付メモ" autoFocus className="input" maxLength={1000} onChange={(event) => setText(event.target.value)} rows={8} value={text} />
         <div className="dialog-actions">
           <button className="btn btn-ghost" disabled={busy} onClick={onCancel} type="button">キャンセル</button>
-          <button className="btn btn-primary" disabled={busy || unchanged} type="submit">登録</button>
+          <button className="btn btn-primary" disabled={busy || adding || unchanged} type="submit">登録</button>
         </div>
       </form>
     </div>
