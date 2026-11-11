@@ -192,12 +192,14 @@
   pointer-events: none;
   position: absolute;
   z-index: 2;
+  /* 透かしの文字は紙面の高さに合わせて縮める（横向きのスマホの低い紙面で、斜めの文字が枠からはみ出さないように） */
+  container-type: size;
 }
 
 .print-watermark span {
   border: 3px solid var(--paper-mark);
   color: var(--paper-mark);
-  font-size: 54pt;
+  font-size: min(54pt, 16cqh);
   font-weight: 700;
   letter-spacing: 0.1em;
   opacity: 0.1;

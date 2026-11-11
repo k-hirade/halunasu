@@ -492,6 +492,13 @@
   }
 }
 
+/* 右の紙面は横に並ぶ見本の列。画面の 6 割までにして、入力の列を広く残す（紙面は幅に合わせて縮む） */
+@media (min-width: 1100px) {
+  .doc-workspace:not(.is-readonly) .doc-preview-pane {
+    max-width: 60vw;
+  }
+}
+
 @media (max-width: 719px) {
   .doc-head-actions {
     width: 100%;
