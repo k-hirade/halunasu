@@ -162,6 +162,15 @@ const STATES = {
       await page.waitForTimeout(1200);
     }
   },
+  // ==== replicate-2 eye: 概要の右の縦のランチャー（1280px 以上。狭い幅では概要の見出しの操作のまま） ====
+  "home-launcher": {
+    path: "home",
+    run: async (page) => {
+      await page.getByRole("tab", { name: /^全て/u }).click().catch(() => null);
+      await page.locator(".cl-row").first().click();
+      await page.waitForTimeout(1200);
+    }
+  },
   "home-tasks": { path: "home", run: async (page) => { await page.getByRole("tab", { name: /^未確定カルテ/u }).click(); await page.waitForTimeout(500); } },
   "home-all": { path: "home", run: async (page) => { await page.getByRole("tab", { name: /^全て/u }).click(); await page.waitForTimeout(500); } },
   search: {
@@ -254,6 +263,23 @@ const STATES = {
   "editor-finalized": { path: finalizedPath },
   "editor-versions": { path: finalizedPath, run: async (page) => { await page.getByRole("button", { name: /^版履歴/u }).first().click(); await page.getByRole("dialog", { name: "版履歴" }).waitFor(); } },
   "editor-shortcuts": { path: editorPath, run: async (page) => { await page.getByRole("button", { name: "ショートカット一覧" }).click(); await page.getByRole("dialog", { name: "ショートカット" }).waitFor(); } },
+  // ==== replicate-2 eye: シェーマの道具（四角・斜線の塗りで描いた状態） ====
+  "editor-schema-tools": {
+    path: editorPath,
+    run: async (page) => {
+      await page.locator(".sketch-add").click();
+      await page.getByRole("dialog").getByRole("button", { name: "右眼角膜" }).click();
+      const dialog = page.getByRole("dialog");
+      await dialog.getByRole("button", { name: "四角", exact: true }).click();
+      await dialog.getByRole("button", { name: "塗り 斜線" }).click();
+      const box = await page.locator(".sketch-editor .sketch-canvas").boundingBox();
+      await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.3);
+      await page.mouse.down();
+      await page.mouse.move(box.x + box.width * 0.55, box.y + box.height * 0.5, { steps: 5 });
+      await page.mouse.up();
+      await page.waitForTimeout(300);
+    }
+  },
   "editor-schema-pick": { path: editorPath, run: async (page) => { await page.locator(".sketch-add").click(); await page.getByRole("dialog").first().waitFor(); } },
   "editor-schema": {
     path: editorPath,
@@ -295,6 +321,9 @@ const STATES = {
     }
   },
   "exam-data": { path: "exam", run: async (page) => { await page.getByRole("button", { name: "データ表示" }).click(); await page.getByRole("dialog").first().waitFor(); } },
+  // ==== replicate-2 eye: データ表示（レポート）の前回・機器データ取込 ====
+  "exam-data-previous": { path: "exam", run: async (page) => { await page.getByRole("button", { name: "データ表示" }).click(); const dialog = page.getByRole("dialog").first(); await dialog.waitFor(); const previous = dialog.getByRole("button", { name: "前回" }); if (await previous.count()) await previous.click(); await page.waitForTimeout(300); } },
+  "exam-import": { path: "exam", run: async (page) => { await page.getByRole("button", { name: "機器データ取込" }).click(); await page.getByLabel("機器データ（貼り付け）").fill("<R>\nS-1.25 C-0.50 A180\nS-1.50 C-0.50 A178\n<L>\nS-2.00 C-0.75 A90\nPD 63"); await page.locator(".rd-import-lines").waitFor(); } },
   "exam-checklist": { path: "exam", run: async (page) => { await page.getByRole("button", { name: "＋ 検査を追加" }).click(); await page.waitForTimeout(400); } },
   "exam-bottom": { path: "exam", run: async (page) => { await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight)); await page.waitForTimeout(300); } },
 
@@ -307,6 +336,12 @@ const STATES = {
   "patient-file": { path: "patient", run: async (page) => { await page.locator("button.thumb, button:has(> .side-row-title)").first().click(); await page.waitForTimeout(600); } },
   images: { path: "images" },
   "images-ou": { path: "images", run: async (page) => { await page.getByRole("button", { name: "OU", exact: true }).click(); await page.waitForTimeout(500); } },
+  // ==== replicate-2 eye: IOL 管理・術前検査・顔写真の拡大・経過（Follow-up）・従来の比較 ====
+  "patient-iol": { path: "patient", run: async (page) => { await page.getByRole("tab", { name: "IOL", exact: true }).click(); await page.locator(".iol-eye").first().waitFor(); await page.waitForTimeout(300); } },
+  "patient-preop": { path: "patient", run: async (page) => { await page.getByRole("tab", { name: "術前検査", exact: true }).click(); await page.locator(".preop-eye").first().waitFor(); await page.waitForTimeout(300); } },
+  "patient-photo": { path: "patient", run: async (page) => { await page.locator(".patient-banner .pt-photo").first().click(); await page.getByRole("dialog", { name: "顔写真" }).waitFor(); await page.waitForTimeout(400); } },
+  "images-followup": { path: "images", run: async (page) => { await page.getByRole("button", { name: "経過", exact: true }).click(); await page.locator(".cmp-followup-row").first().waitFor(); await page.waitForTimeout(500); } },
+  "images-compare": { path: "images", run: async (page) => { await page.getByRole("button", { name: "比較", exact: true }).click(); await page.waitForTimeout(500); } },
   "images-series": { path: "images", run: async (page) => { await page.getByRole("button", { name: "時系列", exact: true }).click(); await page.waitForTimeout(500); } },
 
   // 会計連携
@@ -623,6 +658,7 @@ async function prepare(browser) {
   const billingIds = wants("billing") || wants("editor") || wants("reception") ? await seedBilling(page) : [];
   if (wants("settings")) await seedSettings(page);
   if (wants("patient") || wants("images")) await uploadSampleImages(page, patientHref);
+  if (wants("patient")) await seedIol(page, patientHref);
   const storageState = await context.storageState();
   await context.close();
   return {
@@ -741,6 +777,20 @@ async function seedSettings(page) {
 }
 
 // デモ患者にはファイルがないので、画像の比較を撮るために OCT 2 件と眼底写真 1 件を取り込む。
+// ==== replicate-2 eye: IOL 管理・術前検査の撮影用に、右眼の挿入済みと左眼の予定を入れる ====
+async function seedIol(page, patientHref) {
+  const patientId = patientHref.split("/").filter(Boolean).at(-1);
+  const current = await apiCall(page, "GET", `/v1/eye/patients/${patientId}/iol`);
+  if (current.iol.records.length) return;
+  await apiCall(page, "PUT", `/v1/eye/patients/${patientId}/iol`, {
+    expectedRevision: current.iol.revision,
+    records: [
+      { eye: "od", status: "implanted", model: "SN60WF", manufacturer: "Alcon", lensType: "monofocal", power: 21.5, aConstant: 119, targetRefraction: -0.5, axialLength: 23.45, acd: 3.12, formula: "SRK/T", placement: "bag", surgeryDate: "2026-10-01", surgeon: "院長" },
+      { eye: "os", status: "planned", model: "ZCB00", manufacturer: "J&J", lensType: "monofocal", power: 22, aConstant: 119.3, targetRefraction: -0.5, axialLength: 23.2, acd: 3.05, formula: "SRK/T", placement: "bag", surgeryDate: "2026-12-03", note: "右眼の結果を見て度数を最終決定" }
+    ]
+  });
+}
+
 async function uploadSampleImages(page, patientHref) {
   const dir = join(outDir, "fixtures");
   mkdirSync(dir, { recursive: true });
@@ -748,7 +798,10 @@ async function uploadSampleImages(page, patientHref) {
     { name: "oct-old.png", hue: 0, kind: "oct", eye: "od", daysAgo: 120, title: "OCT 黄斑 右" },
     { name: "oct-new.png", hue: 1, kind: "oct", eye: "od", daysAgo: 21, title: "OCT 黄斑 右" },
     { name: "oct-new-l.png", hue: 2, kind: "oct", eye: "os", daysAgo: 21, title: "OCT 黄斑 左" },
-    { name: "fundus.png", hue: 2, kind: "fundus_photo", eye: "ou", daysAgo: 21, title: "眼底写真" }
+    { name: "fundus.png", hue: 2, kind: "fundus_photo", eye: "ou", daysAgo: 21, title: "眼底写真" },
+    // replicate-2 eye: 顔写真（帯・カルテ概要に出る）と、経過の基準の段に並ぶ古い眼底写真
+    { name: "fundus-old.png", hue: 1, kind: "fundus_photo", eye: "ou", daysAgo: 120, title: "眼底写真" },
+    { name: "face.png", hue: 0, kind: "face_photo", eye: "ou", daysAgo: 300, title: "顔写真" }
   ];
   await page.goto(baseUrl + patientHref);
   for (const sample of samples) {

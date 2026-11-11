@@ -302,15 +302,16 @@
   margin: 10px 0 0;
 }
 
+/* IOL の表は列が多いので眼ごとに縦に積む（術前検査は左右に並べる） */
 @media (min-width: 900px) {
-  .iol-eyes,
   .preop-eyes {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
 
-  .iol-table {
-    min-width: 0;
-  }
+.iol-table td.mono,
+.iol-table .tag {
+  white-space: nowrap;
 }
 
 /* ---- 診察: 概要の右の縦のランチャー（home-workspace.js の ConsultLauncher） ---- */
