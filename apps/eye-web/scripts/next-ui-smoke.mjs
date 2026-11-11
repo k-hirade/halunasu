@@ -39,6 +39,7 @@ try {
   try {
     await runDoctorFlow(browser);
     await runReceptionFlow(browser);
+    await runReceptionRep2Flow(browser);
     await runOrthoptistFlow(browser);
     await runReceptionResponsiveChecks(browser);
   } finally {
@@ -764,7 +765,8 @@ async function runReceptionFlow(browser) {
   await table.waitFor();
   assert.equal(await page.locator(".flow-chips, .flow-group").count(), 0, "no grouped list and no count chips");
   const headers = await table.locator("thead .rc-sort").allInnerTexts();
-  assert.deepEqual(headers.map((text) => text.replace(/[▲▼↕]/gu, "").trim()).slice(0, 8), ["番号", "予約時間", "受付時間", "ステータス", "患者番号", "氏名", "生年月日", "年齢"]);
+  // 先頭はトプコンの患者マーク、ステータスの後はトプコンの場所（replicate-2）
+  assert.deepEqual(headers.map((text) => text.replace(/[▲▼↕]/gu, "").trim()).slice(0, 10), ["マーク", "番号", "予約時間", "受付時間", "ステータス", "場所", "患者番号", "氏名", "生年月日", "年齢"]);
   assert.deepEqual(headers.map((text) => text.replace(/[▲▼↕]/gu, "").trim()).slice(-4), ["会計", "進捗", "散瞳", "待ち時間"]);
   await page.getByText("全 0件").waitFor();
 
@@ -788,8 +790,8 @@ async function runReceptionFlow(browser) {
   assert.equal((await row.locator(".rc-col-no").innerText()).trim(), "-");
   assert.equal((await row.locator(".rc-col-time").innerText()).trim(), "09:30");
   await row.locator(".rc-col-doctor").getByText("医師").waitFor();
-  // 予約済をステータスのプルダウンで受付中にすると受付になる（番号 001）
-  await row.getByLabel("試験 一郎 のステータス").selectOption("checked_in");
+  // 予約済をステータスのメニューで受付中にすると受付になる（番号 001）
+  await pickStatus(row, "試験 一郎", "checked_in");
   await waitForStatus(row, "checked_in");
   assert.equal((await row.locator(".rc-col-no").innerText()).trim(), "001");
 
@@ -814,11 +816,14 @@ async function runReceptionFlow(browser) {
   await registerDialog.getByRole("button", { name: "登録して受付に紐づける" }).click();
   await walkIn.getByText("未登録").waitFor({ state: "detached" });
 
-  // ステータスはプルダウンでどこへでも（処置中・不在・予約済へ戻す）。受付し直しても番号は最初のまま
-  const menu = await walkIn.locator("select.rc-status option").allInnerTexts();
-  assert.deepEqual(menu, ["予約済", "受付中", "診察待", "診察中", "検査中", "処置中", "会計待", "会計済", "再計待", "不在", "取消"]);
+  // ステータスはメニューでどこへでも（処置中・不在・予約済へ戻す）。受付し直しても番号は最初のまま。取消は最後（確認つき）
+  await walkIn.getByRole("button", { name: "飛込 花子 のステータス", exact: true }).click();
+  const menu = (await walkIn.getByRole("menuitemradio").allInnerTexts()).map((text) => text.replace("✓", "").trim());
+  assert.deepEqual(menu, ["予約済", "受付中", "診察待", "診察中", "検査中", "処置中", "会計待", "会計済", "再計待", "不在", "受付取消"]);
+  assert.equal(await walkIn.getByRole("menuitemradio", { name: "再計待" }).isDisabled(), true, "再計待 is derived from billing");
+  await page.keyboard.press("Escape");
   for (const status of ["in_treatment", "absent", "booked", "checked_in"]) {
-    await walkIn.getByLabel("飛込 花子 のステータス").selectOption(status);
+    await pickStatus(walkIn, "飛込 花子", status);
     await waitForStatus(walkIn, status);
   }
   assert.equal((await walkIn.locator(".rc-col-no").innerText()).trim(), "002", "the queue number stays from the first check-in");
@@ -889,9 +894,9 @@ async function runReceptionFlow(browser) {
   assert.equal((await added.locator(".rc-col-no").innerText()).trim(), "003");
 
   // 状態を進める（検査中 → 診察待）
-  await row.getByLabel("試験 一郎 のステータス").selectOption("in_exam");
+  await pickStatus(row, "試験 一郎", "in_exam");
   await waitForStatus(row, "in_exam");
-  await row.getByLabel("試験 一郎 のステータス").selectOption("waiting_doctor");
+  await pickStatus(row, "試験 一郎", "waiting_doctor");
   await waitForStatus(row, "waiting_doctor");
   // 予約状況の画面（受付の［予約状況］から）: 週 × 時間の表に件数が出る
   await page.getByRole("link", { name: "予約状況" }).click();
@@ -1310,14 +1315,204 @@ async function login(page, loginId, password = LOCAL_PASSWORD) {
   await page.getByRole("button", { name: "確認" }).click();
 }
 
-// 受付一覧の行のステータス（プルダウンの値）
+// ---- replicate-2（受付）: 患者マーク・場所・受付メモのラベル・患者メモ・受付編集履歴・受付票と予約票・受付取消・院内掲示・検索オプション・大きなダイアログ ----
+async function runReceptionRep2Flow(browser) {
+  const context = await browser.newContext({ viewport: { width: 1366, height: 900 } });
+  const page = await context.newPage();
+  const pageErrors = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await login(page, "clerk");
+  // 6 桁コードは同じ時間枠では 1 回しか使えない（直前の受付の流れで使った）。拒まれたら次の時間枠のコードで入り直す
+  if (!(await page.locator(".eh-user-button").waitFor({ timeout: 8000 }).then(() => true).catch(() => false))) {
+    await page.waitForTimeout(31_000);
+    await page.getByLabel("6桁コード").fill(currentLocalTotp());
+    await page.getByRole("button", { name: "確認" }).click();
+    await page.locator(".eh-user-button").waitFor();
+  }
+  await page.goto(`${baseUrl}/reception`);
+  await page.getByRole("heading", { name: "受付", exact: true }).waitFor();
+  const today = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+  const seeded = await page.evaluate(async ({ today }) => {
+    const csrf = decodeURIComponent((document.cookie.match(/(?:^|; )halunasu_csrf=([^;]*)/u) || [])[1] || "");
+    const call = async (method, path, body) => {
+      const response = await fetch(`/api/eye${path}`, { method, credentials: "include", headers: { "content-type": "application/json", "x-csrf-token": csrf }, body: body ? JSON.stringify(body) : undefined });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(`${method} ${path} ${response.status} ${JSON.stringify(payload).slice(0, 200)}`);
+      return payload;
+    };
+    const { patient } = await call("POST", "/v1/eye/patients", { displayName: "目印 花子", displayNameKana: "メジルシ ハナコ", birthDate: "1960-02-03", sex: "female", primaryPatientNumber: "R2001", contact: { phone1: "03-5555-0123" } });
+    const { appointment } = await call("POST", "/v1/eye/appointments", { date: today, patientId: patient.patientId, walkIn: true, purpose: "revisit" });
+    // 院内掲示の確認用に、診察待の受付をもう 1 件
+    const { appointment: waiting } = await call("POST", "/v1/eye/appointments", { date: today, patientName: "掲示 次郎", walkIn: true, purpose: "revisit" });
+    await call("POST", `/v1/eye/appointments/${waiting.appointmentId}/status`, { expectedRevision: waiting.revision, status: "waiting_doctor" });
+    return { patientId: patient.patientId, appointmentId: appointment.appointmentId, waitingNumber: String(waiting.queueNumber).padStart(3, "0") };
+  }, { today });
+  await page.getByRole("button", { name: "受付一覧を更新" }).click();
+  const row = page.locator(".rc-row").filter({ hasText: "目印 花子" });
+  await row.waitFor();
+
+  // 患者マーク（トプコンの患者マーキング）: 行頭を押して付ける。毎回の受付に出る
+  await row.getByRole("button", { name: "目印 花子 のマーク: なし" }).click();
+  const marks = page.getByRole("dialog", { name: /患者マーク/u });
+  await marks.getByLabel("車椅子").check();
+  await marks.getByLabel("難聴").check();
+  await marks.getByRole("button", { name: "登録" }).click();
+  await row.getByRole("button", { name: "目印 花子 のマーク: 難聴・車椅子" }).waitFor();
+  assert.deepEqual(await row.locator(".rc-mark").allInnerTexts(), ["耳", "車"]);
+
+  // 場所（トプコンの場所一覧）: 受付中は「受付」。暗室に移すと暗室のタブで絞れる
+  assert.equal(await row.getByLabel("目印 花子 の場所").inputValue(), "reception");
+  await row.getByLabel("目印 花子 の場所").selectOption("darkroom");
+  await page.locator(".rc-place-tab", { hasText: "暗室" }).locator(".rc-place-count").filter({ hasText: /^1$/u }).waitFor();
+  await page.getByRole("tab", { name: /^暗室/u }).click();
+  assert.equal(await page.locator(".rc-row").count(), 1, "the darkroom tab shows only patients in the darkroom");
+  await page.getByRole("tab", { name: /^すべて/u }).click();
+
+  // 受付メモ（デジカルの受付メモ）: ラベルのチップ＋［＋］で医院のラベルを選ぶ・新しく足す
+  await row.getByRole("button", { name: /目印 花子 の受付メモ/u }).click();
+  const memo = page.getByRole("dialog", { name: /受付メモ/u });
+  await memo.getByRole("button", { name: "ラベルを追加" }).click();
+  await memo.getByRole("button", { name: "紹介状あり", exact: true }).click();
+  await memo.getByLabel("新しいラベル").fill("発熱あり");
+  await memo.getByRole("button", { name: "足す" }).click();
+  await memo.getByLabel("受付メモ", { exact: true }).fill("隔離室で待機");
+  await memo.getByRole("button", { name: "登録" }).click();
+  await memo.waitFor({ state: "detached" });
+  // セルにはラベルのチップと本文（幅を超えた分は省略するので、名前で確かめる）
+  await row.getByRole("button", { name: "目印 花子 の受付メモ: 紹介状あり ・ 発熱あり ・ 隔離室で待機" }).waitFor();
+  assert.deepEqual(await row.locator(".rc-col-receptionMemo .rc-label-chip").allInnerTexts(), ["紹介状あり", "発熱あり"]);
+  const settings = await page.evaluate(async () => (await (await fetch("/api/eye/v1/eye/reception-settings", { credentials: "include" })).json()).settings);
+  assert.ok(settings.labels.includes("発熱あり"), "a new label is added to the clinic's list");
+
+  // 患者メモは行の「…」から（デジカルの患者メモ）
+  await row.locator("summary").click();
+  await row.getByRole("button", { name: "患者メモ", exact: true }).click();
+  await page.getByRole("dialog", { name: /患者メモ/u }).getByLabel("患者メモ").fill("右耳が聞こえにくい");
+  await page.getByRole("dialog", { name: /患者メモ/u }).getByRole("button", { name: "登録" }).click();
+  await page.getByRole("dialog", { name: /患者メモ/u }).waitFor({ state: "detached" });
+
+  // 受付編集履歴（1 件）: 作成・ステータス・場所とラベルの変更
+  await row.locator("summary").click();
+  await row.getByRole("button", { name: "受付編集履歴", exact: true }).click();
+  const history = page.getByRole("dialog", { name: /受付の詳細履歴/u });
+  await history.getByText("受付を作成").waitFor();
+  await history.getByText(/場所: 受付 → 暗室|場所: （なし） → 暗室/u).waitFor();
+  await history.getByText(/ラベル: （なし） → 紹介状あり、発熱あり/u).waitFor();
+  await page.keyboard.press("Escape");
+  await history.waitFor({ state: "detached" });
+
+  // 受付票（トプコンの受診票）: 別のタブで印刷画面
+  await row.locator("summary").click();
+  const [visitSlip] = await Promise.all([context.waitForEvent("page"), row.getByRole("button", { name: "受付票を印刷", exact: true }).click()]);
+  await visitSlip.getByRole("heading", { name: "受付票" }).waitFor();
+  await visitSlip.locator(".rcp-number-value").waitFor();
+  await visitSlip.getByText("R2001").waitFor();
+  await visitSlip.close();
+
+  // 受付取消（デジカルのステータスの「取消」）: 確認してから取消。一覧からは消えるが、絞り込みで取消を選ぶと見える
+  await row.getByRole("button", { name: "目印 花子 のステータス", exact: true }).click();
+  await row.getByRole("menuitemradio", { name: "受付取消", exact: true }).click();
+  const cancel = page.getByRole("alertdialog", { name: "受付を取り消しますか？" });
+  await cancel.getByText("記録は消えません").waitFor();
+  await cancel.getByRole("button", { name: "受付を取り消す" }).click();
+  await row.waitFor({ state: "detached" });
+  await page.getByText(/目印 花子 の受付を取り消しました/u).waitFor();
+  await page.getByRole("button", { name: "▼ 絞り込み" }).click();
+  await page.getByRole("dialog", { name: "絞り込み" }).getByRole("checkbox", { name: /取消/u }).check();
+  await page.keyboard.press("Escape");
+  await waitForStatus(row, "cancelled");
+  await page.getByRole("button", { name: "絞り込みを解除" }).click();
+
+  // 受付編集履歴（その日）: 取り消した受付も出る。［詳細］で 1 件の履歴
+  await page.getByRole("button", { name: "編集履歴", exact: true }).click();
+  const dayHistory = page.getByRole("dialog", { name: /受付編集履歴/u });
+  const dayRow = dayHistory.locator("tr").filter({ hasText: "目印 花子" });
+  await dayRow.getByText("取消").waitFor();
+  await dayRow.getByRole("button", { name: "詳細" }).click();
+  await page.getByRole("dialog", { name: /受付の詳細履歴/u }).getByText(/ステータスを「取消」に変更/u).waitFor();
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await dayHistory.waitFor({ state: "detached" });
+
+  // 予約登録（デジカルの予約登録）: 大きな 2 列のダイアログ。「予約票を印刷する」で登録のあと予約票を開く
+  await page.getByRole("button", { name: "予約を追加" }).click();
+  const booking = page.getByRole("dialog", { name: "予約登録" });
+  assert.ok((await booking.boundingBox()).width >= 1000, "the booking dialog is wide like DigiKar's");
+  await booking.getByLabel("患者を検索").fill("メジルシ");
+  await booking.getByRole("button", { name: /目印 花子/u }).click();
+  await booking.getByLabel("予約時間").fill("15:30");
+  await booking.getByLabel("受付メモ", { exact: true }).fill("次回は視野検査");
+  await booking.getByLabel("予約票を印刷する").check();
+  await booking.getByLabel("受付メモを備考に印字する").check();
+  const [bookingSlip] = await Promise.all([context.waitForEvent("page"), booking.getByRole("button", { name: "登録", exact: true }).click()]);
+  await bookingSlip.getByRole("heading", { name: "予約票" }).waitFor();
+  await bookingSlip.getByText("15:30").waitFor();
+  await bookingSlip.getByText("次回は視野検査").waitFor();
+  await bookingSlip.close();
+  // 予約状況カレンダーは画面いっぱいの大きさ
+  await page.getByRole("button", { name: "予約を追加" }).click();
+  await page.getByRole("dialog", { name: "予約登録" }).getByRole("button", { name: "予約状況" }).click();
+  assert.ok((await page.locator(".ap-dialog.is-calendar").boundingBox()).width >= 1250, "the booking calendar uses most of the screen");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+
+  // 患者検索の検索オプション（デジカルの ▼）: 電話番号で探す。条件は「条件を外す」で消える
+  const search = await searchPatient(page, "");
+  await search.getByRole("button", { name: "検索オプション" }).click();
+  const options = search.getByRole("group", { name: "検索オプション" });
+  for (const label of ["診療履歴", "傷病名", "電話番号"]) await options.getByLabel(label, { exact: true }).waitFor();
+  await options.getByLabel("受診期間の開始").waitFor();
+  await options.getByLabel("電話番号", { exact: true }).fill("5555-0123");
+  await options.getByRole("button", { name: "検索", exact: true }).click();
+  await search.locator(".ps-options-applied").getByText(/電話番号「5555-0123」/u).waitFor();
+  await search.locator(".ps-row").filter({ hasText: "目印 花子" }).waitFor();
+  await search.locator(".ps-caption").filter({ hasText: /^1件/u }).waitFor();
+  assert.deepEqual(await search.locator(".ps-row").filter({ hasText: "目印 花子" }).locator(".rc-mark").allInnerTexts(), ["耳", "車"], "search rows show patient marks");
+  await search.getByRole("button", { name: "条件を外す" }).click();
+  await search.locator(".ps-options-applied").waitFor({ state: "detached" });
+  // 新規患者登録は 1 列の大きなフォーム（デジカルの患者情報登録）
+  await search.getByRole("button", { name: "新規患者登録" }).click();
+  const register = page.getByRole("dialog", { name: "新規患者を登録" });
+  assert.ok((await register.boundingBox()).width >= 780, "the registration form is a large single-column dialog");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+
+  // 院内掲示（デジカルの受付番号院内掲示）: 診察待・診察中の番号だけを大きく出す（氏名は出さない）
+  await page.goto(`${baseUrl}/reception/display`);
+  const board = page.getByRole("main", { name: "受付番号の院内掲示" });
+  await board.locator(".rcd-panel.is-waiting .rcd-number").filter({ hasText: seeded.waitingNumber }).waitFor();
+  assert.equal(await board.getByText("掲示 次郎").count(), 0, "the board never shows names");
+
+  // 後の流れ（診察待の人数など）に影響しないよう、ここで足した受付は取消にしておく（記録は残る）
+  await page.evaluate(async ({ today }) => {
+    const csrf = decodeURIComponent((document.cookie.match(/(?:^|; )halunasu_csrf=([^;]*)/u) || [])[1] || "");
+    const call = async (method, path, body) => (await fetch(`/api/eye${path}`, { method, credentials: "include", headers: { "content-type": "application/json", "x-csrf-token": csrf }, body: body ? JSON.stringify(body) : undefined })).json();
+    const { appointments } = await call("GET", `/v1/eye/appointments?date=${today}`);
+    for (const item of appointments.filter((row) => ["目印 花子", "掲示 次郎"].includes(row.patientName) && row.status !== "cancelled")) {
+      await call("POST", `/v1/eye/appointments/${item.appointmentId}/status`, { expectedRevision: item.revision, status: "cancelled" });
+    }
+  }, { today });
+
+  assert.deepEqual(pageErrors, []);
+  await context.close();
+}
+
+// 受付一覧の行のステータス（ボタンの data-status）
 async function statusOf(row) {
-  return row.locator("select.rc-status").inputValue();
+  return row.locator("button.rc-status").getAttribute("data-status");
 }
 
 async function waitForStatus(row, status) {
-  await row.locator(`select.rc-status.is-${status}`).waitFor();
+  await row.locator(`button.rc-status.is-${status}`).waitFor();
   assert.equal(await statusOf(row), status);
+}
+
+
+// ステータスのボタンを押してメニューから選ぶ（デジカルの「診察待 ▾」）
+async function pickStatus(row, name, status) {
+  const labels = { booked: "予約済", checked_in: "受付中", waiting_doctor: "診察待", in_consult: "診察中", in_exam: "検査中", in_treatment: "処置中", checkout: "会計待", done: "会計済", absent: "不在", cancelled: "受付取消" };
+  await row.getByRole("button", { name: `${name} のステータス`, exact: true }).click();
+  await row.getByRole("menu", { name: `${name} のステータスを変える` }).getByRole("menuitemradio", { name: labels[status], exact: true }).click();
 }
 
 // 同じ氏名の行（同じ患者の複数の受付）のステータスが条件を満たすまで待つ
@@ -1325,7 +1520,7 @@ async function waitForRowStatuses(page, name, predicate, timeoutMs = 10_000) {
   const started = Date.now();
   let values = [];
   while (Date.now() - started < timeoutMs) {
-    values = await page.locator(".rc-row").filter({ hasText: name }).locator("select.rc-status").evaluateAll((nodes) => nodes.map((node) => node.value));
+    values = await page.locator(".rc-row").filter({ hasText: name }).locator("button.rc-status").evaluateAll((nodes) => nodes.map((node) => node.dataset.status));
     if (predicate(values)) return values;
     await page.waitForTimeout(200);
   }

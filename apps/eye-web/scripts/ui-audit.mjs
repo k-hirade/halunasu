@@ -151,6 +151,38 @@ const STATES = {
   },
   "reception-schedule": { path: "schedule" },
   "reception-schedule-dark": { path: "schedule" },
+  // ---- replicate-2（受付）: 比較 PNG 01〜11 と「対応する画面がない機能」の撮影 ----
+  "reception-places": { path: "reception", run: async (page) => { await page.getByRole("tab", { name: /^受付\d/u }).click(); } },
+  "reception-status-menu": { path: "reception", run: async (page) => { await page.locator(".rc-row button.rc-status:not(:disabled)").first().click(); await page.getByRole("menu").first().waitFor(); } },
+  "reception-status-menu-dark": { path: "reception", run: async (page) => { await page.locator(".rc-row button.rc-status:not(:disabled)").first().click(); await page.getByRole("menu").first().waitFor(); } },
+  "reception-cancel": { path: "reception", run: async (page) => { await page.locator(".rc-row button.rc-status:not(:disabled)").first().click(); await page.getByRole("menuitemradio", { name: "受付取消" }).first().click(); await page.getByRole("alertdialog").waitFor(); } },
+  "reception-memo-labels": { path: "reception", run: async (page) => { await page.locator(".rc-row").getByRole("button", { name: /の受付メモ/u }).first().click(); await page.getByRole("button", { name: "ラベルを追加" }).click(); } },
+  "reception-patient-memo": { path: "reception", run: async (page) => { await page.locator(".rc-row").getByRole("button", { name: /の患者メモ/u }).first().click(); await page.getByRole("dialog").first().waitFor(); } },
+  "reception-marks": { path: "reception", run: async (page) => { await page.locator(".rc-row .rc-marks-edit").first().click(); await page.getByRole("dialog", { name: /患者マーク/u }).waitFor(); } },
+  "reception-history": { path: "reception", run: async (page) => { await page.locator(".rc-row summary[aria-label$='のその他の操作']").first().click(); await page.getByRole("button", { name: "受付編集履歴", exact: true }).first().click(); await page.getByRole("dialog").first().waitFor(); await page.waitForTimeout(500); } },
+  "reception-day-history": { path: "reception", run: async (page) => { await page.getByRole("button", { name: "編集履歴", exact: true }).click(); await page.getByRole("dialog").first().waitFor(); } },
+  "reception-search-options": {
+    path: "reception",
+    run: async (page) => {
+      await page.getByRole("button", { name: "患者検索（/）" }).click();
+      await page.getByRole("dialog", { name: "患者検索" }).getByRole("button", { name: "検索オプション" }).click();
+    }
+  },
+  "reception-search-options-applied": {
+    path: "reception",
+    run: async (page) => {
+      await page.getByRole("button", { name: "患者検索（/）" }).click();
+      const dialog = page.getByRole("dialog", { name: "患者検索" });
+      await dialog.getByRole("button", { name: "検索オプション" }).click();
+      await dialog.getByRole("button", { name: "今月" }).click();
+      await dialog.getByRole("button", { name: "検索", exact: true }).click();
+      await page.waitForTimeout(900);
+    }
+  },
+  "reception-print-booking": { path: "receptionPrintBooking" },
+  "reception-print-visit": { path: "receptionPrintVisit" },
+  "reception-display": { path: "receptionDisplay" },
+  "reception-display-dark": { path: "receptionDisplay" },
   // 診察（/）
   home: { path: "home" },
   "home-dark": { path: "home" },
@@ -622,6 +654,7 @@ async function prepare(browser) {
   // 確定済みのカルテ（版履歴・次へ の受付の状態の撮影用）は会計連携の準備で作る。受付一覧の会計待・会計済の行もここで入る
   const billingIds = wants("billing") || wants("editor") || wants("reception") ? await seedBilling(page) : [];
   if (wants("settings")) await seedSettings(page);
+  const receptionIds = wants("reception") ? await seedReceptionRep2(page) : {};
   if (wants("patient") || wants("images")) await uploadSampleImages(page, patientHref);
   const storageState = await context.storageState();
   await context.close();
@@ -632,6 +665,9 @@ async function prepare(browser) {
       home: "/",
       reception: "/reception",
       schedule: "/reception/schedule",
+      receptionPrintBooking: receptionIds.booked ? `/reception/print/${receptionIds.booked}?kind=booking&memo=1` : "/reception",
+      receptionPrintVisit: receptionIds.visit ? `/reception/print/${receptionIds.visit}?kind=visit` : "/reception",
+      receptionDisplay: "/reception/display",
       patient: patientHref,
       images: `${patientHref}/images`,
       editor: encounterPath,
@@ -651,6 +687,30 @@ async function prepare(browser) {
       settingsAudit: "/settings#audit"
     }
   };
+}
+
+// ---- replicate-2（受付）の撮影用データ: 患者マーク・受付のラベルと場所・診察待の番号。予約票・受付票の受付 ID を返す ----
+async function seedReceptionRep2(page) {
+  const today = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+  const { appointments } = await apiCall(page, "GET", `/v1/eye/appointments?date=${today}`);
+  const booked = appointments.find((item) => item.status === "booked" && item.patientId);
+  const arrived = appointments.filter((item) => item.queueNumber && item.patientId && !["cancelled", "done"].includes(item.status));
+  const marked = [...new Set(appointments.filter((item) => item.patientId).map((item) => item.patientId))].slice(0, 3);
+  const sets = [["wheelchair", "hearing"], ["caution"], ["child", "documents"]];
+  for (const [index, patientId] of marked.entries()) {
+    await apiCall(page, "PUT", `/v1/eye/patients/${patientId}/marks`, { expectedRevision: 0, marks: sets[index] }).catch(() => null);
+  }
+  if (booked) await apiCall(page, "PATCH", `/v1/eye/appointments/${booked.appointmentId}/reception`, { expectedRevision: booked.revision, receptionLabels: ["紹介状あり"] }).catch(() => null);
+  const visit = arrived[0];
+  if (visit) {
+    const moved = await apiCall(page, "POST", `/v1/eye/appointments/${visit.appointmentId}/status`, { expectedRevision: visit.revision, status: "checked_in" }).catch(() => null);
+    const current = moved?.appointment || visit;
+    await apiCall(page, "PATCH", `/v1/eye/appointments/${visit.appointmentId}/reception`, { expectedRevision: current.revision, location: "darkroom", receptionLabels: ["散瞳予定"] }).catch(() => null);
+  }
+  for (const item of arrived.slice(1, 3)) {
+    await apiCall(page, "POST", `/v1/eye/appointments/${item.appointmentId}/status`, { expectedRevision: item.revision, status: "waiting_doctor" }).catch(() => null);
+  }
+  return { booked: booked?.appointmentId || "", visit: visit?.appointmentId || "" };
 }
 
 // 画面の中から eye-api を呼ぶ（ログインの Cookie と CSRF をそのまま使う）。

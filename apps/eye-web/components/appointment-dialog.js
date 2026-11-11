@@ -7,6 +7,7 @@ import { useEyeApi } from "./eye-api";
 import { formatDayButton } from "./mini-calendar";
 import { DEFAULT_DEPARTMENTS, doctorName, useDoctors } from "./use-doctors";
 import { APPOINTMENT_PURPOSE_LABELS, APPOINTMENT_STATUS_LABELS, patientLine, todayIso } from "../lib/format";
+import { receptionPrintHref } from "../lib/reception-extras";
 
 // 予約登録・受付登録・受付編集（デジカルの予約登録ダイアログと受付登録ダイアログ）。
 // - 予約（walkIn なし）: 左にこの患者の予約一覧（✎ 編集・取消・カルテ）、右に予約フォーム（予約日＋予約状況・医師・診療科・目的・予約時間（空欄可）・受付メモ）。
@@ -28,6 +29,9 @@ export function AppointmentDialog({ title, initial = {}, fixedPatient = null, ap
   const [confirmCancel, setConfirmCancel] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // 印刷（デジカルの「予約票」「受付メモを備考に印字する」、トプコンの受診票）。登録のあと別のタブで印刷画面を開く
+  const [printSlip, setPrintSlip] = useState(false);
+  const [printMemo, setPrintMemo] = useState(false);
   const touched = useRef({ doctor: Boolean(initial.doctorMemberId || editing), department: Boolean(initial.department || editing) });
   const walkIn = Boolean(form.walkIn) && !editingItem;
   // 来院済みの受付の編集（受付編集）は 1 列。予約の登録・編集は左に予約一覧を出す 2 列
@@ -109,6 +113,9 @@ export function AppointmentDialog({ title, initial = {}, fixedPatient = null, ap
     event.preventDefault();
     setBusy(true);
     setError("");
+    // 印刷のタブは押した直後に開いておく（保存を待ってから開くとポップアップとして止められる）
+    const printKind = !printSlip ? "" : walkIn || (editingItem && editingItem.status !== "booked") ? "visit" : "booking";
+    const printWindow = printKind ? window.open("about:blank", "_blank") : null;
     try {
       let saved;
       if (editingItem) {
@@ -139,8 +146,10 @@ export function AppointmentDialog({ title, initial = {}, fixedPatient = null, ap
           }
         })).appointment;
       }
+      if (printWindow) printWindow.location.href = receptionPrintHref(saved.appointmentId, printKind, { memo: printKind === "booking" && printMemo });
       onSaved(saved);
     } catch (nextError) {
+      printWindow?.close();
       setError(nextError.message);
       setBusy(false);
     }
@@ -253,8 +262,22 @@ export function AppointmentDialog({ title, initial = {}, fixedPatient = null, ap
       </div>
       <div className="ap-row">
         <label className="ap-label" htmlFor="ap-memo">受付メモ</label>
-        <textarea className="input ap-value" id="ap-memo" maxLength={1000} onChange={(event) => setForm({ ...form, note: event.target.value })} placeholder="例: 視野検査あり・散瞳予定" rows={3} value={form.note} />
+        <textarea className="input ap-value" id="ap-memo" maxLength={1000} onChange={(event) => setForm({ ...form, note: event.target.value })} placeholder="例: 視野検査あり・散瞳予定" rows={4} value={form.note} />
       </div>
+      <div className="ap-row ap-print-row">
+        <span className="ap-label">印刷</span>
+        <div className="ap-value ap-print">
+          {walkIn || (editingItem && editingItem.status !== "booked") ? (
+            <label className="ap-check"><input checked={printSlip} onChange={(event) => setPrintSlip(event.target.checked)} type="checkbox" />受付票を印刷する</label>
+          ) : (
+            <>
+              <label className="ap-check"><input checked={printSlip} onChange={(event) => setPrintSlip(event.target.checked)} type="checkbox" />予約票を印刷する</label>
+              <label className="ap-check"><input checked={printMemo} disabled={!printSlip} onChange={(event) => setPrintMemo(event.target.checked)} type="checkbox" />受付メモを備考に印字する</label>
+            </>
+          )}
+        </div>
+      </div>
+      {walkIn ? <p className="muted small ap-insurance-note">保険・公費・資格確認はレセコンで入力します。</p> : null}
     </>
   );
 

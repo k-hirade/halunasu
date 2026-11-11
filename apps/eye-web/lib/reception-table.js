@@ -3,11 +3,14 @@ import { formatBirthDateJp, normalizeAppointmentStatus } from "@halunasu/eye-con
 
 // 列の並び（デジカルの「表示する項目」の順）。保険はレセコンで扱うので出さず、その位置に眼科の「目的」を置く。
 // 進捗・散瞳・待ち時間は眼科独自の列で、最後に並べる。
+// 先頭の「マーク」はトプコンの患者マーキング（車椅子・難聴など）、ステータスの後の「場所」はトプコンの場所一覧（受付・検査・暗室…）。
 export const RECEPTION_COLUMNS = Object.freeze([
+  { key: "marks", label: "マーク" },
   { key: "no", label: "番号" },
   { key: "time", label: "予約時間" },
   { key: "checkin", label: "受付時間" },
   { key: "status", label: "ステータス" },
+  { key: "location", label: "場所" },
   { key: "number", label: "患者番号" },
   { key: "name", label: "氏名", fixed: true },
   { key: "birth", label: "生年月日" },
@@ -25,7 +28,7 @@ export const RECEPTION_COLUMNS = Object.freeze([
 ]);
 
 // スマホ幅の端末で、まだ列を選んでいないときに隠しておく列（氏名・状態・待ちを 1 画面に収める）
-export const NARROW_HIDDEN_COLUMNS = Object.freeze(["checkin", "number", "birth", "department", "doctor", "previous", "patientMemo"]);
+export const NARROW_HIDDEN_COLUMNS = Object.freeze(["checkin", "location", "number", "birth", "department", "doctor", "previous", "patientMemo"]);
 export const NARROW_MAX_WIDTH = 720;
 // 1366px 未満（1280 のノート PC・タブレット）で、まだ列を選んでいないときに隠しておく列。
 // 会計・進捗・行の操作が最初の表示で見えるよう、受付の操作に要らない列を外す（絞り込みの「表示する列」で戻せる）
@@ -121,7 +124,7 @@ export function filterAppointments(rows, filters = DEFAULT_FILTERS, extras = {})
     if (filters.hiddenStatuses.includes(displayStatusOf(row))) return false;
     if (filters.hiddenDoctors.includes(row.doctorMemberId || UNSET)) return false;
     if (filters.hiddenDepartments.includes(row.department || UNSET)) return false;
-    if (receptionMemo && !String(row.receptionMemo ?? row.note ?? "").includes(receptionMemo)) return false;
+    if (receptionMemo && ![row.receptionMemo ?? row.note ?? "", ...(row.receptionLabels || [])].join("\n").includes(receptionMemo)) return false;
     if (patientMemo && !String(extras[row.patientId]?.patientMemo || "").includes(patientMemo)) return false;
     return true;
   });

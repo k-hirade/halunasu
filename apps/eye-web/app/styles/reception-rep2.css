@@ -1,0 +1,1021 @@
+/* replicate-2（受付）: デジカル・トプコンに合わせた受付の追加分。色はすべてトークン。
+ * 受付一覧のマーク・場所・ステータスのメニュー、受付メモのラベル、患者マーク、受付編集履歴、
+ * 予約・受付登録・患者登録の大きなフォーム、患者検索の検索オプション、予約状況、予約票・受付票、院内掲示。 */
+
+/* ---- 受付一覧: 場所のタブ（トプコンの場所一覧） ---- */
+.rc-places {
+  align-items: flex-end;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 4px;
+  margin: 0 0 8px;
+}
+
+.rc-place-tab {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  color: var(--text-soft);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: var(--fs-md);
+  font-weight: 700;
+  gap: 6px;
+  min-height: 36px;
+  padding: 4px 12px;
+}
+
+.rc-place-tab:hover {
+  color: var(--text);
+}
+
+.rc-place-tab[aria-selected="true"] {
+  border-bottom-color: var(--teal);
+  color: var(--teal-dark);
+}
+
+.rc-place-count {
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text-soft);
+  font-size: var(--fs-xs);
+  min-width: 22px;
+  padding: 0 6px;
+  text-align: center;
+}
+
+.rc-place-tab[aria-selected="true"] .rc-place-count {
+  background: var(--teal-soft);
+  border-color: var(--teal);
+  color: var(--teal-dark);
+}
+
+/* ---- 受付一覧: 患者マーク（行頭） ---- */
+td.rc-col-marks,
+th.rc-col-marks {
+  width: 1%;
+}
+
+.rc-marks {
+  align-items: center;
+  display: inline-flex;
+  flex-wrap: nowrap;
+  gap: 2px;
+  min-height: 24px;
+  min-width: 28px;
+}
+
+.rc-marks-edit {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  justify-content: flex-start;
+  padding: 2px;
+}
+
+.rc-marks-edit:hover,
+.rc-marks-edit:focus-visible {
+  border-color: var(--line-strong);
+}
+
+.rc-mark-empty {
+  color: var(--placeholder);
+  font-size: var(--fs-sm);
+  opacity: 0;
+  padding: 0 6px;
+}
+
+.rc-row:hover .rc-mark-empty,
+.rc-marks-edit:focus-visible .rc-mark-empty {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .rc-mark-empty {
+    opacity: 1;
+  }
+}
+
+.rc-mark {
+  align-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  display: inline-flex;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  height: 20px;
+  justify-content: center;
+  line-height: 1;
+  min-width: 20px;
+  padding: 0 2px;
+}
+
+.rc-mark.tone-teal { background: var(--teal-soft); border-color: var(--teal); color: var(--teal-dark); }
+.rc-mark.tone-blue { background: var(--blue-soft); border-color: var(--blue-line); color: var(--blue-ink); }
+.rc-mark.tone-green { background: var(--green-soft); border-color: var(--green-line); color: var(--green); }
+.rc-mark.tone-amber { background: var(--amber-soft); border-color: var(--amber-line); color: var(--amber); }
+.rc-mark.tone-red { background: var(--red-soft); border-color: var(--red-line); color: var(--red); }
+.rc-mark.tone-neutral { background: var(--surface-muted); color: var(--text-soft); }
+
+.rc-marks-grid {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  margin: 12px 0;
+}
+
+.rc-mark-option {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  font-size: var(--fs-md);
+  gap: 8px;
+  min-height: 40px;
+  padding: 6px 10px;
+}
+
+.rc-mark-option.is-on {
+  background: var(--teal-soft);
+  border-color: var(--teal);
+}
+
+.dialog.rc-marks-dialog {
+  max-width: 560px;
+}
+
+/* ---- 受付一覧: 場所の選択 ---- */
+.rc-location {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  min-height: 30px;
+  padding: 2px 4px;
+}
+
+/* ---- 受付一覧: ステータスのボタンとメニュー（デジカルの「診察待 ▾」） ---- */
+.rc-col-status::after {
+  content: none;
+}
+
+.rc-status-wrap {
+  display: inline-block;
+  position: relative;
+}
+
+button.rc-status {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+  padding: 2px 10px 2px 12px;
+  white-space: nowrap;
+}
+
+.rc-status-caret {
+  font-size: var(--fs-xs);
+  opacity: 0.8;
+}
+
+button.rc-status:disabled .rc-status-caret {
+  display: none;
+}
+
+.rc-status-menu {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.16);
+  display: grid;
+  left: 0;
+  min-width: 168px;
+  padding: 6px;
+  position: absolute;
+  top: calc(100% + 4px);
+  z-index: 30;
+}
+
+.rc-status-item {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  font-size: var(--fs-md);
+  font-weight: 700;
+  gap: 10px;
+  min-height: 36px;
+  padding: 4px 10px;
+  text-align: left;
+}
+
+.rc-status-item:hover:not(:disabled),
+.rc-status-item:focus-visible {
+  background: var(--surface-muted);
+}
+
+.rc-status-item[aria-checked="true"] {
+  background: var(--teal-soft);
+}
+
+.rc-status-item:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+.rc-status-item.is-cancel {
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 6px 6px;
+  color: var(--red);
+  margin-top: 4px;
+}
+
+.rc-status-check {
+  color: var(--teal-dark);
+  margin-left: auto;
+}
+
+/* 受付編集履歴のステータス（文字だけの小さな札） */
+.rc-status-tag {
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  display: inline-block;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+
+.rc-status-tag.is-cancelled,
+.rc-status-tag.is-absent {
+  border-style: dashed;
+  color: var(--muted);
+}
+
+/* ---- 受付メモのラベル（デジカルの受付ラベル） ---- */
+.rc-memo-labels {
+  display: inline-flex;
+  gap: 3px;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.rc-label-chip {
+  align-items: center;
+  background: var(--blue-soft);
+  border: 1px solid var(--blue-line);
+  border-radius: 4px;
+  color: var(--blue-ink);
+  display: inline-flex;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  gap: 4px;
+  padding: 2px 4px 2px 8px;
+  white-space: nowrap;
+}
+
+.rc-label-chip.is-small {
+  font-size: var(--fs-xs);
+  padding: 0 6px;
+}
+
+.rc-label-remove {
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  color: inherit;
+  cursor: pointer;
+  font-size: var(--fs-md);
+  line-height: 1;
+  min-height: 24px;
+  min-width: 24px;
+}
+
+.rc-label-remove:hover {
+  background: var(--surface);
+}
+
+.dialog.rc-memo-dialog-wide {
+  max-width: 640px;
+}
+
+.rc-label-bar {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  gap: 8px;
+  margin: 10px 0 8px;
+  min-height: 44px;
+  padding: 6px 6px 6px 10px;
+}
+
+.rc-label-chips {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.btn.rc-label-add {
+  font-size: var(--fs-lg);
+  min-width: 36px;
+}
+
+.rc-label-picker {
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 10px;
+}
+
+.rc-label-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.rc-label-new {
+  display: flex;
+  gap: 6px;
+}
+
+.rc-label-new .input {
+  flex: 1;
+}
+
+/* ---- 受付編集履歴 ---- */
+.dialog.rc-history-dialog {
+  max-width: min(1100px, 96vw);
+}
+
+.rc-history-head {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.rc-history-head h2 {
+  margin: 0;
+}
+
+.rc-history-wrap {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-top: 8px;
+  max-height: calc(100dvh - 200px);
+  overflow: auto;
+}
+
+.rc-history-table {
+  border-collapse: collapse;
+  font-size: var(--fs-md);
+  width: 100%;
+}
+
+.rc-history-table th,
+.rc-history-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.rc-history-table th {
+  background: var(--surface-muted);
+  color: var(--text-soft);
+  font-size: var(--fs-sm);
+  position: sticky;
+  top: 0;
+  white-space: nowrap;
+}
+
+.rc-history-table td.mono {
+  white-space: nowrap;
+}
+
+.rc-history-change {
+  min-width: 240px;
+}
+
+.dialog-backdrop.rc-history-detail-backdrop {
+  z-index: 70;
+}
+
+/* ---- 予約登録・受付登録（デジカルの大きな 1 列のフォーム: 見出しの列と区切り線） ---- */
+.dialog.ap-dialog {
+  max-width: 760px;
+}
+
+.dialog.ap-dialog.is-two-pane {
+  max-width: 1080px;
+}
+
+.ap-dialog .ap-form {
+  gap: 0;
+}
+
+.ap-dialog .ap-row {
+  border-bottom: 1px solid var(--line);
+  gap: 4px 16px;
+  grid-template-columns: 120px minmax(0, 1fr);
+  padding: 8px 0;
+}
+
+.ap-dialog .ap-label {
+  font-size: var(--fs-md);
+}
+
+.ap-dialog .ap-value.input,
+.ap-dialog .ap-value .input {
+  font-size: var(--fs-lg);
+  min-height: 40px;
+}
+
+.ap-dialog.is-two-pane .ap-body {
+  grid-template-columns: minmax(240px, 1fr) minmax(0, 2.4fr);
+}
+
+.ap-dialog .ap-list-rows {
+  max-height: 480px;
+}
+
+.ap-print {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  padding-top: 6px;
+}
+
+.ap-check {
+  align-items: center;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: var(--fs-md);
+  gap: 6px;
+  min-height: 32px;
+}
+
+.ap-check input {
+  height: 18px;
+  width: 18px;
+}
+
+.ap-insurance-note {
+  margin: 8px 0 0;
+}
+
+/* ---- 患者情報登録（デジカルの 1 列の大きなフォーム） ---- */
+.dialog.register-dialog {
+  max-width: 820px;
+}
+
+.dialog.register-dialog.has-side {
+  max-width: 1120px;
+}
+
+.register-dialog .register-body {
+  gap: 20px;
+}
+
+.register-dialog.has-side .register-body {
+  grid-template-columns: minmax(0, 2.2fr) minmax(260px, 1fr);
+}
+
+.register-dialog .register-form {
+  gap: 0;
+}
+
+.register-dialog .register-row {
+  border-bottom: 1px solid var(--line);
+  gap: 4px 16px;
+  grid-template-columns: 150px minmax(0, 1fr);
+  padding: 8px 0;
+}
+
+.register-dialog .register-row > label,
+.register-dialog .register-row > span,
+.register-dialog .register-row > legend {
+  font-size: var(--fs-md);
+}
+
+.register-dialog fieldset.register-row > legend {
+  width: 150px;
+}
+
+.register-dialog .register-row em {
+  background: var(--red);
+  border-radius: 3px;
+  color: var(--surface);
+  font-size: var(--fs-xs);
+  margin-left: 8px;
+  padding: 1px 5px;
+}
+
+.register-dialog .register-row .input {
+  font-size: var(--fs-lg);
+  min-height: 40px;
+}
+
+.register-dialog #reg-number,
+.register-dialog #reg-birth,
+.register-dialog #reg-phone1,
+.register-dialog #reg-phone2 {
+  max-width: 320px;
+}
+
+.register-dialog .register-address-fields {
+  grid-template-columns: minmax(0, 200px) minmax(0, 200px);
+}
+
+.register-dialog .register-note {
+  margin: 10px 0 0;
+}
+
+@media (max-width: 720px) {
+  .ap-dialog .ap-row,
+  .register-dialog .register-row {
+    grid-template-columns: 1fr;
+  }
+
+  .register-dialog fieldset.register-row > legend {
+    width: auto;
+  }
+
+  .register-dialog.has-side .register-body {
+    grid-template-columns: 1fr;
+  }
+
+  .register-dialog .register-address-fields {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+/* ---- 患者検索: 検索オプション（デジカルの ▼） ---- */
+.dialog.ps-dialog {
+  display: flex;
+  flex-direction: column;
+}
+
+.dialog.ps-dialog > .ps-table-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.btn.ps-options-toggle {
+  min-width: 36px;
+}
+
+.btn.ps-options-toggle.is-active,
+.btn.ps-options-toggle[aria-expanded="true"] {
+  background: var(--teal-soft);
+  border-color: var(--teal);
+  color: var(--teal-dark);
+}
+
+.ps-options {
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  display: grid;
+  gap: 0;
+  padding: 12px 16px;
+}
+
+.ps-options-title {
+  font-size: var(--fs-lg);
+  margin-bottom: 4px;
+}
+
+.ps-option-row {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 6px 16px;
+  grid-template-columns: 120px minmax(0, 1fr) auto;
+  padding: 8px 0;
+}
+
+.ps-option-row > label:first-child,
+.ps-option-row > span:first-child {
+  color: var(--text-soft);
+  font-size: var(--fs-md);
+  font-weight: 700;
+}
+
+.ps-option-row .input {
+  font-size: var(--fs-md);
+  min-height: 38px;
+}
+
+.ps-option-all {
+  align-items: center;
+  display: inline-flex;
+  font-size: var(--fs-md);
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.ps-option-range {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ps-option-range .input {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
+.ps-option-quick {
+  display: flex;
+  gap: 4px;
+}
+
+.ps-options-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding-top: 10px;
+}
+
+.ps-options-applied {
+  align-items: center;
+  background: var(--teal-soft);
+  border-radius: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--fs-sm);
+  gap: 8px;
+  margin: 0;
+  padding: 4px 8px;
+}
+
+.ps-options-applied-label {
+  color: var(--teal-dark);
+  font-weight: 700;
+}
+
+.ps-options-applied .btn {
+  margin-left: auto;
+}
+
+.ps-col-marks {
+  width: 1%;
+}
+
+@media (max-width: 720px) {
+  .ps-option-row {
+    grid-template-columns: 1fr;
+  }
+
+  .ps-option-range {
+    flex-wrap: wrap;
+  }
+}
+
+/* ---- 予約状況カレンダー（ダイアログを大きく、時間の表の文字を読める大きさに） ---- */
+.dialog.ap-dialog.is-calendar {
+  height: calc(100dvh - 32px);
+  max-height: calc(100dvh - 32px);
+  max-width: min(1320px, 98vw);
+}
+
+.ap-calendar .bk-cal {
+  grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
+}
+
+.bk-week-title {
+  font-size: var(--fs-xl);
+}
+
+.bk-grid {
+  grid-template-columns: 64px repeat(7, minmax(84px, 1fr));
+}
+
+.bk-day-head {
+  font-size: var(--fs-md);
+  padding: 8px 4px;
+}
+
+.bk-day-head small {
+  font-size: var(--fs-sm);
+}
+
+.bk-hour {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.bk-slot {
+  min-height: 30px;
+}
+
+.bk-count {
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+}
+
+.bk-doctors .btn-chip {
+  font-size: var(--fs-md);
+  min-height: 36px;
+}
+
+/* ---- 予約票・受付票 ---- */
+.sheet.rcp-sheet {
+  color: var(--paper-ink);
+  font-size: 11pt;
+}
+
+.rcp-head {
+  align-items: baseline;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6mm;
+}
+
+.sheet .rcp-title {
+  font-size: 20pt;
+  letter-spacing: 0.4em;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.rcp-issued {
+  font-size: 9pt;
+  position: absolute;
+  right: 0;
+}
+
+.rcp-head {
+  position: relative;
+}
+
+.rcp-cancelled {
+  border: 1px solid var(--paper-mark);
+  font-weight: 700;
+  padding: 2mm;
+  text-align: center;
+}
+
+.rcp-patient {
+  display: grid;
+  gap: 1.5mm;
+  margin: 0 0 5mm;
+}
+
+.rcp-patient > div {
+  display: grid;
+  gap: 4mm;
+  grid-template-columns: 22mm 1fr;
+}
+
+.rcp-patient dt {
+  font-weight: 700;
+}
+
+.rcp-patient dd {
+  margin: 0;
+}
+
+.rcp-name {
+  font-size: 14pt;
+  font-weight: 700;
+}
+
+.rcp-table,
+.rcp-checks {
+  border-collapse: collapse;
+  margin-bottom: 5mm;
+  width: 100%;
+}
+
+.rcp-table th,
+.rcp-table td,
+.rcp-checks th,
+.rcp-checks td {
+  border: 1px solid var(--paper-mark);
+  padding: 2.5mm 3mm;
+  text-align: left;
+  vertical-align: top;
+}
+
+.rcp-table th {
+  background: var(--paper);
+  width: 32mm;
+}
+
+.rcp-table td {
+  font-size: 12pt;
+}
+
+.rcp-memo {
+  white-space: pre-wrap;
+}
+
+.rcp-checks th {
+  background: var(--paper);
+  font-size: 9pt;
+}
+
+.rcp-checks td {
+  height: 7mm;
+}
+
+.rcp-checks td:nth-child(2) {
+  width: 12mm;
+}
+
+.rcp-checks td:nth-child(3) {
+  width: 22mm;
+}
+
+.rcp-number {
+  align-items: baseline;
+  border: 2px solid var(--paper-mark);
+  display: flex;
+  gap: 4mm;
+  margin-bottom: 5mm;
+  padding: 3mm 4mm;
+}
+
+.rcp-number-label {
+  font-weight: 700;
+}
+
+.rcp-number-value {
+  font-size: 28pt;
+  letter-spacing: 0.08em;
+}
+
+.rcp-number-time {
+  font-size: 9pt;
+  margin-left: auto;
+}
+
+.rcp-notes {
+  font-size: 9pt;
+  margin: 0 0 6mm;
+  padding-left: 5mm;
+}
+
+.rcp-facility {
+  border-top: 1px solid var(--paper-mark);
+  display: grid;
+  font-size: 9pt;
+  gap: 1mm;
+  padding-top: 3mm;
+}
+
+.rcp-facility strong {
+  font-size: 11pt;
+}
+
+/* ---- 院内掲示（待合室の画面に全画面で出す） ---- */
+.rcd-board {
+  background: var(--page);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  inset: 0;
+  overflow: auto;
+  padding: 12px 16px 16px;
+  position: fixed;
+  z-index: 80;
+}
+
+.rcd-bar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-bottom: 12px;
+}
+
+.rcd-dept {
+  align-items: center;
+  display: inline-flex;
+  font-size: var(--fs-sm);
+  gap: 6px;
+}
+
+.rcd-updated {
+  margin-left: auto;
+}
+
+.rcd-title {
+  background: var(--text);
+  border-radius: 8px 8px 0 0;
+  color: var(--surface);
+  font-size: clamp(20px, 3vw, 40px);
+  margin: 0;
+  padding: 6px;
+  text-align: center;
+}
+
+.rcd-panels {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 12px;
+  grid-template-columns: minmax(0, 3fr) auto minmax(0, 1.3fr);
+  min-height: 0;
+}
+
+.rcd-panel {
+  background: var(--surface-muted);
+  border: 2px solid var(--line-strong);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 12px;
+}
+
+.rcd-panel.is-calling {
+  background: var(--surface);
+  border-color: var(--teal);
+}
+
+.rcd-panel h2 {
+  font-size: clamp(18px, 2.4vw, 32px);
+  margin: 0 0 12px;
+  text-align: center;
+}
+
+.rcd-count {
+  font-size: 0.8em;
+}
+
+.rcd-numbers {
+  align-content: start;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(clamp(96px, 12vw, 200px), 1fr));
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.rcd-panel.is-calling .rcd-numbers {
+  grid-template-columns: 1fr;
+}
+
+.rcd-number {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: clamp(36px, 6vw, 96px);
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.rcd-panel.is-calling .rcd-number {
+  background: var(--teal-soft);
+  border-color: var(--teal);
+  color: var(--teal-dark);
+}
+
+.rcd-empty {
+  color: var(--muted);
+  font-size: clamp(16px, 2vw, 28px);
+  text-align: center;
+}
+
+.rcd-arrow {
+  align-self: center;
+  color: var(--line-strong);
+  font-size: clamp(32px, 5vw, 80px);
+}
+
+@media (max-width: 720px) {
+  .rcd-panels {
+    grid-template-columns: 1fr;
+  }
+
+  .rcd-arrow {
+    display: none;
+  }
+}
+
+/* 場所の選択は「暗室 ▾」が読める幅にする（表が横に広がらないよう余白は小さく） */
+.rc-location {
+  min-width: 4.8em;
+}

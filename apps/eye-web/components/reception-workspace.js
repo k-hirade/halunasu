@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { APPOINTMENT_STATUS_MENU } from "@halunasu/eye-contracts";
 import { AppointmentDialog } from "./appointment-dialog";
+import { CancelReceptionDialog, DayHistoryDialog, MarkBadges, MarksDialog, ReceptionHistoryDialog, ReceptionMemoDialog, StatusMenu, useReceptionSettings } from "./reception-dialogs";
 import { useEyeApi } from "./eye-api";
 import { DateNav } from "./mini-calendar";
 import { linkAppointmentToPatient, PatientRegisterDialog, RECEPTION_CHANGED_EVENT } from "./patient-register-dialog";
@@ -38,6 +39,7 @@ import {
   UNSET,
   writeStored
 } from "../lib/reception-table";
+import { countByLocation, filterByLocation, LOCATION_LABELS, locationOf, marksOf, RECEPTION_LOCATIONS, receptionPrintHref } from "../lib/reception-extras";
 
 const REFRESH_MS = 15000;
 const IN_CLINIC = ["checked_in", "in_exam", "in_treatment", "waiting_doctor", "in_consult", "checkout"];
@@ -70,6 +72,14 @@ export function ReceptionWorkspace() {
   const [notice, setNotice] = useState("");
   const [now, setNow] = useState(Date.now());
   const [refreshing, setRefreshing] = useState(false);
+  // 患者マーク（患者 ID → { marks, revision }）、場所のタブ、取消の確認、マーク・履歴のダイアログ
+  const [patientMarks, setPatientMarks] = useState({});
+  const [place, setPlace] = useState("");
+  const [cancelling, setCancelling] = useState({ target: null, busy: false });
+  const [marking, setMarking] = useState(null);
+  const [historyOf, setHistoryOf] = useState(null);
+  const [dayHistoryOpen, setDayHistoryOpen] = useState(false);
+  const receptionSettings = useReceptionSettings(api);
   const tableWrapRef = useRef(null);
 
   // 端末ごとに覚えた列と並べ替え、URL の ?date=
@@ -104,10 +114,15 @@ export function ReceptionWorkspace() {
   const loadDetails = useCallback(async () => {
     if (!patientKey) {
       setDetails({});
+      setPatientMarks({});
       return;
     }
-    const payload = await api(`/v1/eye/appointments/patient-details?date=${date}`);
+    const [payload, marks] = await Promise.all([
+      api(`/v1/eye/appointments/patient-details?date=${date}`),
+      api(`/v1/eye/appointments/patient-marks?date=${date}`).catch(() => ({ patients: {} }))
+    ]);
     setDetails(payload.patients || {});
+    setPatientMarks(marks.patients || {});
   }, [api, date, patientKey]);
   useEffect(() => { loadDetails().catch(() => {}); }, [loadDetails]);
 
@@ -137,9 +152,11 @@ export function ReceptionWorkspace() {
         body: { expectedRevision: appointment.revision, status }
       });
       await load();
+      return true;
     } catch (nextError) {
       setError(nextError.status === 409 && status === "cancelled" ? `${appointment.patientName}: ${nextError.message}` : nextError.message);
       await load().catch(() => {});
+      return false;
     }
   }
 
@@ -186,7 +203,7 @@ export function ReceptionWorkspace() {
   }
 
   function onRowClick(event, appointment) {
-    if (event.target.closest("button, select, a, input, textarea, summary, details, label, [data-cell-action]")) return;
+    if (event.target.closest("button, select, a, input, textarea, summary, details, label, [data-cell-action], [role='menu']")) return;
     openRow(appointment);
   }
 
@@ -196,6 +213,51 @@ export function ReceptionWorkspace() {
     await linkAppointmentToPatient(api, current, patient);
     setRegistering(null);
     await load();
+  }
+
+  // 受付メモ（ラベルと本文）。ラベルを先に保存し、返った版で本文を保存する
+  async function saveReceptionMemo({ labels, text, labelsChanged, textChanged }) {
+    const target = data.appointments.find((item) => item.appointmentId === memo.appointment.appointmentId) || memo.appointment;
+    let revision = target.revision;
+    if (labelsChanged) {
+      const payload = await api(`/v1/eye/appointments/${target.appointmentId}/reception`, { method: "PATCH", body: { expectedRevision: revision, receptionLabels: labels } });
+      revision = payload.appointment.revision;
+    }
+    if (textChanged) {
+      await api(`/v1/eye/appointments/${target.appointmentId}`, { method: "PATCH", body: { expectedRevision: revision, receptionMemo: text } });
+    }
+    await load();
+    setMemo(null);
+  }
+
+  async function saveMarks(keys) {
+    const patientId = marking.patientId;
+    await api(`/v1/eye/patients/${patientId}/marks`, { method: "PUT", body: { expectedRevision: patientMarks[patientId]?.revision || 0, marks: keys } });
+    setMarking(null);
+    await loadDetails();
+  }
+
+  async function changeLocation(appointment, location) {
+    setError("");
+    try {
+      await api(`/v1/eye/appointments/${appointment.appointmentId}/reception`, { method: "PATCH", body: { expectedRevision: appointment.revision, location } });
+      await load();
+    } catch (nextError) {
+      setError(nextError.message);
+      await load().catch(() => {});
+    }
+  }
+
+  async function confirmCancel() {
+    const target = cancelling.target;
+    setCancelling({ target, busy: true });
+    const done = await move(target, "cancelled");
+    setCancelling({ target: null, busy: false });
+    if (done) setNotice(`${target.patientName} の受付を取り消しました（絞り込みで「取消」を選ぶと表示できます）。`);
+  }
+
+  function openPrint(appointment, kind) {
+    window.open(receptionPrintHref(appointment.appointmentId, kind, { memo: kind === "booking" }), "_blank", "noopener");
   }
 
   async function saveMemo(text) {
@@ -261,7 +323,9 @@ export function ReceptionWorkspace() {
       case "purpose": return APPOINTMENT_PURPOSE_LABELS[row.purpose] || "";
       case "previous": return row.patientId ? details[row.patientId]?.previousVisitDate || "" : "";
       case "patientMemo": return row.patientId ? details[row.patientId]?.patientMemo || "" : "";
-      case "receptionMemo": return row.receptionMemo ?? row.note ?? "";
+      case "receptionMemo": return [...(row.receptionLabels || []), row.receptionMemo ?? row.note ?? ""].join(" ").trim();
+      case "marks": return row.patientId ? (patientMarks[row.patientId]?.marks || []).length || null : null;
+      case "location": { const key = locationOf(row); return key ? RECEPTION_LOCATIONS.findIndex((item) => item.key === key) : null; }
       case "progress": {
         const encounter = data.encountersByPatient[row.patientId];
         if (!encounter || !IN_CLINIC.includes(row.status)) return null;
@@ -280,7 +344,8 @@ export function ReceptionWorkspace() {
 
   const baseRows = appointments;
   const filtered = filterAppointments(baseRows, filters, details);
-  const rows = sortAppointments(filtered, sort, valueOf);
+  const placeCounts = countByLocation(filtered);
+  const rows = sortAppointments(filterByLocation(filtered, place), sort, valueOf);
   const filteredOn = isFiltered(filters);
   const totalShown = filterAppointments(baseRows, DEFAULT_FILTERS, details).length;
   const columns = RECEPTION_COLUMNS.filter((column) => !hiddenColumns.includes(column.key));
@@ -298,11 +363,29 @@ export function ReceptionWorkspace() {
       </button>
     ) : content);
     switch (column.key) {
+      case "marks": return item.patientId ? (
+        <MarkBadges
+          definitions={receptionSettings.settings.marks}
+          keys={patientMarks[item.patientId]?.marks || []}
+          name={item.patientName}
+          onOpen={canReceive ? () => setMarking({ patientId: item.patientId, patientName: item.patientName }) : null}
+        />
+      ) : null;
+      case "location": {
+        const current = locationOf(item);
+        if (!current) return <span className="muted">-</span>;
+        if (!canReceive) return LOCATION_LABELS[current];
+        return (
+          <select aria-label={`${item.patientName} の場所`} className="rc-location" onChange={(event) => changeLocation(item, event.target.value)} value={current}>
+            {RECEPTION_LOCATIONS.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
+          </select>
+        );
+      }
       case "no": return <span className="mono">{queueLabel(item)}</span>;
       case "time": return editCell(<span className="mono">{item.time || "-"}</span>, "予約時間");
       case "checkin": return <span className="mono">{formatClock(item.checkedInAt) || "-"}</span>;
       case "status": return (
-        <StatusSelect appointment={item} disabled={!canReceive} display={display} onChange={(status) => move(item, status)} />
+        <StatusMenu appointment={item} disabled={!canReceive} display={display} onChange={(status) => move(item, status)} onRequestCancel={() => setCancelling({ target: item, busy: false })} />
       );
       case "number": return <span className="mono">{extra?.primaryPatientNumber || snapshot.primaryPatientNumber || ""}</span>;
       case "name": return (
@@ -325,7 +408,7 @@ export function ReceptionWorkspace() {
         <MemoCell disabled={!canReceive} label="患者メモ" name={item.patientName} onOpen={() => setMemo({ kind: "patient", appointment: item, text: extra?.patientMemo || "" })} text={extra?.patientMemo || ""} />
       ) : "";
       case "receptionMemo": return (
-        <MemoCell disabled={!canReceive} label="受付メモ" name={item.patientName} onOpen={() => setMemo({ kind: "reception", appointment: item, text: item.receptionMemo ?? item.note ?? "" })} text={item.receptionMemo ?? item.note ?? ""} />
+        <MemoCell disabled={!canReceive} label="受付メモ" labels={item.receptionLabels || []} name={item.patientName} onOpen={() => setMemo({ kind: "reception", appointment: item, text: item.receptionMemo ?? item.note ?? "" })} text={item.receptionMemo ?? item.note ?? ""} />
       );
       case "billing": return (
         <BillingCell
@@ -365,6 +448,13 @@ export function ReceptionWorkspace() {
     if (item.patientId && canWrite && IN_CLINIC.includes(item.status)) entries.push(["検査入力", () => openChart(item, "exam")]);
     if (!item.patientId && canReceive) entries.push(["患者登録", () => setRegistering(item)]);
     if (canReceive && item.status !== "cancelled") entries.push([item.status === "booked" ? "予約を編集" : "受付を編集", () => setDialog({ appointment: item })]);
+    if (canReceive) entries.push(["受付メモ", () => setMemo({ kind: "reception", appointment: item, text: item.receptionMemo ?? item.note ?? "" })]);
+    if (canReceive && item.patientId) entries.push(["患者メモ", () => setMemo({ kind: "patient", appointment: item, text: details[item.patientId]?.patientMemo || "" })]);
+    if (canReceive && item.patientId) entries.push(["患者マーク", () => setMarking({ patientId: item.patientId, patientName: item.patientName })]);
+    if (item.status === "booked") entries.push(["予約票を印刷", () => openPrint(item, "booking")]);
+    if (item.queueNumber && item.status !== "cancelled") entries.push(["受付票を印刷", () => openPrint(item, "visit")]);
+    entries.push(["受付編集履歴", () => setHistoryOf(item)]);
+    if (canReceive && item.status !== "cancelled") entries.push(["受付取消", () => setCancelling({ target: item, busy: false })]);
     return entries;
   }
 
@@ -392,6 +482,8 @@ export function ReceptionWorkspace() {
         </div>
         <div className="rc-toolbar-actions">
           <Link className="btn btn-ghost btn-sm" href={`/reception/schedule?date=${date}`}>予約状況</Link>
+          <button className="btn btn-ghost btn-sm" onClick={() => setDayHistoryOpen(true)} type="button">編集履歴</button>
+          <a className="btn btn-ghost btn-sm" href="/reception/display" rel="noopener" target="_blank" title="待合室の画面に出す受付番号（別のタブで開きます）">院内掲示</a>
           {canReceive ? (
             <>
               <button className="btn btn-ghost btn-sm" onClick={() => setDialog({ walkIn: false })} type="button">予約を追加</button>
@@ -411,6 +503,15 @@ export function ReceptionWorkspace() {
       </div>
       {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
       {notice ? <p className="alert alert-ok" role="status">{notice}</p> : null}
+      {/* 場所（トプコンの場所一覧）: 院内の患者を場所で分ける。場所は行の「場所」で変える（無ければステータスから決まる） */}
+      <div aria-label="場所" className="rc-places" role="tablist">
+        <button aria-selected={!place} className="rc-place-tab" onClick={() => setPlace("")} role="tab" type="button">すべて<span className="rc-place-count">{filtered.length}</span></button>
+        {RECEPTION_LOCATIONS.map((item) => (
+          <button aria-selected={place === item.key} className="rc-place-tab" key={item.key} onClick={() => setPlace(item.key)} role="tab" type="button">
+            {item.label}<span className="rc-place-count">{placeCounts[item.key]}</span>
+          </button>
+        ))}
+      </div>
 
       <div className="rc-table-wrap" ref={tableWrapRef}>
         <table aria-label="受付一覧" className="rc-table">
@@ -458,7 +559,7 @@ export function ReceptionWorkspace() {
             })}
           </tbody>
         </table>
-        {data.loaded && rows.length === 0 ? <p className="rc-empty muted">{appointments.length ? "絞り込みに当てはまる受付はありません。" : "この日の予約・受付はありません。"}</p> : null}
+        {data.loaded && rows.length === 0 ? <p className="rc-empty muted">{place && filtered.length ? `${LOCATION_LABELS[place]}にいる患者はいません。` : appointments.length ? "絞り込みに当てはまる受付はありません。" : "この日の予約・受付はありません。"}</p> : null}
         {!data.loaded && !error ? <p className="rc-empty muted">読み込み中…</p> : null}
       </div>
 
@@ -483,7 +584,16 @@ export function ReceptionWorkspace() {
           title={`患者登録（受付 ${queueLabel(registering)}）`}
         />
       ) : null}
-      {memo ? (
+      {memo?.kind === "reception" ? (
+        <ReceptionMemoDialog
+          appointment={memo.appointment}
+          labels={receptionSettings.settings.labels}
+          onAddLabel={receptionSettings.addLabel}
+          onCancel={() => setMemo(null)}
+          onSave={saveReceptionMemo}
+        />
+      ) : null}
+      {memo?.kind === "patient" ? (
         <MemoDialog
           label={memo.kind === "patient" ? "患者メモ" : "受付メモ"}
           note={memo.kind === "patient" ? "患者に固定のメモです。毎回の受付に出ます。" : "この日の受付だけのメモです。"}
@@ -493,6 +603,20 @@ export function ReceptionWorkspace() {
           text={memo.text}
         />
       ) : null}
+      {cancelling.target ? (
+        <CancelReceptionDialog appointment={cancelling.target} busy={cancelling.busy} onCancel={() => setCancelling({ target: null, busy: false })} onConfirm={confirmCancel} />
+      ) : null}
+      {marking ? (
+        <MarksDialog
+          definitions={receptionSettings.settings.marks}
+          onCancel={() => setMarking(null)}
+          onSave={saveMarks}
+          patientName={marking.patientName}
+          selected={marksOf(patientMarks[marking.patientId]?.marks || [], receptionSettings.settings.marks).map((mark) => mark.key)}
+        />
+      ) : null}
+      {historyOf ? <ReceptionHistoryDialog api={api} appointment={historyOf} doctorName={(id) => doctorName(doctors, id)} onClose={() => setHistoryOf(null)} /> : null}
+      {dayHistoryOpen ? <DayHistoryDialog api={api} appointments={appointments} date={date} doctorName={(id) => doctorName(doctors, id)} onClose={() => setDayHistoryOpen(false)} /> : null}
       {billing.confirm ? (
         <div className="dialog-backdrop" role="presentation">
           <div aria-labelledby="rc-billing-heading" aria-modal="true" className="dialog" role="alertdialog">
@@ -539,28 +663,13 @@ function patientOf(item) {
   return { patientId: item.patientId, displayName: item.patientName, ...(item.patientSnapshot || {}) };
 }
 
-// ステータスのプルダウン（デジカルの「診察待 ▾」）。全ステータスへ移せる。再計待は表示だけ（選べない）。
-function StatusSelect({ appointment, display, disabled, onChange }) {
+function MemoCell({ text, label, name, disabled, onOpen, labels = [] }) {
+  const chips = labels.length ? <span className="rc-memo-labels">{labels.map((item) => <span className="rc-label-chip is-small" key={item}>{item}</span>)}</span> : null;
+  const summary = [...labels, text].filter(Boolean).join(" ・ ");
+  if (disabled) return <span className="rc-memo" title={summary || undefined}>{chips}{text}</span>;
   return (
-    <select
-      aria-label={`${appointment.patientName} のステータス`}
-      className={`rc-status is-${display}`}
-      disabled={disabled}
-      onChange={(event) => { if (event.target.value !== display) onChange(event.target.value); }}
-      value={display}
-    >
-      {APPOINTMENT_STATUS_MENU.map((status) => (
-        <option disabled={status === "rebill_waiting"} key={status} value={status}>{APPOINTMENT_STATUS_LABELS[status]}</option>
-      ))}
-    </select>
-  );
-}
-
-function MemoCell({ text, label, name, disabled, onOpen }) {
-  if (disabled) return <span className="rc-memo" title={text || undefined}>{text}</span>;
-  return (
-    <button aria-label={`${name} の${label}${text ? `: ${text}` : "（なし）"}`} className="rc-cell-edit rc-memo" onClick={onOpen} title={text || undefined} type="button">
-      <span>{text || <span className="muted">-</span>}</span><span aria-hidden="true" className="rc-pencil">✎</span>
+    <button aria-label={`${name} の${label}${summary ? `: ${summary}` : "（なし）"}`} className="rc-cell-edit rc-memo" onClick={onOpen} title={summary || undefined} type="button">
+      <span>{chips}{text || (chips ? null : <span className="muted">-</span>)}</span><span aria-hidden="true" className="rc-pencil">✎</span>
     </button>
   );
 }
