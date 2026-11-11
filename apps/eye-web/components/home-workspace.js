@@ -518,7 +518,7 @@ export function HomeWorkspace() {
       </div>
       {!isTask && !wide && selected && sheetOpen ? (
         <div className="cl-sheet-backdrop" onClick={() => setSheetOpen(false)} role="presentation">
-          <div className="cl-sheet" onClick={(event) => event.stopPropagation()}>
+          <div aria-label="カルテ概要" aria-modal="true" className="cl-sheet" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => { if (event.key === "Escape" && !event.nativeEvent.isComposing) setSheetOpen(false); }} role="dialog">
             <button aria-label="概要を閉じる" className="btn btn-ghost btn-sm cl-sheet-close" onClick={() => setSheetOpen(false)} type="button">閉じる</button>
             {pane}
           </div>

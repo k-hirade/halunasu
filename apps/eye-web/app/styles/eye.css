@@ -299,7 +299,16 @@
 }
 
 .preop-files {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
   margin: 10px 0 0;
+}
+
+.preop-files-link {
+  display: inline-block;
+  font-weight: 700;
 }
 
 /* IOL の表は列が多いので眼ごとに縦に積む（術前検査は左右に並べる） */

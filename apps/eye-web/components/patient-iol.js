@@ -262,7 +262,8 @@ export function PreopViewer({ patientId, encounters, iolState, files = [] }) {
       </div>
       {related.length ? (
         <p className="muted small preop-files">
-          関連する画像 {related.length}件（角膜形状・前眼部・OCT） ・ <Link href={`/patients/${patientId}/images`}>画像の比較で見る</Link>
+          関連する画像 {related.length}件（角膜形状・前眼部・OCT）
+          <Link className="preop-files-link" href={`/patients/${patientId}/images`}>画像の比較で見る ›</Link>
         </p>
       ) : null}
     </div>
