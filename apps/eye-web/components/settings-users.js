@@ -100,7 +100,7 @@ export function UsersSection({ onDirtyChange, context }) {
                 <tr>
                   <th scope="col">ログイン ID</th><th scope="col">利用者名</th><th scope="col">役割</th><th scope="col">施設管理権限</th><th scope="col">状態</th>
                   {manageable ? <><th scope="col">最終更新</th><th scope="col">最終ログイン</th><th scope="col">パスワード更新</th></> : null}
-                  <th scope="col">印刷用の氏名</th><th aria-label="操作" scope="col" />
+                  <th scope="col">印刷用の氏名</th><th scope="col">承認</th><th aria-label="操作" scope="col" />
                 </tr>
               </thead>
               <tbody>
@@ -119,6 +119,7 @@ export function UsersSection({ onDirtyChange, context }) {
                       </>
                     ) : null}
                     <td>{item.printName ? item.printName : <span className="muted">{printableStaffName(item.displayName)}（自動）</span>}</td>
+                    <td className="users-approval">{[item.approver ? "承認者" : "", item.requiresApproval ? "承認が必要" : ""].filter(Boolean).join("・") || <span className="muted">—</span>}</td>
                     <td className="admin-edit"><button aria-label={`${item.displayName}を編集`} className="btn btn-ghost btn-sm" onClick={() => setDialog({ mode: "edit", memberId: item.memberId })} type="button">✎ 編集</button></td>
                   </tr>
                 ))}
@@ -252,7 +253,9 @@ function EditUserDialog({ member, manageable, self, api, orgId, platformApi, onC
     email: member.email || "",
     roles: (member.eyeRoles || []).filter((role) => role !== "admin"),
     admin: (member.eyeRoles || []).includes("admin"),
-    printName: member.printName || ""
+    printName: member.printName || "",
+    approver: member.approver === true,
+    requiresApproval: member.requiresApproval === true
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -279,6 +282,11 @@ function EditUserDialog({ member, manageable, self, api, orgId, platformApi, onC
       }
       if (draft.printName.trim() !== (member.printName || "") && (member.eyeRoles || []).length) {
         await api(`/v1/eye/staff-profiles/${encodeURIComponent(member.memberId)}`, { method: "PUT", body: { printName: draft.printName.trim() } });
+      }
+      // カルテの承認の印（承認者・承認が必要）。変えたものだけ送る
+      const flags = Object.fromEntries(["approver", "requiresApproval"].filter((key) => draft[key] !== (member[key] === true)).map((key) => [key, draft[key]]));
+      if (Object.keys(flags).length && (member.eyeRoles || []).length) {
+        await api(`/v1/eye/staff-profiles/${encodeURIComponent(member.memberId)}`, { method: "PUT", body: flags });
       }
       await onSaved(`${draft.displayName.trim() || member.displayName} を保存しました。`);
     } catch (nextError) {
@@ -344,6 +352,15 @@ function EditUserDialog({ member, manageable, self, api, orgId, platformApi, onC
           <input aria-label="印刷用の氏名" autoComplete="off" className="input" maxLength={PRINT_NAME_MAX} onChange={(event) => setDraft({ printName: event.target.value })} placeholder={printableStaffName(member.displayName)} value={draft.printName} />
         </label>
         <p className="muted small">紙には「<strong>{preview || "（空欄）"}</strong>」と出ます。空にすると利用者名から役割の（ ）を除いた名前に戻ります。</p>
+        {(member.eyeRoles || []).some((role) => role === "doctor" || role === "admin") ? (
+          <div className="admin-row-field field">
+            <span className="admin-row-label">カルテの承認</span>
+            <span className="admin-static admin-inline">
+              <label className="field-check"><input checked={draft.approver} onChange={(event) => setDraft({ approver: event.target.checked })} type="checkbox" />承認者（指導医）</label>
+              <label className="field-check"><input checked={draft.requiresApproval} onChange={(event) => setDraft({ requiresApproval: event.target.checked })} type="checkbox" />承認が必要（研修医など）</label>
+            </span>
+          </div>
+        ) : null}
         <div className="admin-row-field field">
           <span className="admin-row-label">状態</span>
           <span className="admin-static admin-inline">

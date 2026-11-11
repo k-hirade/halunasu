@@ -38,6 +38,7 @@ for (const methodName of [
   "listEncountersByDate",
   "listRecentFinalizedEncounters",
   "listDraftEncounters",
+  "listApprovalPendingEncounters",
   "listUnreviewedPaperFiles",
   "listDraftDocuments",
   "replaceEncounter",

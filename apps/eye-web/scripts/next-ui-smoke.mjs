@@ -42,6 +42,7 @@ try {
     await runReceptionRep2Flow(browser);
     await runOrthoptistFlow(browser);
     await runReceptionResponsiveChecks(browser);
+    await runApprovalFlow(browser);
   } finally {
     await browser.close().catch(() => null);
   }
@@ -411,7 +412,7 @@ async function runDoctorFlow(browser) {
   // 設定（デジカルの施設管理と同じ形）: 最初は医療機関情報。［編集］のダイアログで入れた値が紙に載る
   await page.goto(`${baseUrl}/settings`);
   await page.getByRole("heading", { name: "医療機関情報" }).waitFor();
-  assert.deepEqual(await page.locator(".settings-nav-item").allInnerTexts().then((items) => items.map((text) => text.replace(/\d+$/u, "").trim())), ["医療機関情報", "利用者管理", "診療時間・予約枠", "受付ラベル・患者マーク", "セット", "定型文", "よく使う薬剤", "検査会社・院内検査項目", "文書雛形", "帳票設定", "その他設定", "操作記録", "経営データ集計", "データ出力"]);
+  assert.deepEqual(await page.locator(".settings-nav-item").allInnerTexts().then((items) => items.map((text) => text.replace(/\d+$/u, "").trim())), ["医療機関情報", "利用者管理", "診療時間・予約枠", "カルテの承認", "受付ラベル・患者マーク", "セット", "定型文", "よく使う薬剤", "検査会社・院内検査項目", "基準値（バイタル・検査）", "文書雛形", "帳票設定", "その他設定", "操作記録", "経営データ集計", "データ出力"]);
   await page.getByRole("button", { name: "✎ 編集" }).click();
   const facilityDialog = page.getByRole("dialog", { name: "医療機関情報の編集" });
   await facilityDialog.getByLabel("医療機関名").fill("スモーク眼科クリニック");
@@ -2114,6 +2115,8 @@ async function assertChartMainRep2(page) {
   await regularSection.getByRole("button", { name: "定期「スモーク定期」を編集" }).click();
   await page.getByRole("dialog", { name: "定期の編集" }).getByRole("button", { name: "この定期を削除" }).click();
   await page.getByText("定期「スモーク定期」を削除しました。").waitFor();
+  // 削除の知らせのあとに一覧が読み直されるので、消えるのを待つ
+  await regularSection.getByText("スモーク定期").waitFor({ state: "detached", timeout: 10_000 });
   assert.equal(await regularSection.getByText("スモーク定期").count(), 0);
   // 印刷メニュー: 作れる帳票だけ。条件がそろわないものは押せない
   await page.locator(".actionbar-print > summary").click();
@@ -2145,4 +2148,142 @@ async function assertChartMainSendRep2(page) {
   const dialog = page.getByRole("dialog", { name: /会計情報をレセコンへ送りますか/u });
   await dialog.getByRole("table", { name: "送る内容" }).getByText(/ラタノプロスト/u).first().waitFor({ timeout: 15_000 });
   await dialog.getByRole("button", { name: "キャンセル" }).click();
+}
+
+// ---- replicate-2（approval）: カルテの承認（指導医）と基準値の設定 ----
+// 院長（管理者・医師）を承認者、医師を「承認が必要」にし、医師が確定したカルテを 承認待ち → 差し戻し → 直して確定 → 承認 と進める。
+// 見出し・バー・版履歴・診察の「承認待ち」タブ・患者のカルテ一覧・会計の「未承認」・紙の「未承認」・設定の 2 項目・基準値の色分けを確かめる。
+async function runApprovalFlow(browser) {
+  const directorContext = await browser.newContext({ viewport: { width: 1366, height: 900 } });
+  const doctorContext = await browser.newContext({ viewport: { width: 1366, height: 900 } });
+  const director = await directorContext.newPage();
+  const doctor = await doctorContext.newPage();
+  const pageErrors = [];
+  for (const page of [director, doctor]) page.on("pageerror", (error) => pageErrors.push(error.message));
+  await loginWithRetry(director, "director");
+  await loginWithRetry(doctor, "doctor");
+  const today = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+
+  // 設定（院長）: 承認を使う・医師ごとの印・眼圧の基準値の上限 20
+  await director.goto(`${baseUrl}/settings#approval`);
+  const approvalSection = director.getByRole("region", { name: "カルテの承認" });
+  await approvalSection.waitFor();
+  const enabled = approvalSection.locator("[data-approval-setting='enabled']");
+  if (!(await enabled.isChecked())) {
+    // 保存が終わってから印が付く（押した直後は変わらない）ので、click して知らせを待つ
+    await enabled.click();
+    await approvalSection.getByText("カルテの承認を使う設定にしました。").waitFor();
+  }
+  for (const name of [/院長.*を承認者にする/u, /^医師のカルテに承認を必要にする/u]) {
+    const box = approvalSection.getByRole("checkbox", { name });
+    await box.click();
+    await director.waitForFunction((element) => element.checked && !element.disabled, await box.elementHandle());
+  }
+  const staff = await callApi(director, "GET", "/v1/eye/staff-profiles");
+  assert.equal(staff.staff.find((item) => item.loginId === "director").approver, true);
+  assert.equal(staff.staff.find((item) => item.loginId === "doctor").requiresApproval, true);
+  await director.goto(`${baseUrl}/settings#ranges`);
+  const ranges = director.getByRole("region", { name: "基準値（バイタル・検査）" });
+  await ranges.locator("[data-range-row='exam.iop'] td.ranges-num").first().getByText("10〜21").waitFor();
+  await ranges.getByRole("button", { name: "✎ 編集" }).click();
+  await director.locator("[data-range-input='exam.iop.high']").fill("20");
+  await director.getByRole("dialog", { name: "基準値の編集" }).getByRole("button", { name: "保存", exact: true }).click();
+  await ranges.locator("[data-range-row='exam.iop'] td.ranges-changed").getByText("10〜20").waitFor();
+  assert.match(await ranges.locator("[data-range-row='exam.cd']").innerText(), /0\.6 以下/u, "C/D has a default reference");
+
+  // 医師: カルテを作り、眼圧 21（上限 20 を超える）を入れて確定 → 承認待ち
+  await doctor.goto(`${baseUrl}/`);
+  const { patient } = await callApi(doctor, "POST", "/v1/eye/patients", { displayName: "承認 試験", displayNameKana: "ショウニン シケン", birthDate: "1970-05-06", sex: "male", primaryPatientNumber: "AP001" });
+  const created = await callApi(doctor, "POST", "/v1/eye/encounters", { patientId: patient.patientId, encounterDate: today, visitType: "revisit" });
+  const encounterId = created.encounter.encounterId;
+  await addExamRecord(doctor, encounterId, { iop: { od: { readings: [21, 21, 21], method: "nct" }, os: { readings: [15, 15, 15], method: "nct" } } });
+  let current = await callApi(doctor, "GET", `/v1/eye/encounters/${encounterId}`);
+  current = await callApi(doctor, "PATCH", `/v1/eye/encounters/${encounterId}`, { expectedRevision: current.encounter.revision, sections: { chiefComplaint: "眼圧の経過観察" } });
+  const finalized = await callApi(doctor, "POST", `/v1/eye/encounters/${encounterId}/finalize`, { expectedRevision: current.encounter.revision });
+  assert.equal(finalized.approval.status, "pending");
+
+  await doctor.goto(`${baseUrl}/encounters/${encounterId}`);
+  await doctor.locator("[data-approval-bar='pending']").waitFor();
+  await doctor.locator(".chart-head .approval-tag[data-approval='pending']").waitFor();
+  assert.equal(await doctor.locator("[data-approval-action='approve']").count(), 0, "the author cannot approve");
+  await doctor.locator(".chart-guide").getByRole("button", { name: /^承認（要確認・承認待ち）/u }).waitFor();
+  // 基準値: 医院の設定（上限 20）で 21 が「高い」
+  await doctor.locator(".chart-left").getByRole("tab", { name: /^検査/u }).click();
+  const iopRow = doctor.locator(".cl-matrix tbody tr", { hasText: "R 眼圧" });
+  assert.equal((await iopRow.locator(".cl-matrix-ref").innerText()).trim(), "10〜20");
+  assert.equal(await iopRow.locator(".cl-matrix-cell.is-high").count(), 1, "21 mmHg is above the clinic's 20");
+
+  // 会計（止めない・未承認と出す）と紙
+  await director.goto(`${baseUrl}/billing`);
+  await director.getByText("承認 試験").first().waitFor();
+  await director.locator("[data-approval='unapproved']").first().waitFor();
+  await director.goto(`${baseUrl}/encounters/${encounterId}/print`);
+  await director.locator(".cs-approval.is-unapproved").waitFor();
+  await director.locator("[data-approval-note='print']").waitFor();
+
+  // 承認者（院長）: 診察の「承認待ち」タブ → カルテ → 差し戻し（理由必須）
+  await director.goto(`${baseUrl}/`);
+  const approvalTab = director.getByRole("tab", { name: /^承認待ち/u });
+  await approvalTab.waitFor({ timeout: 90_000 });
+  await approvalTab.click();
+  await director.getByRole("region", { name: "承認待ち" }).getByText("承認 試験").waitFor();
+  await director.goto(`${baseUrl}/encounters/${encounterId}`);
+  await director.locator("[data-approval-action='return']").click();
+  const returnDialog = director.getByRole("dialog", { name: /を差し戻す$/u });
+  await returnDialog.getByRole("button", { name: "差し戻す", exact: true }).click();
+  await returnDialog.getByText("差し戻しの理由を入れてください。").waitFor();
+  await returnDialog.getByLabel(/差し戻しの理由/u).fill("眼圧の測定方法と時刻を追記してください");
+  await returnDialog.getByRole("button", { name: "差し戻す", exact: true }).click();
+  await returnDialog.waitFor({ state: "detached" });
+  await director.locator("[data-approval-bar='returned'] .approval-comment").getByText(/眼圧の測定方法と時刻/u).waitFor();
+
+  // 医師: 理由が見える → 直して確定 → v2 が承認待ち
+  await doctor.reload();
+  await doctor.locator("[data-approval-bar='returned'] .approval-comment").getByText(/眼圧の測定方法と時刻/u).waitFor();
+  current = await callApi(doctor, "GET", `/v1/eye/encounters/${encounterId}`);
+  current = await callApi(doctor, "PATCH", `/v1/eye/encounters/${encounterId}`, { expectedRevision: current.encounter.revision, sections: { plan: "NCT 10:30 測定。1か月後に再検" } });
+  const refinalized = await callApi(doctor, "POST", `/v1/eye/encounters/${encounterId}/finalize`, { expectedRevision: current.encounter.revision });
+  assert.equal(refinalized.approval.version, 2);
+
+  // 承認者: 承認 → 承認済み。版履歴に版ごとの記録
+  await director.reload();
+  await director.locator("[data-approval-bar='pending']").waitFor();
+  await director.locator("[data-approval-action='approve']").click();
+  await director.locator("[data-approval-bar='approved']").waitFor();
+  await director.getByText(/v2 を承認しました/u).waitFor();
+  await director.locator(".chart-head").getByRole("button", { name: /^版履歴/u }).click();
+  const versions = director.getByRole("dialog", { name: "版履歴" });
+  await versions.locator(".approval-version.is-danger").first().waitFor();
+  await versions.locator(".approval-version.is-ok").first().waitFor();
+
+  // 患者のカルテ一覧に承認済みの札
+  await director.goto(`${baseUrl}/patients/${patient.patientId}`);
+  await director.locator(".v-status .approval-tag[data-approval='approved']").first().waitFor();
+  const logs = await callApi(director, "GET", "/v1/eye/audit-logs?category=finalize");
+  const types = (logs.auditLogs || []).map((item) => item.eventType);
+  assert.ok(types.includes("eye.encounter_approved") && types.includes("eye.encounter_returned"), "approval events are audited");
+
+  assert.deepEqual(pageErrors, []);
+  await directorContext.close();
+  await doctorContext.close();
+}
+
+async function loginWithRetry(page, loginId) {
+  await login(page, loginId);
+  if (!(await page.locator(".eh-user-button, .eh-menu-button").first().waitFor({ timeout: 8000 }).then(() => true).catch(() => false))) {
+    await page.waitForTimeout(31_000);
+    await page.getByLabel("6桁コード").fill(currentLocalTotp());
+    await page.getByRole("button", { name: "確認" }).click();
+    await page.locator(".eh-user-button, .eh-menu-button").first().waitFor();
+  }
+}
+
+async function callApi(page, method, path, body) {
+  return page.evaluate(async ({ method, path, body }) => {
+    const csrf = decodeURIComponent((document.cookie.match(/(?:^|; )halunasu_csrf=([^;]*)/u) || [])[1] || "");
+    const response = await fetch(`/api/eye${path}`, { method, credentials: "include", headers: { "content-type": "application/json", "x-csrf-token": csrf }, body: body ? JSON.stringify(body) : undefined });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(`${method} ${path} ${response.status} ${JSON.stringify(payload).slice(0, 200)}`);
+    return payload;
+  }, { method, path, body });
 }

@@ -13,6 +13,7 @@ import {
   evaluateFinalizeReadiness,
   sortByDate
 } from "../../../packages/eye-core/src/index.js";
+import { approvalBrief } from "./approval.js";
 
 // カルテの状態遷移。draft で編集し、finalize で版を確定する。確定後の修正は amend で draft に戻し、次の版として確定する。
 // デジカルと同じく、確定済みのカルテもそのまま編集できる: 確定済みへの保存（PATCH）は自動で修正を始め（理由は任意、
@@ -73,7 +74,8 @@ export function applyEncounterUpdate(loaded, input, { actor, now }) {
   let current = loaded;
   let amendStarted = false;
   if (loaded.status === "finalized") {
-    if (input.expectedRevision < loaded.revision) {
+    // 確定のあとに承認・差し戻しで版（revision）が進んでも、内容は確定のときのまま。確定のときの版と比べる。
+    if (input.expectedRevision < (loaded.finalizedRevision ?? loaded.revision)) {
       const error = conflict("このカルテは確定されました。画面を読み込み直してください。");
       error.details = { sections: keys };
       throw error;
@@ -273,6 +275,7 @@ export function finalizeEncounter(current, { actor, now }) {
     content,
     status: "finalized",
     revision: current.revision + 1,
+    finalizedRevision: current.revision + 1,
     versionCount: version,
     amendment: null,
     finalizedBy: actor,
@@ -358,6 +361,8 @@ export function encounterSummary(encounter) {
     revision: encounter.revision,
     versionCount: encounter.versionCount,
     amending: Boolean(encounter.amendment),
+    // 承認（指導医の承認）を使うカルテだけ。{ status, version, current, ... }
+    approval: approvalBrief(encounter),
     diagnoses: encounter.content?.diagnoses || [],
     chiefComplaint: encounter.content?.chiefComplaint || "",
     finalizedAt: encounter.finalizedAt,

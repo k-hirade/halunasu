@@ -1,0 +1,154 @@
+/* カルテの承認（指導医の承認）・基準値の設定（replicate-2 approval）。色はトークンだけ。 */
+
+.approval-tag {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.approval-tag.is-ok {
+  background: var(--green-soft);
+  border-color: var(--green-line);
+  color: var(--green);
+}
+
+.approval-tag.is-warn {
+  background: var(--amber-soft);
+  border-color: var(--amber-line);
+  color: var(--amber);
+}
+
+.approval-tag.is-danger {
+  background: var(--red-soft);
+  border-color: var(--red-line);
+  color: var(--red);
+}
+
+.approval-tag.is-compact {
+  margin-left: 4px;
+  padding: 0 6px;
+}
+
+.v-status {
+  align-items: center;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.approval-bar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  justify-content: space-between;
+}
+
+.approval-bar-text {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  min-width: 0;
+}
+
+.approval-comment {
+  color: var(--text);
+  flex-basis: 100%;
+  font-size: var(--fs-sm);
+  white-space: pre-wrap;
+}
+
+.approval-actions {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 6px;
+}
+
+.approval-version {
+  margin-top: 2px;
+}
+
+.approval-version.is-ok { color: var(--green); }
+.approval-version.is-warn { color: var(--amber); }
+.approval-version.is-danger { color: var(--red); }
+
+/* 紙: 受診日の行の「未承認」は枠で囲んで目立たせる（紙面は黒と灰色だけ。白黒の印刷でも分かるように） */
+.cs-approval {
+  font-weight: 700;
+}
+
+.cs-approval.is-unapproved {
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+  color: var(--paper-mark);
+  padding: 0 6px;
+}
+
+/* グラフの基準値の線（R・L で同じ値のときは 1 本にまとめ、色を付けない） */
+.cl-ref-line.is-shared {
+  color: var(--muted);
+}
+
+/* 設定 › 基準値 */
+.ranges-table {
+  min-width: 420px;
+}
+
+.ranges-table td,
+.ranges-table th {
+  vertical-align: middle;
+}
+
+.ranges-table .ranges-num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.ranges-input {
+  max-width: 96px;
+  text-align: right;
+}
+
+.ranges-default {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+
+.ranges-changed {
+  color: var(--teal-dark);
+  font-weight: 700;
+}
+
+.ranges-group + .ranges-group {
+  margin-top: 16px;
+}
+
+.approval-settings-note {
+  margin-top: 8px;
+}
+
+.users-approval {
+  white-space: nowrap;
+}
+
+/* カルテ左「バイタル」「検査」: 基準値を項目の列（左に固定）の右端に出す（日付を右へ送っても隠れない） */
+.cl-matrix-head {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  width: 100%;
+}
+
+/* 右眼・左眼の頭文字の色（R・L）は項目名だけ。基準値の数字には付けない */
+.cl-matrix tr.is-od .cl-matrix-item span.cl-matrix-ref::first-letter,
+.cl-matrix tr.is-os .cl-matrix-item span.cl-matrix-ref::first-letter {
+  color: inherit;
+}
+
+.cl-matrix th.cl-matrix-item .cl-matrix-ref {
+  font-weight: 400;
+  margin-left: auto;
+  text-align: right;
+}
