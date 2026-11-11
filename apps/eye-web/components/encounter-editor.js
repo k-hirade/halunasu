@@ -17,6 +17,9 @@ import {
   StatusChoiceDialog, WarningsDialog
 } from "./encounter-dialogs";
 import { DrugHistoryTab, FilesTab, HistoryTab, LEFT_TABS, PatientInfoTab, VersionsPanel } from "./encounter-panels";
+import { SideEffectsTab } from "./chart-left-allergy";
+import { ExamResultsTab } from "./chart-left-exam";
+import { InterviewTab, SummaryTab, VitalsTab } from "./chart-left-notes";
 import { getIn, hasExamValues, setIn } from "./encounter-sections";
 import { UploadDialog } from "./files-panel";
 import { StatusTag } from "./home-workspace";
@@ -411,9 +414,14 @@ export function EncounterEditor({ encounterId }) {
     router.push(next.encounterId ? `/encounters/${next.encounterId}` : `/patients/${next.patientId}`);
   }
 
+  const profileSaved = (saved) => setDetail((current) => ({ ...current, profile: saved }));
   const leftContent = {
     info: <PatientInfoTab context={context} onEditProfile={() => setDialog("profile")} onProfileSaved={(saved) => setDetail((current) => ({ ...current, profile: saved }))} patient={patient} profile={profile} />,
-    exam: <ExamHistoryTab current={content} currentDate={meta.encounterDate} editable={editable} history={detail.history} onInsert={insertText} />,
+    interview: <InterviewTab context={context} encounterDate={meta.encounterDate} onInsert={editable ? insertText : null} onSaved={profileSaved} patientId={encounter.patientId} profile={profile} />,
+    allergy: <SideEffectsTab context={context} onSaved={profileSaved} patientId={encounter.patientId} profile={profile} />,
+    vitals: <VitalsTab context={context} encounterDate={meta.encounterDate} onInsert={editable ? insertText : null} onSaved={profileSaved} patientId={encounter.patientId} profile={profile} />,
+    exam: <ExamResultsTab current={content} currentDate={meta.encounterDate} history={detail.history} onInsert={editable ? insertText : null} />,
+    summary: <SummaryTab context={context} onSaved={profileSaved} patientId={encounter.patientId} profile={profile} />,
     history: <HistoryTab changes={changes} editable={editable} highlightId={highlight} history={detail.history} onCopy={copyFrom} previous={previous} />,
     drugs: <DrugHistoryTab history={detail.history} onJump={(id) => { setLeftTab("history"); setHighlight(id); requestAnimationFrame(() => document.getElementById(`hist-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" })); }} />,
     files: <FilesTab context={context} encounterId={finalizedView ? encounterId : ""} onUpload={() => setUploadOpen(true)} patientId={encounter.patientId} reloadKey={filesReload} />,
@@ -424,6 +432,8 @@ export function EncounterEditor({ encounterId }) {
         encounterDate={meta.encounterDate}
         learning={learning.items.diagnosis}
         onSaved={(saved) => setDetail((current) => ({ ...current, profile: saved }))}
+        onSend={context?.canReceive ? openSend : null}
+        sendState={finalizedView ? "finalized" : "draft"}
         patientId={encounter.patientId}
         profile={profile}
         setAddOpen={setDxAddOpen}

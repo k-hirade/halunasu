@@ -1268,6 +1268,14 @@ function validateDevices(value, field) {
   });
 }
 
+// アレルギー・副作用の発症時期。YYYY または YYYY-MM（月は 01〜12）。空なら持たない。
+export function allergyOnset(value, field) {
+  const text = String(value ?? "").trim();
+  if (!text) return {};
+  if (!/^\d{4}(-(0[1-9]|1[0-2]))?$/u.test(text)) throw validationError(`${field} must be YYYY or YYYY-MM`, field);
+  return { onset: text };
+}
+
 export function validatePatientProfileInput(input = {}) {
   const expectedRevision = Number(input.expectedRevision);
   if (!Number.isInteger(expectedRevision) || expectedRevision < 0) {
@@ -1281,7 +1289,9 @@ export function validatePatientProfileInput(input = {}) {
       category: optionalEnum(item.category, ALLERGY_CATEGORIES, `${field}.category`) || "drug",
       substance: requiredString(item.substance, `${field}.substance`, MAX_SHORT_TEXT),
       reaction: optionalString(item.reaction, `${field}.reaction`, MAX_SHORT_TEXT),
-      severity: optionalEnum(item.severity, ALLERGY_SEVERITIES, `${field}.severity`) || "unknown"
+      severity: optionalEnum(item.severity, ALLERGY_SEVERITIES, `${field}.severity`) || "unknown",
+      // 発症時期（任意。YYYY または YYYY-MM）。値があるときだけ持つ
+      ...allergyOnset(item.onset, `${field}.onset`)
     };
   });
   const noKnownAllergies = Boolean(input.noKnownAllergies);

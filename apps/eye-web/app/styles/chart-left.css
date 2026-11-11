@@ -1,0 +1,909 @@
+/*
+ * カルテ左ペイン（患者の情報）のタブとダイアログ（2026-11 replicate-2: デジカルの左ペインに合わせた）。
+ * 色は globals.css のトークンだけを使う。
+ */
+
+/* ---- タブ: デジカルと同じ 2 段（5 列 × 2 行）。どれも 1 回で押せる ---- */
+.chart-left .pane-tabs {
+  display: grid;
+  gap: 0;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  overflow: visible;
+  padding: 4px 4px 0;
+}
+
+.chart-left .pane-tab {
+  border-bottom-width: 2px;
+  min-height: 32px;
+  min-width: 0;
+  overflow: hidden;
+  padding: 4px 2px;
+  text-align: center;
+  text-overflow: ellipsis;
+}
+
+.chart-left .pane-tab:nth-child(-n + 5) {
+  border-bottom-color: var(--line);
+}
+
+.chart-left .pane-tab[aria-selected="true"] {
+  background: var(--teal-soft);
+  border-bottom-color: var(--teal);
+}
+
+@container left-pane (max-width: 380px) {
+  .chart-left .pane-tab {
+    font-size: var(--fs-xs);
+    padding: 4px 1px;
+  }
+
+  .chart-left .pane-tab-count {
+    margin-left: 2px;
+  }
+}
+
+/* ---- 区画（副作用薬等・バイタル・問診・サマリー） ---- */
+.cl-sections,
+.cl-info,
+.cl-exam,
+.cl-files {
+  display: grid;
+  gap: 10px;
+  padding-top: 8px;
+}
+
+.cl-section,
+.cl-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.cl-section > :not(.cl-section-head),
+.cl-card > :not(.cl-card-head) {
+  margin-left: 10px;
+  margin-right: 10px;
+}
+
+.cl-section > :last-child,
+.cl-card > :last-child {
+  margin-bottom: 10px;
+}
+
+.cl-section-head,
+.cl-card-head {
+  align-items: center;
+  background: var(--surface-muted);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 6px;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  min-height: 38px;
+  padding: 2px 6px 2px 10px;
+}
+
+.cl-section-title,
+.cl-card-head h3 {
+  font-size: var(--fs-md);
+  margin: 0;
+}
+
+.cl-count {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  margin-left: 6px;
+}
+
+.cl-section-actions {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.btn.btn-chip.cl-plus,
+.btn.btn-chip.cl-pencil {
+  font-size: var(--fs-lg);
+  justify-content: center;
+  min-height: 32px;
+  min-width: 36px;
+  padding: 0 8px;
+}
+
+.data-table.cl-table {
+  font-size: var(--fs-sm);
+  width: calc(100% - 20px);
+}
+
+.data-table.cl-table th,
+.data-table.cl-table td {
+  padding: 4px 6px;
+  vertical-align: top;
+}
+
+.cl-table tr.is-severe td:first-child {
+  color: var(--red);
+  font-weight: 700;
+}
+
+.cl-table tr.is-past td {
+  color: var(--muted);
+}
+
+.cl-edit-cell {
+  text-align: right;
+  width: 1%;
+}
+
+.cl-nowrap {
+  white-space: nowrap;
+}
+
+.cl-center {
+  text-align: center;
+}
+
+.cl-kind {
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  color: var(--text-soft);
+  display: inline-block;
+  font-size: var(--fs-xs);
+  margin-right: 4px;
+  padding: 0 4px;
+}
+
+.cl-sub {
+  display: block;
+}
+
+.cl-empty-line {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+.cl-empty-line .empty {
+  margin: 0;
+}
+
+.cl-kv {
+  display: grid;
+  font-size: var(--fs-sm);
+  gap: 4px 10px;
+  grid-template-columns: max-content minmax(0, 1fr);
+  margin-top: 0;
+}
+
+.cl-kv dt {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.cl-kv dd {
+  margin: 0;
+}
+
+/* ---- 患者情報: ラベルと値の表（大きめの文字） ---- */
+.cl-info-table {
+  border-collapse: collapse;
+  font-size: var(--fs-md);
+  width: calc(100% - 20px);
+}
+
+.cl-info-table th,
+.cl-info-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 8px 6px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.cl-info-table tr:last-child th,
+.cl-info-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.cl-info-table th {
+  color: var(--text-soft);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  white-space: nowrap;
+  width: 7.5em;
+}
+
+.cl-kana {
+  color: var(--muted);
+  display: block;
+  font-size: var(--fs-xs);
+}
+
+.cl-name {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+}
+
+.cl-memo {
+  font-size: var(--fs-sm);
+  margin-top: 0;
+}
+
+.cl-memo-edit {
+  display: grid;
+  gap: 6px;
+}
+
+/* ---- 項目 × 日付の表とグラフ（検査・バイタル） ---- */
+.cl-matrix-wrap {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cl-section .cl-matrix-wrap {
+  margin-left: 0;
+  margin-right: 0;
+}
+
+/* 共通の .data-table の overflow:hidden があると左の列の sticky が効かないので外す（薬歴と同じ） */
+.data-table.cl-matrix {
+  font-size: var(--fs-sm);
+  overflow: visible;
+}
+
+.cl-matrix tbody .cl-matrix-item {
+  box-shadow: 6px 0 6px -6px rgba(15, 23, 42, 0.35);
+}
+
+.data-table.cl-matrix th,
+.data-table.cl-matrix td {
+  padding: 4px 6px;
+  white-space: nowrap;
+}
+
+.cl-matrix .cl-matrix-item {
+  background: var(--surface);
+  left: 0;
+  position: sticky;
+  text-align: left;
+  z-index: 1;
+}
+
+.cl-matrix thead .cl-matrix-item {
+  z-index: 2;
+}
+
+.cl-matrix-check {
+  align-items: center;
+  cursor: pointer;
+  display: inline-flex;
+  font-weight: 600;
+  gap: 4px;
+}
+
+.cl-matrix-check input {
+  height: 16px;
+  margin: 0;
+  width: 16px;
+}
+
+.cl-check-spacer {
+  display: inline-block;
+  width: 16px;
+}
+
+.cl-unit {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  font-weight: 400;
+}
+
+.cl-matrix-ref {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.data-table.cl-matrix .cl-matrix-date {
+  text-align: right;
+}
+
+.cl-matrix-date.is-today {
+  color: var(--teal-dark);
+}
+
+.cl-today {
+  border: 1px solid var(--teal);
+  border-radius: 999px;
+  color: var(--teal-dark);
+  font-size: var(--fs-xs);
+  margin-left: 4px;
+  padding: 0 4px;
+}
+
+.cl-matrix tr.is-od .cl-matrix-item span:first-letter {
+  color: var(--od);
+}
+
+.cl-matrix tr.is-os .cl-matrix-item span:first-letter {
+  color: var(--os);
+}
+
+.data-table.cl-matrix .cl-matrix-cell {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.cl-matrix-cell.is-high {
+  background: var(--red-soft);
+  color: var(--red);
+  font-weight: 800;
+}
+
+.cl-matrix-cell.is-low {
+  background: var(--blue-soft);
+  color: var(--blue-ink);
+  font-weight: 800;
+}
+
+.cl-cell-button {
+  background: none;
+  border: 0;
+  border-bottom: 1px dotted var(--line-strong);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  min-height: 24px;
+  padding: 0;
+}
+
+.cl-cell-button:hover {
+  color: var(--teal-dark);
+}
+
+.cl-graph-tools {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+
+.cl-graph-title {
+  font-size: var(--fs-sm);
+  font-weight: 800;
+}
+
+.cl-graphs {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.cl-graph {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin: 0;
+  overflow: hidden;
+  padding: 4px 0 0;
+}
+
+.cl-legend {
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--fs-xs);
+  gap: 2px 10px;
+  padding: 0 8px;
+}
+
+.cl-legend-item {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+}
+
+.cl-legend-swatch {
+  background: currentColor;
+  border-radius: 2px;
+  display: inline-block;
+  height: 3px;
+  width: 14px;
+}
+
+.cl-graph-svg {
+  display: block;
+}
+
+.cl-grid {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.cl-axis-text,
+.cl-ref-text {
+  fill: var(--muted);
+  font-size: 11px;
+}
+
+.cl-ref-line {
+  opacity: 0.8;
+  stroke: currentColor;
+  stroke-dasharray: 5 4;
+  stroke-width: 1.2;
+}
+
+.cl-series polyline {
+  stroke: currentColor;
+  stroke-width: 2;
+}
+
+.cl-series circle {
+  fill: var(--surface);
+  stroke: currentColor;
+  stroke-width: 2;
+}
+
+.cl-series-0 { color: var(--od); }
+.cl-series-1 { color: var(--os); }
+.cl-series-2 { color: var(--teal); }
+.cl-series-3 { color: var(--amber); }
+.cl-series-4 { color: var(--green); }
+.cl-series-5 { color: var(--text-soft); }
+
+.cl-records {
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+}
+
+/* ---- 問診・サマリー ---- */
+.cl-entries {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  padding: 0;
+}
+
+.cl-entry {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 6px;
+}
+
+.cl-entry:last-child {
+  border-bottom: 0;
+}
+
+.cl-entry-head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+.cl-entry-actions {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.cl-entry-text,
+.cl-summary-text {
+  font-size: var(--fs-sm);
+  margin: 4px 0 0;
+}
+
+.input.cl-summary-input {
+  min-height: 200px;
+  width: 100%;
+}
+
+/* ---- ファイル: 文書作成・文書雛形のプルダウンと 1 つの表 ---- */
+.cl-files-tools {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cl-menu {
+  position: relative;
+}
+
+.cl-menu-list {
+  max-height: 60vh;
+  min-width: 260px;
+  overflow-y: auto;
+}
+
+.btn.cl-menu-item {
+  align-items: flex-start;
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+  text-align: left;
+  width: 100%;
+}
+
+.cl-menu-name {
+  font-weight: 700;
+}
+
+.data-table.cl-files-table {
+  font-size: var(--fs-sm);
+}
+
+.data-table.cl-files-table th,
+.data-table.cl-files-table td {
+  padding: 6px;
+  vertical-align: top;
+}
+
+.cl-file-kind {
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  display: inline-block;
+  font-size: var(--fs-xs);
+  margin-right: 4px;
+  padding: 0 4px;
+}
+
+.cl-file-kind.is-doc {
+  border-color: var(--teal);
+  color: var(--teal-dark);
+}
+
+.cl-row-actions {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.cl-row-actions .btn.btn-chip + .btn.btn-chip {
+  margin-left: 4px;
+}
+
+.cl-files-foot {
+  font-size: var(--fs-sm);
+  margin: 0;
+}
+
+/* ---- 診療履歴: 一覧（日付 × 区分の表） ---- */
+.history-matrix-wrap {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  max-height: 38vh;
+  overflow: auto;
+}
+
+.data-table.history-matrix {
+  overflow: visible;
+  font-size: var(--fs-sm);
+  width: 100%;
+}
+
+.history-matrix thead th {
+  background: var(--surface-muted);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.data-table.history-matrix th,
+.data-table.history-matrix td {
+  padding: 2px 4px;
+}
+
+.data-table.history-matrix .hm-kind {
+  color: var(--text-soft);
+  min-width: 20px;
+  padding: 2px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.history-matrix td.hm-kind.is-on {
+  color: var(--teal-dark);
+}
+
+.history-matrix tbody tr {
+  cursor: pointer;
+}
+
+.history-matrix tbody tr:hover td,
+.history-matrix tbody tr:hover th {
+  background: var(--surface-muted);
+}
+
+.history-matrix tbody tr.is-picked td,
+.history-matrix tbody tr.is-picked th {
+  background: var(--teal-soft);
+}
+
+.hm-date {
+  text-align: left;
+  white-space: nowrap;
+}
+
+.hm-pick {
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  min-height: 28px;
+  padding: 0 2px;
+}
+
+.history-matrix tbody tr.is-picked .hm-pick {
+  color: var(--teal-dark);
+  font-weight: 800;
+}
+
+/* ---- 診療履歴のカード: 日付の行の下に「科・医師・確定時刻・版」、処方の数量は右寄せ ---- */
+.chart-page .history-card .history-card-title {
+  row-gap: 0;
+}
+
+.history-meta {
+  color: var(--text-soft);
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  font-size: var(--fs-xs);
+  gap: 0 8px;
+}
+
+.chart-page .history-cols {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.chart-page .history-col-head {
+  background: var(--surface-muted);
+  border-bottom: 1px solid var(--line);
+  justify-content: center;
+  margin: -4px -6px 2px 0;
+  padding: 0 4px;
+  position: relative;
+}
+
+.chart-page .history-col + .history-col .history-col-head {
+  margin: -4px 0 2px -6px;
+}
+
+.chart-page .history-col-head .history-col-copy {
+  position: absolute;
+  right: 4px;
+}
+
+.chart-page .history-col {
+  padding-left: 6px;
+}
+
+.history-group-row .hg-name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.history-group-row .hg-qty {
+  color: var(--text-soft);
+  flex: 0 0 auto;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* ---- 病名: 診療科の列は 380px 以上なら出す（狭いときは傷病名の下）。レセコン送信 ---- */
+.dx-inline-dept {
+  display: none;
+}
+
+@container left-pane (min-width: 380px) {
+  .chart-left .dx-table .dx-col-dept {
+    display: table-cell;
+    white-space: nowrap;
+  }
+}
+
+@container left-pane (max-width: 379px) {
+  .chart-left .dx-table .dx-inline-dept {
+    color: var(--muted);
+    display: block;
+    font-size: var(--fs-xs);
+  }
+}
+
+.dx-send-note {
+  margin: 0 0 8px;
+}
+
+/* 修飾語の候補一覧（前・後のバッジつき） */
+.dx-modifier-candidates {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  list-style: none;
+  margin: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.dx-modifier-candidates li + li {
+  border-top: 1px solid var(--line);
+}
+
+.dx-modifier-pick {
+  align-items: center;
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  gap: 8px;
+  min-height: 34px;
+  padding: 2px 8px;
+  text-align: left;
+  width: 100%;
+}
+
+.dx-modifier-pick:hover {
+  background: var(--teal-soft);
+}
+
+.dx-modifier-pos {
+  background: var(--amber-soft);
+  border: 1px solid var(--amber-line);
+  border-radius: 999px;
+  color: var(--amber);
+  display: inline-grid;
+  flex: 0 0 auto;
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  height: 22px;
+  place-items: center;
+  width: 22px;
+}
+
+.dx-modifier-pos.is-suffix {
+  background: var(--blue-soft);
+  border-color: var(--blue-line);
+  color: var(--blue-ink);
+}
+
+.dx-modifier-hint {
+  margin: 0;
+}
+
+/* ---- 小さな編集ダイアログ（ラベルと値の 2 列） ---- */
+.dialog.cl-dialog {
+  max-width: 560px;
+  width: calc(100vw - 32px);
+}
+
+.dialog.cl-dialog.dialog-wide {
+  max-width: 760px;
+}
+
+.cl-dialog-title {
+  margin-top: 0;
+}
+
+.cl-dialog-body {
+  display: grid;
+  gap: 8px;
+}
+
+.cl-form {
+  display: grid;
+  gap: 8px;
+}
+
+.cl-row {
+  align-items: center;
+  display: grid;
+  gap: 4px 12px;
+  grid-template-columns: 8em minmax(0, 1fr);
+}
+
+.cl-row.is-top {
+  align-items: start;
+}
+
+.cl-row > span:first-child {
+  color: var(--text-soft);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.cl-row > input[type="checkbox"] {
+  height: 20px;
+  justify-self: start;
+  width: 20px;
+}
+
+.cl-onset {
+  align-items: center;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.cl-onset .input {
+  width: auto;
+}
+
+.cl-unit-input {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.cl-unit-input .input {
+  width: 8em;
+}
+
+.cl-vital-form {
+  gap: 6px;
+}
+
+.cl-pick-list {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  list-style: none;
+  margin: 0;
+  max-height: 50vh;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.cl-pick-list > li + li {
+  border-top: 1px solid var(--line);
+}
+
+.cl-pick-list > li.muted {
+  padding: 8px;
+}
+
+.cl-pick {
+  align-items: center;
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  gap: 8px;
+  justify-content: space-between;
+  min-height: 36px;
+  padding: 4px 10px;
+  text-align: left;
+  width: 100%;
+}
+
+.cl-pick:hover:not(:disabled) {
+  background: var(--teal-soft);
+}
+
+.cl-pick:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+.cl-pick.is-free {
+  color: var(--teal-dark);
+  font-weight: 700;
+}
+
+@media (max-width: 767px) {
+  .cl-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .btn.btn-chip.cl-plus,
+  .btn.btn-chip.cl-pencil {
+    min-height: 40px;
+    min-width: 44px;
+  }
+}

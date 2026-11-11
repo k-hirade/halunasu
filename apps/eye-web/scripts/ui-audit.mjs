@@ -210,6 +210,7 @@ const STATES = {
       await page.getByRole("tab", { name: "病名" }).click();
       await page.locator(".dx-table").getByRole("button", { name: /を編集$/u }).first().click();
       await page.getByRole("dialog").first().waitFor();
+      await page.locator(".dx-modifier-candidates li").first().waitFor().catch(() => null);
     }
   },
   "editor-set-panel": rightCategory("セット"),
@@ -375,6 +376,77 @@ const STATES = {
   "settings-export": { path: "settingsExport" },
   "settings-audit": { path: "settingsAudit" }
 };
+
+// ==== replicate-2 chart-left: カルテ左ペイン（デジカルの 2 段タブ・各タブ・ダイアログ） ====
+// 比較表（compare/15〜24 と「ハルナスに対応する画面がない」の 問診・バイタル・サマリー）に対応する撮影の状態。
+const leftDialog = (label, open) => ({
+  path: editorPath,
+  run: async (page, view) => {
+    await leftTab(label).run(page, view);
+    await open(page);
+    await page.getByRole("dialog").first().waitFor();
+    await page.waitForTimeout(500);
+  }
+});
+Object.assign(STATES, {
+  // 16: 診療履歴の「一覧」= 日付 × 区分の表（行を押した 1 件だけ下に出す）
+  "editor-tab-historylist": {
+    path: editorPath,
+    run: async (page, view) => {
+      await leftTab("診療履歴").run(page, view);
+      await page.locator(".history-tab .pane-tools").getByRole("button", { name: "一覧", exact: true }).click();
+      await page.getByRole("table", { name: "診療履歴の一覧" }).waitFor();
+    }
+  },
+  "editor-tab-history": leftTab("診療履歴"),
+  // 20: ファイル = 文書と取り込みファイルの 1 つの表（読み込みを待って撮る）
+  "editor-tab-files": {
+    path: editorPath,
+    run: async (page, view) => {
+      await leftTab("ファイル").run(page, view);
+      await page.locator(".cl-files-table, .cl-files .empty").first().waitFor();
+    }
+  },
+  "editor-tab-interview": leftTab("問診"),
+  "editor-tab-allergy": leftTab("副作用薬等"),
+  "editor-tab-vitals": leftTab("バイタル"),
+  "editor-tab-summary": leftTab("サマリー"),
+  "editor-allergy-edit": leftDialog("副作用薬等", (page) => page.locator(".cl-section").first().getByRole("button", { name: /を編集$/u }).first().click()),
+  "editor-regular-add": leftDialog("副作用薬等", async (page) => {
+    await page.getByRole("button", { name: "常用薬を追加" }).click();
+    await page.getByRole("dialog").getByLabel("医薬品を検索").fill("チモロール");
+    await page.waitForTimeout(900);
+  }),
+  "editor-vitals-add": leftDialog("バイタル", (page) => page.getByRole("button", { name: "バイタルを追加" }).click()),
+  "editor-interview-add": leftDialog("問診", (page) => page.getByRole("button", { name: "問診を追加" }).click()),
+  "editor-summary-edit": leftDialog("サマリー", (page) => page.getByRole("button", { name: "サマリーを編集" }).click()),
+  "editor-info-edit": leftDialog("患者情報", async (page) => {
+    await page.getByRole("button", { name: "患者情報を編集" }).click();
+  }),
+  "editor-files-menu": {
+    path: editorPath,
+    run: async (page, view) => {
+      await leftTab("ファイル").run(page, view);
+      await page.locator(".cl-files-tools .cl-menu > summary").filter({ hasText: "文書作成" }).click();
+      await page.waitForTimeout(300);
+    }
+  },
+  "editor-dx-send": {
+    path: editorPath,
+    run: async (page, view) => {
+      await leftTab("病名").run(page, view);
+      await page.getByRole("button", { name: "レセコン送信" }).click();
+      await page.waitForTimeout(300);
+    }
+  }
+});
+for (const name of ["editor-tab-history", "editor-tab-interview", "editor-tab-allergy", "editor-tab-vitals", "editor-tab-summary", "editor-allergy-edit", "editor-regular-add", "editor-vitals-add", "editor-interview-add", "editor-summary-edit", "editor-info-edit", "editor-files-menu", "editor-dx-send"]) {
+  const original = STATES[name].run;
+  STATES[name].run = async (page, view) => {
+    if (view.width >= 768 && view.height <= 500) await page.locator(".encounter-actions").getByRole("button", { name: "患者の情報", exact: true }).click();
+    await original(page, view);
+  };
+}
 
 // ---- (B) カルテ編集: 高さ 500px 以下（スマホ横）は幅があっても左が引き出しになる ----
 // 上の openLeftPane は幅だけで判断するため、左のタブを開く状態は、高さ 500px 以下ではまず引き出しを開いてから元の操作をする。
@@ -613,7 +685,7 @@ async function prepare(browser) {
   const patientHref = await page.locator('a[href^="/patients/"]').first().getAttribute("href");
   // 文書は左の「ファイル」タブから作る
   await page.getByRole("tab", { name: "ファイル" }).click();
-  await page.locator(".docs-create > summary").first().click();
+  await page.locator(".cl-files-tools .cl-menu > summary").filter({ hasText: "文書作成" }).click();
   await page.getByRole("button", { name: "紹介状を作成" }).click();
   await page.waitForURL(/\/documents\//u);
   const documentPath = new URL(page.url()).pathname;
