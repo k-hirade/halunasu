@@ -233,13 +233,15 @@ export function isActiveAppointmentStatus(status) {
 // 操作記録の種類。画面の絞り込みチップと API の category 絞り込みで同じ分け方を使う。
 export const AUDIT_CATEGORIES = Object.freeze(["view", "change", "finalize", "export", "settings", "other"]);
 const AUDIT_SETTINGS_EVENTS = new Set(["eye.drug_preset_saved", "eye.order_set_saved", "eye.set_folder_saved", "eye.phrase_saved", "eye.staff_profile_saved", "eye.facility_settings_saved", "eye.clinic_config_saved"]);
+const AUDIT_APPROVAL_EVENTS = new Set(["eye.encounter_approval_requested", "eye.encounter_approved", "eye.encounter_returned"]);
 const AUDIT_CHANGE_SUFFIX = /_(created|updated|saved|discarded|amend_started|confirmed|unconfirmed|status_changed|uploaded|archived|reviewed)$/u;
 
 export function auditEventCategory(eventType) {
   const type = String(eventType || "");
   if (AUDIT_SETTINGS_EVENTS.has(type)) return "settings";
   if (type.endsWith("_viewed")) return "view";
-  if (type.endsWith("_finalized")) return "finalize";
+  // カルテの承認（承認待ちにした・承認・差し戻し）は確定と同じ分類にする
+  if (type.endsWith("_finalized") || AUDIT_APPROVAL_EVENTS.has(type)) return "finalize";
   if (type.endsWith("_exported") || type === "eye.billing_handed_off") return "export";
   if (AUDIT_CHANGE_SUFFIX.test(type)) return "change";
   return "other";

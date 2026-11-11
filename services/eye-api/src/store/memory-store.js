@@ -260,6 +260,14 @@ export class MemoryEyeStore {
       .map(clone);
   }
 
+  // 承認待ちのカルテ（approval.status が pending）。確定済みかどうかは呼ぶ側で見る。
+  listApprovalPendingEncounters(orgId, limit = 200) {
+    return [...this.forOrg(this.encounters, orgId).values()]
+      .filter((encounter) => encounter.approval?.status === "pending")
+      .slice(0, limit)
+      .map(clone);
+  }
+
   listUnreviewedPaperFiles(orgId, limit = 200) {
     return [...this.forOrg(this.files, orgId).values()]
       .filter((file) => file.paper && file.paper.reviewedAt === "")

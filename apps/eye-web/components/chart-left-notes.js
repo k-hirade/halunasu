@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { resolveReferenceRanges } from "@halunasu/eye-core";
 import { ResultMatrix } from "./chart-left-matrix";
 import { DeleteButton, LeftDialog, saveErrorMessage, SectionHead, useSaveProfileSection } from "./chart-left-shared";
 import { formatDate, formatDateTime, formatShortDate } from "../lib/format";
@@ -8,6 +9,7 @@ import { formatDate, formatDateTime, formatShortDate } from "../lib/format";
 // 左「問診」「バイタル」「サマリー」（デジカルの同名タブ）。どれも患者ごとの記録で、区画ごとに保存する。
 
 // バイタルの項目。基準値は成人の一般的な目安（表の色分けとグラフの破線に使う。診断の基準ではない）。
+// ここの ref は既定の値で、医院の設定（設定 › 基準値）があればそちらを使う（VitalsTab の ranges）。
 export const VITAL_ITEMS = [
   { key: "systolic", label: "血圧（上）", short: "血圧上", unit: "mmHg", ref: { low: 90, high: 139 }, graphUnit: "血圧 mmHg", step: 1 },
   { key: "diastolic", label: "血圧（下）", short: "血圧下", unit: "mmHg", ref: { high: 89 }, graphUnit: "血圧 mmHg", step: 1 },
@@ -37,7 +39,7 @@ export function vitalText(entry, { withDate = true } = {}) {
   return [withDate ? formatShortDate(entry.date) : "", parts.join(" ")].filter(Boolean).join(" ");
 }
 
-export function VitalsTab({ patientId, profile, context, onSaved, encounterDate, onInsert = null }) {
+export function VitalsTab({ patientId, profile, context, onSaved, encounterDate, onInsert = null, ranges = null }) {
   const save = useSaveProfileSection(patientId, profile, onSaved);
   const canEdit = Boolean(context?.canEditProfile);
   const [dialog, setDialog] = useState(null);
@@ -52,18 +54,20 @@ export function VitalsTab({ patientId, profile, context, onSaved, encounterDate,
       title: "この日のバイタルを編集",
       entry
     }));
+    const refs = resolveReferenceRanges(ranges).vitals;
     const rowList = [
       ...VITAL_ITEMS.map((item) => ({
         ...item,
+        ref: refs[item.key] || item.ref,
         values: Object.fromEntries(vitals.filter((entry) => Number.isFinite(entry[item.key])).map((entry) => [entry.vitalId, { value: entry[item.key], text: String(entry[item.key]) }]))
       })),
       {
-        key: "bmi", label: "BMI", unit: "", ref: { low: 18.5, high: 24.9 },
+        key: "bmi", label: "BMI", unit: "", ref: refs.bmi,
         values: Object.fromEntries(vitals.map((entry) => [entry.vitalId, bmiOf(entry)]).filter(([, value]) => value !== null).map(([id, value]) => [id, { value, text: String(value) }]))
       }
     ];
     return { columns: columnList, rows: rowList };
-  }, [vitals, encounterDate]);
+  }, [vitals, encounterDate, ranges]);
 
   return (
     <div className="cl-sections">

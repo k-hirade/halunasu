@@ -1,14 +1,15 @@
 "use client";
 
 import { useMemo } from "react";
-import { parseVisualAcuity, sortExamRecords } from "@halunasu/eye-core";
+import { DEFAULT_REFERENCE_RANGES, parseVisualAcuity, resolveReferenceRanges, sortExamRecords } from "@halunasu/eye-core";
 import { ResultMatrix } from "./chart-left-matrix";
 import { formatTime } from "./encounter-sections";
 import { formatDiopter, formatShortDate, IOP_METHOD_LABELS } from "../lib/format";
 
 const SIDES = [["od", "R"], ["os", "L"]];
-// 眼圧の基準値（正常眼圧の目安）。ほかの項目は眼科では「基準値」を持たないので空欄にする。
-export const IOP_REFERENCE = Object.freeze({ low: 10, high: 21 });
+// 基準値は医院の設定（設定 › 基準値。eye-core の reference-ranges.js が既定の値）。眼圧は正常眼圧の目安 10〜21 mmHg、
+// 視力・屈折・角膜曲率・瞳孔径・C/D にも目安を持たせた（色分けとグラフの破線。診断の基準ではない）。
+export const IOP_REFERENCE = DEFAULT_REFERENCE_RANGES.exam.iop;
 
 const num = (value) => (Number.isFinite(value) ? value : null);
 
@@ -44,7 +45,7 @@ export const EXAM_ROWS = SIDES.flatMap(([side, eye]) => [
   { key: `${side}-vau`, label: `${eye} 裸眼視力`, graphUnit: "視力", side },
   { key: `${side}-vac`, label: `${eye} 矯正視力`, graphUnit: "視力", side },
   { key: `${side}-near`, label: `${eye} 近見視力`, graphUnit: "視力", side },
-  { key: `${side}-iop`, label: `${eye} 眼圧`, unit: "mmHg", ref: IOP_REFERENCE, refLabel: `${eye} 眼圧`, side },
+  { key: `${side}-iop`, label: `${eye} 眼圧`, unit: "mmHg", refLabel: `${eye} 眼圧`, side },
   { key: `${side}-s`, label: `${eye} 屈折 S`, unit: "D", side },
   { key: `${side}-c`, label: `${eye} 屈折 C`, unit: "D", side },
   { key: `${side}-k1`, label: `${eye} 角膜曲率 K1`, unit: "D", graphUnit: "角膜曲率 D", side },
@@ -59,7 +60,7 @@ const SORTED_ROWS = ORDER.flatMap((kind) => EXAM_ROWS.filter((row) => row.key.en
 
 // 左「検査」（デジカルの検査結果タブ）。検査項目 × 日付の表と、選んだ項目のグラフ（眼圧は基準値の線つき）。
 // 今日の列は保存前の入力も含む。値を押すと主訴・所見へ日付つきで書き込む。
-export function ExamResultsTab({ history, current, currentDate, onInsert = null }) {
+export function ExamResultsTab({ history, current, currentDate, onInsert = null, ranges = null }) {
   const { columns, rows } = useMemo(() => {
     const visits = [
       ...[...history].sort((left, right) => String(left.encounterDate).localeCompare(String(right.encounterDate))),
@@ -74,12 +75,17 @@ export function ExamResultsTab({ history, current, currentDate, onInsert = null 
       today: Boolean(visit.today),
       cells: visit
     }));
+    const refs = resolveReferenceRanges(ranges).exam;
     const rowList = SORTED_ROWS.map((row) => ({
       ...row,
+      ref: refs[row.key.split("-")[1]] || null,
+      // 視力の基準値は小数視力の書き方（1.0）で出す
+      ...(row.graphUnit === "視力" ? { refText: vaRefText(refs[row.key.split("-")[1]]) } : {}),
+      refLabel: row.refLabel || row.label,
       values: Object.fromEntries(withCells.map(({ visit, cells }) => [visit.encounterId, cells[row.key]]).filter(([, cell]) => cell))
     }));
     return { columns: columnList, rows: rowList };
-  }, [history, current, currentDate]);
+  }, [history, current, currentDate, ranges]);
 
   return (
     <div className="cl-exam">
@@ -107,6 +113,16 @@ export function ExamResultsTab({ history, current, currentDate, onInsert = null 
       ) : null}
     </div>
   );
+}
+
+function vaRefText(ref) {
+  const text = (value) => (Number.isFinite(value) ? value.toFixed(1) : null);
+  const low = text(ref?.low);
+  const high = text(ref?.high);
+  if (low && high) return `${low}〜${high}`;
+  if (low) return `${low}以上`;
+  if (high) return `${high}以下`;
+  return "";
 }
 
 function recordSummary(values = {}) {

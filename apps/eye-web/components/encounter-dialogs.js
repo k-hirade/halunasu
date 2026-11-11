@@ -1,5 +1,7 @@
 "use client";
 
+import { UnapprovedTag } from "./chart-approval";
+import { isUnapproved } from "../lib/approval";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { NEXT_VISIT_PLAN_PRESETS } from "@halunasu/eye-contracts";
@@ -251,7 +253,9 @@ export function SendDialog({ patient, encounterId, encounterDate, error = "", on
           <span className="mono">{patient.primaryPatientNumber || "—"}</span>
           <span>{formatDate(encounterDate)}</span>
           {item ? <span className="muted">カルテ v{item.version}</span> : null}
+          {item ? <UnapprovedTag approval={item.approval} /> : null}
         </p>
+        {item && isUnapproved(item.approval) ? <p className="alert alert-warn small" data-approval-note="send">このカルテは指導医の承認がまだです（{item.approval.status === "returned" ? "差し戻し中" : "承認待ち"}）。会計へは送れます。承認後に内容が変わったときは、もう一度送ってください。</p> : null}
         {state.loading ? <p className="loading">送る内容を確認しています…</p> : null}
         {state.error ? <p className="alert alert-warn">送る内容を読めませんでした（{state.error}）。送信はできます。</p> : null}
         {!state.loading && !state.error && !item ? <p className="alert alert-warn">この日の確定済みのカルテが見つかりません。確定してから送ってください。</p> : null}

@@ -65,7 +65,9 @@ export function useEncounterDraft(encounterId, { allowFinalizedEdit = false } = 
       orderCatalog: bootstrapPayload.orderCatalog || [],
       orderSets: bootstrapPayload.orderSets || [],
       setFolders: bootstrapPayload.setFolders || [],
-      phrases: bootstrapPayload.phrases || []
+      phrases: bootstrapPayload.phrases || [],
+      // 医院の基準値（バイタル・検査）。古い API で無いときは既定の値（chart-left が使う）
+      referenceRanges: bootstrapPayload.clinicConfig?.referenceRanges || null
     });
     applyServerEncounter(detailPayload.encounter, { force: force || !contentRef.current });
     setSaveState(dirtyRef.current.size ? "dirty" : "saved");

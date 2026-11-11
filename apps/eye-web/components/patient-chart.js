@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useEyeApi } from "./eye-api";
+import { ApprovalTag } from "./chart-approval";
 import { DocumentsPanel } from "./documents-panel";
 import { FilesPanel, UploadDialog } from "./files-panel";
 import { PatientBanner } from "./patient-banner";
@@ -294,7 +295,7 @@ function VisitTable({ encounters, trend, today }) {
                 <span className="v-changes" title={changes.map((change) => `${CHANGE_PREFIX[change.kind]}${change.label}`).join("\n")}>
                   {changes.length ? <ChangeList changes={changes} /> : <span className="v-none">—</span>}
                 </span>
-                <span className="v-status"><VisitStatus encounter={encounter} /></span>
+                <span className="v-status"><VisitStatus encounter={encounter} /><ApprovalTag approval={encounter.approval} compact /></span>
               </Link>
             </li>
           );
