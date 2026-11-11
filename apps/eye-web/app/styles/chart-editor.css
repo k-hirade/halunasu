@@ -141,12 +141,13 @@
 
 /* ---- 左: タブ ---- */
 /* 引き出しの見出し（患者の情報・閉じる）とタブは 1 つのかたまりで上に残す */
+/* 表の中で固定する見出し（検査・バイタルの「項目」は z-index 2）より上に重ねる */
 .chart-left .pane-sticky {
   background: var(--page);
   margin: 0 -10px 8px;
   position: sticky;
   top: 0;
-  z-index: 2;
+  z-index: 5;
 }
 
 .chart-left .pane-sticky > .pane-head {
