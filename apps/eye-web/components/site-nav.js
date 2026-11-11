@@ -34,11 +34,18 @@ export function screenName(pathname) {
   return "";
 }
 
-// 右のアイコン（線画は自前）。href の項目は画面の移動、それ以外はヘッダーの操作。
+// 右のアイコン（線画は自前）。デジカルのヘッダーと同じく、右上にアイコンだけを並べ、名前はツールチップと読み上げで出す。
+// href の項目は画面の移動、それ以外はヘッダーの操作。行き先は眼科カルテに本当にある画面だけ。
 const DESTINATIONS = [
-  { id: "reception", href: "/reception", label: "受付画面", match: (path) => path.startsWith("/reception") },
+  { id: "reception", href: "/reception", label: "受付画面", match: (path) => path.startsWith("/reception") && !path.startsWith("/reception/schedule") },
   { id: "list", href: "/", label: "患者リスト", title: "患者リスト（診察）", match: (path) => path === "/", badge: true },
+  { id: "schedule", href: "/reception/schedule", label: "予約状況", match: (path) => path.startsWith("/reception/schedule") },
   { id: "billing", href: "/billing", label: "会計連携", match: (path) => path.startsWith("/billing") }
+];
+// 管理者だけの行き先（施設管理の中の画面）
+const ADMIN_DESTINATIONS = [
+  { id: "audit", href: "/settings#audit", label: "操作記録", match: () => false },
+  { id: "report", href: "/settings#report", label: "経営データ集計", match: () => false }
 ];
 
 function Icon({ name }) {
@@ -60,6 +67,26 @@ function Icon({ name }) {
   }
   if (name === "help") {
     return <svg {...common}><circle cx="12" cy="12" r="8.5" /><path d="M9.6 9.6a2.5 2.5 0 1 1 3.4 2.3c-.7.3-1 .8-1 1.5v.4" /><path d="M12 16.8v.2" /></svg>;
+  }
+  if (name === "schedule") {
+    // 予定表（升目と時計の針）
+    return <svg {...common}><rect height="15" rx="2" width="17" x="3.5" y="5" /><path d="M3.5 9.5h17M8 3.5v3M16 3.5v3" /><path d="M12 12.5v3l2 1.2" /></svg>;
+  }
+  if (name === "settings") {
+    // 歯車
+    return <svg {...common}><circle cx="12" cy="12" r="3" /><path d="M12 3.5v2.2M12 18.3v2.2M3.5 12h2.2M18.3 12h2.2M6 6l1.6 1.6M16.4 16.4 18 18M6 18l1.6-1.6M16.4 7.6 18 6" /></svg>;
+  }
+  if (name === "audit") {
+    // 記録の帳面と虫めがね
+    return <svg {...common}><path d="M5 3.5h10l3 3v6" /><path d="M5 3.5v17h7" /><path d="M8 9h7M8 12.5h4" /><circle cx="16.5" cy="17" r="2.8" /><path d="m18.6 19.1 1.9 1.9" /></svg>;
+  }
+  if (name === "report") {
+    // 棒グラフと下向きの矢印（集計を出力）
+    return <svg {...common}><path d="M4 20.5h16" /><path d="M6.5 17V12M10.5 17V8M14.5 17v-3" /><path d="M18.5 4v8M16.5 10l2 2 2-2" /></svg>;
+  }
+  if (name === "dark") {
+    // 三日月（暗室表示）
+    return <svg {...common}><path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z" /></svg>;
   }
   if (name === "menu") {
     return <svg {...common}><path d="M4 7h16M4 12h16M4 17h16" /></svg>;
@@ -204,23 +231,31 @@ export function SiteNav() {
     ? { href: "/settings", label: "施設管理" }
     : context?.canManageSets ? { href: "/settings#sets", label: "セット管理" } : null;
   const badgeLabel = waiting ? `診察待 ${waiting}人` : "";
+  // 施設管理（管理者）またはセット管理（管理者でない医師）のアイコン。管理者は操作記録・経営データ集計も並べる
+  const destinations = [
+    ...DESTINATIONS,
+    ...(settingsItem ? [{ id: "settings", href: settingsItem.href, label: settingsItem.label, match: (path) => path.startsWith("/settings") }] : []),
+    ...(context?.canManageSettings ? ADMIN_DESTINATIONS : [])
+  ];
 
   function destinationLink(item, variant) {
     const current = item.match(pathname);
     const name = item.badge && badgeLabel ? `${item.title || item.label}（${badgeLabel}）` : item.title || item.label;
+    // 施設管理の中の項目（#audit など）は、同じ画面にいても切り替わるよう普通のリンクにする
+    const Anchor = item.href.includes("#") ? "a" : Link;
     return (
-      <Link
+      <Anchor
         aria-current={current ? "page" : undefined}
         aria-label={name}
         className={`eh-tool eh-tool-${item.id}${variant === "menu" ? " eh-menu-item" : ""}`}
         href={item.href}
+        data-tip={variant === "menu" ? undefined : name}
         key={item.id}
-        title={variant === "menu" ? undefined : name}
       >
         <Icon name={item.id} />
         <span className="eh-tool-label">{item.label}</span>
         {item.badge && waiting ? <span aria-hidden="true" className="eh-badge" data-badge="waiting">{waiting}</span> : null}
-      </Link>
+      </Anchor>
     );
   }
 
@@ -237,13 +272,21 @@ export function SiteNav() {
         </div>
         <nav aria-label="メイン" className="eh-right">
           <div className="eh-tools">
-            {DESTINATIONS.map((item) => destinationLink(item, "bar"))}
+            {destinations.slice(0, 2).map((item) => destinationLink(item, "bar"))}
           </div>
-          <button aria-haspopup="dialog" aria-label="患者検索（/）" className="eh-tool eh-tool-search" onClick={() => openSearch()} title="患者検索（/）" type="button">
+          <button aria-haspopup="dialog" aria-label="患者検索（/）" className="eh-tool eh-tool-search" data-tip="患者検索（/）" onClick={() => openSearch()} type="button">
             <Icon name="search" />
             <span className="eh-tool-label">検索</span>
           </button>
-          <button aria-haspopup="dialog" aria-label="ショートカット・ヘルプ" className="eh-tool eh-tool-help" onClick={openHelp} title="ショートカット・ヘルプ" type="button">
+          <div className="eh-tools">
+            {destinations.slice(2).map((item) => destinationLink(item, "bar"))}
+            <button aria-label={dark ? "画面を明るく戻す（暗室）" : "画面を暗くする（暗室）"} aria-pressed={dark} className="eh-tool eh-tool-dark" data-tip={dark ? "画面を明るく戻す（暗室）" : "画面を暗くする（暗室）"} onClick={toggleDark} type="button">
+              <Icon name="dark" />
+              <span className="eh-tool-label">暗室</span>
+            </button>
+          </div>
+          <span aria-hidden="true" className="eh-sep" />
+          <button aria-haspopup="dialog" aria-label="ショートカット・ヘルプ" className="eh-tool eh-tool-help" data-tip="ショートカット・ヘルプ" onClick={openHelp} type="button">
             <Icon name="help" />
             <span className="eh-tool-label">ヘルプ</span>
           </button>
@@ -280,13 +323,12 @@ export function SiteNav() {
       {menuOpen ? (
         <div className="eh-menu" id="eh-menu">
           <nav aria-label="メイン（メニュー）" className="eh-menu-list">
-            {DESTINATIONS.map((item) => destinationLink(item, "menu"))}
+            {destinations.map((item) => destinationLink(item, "menu"))}
             <button className="eh-tool eh-menu-item" onClick={() => openSearch()} type="button"><Icon name="search" /><span className="eh-tool-label">患者検索</span></button>
             <button className="eh-tool eh-menu-item" onClick={openHelp} type="button"><Icon name="help" /><span className="eh-tool-label">ショートカット・ヘルプ</span></button>
           </nav>
           <div className="eh-menu-user">
             <p className="eh-menu-user-name">{userName}{roles ? <span className="muted">（{roles}）</span> : null}{clinicName ? <span className="muted eh-menu-clinic">{clinicName}</span> : null}</p>
-            {settingsItem ? <Link aria-current={settingsOnPage ? "page" : undefined} className="eh-command" href={settingsItem.href}>{settingsItem.label}</Link> : null}
             <button aria-pressed={dark} className="eh-command" onClick={toggleDark} type="button">{dark ? "暗室表示をやめる" : "暗室表示にする"}</button>
             <button aria-haspopup="dialog" className="eh-command" onClick={openPasswordChange} type="button">パスワード変更</button>
             <button className="eh-command" onClick={logout} type="button">ログアウト</button>

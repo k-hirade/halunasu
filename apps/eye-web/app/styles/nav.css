@@ -619,64 +619,162 @@
   margin: 0;
 }
 
-/* ログイン: 毎日使う画面なので、説明の面を細くしてフォームを主役にする（共通部品は変えず、眼科側で上書き） */
-@media (min-width: 921px) {
-  .operator-gate-shell {
-    grid-template-columns: minmax(0, 0.56fr) minmax(0, 1fr);
-  }
-
-  .operator-gate-brand {
-    padding: 40px;
-  }
-
-  .operator-gate-pitch {
-    margin-top: 48px;
-  }
-
-  .operator-gate-pitch h2 {
-    font-size: 1.6rem;
-  }
+/* ログイン（デジカル p.8 と同じ、中央寄せの 1 列: ロゴ → 一言 → 病院コード・個人ID・パスワード → ［ログイン］→ 案内）。
+ * 共通部品（web-ui の LoginFormView）は変えず、眼科側の CSS で並べ替える。説明の帯（濃い色の面）は使わない。 */
+.operator-gate .operator-gate-shell {
+  align-content: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  min-height: 100dvh;
+  padding: 32px 16px;
 }
 
-.operator-gate-actions .btn {
+.operator-gate .operator-gate-brand {
+  align-items: center;
+  background: none;
+  color: var(--text);
+  justify-content: flex-start;
+  min-height: 0;
+  overflow: visible;
+  padding: 0;
+  text-align: center;
   width: 100%;
 }
 
-@media (max-width: 920px) {
-  .operator-gate-brand {
-    min-height: 0;
-    padding: 20px 24px;
+.operator-gate .operator-gate-brand-top {
+  flex-direction: column;
+  gap: 10px;
+}
+
+.operator-gate .operator-gate-mark {
+  height: 72px;
+  width: 72px;
+}
+
+.operator-gate .operator-gate-wordmark {
+  color: var(--text);
+  font-size: 2.25rem;
+}
+
+.operator-gate .operator-gate-pitch {
+  gap: 4px;
+  justify-items: center;
+  margin: 16px auto 0;
+  max-width: 520px;
+}
+
+.operator-gate .operator-gate-pitch h2 {
+  color: var(--text-soft);
+  font-size: var(--fs-lg);
+  font-weight: 700;
+}
+
+.operator-gate .operator-gate-pitch p {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.operator-gate .operator-gate-features,
+.operator-gate .operator-gate-foot {
+  display: none;
+}
+
+.operator-gate .operator-gate-form-area {
+  padding: 8px 0 0;
+  width: 100%;
+}
+
+.operator-gate .operator-gate-card {
+  background: transparent;
+  border: 0;
+  gap: 14px;
+  margin: 0 auto;
+  max-width: 440px;
+  padding: 8px 0;
+}
+
+/* 見出しは読み上げ用に残し、画面ではロゴの下の一言にまかせる */
+.operator-gate .operator-gate-card > div:first-child {
+  clip: rect(0 0 0 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  position: absolute;
+  width: 1px;
+}
+
+.operator-gate .operator-gate-actions {
+  justify-content: center;
+}
+
+.operator-gate .operator-gate-actions .btn {
+  min-width: 200px;
+  width: auto;
+}
+
+.operator-gate .operator-gate-help {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  text-align: center;
+}
+
+@media (max-width: 767px) {
+  .operator-gate .operator-gate-shell {
+    align-content: start;
+    padding: 24px 16px;
   }
 
-  .operator-gate-pitch {
-    margin-top: 12px;
+  .operator-gate .operator-gate-mark {
+    height: 48px;
+    width: 48px;
   }
 
-  .operator-gate-pitch h2 {
-    font-size: 20px;
+  .operator-gate .operator-gate-wordmark {
+    font-size: 1.75rem;
   }
 
-  .operator-gate-features,
-  .operator-gate-foot,
-  .operator-gate-pitch p {
+  .operator-gate .operator-gate-pitch p {
     display: none;
   }
 
-  .operator-gate-form-area {
-    align-items: start;
-    padding: 24px 16px;
+  .operator-gate .operator-gate-actions .btn {
+    width: 100%;
   }
 }
 
-/* ログイン（横向きのスマホなど高さ 500px 以下）: 説明文を省き、ラベルと入力欄を横に並べて、
- * スクロールしなくても［ログイン］まで見えるようにする（帯の高さは globals.css で詰めてある） */
+/* ログイン（横向きのスマホなど高さ 500px 以下）: ロゴを横に小さく、説明文を省き、ラベルと入力欄を横に並べて、
+ * スクロールしなくても［ログイン］まで見えるようにする */
 @media (max-height: 500px) {
-  .operator-gate-card > div:first-child > p {
+  .operator-gate .operator-gate-shell {
+    align-content: start;
+    gap: 4px;
+    padding: 8px 16px;
+  }
+
+  .operator-gate .operator-gate-brand-top {
+    flex-direction: row;
+    justify-content: center;
+  }
+
+  .operator-gate .operator-gate-mark {
+    height: 28px;
+    width: 28px;
+  }
+
+  .operator-gate .operator-gate-wordmark {
+    font-size: var(--fs-xl);
+  }
+
+  .operator-gate .operator-gate-pitch,
+  .operator-gate .operator-gate-help {
     display: none;
   }
 
-  .operator-gate-card h1 {
-    font-size: var(--fs-xl);
+  .operator-gate .operator-gate-card {
+    gap: 8px;
+    padding: 0;
   }
 
   .operator-gate-card .field:not(.operator-gate-remembered) {

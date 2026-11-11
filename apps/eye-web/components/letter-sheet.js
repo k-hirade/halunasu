@@ -9,7 +9,8 @@ import { ageOn, formatDate, SEX_LABELS } from "../lib/format";
 // 本文の【見出し】ごとに表の行として描く（表示だけの処理。保存する本文は変えない）。
 // 【】の見出しがない本文は、1つの段落としてそのまま出す。
 // printNames（memberId → 印刷用の氏名）があれば署名にそれを使う。なければ表示名から役割の括弧を除いて出す。
-export function LetterSheet({ document, showEmpty = false, printNames = {} }) {
+// settings（帳票設定）: 宛名の敬称の既定・印の欄の有無・紙の下の一言。渡さなければ従来どおり。
+export function LetterSheet({ document, showEmpty = false, printNames = {}, settings = null }) {
   const patient = document.patientSnapshot || {};
   const recipient = document.recipient || {};
   const sender = document.sender || {};
@@ -20,7 +21,8 @@ export function LetterSheet({ document, showEmpty = false, printNames = {} }) {
   const doctorName = document.status === "finalized"
     ? (finalizer?.memberId && printNames[finalizer.memberId]) || printableStaffName(finalizer?.displayName || sender.doctorName || "")
     : "";
-  const address = recipientLines(recipient);
+  // 敬称の既定（帳票設定）は下書きだけに使う。確定済みの文書は確定したときと同じ紙にする
+  const address = recipientLines({ ...recipient, honorific: recipient.honorific || (document.status === "finalized" ? "" : settings?.defaultHonorific) || "" });
   const to = address.to;
   return (
     <div className="letter-sheet">
@@ -44,7 +46,7 @@ export function LetterSheet({ document, showEmpty = false, printNames = {} }) {
         <p className="ls-sign">
           <span>医師</span>
           <span className="ls-sign-name">{doctorName}</span>
-          <span aria-label="押印欄" className="ls-seal">印</span>
+          {settings?.letterSeal === false ? null : <span aria-label="押印欄" className="ls-seal">印</span>}
         </p>
       </div>
       {preamble ? <p className="ls-preamble">{preamble}</p> : null}
@@ -74,6 +76,7 @@ export function LetterSheet({ document, showEmpty = false, printNames = {} }) {
           })}
         </tbody>
       </table>
+      {settings?.footerNote ? <p className="ls-footer-note">{settings.footerNote}</p> : null}
       {document.contentHash ? (
         <p className="ls-meta">文書ID {document.documentId} ・ 内容ハッシュ（改ざん検知用） {document.contentHash.slice(0, 16)}</p>
       ) : null}

@@ -14,7 +14,7 @@ export const WEEKDAYS = Object.freeze(["mon", "tue", "wed", "thu", "fri", "sat",
 export const SLOT_MINUTES = Object.freeze([10, 15, 20, 30, 60]);
 export const HONORIFICS = Object.freeze(["御侍史", "御机下", "先生", "殿", "御中"]);
 export const DOCUMENT_INPUT_MODES = Object.freeze(["fields", "text"]);
-export const AUDIT_DEFAULT_RANGES = Object.freeze(["today", "7d", "30d", "all"]);
+export const AUDIT_DEFAULT_RANGES = Object.freeze(["today", "7d", "30d"]);
 export const LAB_ITEM_KINDS = Object.freeze(["exam", "procedure"]);
 // 院内検査項目をオーダーの候補にするときの code の頭（既定の候補の code と重ならないように）
 export const LAB_ITEM_CODE_PREFIX = "lab:";
@@ -29,7 +29,7 @@ export function defaultClinicConfig(section) {
     case "receptionLabels": return { labels: [], marks: [] };
     case "clinicHours": return { slotMinutes: 30, days: Object.fromEntries(WEEKDAYS.map((day) => [day, []])), note: "" };
     case "printSettings": return { defaultHonorific: "御侍史", letterSeal: true, billingSlipDiagnoses: true, footerNote: "" };
-    case "otherSettings": return { documentInputMode: "text", auditDefaultRange: "all" };
+    case "otherSettings": return { documentInputMode: "text", auditDefaultRange: "7d" };
     default: throw validationError("unknown settings section", "section");
   }
 }
@@ -150,7 +150,7 @@ const VALIDATORS = {
   otherSettings(value) {
     return {
       documentInputMode: enumOf(value.documentInputMode, DOCUMENT_INPUT_MODES, "documentInputMode", "text"),
-      auditDefaultRange: enumOf(value.auditDefaultRange, AUDIT_DEFAULT_RANGES, "auditDefaultRange", "all")
+      auditDefaultRange: enumOf(value.auditDefaultRange, AUDIT_DEFAULT_RANGES, "auditDefaultRange", "7d")
     };
   }
 };

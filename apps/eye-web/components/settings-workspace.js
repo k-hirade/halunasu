@@ -9,22 +9,33 @@ import { FacilitySection } from "./settings-facility";
 import { EmptyList, FilterChips, InactiveGroup, MasterEditorPanel, MasterRows, MasterSearchInput, MasterToolbar, SectionHead, useMasterEditor } from "./settings-master";
 import { OrderSetsSection } from "./settings-sets";
 import { UsersSection } from "./settings-users";
+import { ClinicHoursSection, DocTemplatesSection, LabListsSection, OtherSettingsSection, PrintSettingsSection, ReceptionLabelsSection } from "./settings-config";
+import { ReportSection } from "./settings-report";
 import { COMMON_USAGES, downloadJson, formatDateTime, PHRASE_TARGET_LABELS, PHRASE_TARGET_SOAP, PRESCRIPTION_KIND_LABELS, SOAP_LABELS, todayIso } from "../lib/format";
 import { daysPerBottle, drugBottleText, drugDefaultText, drugSearchValues, matchesSearch, normalizeSearch, phraseSearchValues } from "../lib/settings";
 
-// デジカルの施設管理と同じく、左にメニュー・右に「見出し + 内容」。医院の情報を先頭に、カルテ入力の候補、記録・出力の順。
+// デジカルの施設管理と同じく、左にメニュー・右に「見出し + 内容」。医院の情報を先頭に、受付・カルテの候補、帳票、記録・出力の順。
+// 項目はデジカルのメニュー（約 20）のうち、眼科カルテで本当に使えるものだけ（保険・労災・電子処方箋などはレセコン側）。
 const SECTIONS = [
   { key: "facility", label: "医療機関情報", group: "clinic" },
-  { key: "users", label: "利用者", group: "clinic", admin: true },
+  { key: "users", label: "利用者管理", group: "clinic", admin: true },
+  { key: "hours", label: "診療時間・予約枠", group: "clinic" },
+  { key: "labels", label: "受付ラベル・患者マーク", group: "input" },
   { key: "sets", label: "セット", group: "input" },
   { key: "phrases", label: "定型文", group: "input" },
   { key: "drugs", label: "よく使う薬剤", group: "input" },
-  { key: "export", label: "データ出力", group: "records", admin: true },
-  { key: "audit", label: "操作記録", group: "records", admin: true }
+  { key: "lab", label: "検査会社・院内検査項目", group: "input" },
+  { key: "templates", label: "文書雛形", group: "paper" },
+  { key: "print", label: "帳票設定", group: "paper" },
+  { key: "other", label: "その他設定", group: "paper" },
+  { key: "audit", label: "操作記録", group: "records", admin: true },
+  { key: "report", label: "経営データ集計", group: "records", admin: true },
+  { key: "export", label: "データ出力", group: "records", admin: true }
 ];
-const NAV_GROUPS = [["clinic", "医院"], ["input", "カルテ入力の候補"], ["records", "記録・出力"]];
+const NAV_GROUPS = [["clinic", "医院"], ["input", "受付・カルテの候補"], ["paper", "文書・帳票"], ["records", "記録・出力"]];
 // 以前のリンク（#staff = 印刷用の氏名）を新しい項目へ
 const HASH_ALIASES = { staff: "users" };
+const AUDIT_PRESETS = { today: "today", "7d": "week", "30d": "month" };
 
 function readHash() {
   if (typeof window === "undefined") return "";
@@ -43,6 +54,7 @@ export function SettingsWorkspace() {
   const [setFolders, setSetFolders] = useState([]);
   const [phrases, setPhrases] = useState([]);
   const [orderCatalog, setOrderCatalog] = useState([]);
+  const [otherSettings, setOtherSettings] = useState(null);
   const [error, setError] = useState("");
   const [hash, setHash] = useState("");
   const [pendingSection, setPendingSection] = useState(null);
@@ -59,6 +71,7 @@ export function SettingsWorkspace() {
       setSetFolders(payload.setFolders || []);
       setPhrases(payload.phrases || []);
       setOrderCatalog(payload.orderCatalog || []);
+      setOtherSettings(payload.clinicConfig?.otherSettings || null);
     }).catch((nextError) => { if (!cancelled) setError(nextError.message); });
     return () => { cancelled = true; };
   }, [api]);
@@ -158,7 +171,14 @@ export function SettingsWorkspace() {
           ) : null}
           {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
           {section === "facility" ? <FacilitySection canEdit={context.canManageSettings} /> : null}
-          {section === "users" ? <UsersSection onDirtyChange={onDirtyChange} /> : null}
+          {section === "users" ? <UsersSection context={context} onDirtyChange={onDirtyChange} /> : null}
+          {section === "hours" ? <ClinicHoursSection canEdit={context.canManageSettings} /> : null}
+          {section === "labels" ? <ReceptionLabelsSection canEdit={context.canManageSettings} /> : null}
+          {section === "lab" ? <LabListsSection canEdit={context.canManageSettings} /> : null}
+          {section === "templates" ? <DocTemplatesSection canEdit={context.canManageSettings} /> : null}
+          {section === "print" ? <PrintSettingsSection canEdit={context.canManageSettings} /> : null}
+          {section === "other" ? <OtherSettingsSection canEdit={context.canManageSettings} /> : null}
+          {section === "report" ? <ReportSection /> : null}
           {section === "sets" ? (
             <OrderSetsSection
               canEdit={Boolean(context.canManageSets ?? context.canManageSettings)}
@@ -174,7 +194,7 @@ export function SettingsWorkspace() {
           {section === "phrases" ? <PhrasesSection canEdit={context.canManageSettings} onDirtyChange={onDirtyChange} onSaved={upsert(setPhrases, "phraseId", phraseSortKey)} phrases={phrases} /> : null}
           {section === "drugs" ? <DrugsSection canEdit={context.canManageSettings} onDirtyChange={onDirtyChange} onSaved={upsert(setPresets, "presetId", (item) => item.name)} presets={presets} /> : null}
           {section === "export" ? <ExportSection context={context} /> : null}
-          {section === "audit" ? <AuditLogSection masters={{ drugPresets: presets, orderSets, phrases }} /> : null}
+          {section === "audit" ? <AuditLogSection defaultPreset={AUDIT_PRESETS[otherSettings?.auditDefaultRange] || "week"} masters={{ drugPresets: presets, orderSets, phrases }} /> : null}
         </div>
       </div>
     </main>
