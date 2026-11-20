@@ -1407,6 +1407,10 @@ export function validateCreateAppointmentInput(input = {}) {
   if (!patientId && !patientName) {
     throw validationError("patientId or patientName is required", "patientId");
   }
+  // 予約（当日受付でないもの）は登録済みの患者だけ。氏名だけで受け付けられるのは当日受付（walkIn）だけ。
+  if (!patientId && !input.walkIn) {
+    throw validationError("予約は登録済みの患者で取ってください。患者を選ぶか、新規患者登録をしてください。", "patientId");
+  }
   return {
     date: requiredDate(input.date, "date"),
     time: optionalTime(input.time, "time"),

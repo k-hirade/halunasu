@@ -92,9 +92,9 @@ export async function loadEyeDemoData({ platformStore, eyeStore, orgId, today, a
     }
   }
 
-  for (const spec of dataset.unregisteredAppointments) {
+  for (const spec of dataset.unregisteredWalkIns) {
     if (appointmentsToday.some((item) => !item.patientId && item.patientName === spec.patientName)) continue;
-    log(`appointment: ${today} ${spec.time} ${spec.patientName}（未登録）`);
+    log(`walk-in: ${today} ${spec.patientName}（未登録）`);
     summary.appointmentsCreated += 1;
     if (apply) await createAppointment({ eyeStore, orgId, patient: null, today, spec });
   }
@@ -158,7 +158,8 @@ async function createAppointment({ eyeStore, orgId, patient, today, spec }) {
     patientId: patient?.patientId || "",
     patientName: patient ? "" : spec.patientName,
     purpose: spec.purpose,
-    note: spec.note
+    note: spec.note,
+    walkIn: Boolean(spec.walkIn)
   });
   const now = new Date().toISOString();
   const appointment = buildAppointment({
@@ -169,5 +170,5 @@ async function createAppointment({ eyeStore, orgId, patient, today, spec }) {
     actor: DEMO_ACTOR,
     now
   });
-  await eyeStore.createAppointment(orgId, appointment);
+  await eyeStore.createAppointment(orgId, appointment, { assignQueueNumber: appointment.status === "checked_in" });
 }

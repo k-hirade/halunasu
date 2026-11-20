@@ -128,3 +128,13 @@ export function monthRange(today, offset = 0) {
   const last = new Date(Date.UTC(year, month + offset, 0));
   return { visitFrom: first.toISOString().slice(0, 10), visitTo: last.toISOString().slice(0, 10) };
 }
+
+// 予約の患者欄で検索した語から、新規患者登録の最初の値を決める。
+// 数字を含む英数字だけなら患者番号、かなだけならフリガナ、それ以外は氏名に入れる。
+export function registerInitialFromQuery(query) {
+  const text = String(query ?? "").normalize("NFKC").trim().replace(/\s+/gu, " ");
+  if (!text) return {};
+  if (/^[0-9A-Za-z-]+$/u.test(text) && /\d/u.test(text)) return { primaryPatientNumber: text };
+  if (/^[ぁ-ゖゝゞァ-ヺヽヾー・ ]+$/u.test(text)) return { displayNameKana: text };
+  return { displayName: text };
+}

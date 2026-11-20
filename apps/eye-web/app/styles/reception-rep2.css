@@ -548,6 +548,24 @@ button.rc-status:disabled .rc-status-caret {
   grid-template-columns: minmax(0, 200px) minmax(0, 200px);
 }
 
+/* 生年月日: 和暦・西暦を打つ欄＋カレンダー */
+.register-dialog .register-birth {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+}
+
+.register-dialog .register-birth #reg-birth {
+  flex: 0 1 220px;
+  min-width: 0;
+}
+
+.register-dialog .register-birth #reg-birth-calendar {
+  flex: 0 1 190px;
+  min-width: 0;
+}
+
 .register-dialog .register-note {
   margin: 10px 0 0;
 }
