@@ -138,12 +138,13 @@ export function buildEyeDemoDataset({ today }) {
     }
   ];
 
-  // 未登録の初診患者。受付で患者登録する流れのデモに使う。
-  const unregisteredAppointments = [
-    { patientName: "初診 太郎", time: "15:00", purpose: "initial", note: "電話予約・右眼の飛蚊症" }
+  // 未登録の初診患者（予約なしの当日受付）。受付で患者登録する流れのデモに使う。
+  // 予約は登録済みの患者でしか取れないので、氏名だけの受付は当日受付（walkIn）にする。
+  const unregisteredWalkIns = [
+    { patientName: "初診 太郎", time: "", purpose: "initial", note: "飛び込み・右眼の飛蚊症", walkIn: true }
   ];
 
-  return { patients, unregisteredAppointments, drugPresets: EYE_DEMO_DRUG_PRESETS, orderSets: EYE_DEMO_ORDER_SETS, phrases: EYE_DEMO_PHRASES };
+  return { patients, unregisteredWalkIns, drugPresets: EYE_DEMO_DRUG_PRESETS, orderSets: EYE_DEMO_ORDER_SETS, phrases: EYE_DEMO_PHRASES };
 }
 
 function glaucomaVisits(day) {

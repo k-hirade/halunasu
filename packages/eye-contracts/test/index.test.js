@@ -327,16 +327,24 @@ test("validates status changes and normalizes the legacy value", () => {
   assert.throws(() => validateAppointmentStatusInput({ expectedRevision: 0, status: "booked" }), { field: "expectedRevision" });
 });
 
+test("a booking needs a registered patient; only a same-day walk-in may be name-only", () => {
+  assert.throws(() => validateCreateAppointmentInput({ date: "2026-11-09", patientName: "電話 予約" }), (error) => error.field === "patientId" && /登録済みの患者/u.test(error.message));
+  assert.throws(() => validateCreateAppointmentInput({ date: "2026-11-09", walkIn: false, patientName: "電話 予約" }), { field: "patientId" });
+  assert.throws(() => validateCreateAppointmentInput({ date: "2026-11-09", walkIn: true }), { field: "patientId" });
+  assert.equal(validateCreateAppointmentInput({ date: "2026-11-09", walkIn: true, patientName: "飛込 花子" }).patientName, "飛込 花子");
+  assert.equal(validateCreateAppointmentInput({ date: "2026-11-09", patientId: "pat_1" }).patientId, "pat_1");
+});
+
 test("accepts the doctor, department and reception memo (stored as note) on appointments", () => {
-  const created = validateCreateAppointmentInput({ date: "2026-11-09", patientName: "x", doctorMemberId: "mem_1", department: "眼科", receptionMemo: "  紹介状あり\n" });
+  const created = validateCreateAppointmentInput({ date: "2026-11-09", patientId: "pat_1", doctorMemberId: "mem_1", department: "眼科", receptionMemo: "  紹介状あり\n" });
   assert.equal(created.note, "紹介状あり");
   assert.equal(created.doctorMemberId, "mem_1");
   assert.equal(created.department, "眼科");
-  assert.equal(validateCreateAppointmentInput({ date: "2026-11-09", patientName: "x", note: "古い形" }).note, "古い形");
-  assert.equal(validateCreateAppointmentInput({ date: "2026-11-09", patientName: "x", note: "a", receptionMemo: "b" }).note, "b", "receptionMemo wins");
-  assert.equal(validateCreateAppointmentInput({ date: "2026-11-09", patientName: "x" }).note, "");
-  assert.throws(() => validateCreateAppointmentInput({ date: "2026-11-09", patientName: "x", department: "a".repeat(41) }), { field: "department" });
-  assert.throws(() => validateCreateAppointmentInput({ date: "2026-11-09", patientName: "x", receptionMemo: "a".repeat(1001) }), { field: "receptionMemo" });
+  assert.equal(validateCreateAppointmentInput({ date: "2026-11-09", patientId: "pat_1", note: "古い形" }).note, "古い形");
+  assert.equal(validateCreateAppointmentInput({ date: "2026-11-09", patientId: "pat_1", note: "a", receptionMemo: "b" }).note, "b", "receptionMemo wins");
+  assert.equal(validateCreateAppointmentInput({ date: "2026-11-09", patientId: "pat_1" }).note, "");
+  assert.throws(() => validateCreateAppointmentInput({ date: "2026-11-09", patientId: "pat_1", department: "a".repeat(41) }), { field: "department" });
+  assert.throws(() => validateCreateAppointmentInput({ date: "2026-11-09", patientId: "pat_1", receptionMemo: "a".repeat(1001) }), { field: "receptionMemo" });
   const update = validateUpdateAppointmentInput({ expectedRevision: 1 });
   assert.equal(update.note, undefined, "an update without a memo leaves it alone");
   assert.equal(update.doctorMemberId, undefined);

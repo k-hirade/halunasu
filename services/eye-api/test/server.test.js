@@ -7,6 +7,7 @@ import {
 import { createSignedSession } from "../../platform-api/src/auth/session.js";
 import { MemoryPlatformStore } from "../../platform-api/src/store/memory-store.js";
 import { japanDate } from "../src/dates.js";
+import { buildAppointment } from "../src/appointments.js";
 import { handleEyeApiRequest } from "../src/server.js";
 import { MemoryBlobStore } from "../src/store/blob-store.js";
 import { MemoryEyeStore } from "../src/store/memory-store.js";
@@ -517,13 +518,37 @@ test("links a walk-in to a newly registered patient and shows upcoming visits on
   assert.equal(JSON.stringify(progressed).includes("1.0"), false, "the board summary does not expose measured values");
 });
 
+test("a booking needs a registered patient; a same-day walk-in can still be name-only, and old name-only bookings stay usable", async () => {
+  const stores = createStores();
+  const clerk = await signedHeaders(stores.platformStore, "clerk");
+  const refused = await request(stores, "POST", "/v1/eye/appointments", { date: "2026-11-02", time: "10:00", patientName: "電話 予約" }, clerk);
+  assert.equal(refused.statusCode, 400);
+  assert.equal(refused.body.field, "patientId");
+  assert.match(refused.body.message, /登録済みの患者/u);
+  const walkIn = await request(stores, "POST", "/v1/eye/appointments", { date: "2026-10-27", patientName: "飛込 花子", walkIn: true }, clerk);
+  assert.equal(walkIn.statusCode, 201);
+  assert.equal(walkIn.body.appointment.patientId, "");
+
+  // 前に保存された氏名だけの予約は、一覧に出て、編集でき、あとから患者に紐づけられる
+  const legacy = await legacyNameOnlyBooking(stores, clerk, { date: "2026-11-02", time: "10:00", patientName: "電話 予約" });
+  const week = await request(stores, "GET", "/v1/eye/appointments/range?from=2026-11-02&to=2026-11-08", undefined, clerk);
+  assert.equal(week.body.appointments[0].patientName, "電話 予約");
+  const moved = await request(stores, "PATCH", `/v1/eye/appointments/${legacy.appointmentId}`, { expectedRevision: 1, time: "11:00" }, clerk);
+  assert.equal(moved.statusCode, 200);
+  const patient = await createPatient(stores, clerk, { displayName: "電話 予約", displayNameKana: "デンワ ヨヤク" });
+  const linked = await request(stores, "PATCH", `/v1/eye/appointments/${legacy.appointmentId}`, { expectedRevision: 2, patientId: patient.patientId }, clerk);
+  assert.equal(linked.body.appointment.patientId, patient.patientId);
+  assert.equal(linked.body.appointment.time, "11:00");
+});
+
 test("viewers cannot change reception", async () => {
   const stores = createStores();
   const viewer = await signedHeaders(stores.platformStore, "viewer");
   const response = await request(stores, "POST", "/v1/eye/appointments", { date: "2026-10-27", patientName: "x" }, viewer);
   assert.equal(response.statusCode, 403);
-  const invalid = await request(stores, "POST", "/v1/eye/appointments", { date: "2026-10-27", time: "25:00", patientName: "x" }, await signedHeaders(stores.platformStore, "clerk"));
+  const invalid = await request(stores, "POST", "/v1/eye/appointments", { date: "2026-10-27", time: "25:00", patientName: "x", walkIn: true }, await signedHeaders(stores.platformStore, "clerk"));
   assert.equal(invalid.statusCode, 400);
+  assert.equal(invalid.body.field, "time");
 });
 
 test("stored encounters never contain nested arrays (Firestore cannot store them)", async () => {
@@ -1529,6 +1554,21 @@ async function book(stores, headers, body) {
   return response.body.appointment;
 }
 
+// 氏名だけの予約（患者登録を必須にする前に保存されたもの）。API では作れないので、ストアへ直接入れる。
+let legacySequence = 0;
+async function legacyNameOnlyBooking(stores, headers, { patientName, time = "", date = "2026-10-27", note = "" }) {
+  const { orgId } = await contextOf(stores, headers);
+  const appointment = buildAppointment({
+    appointmentId: `eapt_legacy_${(legacySequence += 1)}`,
+    orgId,
+    input: { date, time, patientName, purpose: "revisit", note, doctorMemberId: "", department: "", walkIn: false, sourceEncounterId: "" },
+    patientSnapshot: null,
+    actor: { memberId: "emem_old", displayName: "旧" },
+    now: NOW.toISOString()
+  });
+  return stores.eyeStore.createAppointment(orgId, appointment);
+}
+
 async function moveTo(stores, headers, appointment, status) {
   const response = await request(stores, "POST", `/v1/eye/appointments/${appointment.appointmentId}/status`, { expectedRevision: appointment.revision, status }, headers);
   assert.equal(response.statusCode, 200, JSON.stringify(response.body));
@@ -1577,7 +1617,7 @@ test("moves between all DigiKar statuses freely, keeps the first queue number, a
   assert.equal(legacy.body.appointment.status, "absent");
 
   // 保存済みの no_show はそのまま読め、一覧では不在として出る
-  const old = await book(stores, clerk, { time: "11:00", patientName: "旧 データ" });
+  const old = await legacyNameOnlyBooking(stores, clerk, { time: "11:00", patientName: "旧 データ" });
   const { orgId } = await contextOf(stores, clerk);
   const records = stores.eyeStore.appointments.get(orgId);
   records.set(old.appointmentId, { ...records.get(old.appointmentId), status: "no_show" });
@@ -1626,17 +1666,18 @@ test("stores the doctor, department and reception memo on appointments and keeps
   assert.equal(booked.receptionMemo, "保険証確認\n駐車券");
   assert.equal(booked.note, "保険証確認\n駐車券", "the reception memo is stored in the existing note field");
 
-  const legacy = await book(stores, clerk, { time: "09:30", patientName: "古い 形", note: "メモ" });
-  assert.equal(legacy.receptionMemo, "メモ");
+  const legacy = await legacyNameOnlyBooking(stores, clerk, { time: "09:30", patientName: "古い 形", note: "メモ" });
+  const legacyShown = (await request(stores, "GET", "/v1/eye/appointments?date=2026-10-27", undefined, clerk)).body.appointments.find((item) => item.appointmentId === legacy.appointmentId);
+  assert.equal(legacyShown.receptionMemo, "メモ");
   assert.equal(legacy.doctorMemberId, "");
   assert.equal(legacy.department, "");
 
   for (const doctorMemberId of [clerkContext.memberId, "emem_missing"]) {
-    const invalid = await request(stores, "POST", "/v1/eye/appointments", { date: "2026-10-27", patientName: "x", doctorMemberId }, clerk);
+    const invalid = await request(stores, "POST", "/v1/eye/appointments", { date: "2026-10-27", patientId: patient.patientId, doctorMemberId }, clerk);
     assert.equal(invalid.statusCode, 400, doctorMemberId);
     assert.equal(invalid.body.field, "doctorMemberId");
   }
-  const tooLong = await request(stores, "POST", "/v1/eye/appointments", { date: "2026-10-27", patientName: "x", department: "あ".repeat(41) }, clerk);
+  const tooLong = await request(stores, "POST", "/v1/eye/appointments", { date: "2026-10-27", patientId: patient.patientId, department: "あ".repeat(41) }, clerk);
   assert.equal(tooLong.statusCode, 400);
 
   const patched = await request(stores, "PATCH", `/v1/eye/appointments/${legacy.appointmentId}`, { expectedRevision: 1, receptionMemo: "新しいメモ", doctorMemberId: doctorContext.memberId }, clerk);
@@ -1680,13 +1721,17 @@ test("lists appointments in a date range with per-day and per-hour counts for th
   const stores = createStores();
   const clerk = await signedHeaders(stores.platformStore, "clerk");
   const doctorContext = await contextOf(stores, await signedHeaders(stores.platformStore, "doctor"));
-  await book(stores, clerk, { date: "2026-11-02", time: "09:00", patientName: "A", doctorMemberId: doctorContext.memberId });
-  await book(stores, clerk, { date: "2026-11-02", time: "09:45", patientName: "B" });
-  await book(stores, clerk, { date: "2026-11-02", patientName: "C" });
-  const cancelled = await book(stores, clerk, { date: "2026-11-03", time: "13:00", patientName: "D" });
+  const ids = {};
+  for (const [index, name] of ["A", "B", "C", "D", "E", "outside"].entries()) {
+    ids[name] = (await createPatient(stores, clerk, { displayName: name, displayNameKana: "テスト", primaryPatientNumber: `00050${index}` })).patientId;
+  }
+  await book(stores, clerk, { date: "2026-11-02", time: "09:00", patientId: ids.A, doctorMemberId: doctorContext.memberId });
+  await book(stores, clerk, { date: "2026-11-02", time: "09:45", patientId: ids.B });
+  await book(stores, clerk, { date: "2026-11-02", patientId: ids.C });
+  const cancelled = await book(stores, clerk, { date: "2026-11-03", time: "13:00", patientId: ids.D });
   await moveTo(stores, clerk, cancelled, "cancelled");
-  await book(stores, clerk, { date: "2026-11-08", time: "13:10", patientName: "E" });
-  await book(stores, clerk, { date: "2026-11-09", time: "13:10", patientName: "outside" });
+  await book(stores, clerk, { date: "2026-11-08", time: "13:10", patientId: ids.E });
+  await book(stores, clerk, { date: "2026-11-09", time: "13:10", patientId: ids.outside });
 
   const week = await request(stores, "GET", "/v1/eye/appointments/range?from=2026-11-02&to=2026-11-08", undefined, clerk);
   assert.equal(week.statusCode, 200, JSON.stringify(week.body));
@@ -1912,7 +1957,7 @@ test("reception extras: doctors, a patient's appointments, memo and previous vis
   await moveTo(stores, clerk, earlier, "done");
   await book(stores, clerk, { date: "2026-10-24", time: "09:00", patientId: patient.patientId });
   const today = await book(stores, clerk, { time: "10:00", patientId: patient.patientId });
-  await book(stores, clerk, { time: "10:30", patientName: "未登録 さん" });
+  await book(stores, clerk, { time: "10:30", patientName: "未登録 さん", walkIn: true });
 
   const own = await request(stores, "GET", `/v1/eye/appointments?patientId=${patient.patientId}`, undefined, clerk);
   assert.equal(own.statusCode, 200);
