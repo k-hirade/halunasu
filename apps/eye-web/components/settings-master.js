@@ -2,6 +2,8 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { useEyeApi } from "./eye-api";
+import { Modal } from "./modal";
+import { isImeKey } from "../lib/modal";
 
 // 薬剤・セット・定型文・利用者に共通の「一覧 + 編集ダイアログ」（デジカルの施設管理と同じく、行の［編集］でモーダルを開く）。
 // 保存はダイアログの[保存]の1か所だけ。表の中で直接は直さない（途中の値が保存される不具合を避ける）。
@@ -180,59 +182,53 @@ export function MasterEditorPanel({ editor, title, canEdit, children, extraActio
 
   if (!selection) return null;
   const inactive = selection.original.active === false;
+  // Esc・背景のクリックは「閉じる」と同じ（保存していない変更があれば、パネルの中で確かめる）
   return (
-    <>
-      <div aria-hidden="true" className="master-backdrop" onClick={editor.close} />
-      <div aria-label={label} aria-modal="true" className="master-panel" ref={panelRef} role="dialog">
-        <form
-          className="master-panel-form"
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && (event.nativeEvent.isComposing || event.keyCode === 229)) event.preventDefault();
-            if (event.key === "Escape") {
-              event.preventDefault();
-              editor.close();
-            }
-          }}
-          onSubmit={editor.submit}
-        >
-          <header className="master-panel-head">
-            <button aria-label="一覧に戻る" className="btn btn-ghost master-panel-back" onClick={editor.close} type="button">‹ 戻る</button>
-            <h2 className="master-panel-title" tabIndex={-1}>{title}</h2>
-            {inactive ? <span className="tag">停止中</span> : null}
-            <button aria-label="編集を閉じる" className="master-panel-close" onClick={editor.close} type="button">×</button>
-          </header>
-          {editor.pending ? (
-            <div className="master-guard" role="alert">
-              <span>保存していない変更があります。</span>
-              <button className="btn btn-chip danger-text" onClick={editor.discardPending} type="button">変更を破棄</button>
-              <button className="btn btn-chip" onClick={editor.keepEditing} type="button">編集を続ける</button>
-            </div>
-          ) : null}
-          {editor.error ? <p className="alert alert-danger" role="alert">{editor.error}</p> : null}
-          <fieldset className="master-panel-body" disabled={!canEdit || editor.busy}>
-            {children}
-          </fieldset>
-          <footer className="master-panel-actions">
-            {canEdit ? (
-              <>
-                {selection.id && allowToggle ? (
-                  <button className="btn btn-ghost" disabled={editor.busy} onClick={editor.toggleActive} type="button">{inactive ? "再開する" : "停止する"}</button>
-                ) : null}
-                {extraActions}
-                <span aria-live="polite" className="master-flash" role="status">{editor.flash}</span>
-                <button className="btn btn-ghost" disabled={editor.busy} onClick={editor.close} type="button">閉じる</button>
-                <button className="btn btn-primary" disabled={editor.busy || (!editor.dirty && Boolean(selection.id))} type="submit">{editor.busy ? "保存中…" : "保存"}</button>
-              </>
-            ) : (
-              <>
-                <span className="muted small master-flash">変更は管理者が行います。</span>
-                <button className="btn btn-ghost" onClick={editor.close} type="button">閉じる</button>
-              </>
-            )}
-          </footer>
-        </form>
-      </div>
-    </>
+    <Modal backdrop="sibling" className="master-panel" dialogRef={panelRef} label={label} onClose={editor.close}>
+      <form
+        className="master-panel-form"
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && isImeKey(event)) event.preventDefault();
+        }}
+        onSubmit={editor.submit}
+      >
+        <header className="master-panel-head">
+          <button aria-label="一覧に戻る" className="btn btn-ghost master-panel-back" onClick={editor.close} type="button">‹ 戻る</button>
+          <h2 className="master-panel-title" tabIndex={-1}>{title}</h2>
+          {inactive ? <span className="tag">停止中</span> : null}
+          <button aria-label="編集を閉じる" className="master-panel-close" onClick={editor.close} type="button">×</button>
+        </header>
+        {editor.pending ? (
+          <div className="master-guard" role="alert">
+            <span>保存していない変更があります。</span>
+            <button className="btn btn-chip danger-text" onClick={editor.discardPending} type="button">変更を破棄</button>
+            <button className="btn btn-chip" onClick={editor.keepEditing} type="button">編集を続ける</button>
+          </div>
+        ) : null}
+        {editor.error ? <p className="alert alert-danger" role="alert">{editor.error}</p> : null}
+        <fieldset className="master-panel-body" disabled={!canEdit || editor.busy}>
+          {children}
+        </fieldset>
+        <footer className="master-panel-actions">
+          {canEdit ? (
+            <>
+              {selection.id && allowToggle ? (
+                <button className="btn btn-ghost" disabled={editor.busy} onClick={editor.toggleActive} type="button">{inactive ? "再開する" : "停止する"}</button>
+              ) : null}
+              {extraActions}
+              <span aria-live="polite" className="master-flash" role="status">{editor.flash}</span>
+              <button className="btn btn-ghost" disabled={editor.busy} onClick={editor.close} type="button">閉じる</button>
+              <button className="btn btn-primary" disabled={editor.busy || (!editor.dirty && Boolean(selection.id))} type="submit">{editor.busy ? "保存中…" : "保存"}</button>
+            </>
+          ) : (
+            <>
+              <span className="muted small master-flash">変更は管理者が行います。</span>
+              <button className="btn btn-ghost" onClick={editor.close} type="button">閉じる</button>
+            </>
+          )}
+        </footer>
+      </form>
+    </Modal>
   );
 }
 
@@ -249,46 +245,46 @@ export function SectionHead({ title, count, action = null, children }) {
   );
 }
 
-// 小さな編集ダイアログ（医療機関情報・フォルダ）。Esc で閉じる。日本語入力の確定の Enter では送らない。
+// 小さな編集ダイアログ（医療機関情報・フォルダ）。Esc・背景で閉じる（入力を変えていれば確かめる）。日本語入力の確定の Enter では送らない。
 export function SettingsDialog({ title, busy = false, error = "", onClose, onSubmit, submitLabel = "保存", children, wide = false }) {
   const titleId = useId();
-  const boxRef = useRef(null);
-  useEffect(() => {
-    boxRef.current?.querySelector("input:not([type=hidden]):not([disabled]), select, textarea")?.focus({ preventScroll: true });
-  }, []);
+  // 入力を 1 度でも変えたら dirty（Esc・背景で閉じる前に確かめる）
+  const [touched, setTouched] = useState(false);
   return (
-    <>
-      <div aria-hidden="true" className="master-backdrop" onClick={busy ? undefined : onClose} />
-      <div aria-labelledby={titleId} aria-modal="true" className={`master-panel settings-dialog${wide ? " is-wide" : ""}`} ref={boxRef} role="dialog">
-        <form
-          className="master-panel-form"
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && (event.nativeEvent.isComposing || event.keyCode === 229)) event.preventDefault();
-            if (event.key === "Escape" && !busy) {
-              event.preventDefault();
-              onClose();
-            }
-          }}
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (!busy) onSubmit();
-          }}
-        >
-          <header className="master-panel-head">
-            <button aria-label="閉じて一覧に戻る" className="btn btn-ghost master-panel-back" disabled={busy} onClick={onClose} type="button">‹ 戻る</button>
-            <h2 className="master-panel-title" id={titleId}>{title}</h2>
-            <button aria-label="閉じる" className="master-panel-close" disabled={busy} onClick={onClose} type="button">×</button>
-          </header>
-          {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
-          <fieldset className="master-panel-body" disabled={busy}>{children}</fieldset>
-          <footer className="master-panel-actions">
-            <span className="master-flash" />
-            <button className="btn btn-ghost" disabled={busy} onClick={onClose} type="button">キャンセル</button>
-            <button className="btn btn-primary" disabled={busy} type="submit">{busy ? "保存中…" : submitLabel}</button>
-          </footer>
-        </form>
-      </div>
-    </>
+    <Modal
+      backdrop="sibling"
+      busy={busy}
+      className={`master-panel settings-dialog${wide ? " is-wide" : ""}`}
+      dirty={touched}
+      initialFocus="input:not([type=hidden]), select, textarea"
+      labelledBy={titleId}
+      onClose={onClose}
+    >
+      <form
+        className="master-panel-form"
+        onChange={() => setTouched(true)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && isImeKey(event)) event.preventDefault();
+        }}
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!busy) onSubmit();
+        }}
+      >
+        <header className="master-panel-head">
+          <button aria-label="閉じて一覧に戻る" className="btn btn-ghost master-panel-back" disabled={busy} onClick={onClose} type="button">‹ 戻る</button>
+          <h2 className="master-panel-title" id={titleId}>{title}</h2>
+          <button aria-label="閉じる" className="master-panel-close" disabled={busy} onClick={onClose} type="button">×</button>
+        </header>
+        {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
+        <fieldset className="master-panel-body" disabled={busy}>{children}</fieldset>
+        <footer className="master-panel-actions">
+          <span className="master-flash" />
+          <button className="btn btn-ghost" disabled={busy} onClick={onClose} type="button">キャンセル</button>
+          <button className="btn btn-primary" disabled={busy} type="submit">{busy ? "保存中…" : submitLabel}</button>
+        </footer>
+      </form>
+    </Modal>
   );
 }
 

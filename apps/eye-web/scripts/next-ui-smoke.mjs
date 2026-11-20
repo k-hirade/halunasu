@@ -184,10 +184,10 @@ async function runDoctorFlow(browser) {
   await page.getByRole("dialog").getByRole("button", { name: "保存" }).click();
   await page.locator(".dx-table").getByText("右原発開放隅角緑内障").waitFor();
   await page.locator(".chart-head-dx").getByText(/原発開放隅角緑内障/u).waitFor();
-  // 次回（週）と次回予定（トプコン: 項目 × 部位、全て右）
+  // 次回（週）と次回予定（トプコン: 項目 × 部位、すべて右）
   await page.getByLabel("次回まで（週）").fill("12");
   await page.getByRole("group", { name: "予定のプリセット" }).getByRole("button", { name: "視・圧", exact: true }).click();
-  await page.getByRole("group", { name: "部位を一括で変える" }).getByRole("button", { name: "全て右" }).click();
+  await page.getByRole("group", { name: "部位を一括で変える" }).getByRole("button", { name: "すべて右" }).click();
   assert.equal(await page.getByRole("group", { name: "視力検査の部位" }).getByRole("button", { name: "右" }).getAttribute("aria-pressed"), "true");
   // 処方: 数字キー 3 で投薬 → 公開マスターを検索して押すと、新しい Rp として入る
   await page.locator(".chart-head").click();
@@ -216,7 +216,7 @@ async function runDoctorFlow(browser) {
   // 検査: 7 で検査 → 院内の検査の一覧から入れる（予定）→ 実施
   await page.locator(".chart-head").click();
   await page.keyboard.press("7");
-  // 検索語は区分を変えても残る（デジカルと同じ。全てに切り替えて同じ語で探せる）ので消してから一覧を見る
+  // 検索語は区分を変えても残る（デジカルと同じ。すべてに切り替えて同じ語で探せる）ので消してから一覧を見る
   assert.equal(await page.getByLabel("オーダーを検索").inputValue(), "チモロール");
   await page.getByLabel("オーダーを検索").fill("");
   await page.locator(".order-item").filter({ hasText: "視力検査" }).first().click();
@@ -309,7 +309,28 @@ async function runDoctorFlow(browser) {
   await assertChartMainSendRep2(page);
   await page.getByRole("button", { name: /^版履歴/u }).first().click();
   assert.equal(await page.getByRole("dialog", { name: "版履歴" }).getByRole("link", { name: /^v\d$/u }).count(), 2, "both versions are kept");
-  await page.getByRole("dialog").getByRole("button", { name: "閉じる" }).click();
+  // 共通のダイアログ: Tab は中だけを回り（後ろは inert）、Esc で閉じて開いたボタンへ戻る。カルテの Esc（引き出しを閉じる）は動かない
+  const versionsDialog = page.getByRole("dialog", { name: "版履歴" });
+  assert.equal(await page.locator("header.eh").first().evaluate((node) => Boolean(node.closest("[inert]"))), true, "the page behind a dialog is inert");
+  for (let index = 0; index < 6; index += 1) {
+    await page.keyboard.press(index % 2 ? "Shift+Tab" : "Tab");
+    await page.keyboard.press("Tab");
+    assert.equal(await versionsDialog.evaluate((node) => node.contains(document.activeElement)), true, "Tab stays inside the dialog");
+  }
+  await page.keyboard.press("Escape");
+  await versionsDialog.waitFor({ state: "detached" });
+  assert.match(await page.evaluate(() => document.activeElement?.textContent || ""), /版履歴/u, "focus returns to the opener");
+  assert.equal(await page.locator("[inert]").count(), 0, "inert is removed after closing");
+  // 「…」メニュー: Esc で閉じて summary へ戻る。外を押しても閉じる
+  await page.locator(".actionbar-more > summary").click();
+  await page.locator(".actionbar-more > .more-menu-list").waitFor();
+  await page.keyboard.press("Escape");
+  assert.equal(await page.locator(".actionbar-more").evaluate((node) => node.open), false, "Escape closes the … menu");
+  assert.equal(await page.locator(".actionbar-more > summary").evaluate((node) => node === document.activeElement), true, "focus returns to the … button");
+  await page.locator(".actionbar-more > summary").click();
+  await page.locator(".actionbar-more > .more-menu-list").waitFor();
+  await findingsText.click();
+  assert.equal(await page.locator(".actionbar-more").evaluate((node) => node.open), false, "an outside click closes the … menu");
   // 印刷: 追加の項目は入力があるときだけ行を出す
   const firstPrint = await context.newPage();
   await firstPrint.goto(`${page.url()}/print`);
@@ -991,6 +1012,24 @@ async function runReceptionFlow(browser) {
   await page.keyboard.press("Escape");
   await headerDialog.waitFor({ state: "detached" });
   await search.waitFor();
+  // 背景を押すと閉じる（入力を変えていなければそのまま、変えていれば確かめる）
+  await search.getByRole("button", { name: "新規患者登録" }).click();
+  await headerDialog.waitFor();
+  await page.mouse.click(4, 4);
+  await headerDialog.waitFor({ state: "detached" });
+  await search.waitFor();
+  await search.getByRole("button", { name: "新規患者登録" }).click();
+  await headerDialog.getByLabel("氏名").fill("背景 確認");
+  const asked = [];
+  page.once("dialog", async (dialog) => { asked.push(dialog.message()); await dialog.dismiss(); });
+  await page.mouse.click(4, 4);
+  await page.waitForTimeout(200);
+  assert.deepEqual(asked, ["入力中の内容を破棄して閉じますか？"], "a dirty dialog asks before closing");
+  assert.equal(await headerDialog.count(), 1, "dismissing the confirm keeps the dialog");
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.keyboard.press("Escape");
+  await headerDialog.waitFor({ state: "detached" });
+  await search.waitFor();
   await found.getByText("耳が遠い").waitFor();
   for (const name of ["表示", "編集", "受付", "予約"]) await found.getByRole("button", { name, exact: true }).waitFor();
   // 新規患者登録 → ［登録して受付］で受付登録へ続け、受付一覧に行が増える
@@ -1015,7 +1054,7 @@ async function runReceptionFlow(browser) {
   await pickStatus(row, "試験 一郎", "waiting_doctor");
   await waitForStatus(row, "waiting_doctor");
   // 予約状況の画面（受付の［予約状況］から）: 週 × 時間の表に件数が出る
-  await page.getByRole("link", { name: "予約状況" }).click();
+  await page.getByRole("main").getByRole("link", { name: "予約状況" }).click();
   await page.getByRole("heading", { name: "予約状況", exact: true }).waitFor();
   await page.getByRole("button", { name: new RegExp(`^${jst.getUTCMonth() + 1}月${jst.getUTCDate()}日\\(.\\) 9:30 予約1件$`, "u") }).waitFor();
   await page.getByRole("link", { name: "受付一覧へ" }).click();
@@ -1194,7 +1233,7 @@ async function runOrthoptistFlow(browser) {
   await summary.getByRole("button", { name: "診察開始" }).waitFor();
   await page.getByRole("tab", { name: /^未確定カルテ/u }).click();
   await page.getByRole("region", { name: "未確定カルテ" }).waitFor();
-  await page.getByRole("tab", { name: /^全て/u }).click();
+  await page.getByRole("tab", { name: /^すべて/u }).click();
   await page.locator(".consult-row").filter({ hasText: "試験 一郎" }).waitFor();
   await openPatientFromSearch(page, "試験", "試験 一郎");
   await page.getByRole("button", { name: "初診カルテを作成" }).click();
@@ -1274,17 +1313,17 @@ async function runOrthoptistFlow(browser) {
   await page.getByLabel("眼圧の測定時刻").fill("09:05");
   // 登録で「その時刻の記録」が 1 件できる
   await page.getByLabel("検査時刻").fill("09:00");
-  await page.getByText("未登録の入力があります").waitFor();
+  await page.getByText("登録していない入力があります").waitFor();
   await page.getByRole("button", { name: "登録", exact: true }).click();
   await page.locator(".rd-record-chip").filter({ hasText: "09:00" }).waitFor();
-  await page.getByText("未登録の入力があります").waitFor({ state: "detached" });
+  await page.getByText("登録していない入力があります").waitFor({ state: "detached" });
   assert.equal(await page.locator(".rd-tab.has-values").count(), 2, "tabs with values are marked");
   // 同じ日の 2 件目（散瞳後など）: 眼位の 9 方向と Worth 4 灯（図のボタン）
   await page.getByRole("button", { name: "＋ 新しい記録" }).click();
   await page.getByRole("tab", { name: "視力" }).click();
   assert.equal(await page.getByLabel("遠見 右眼 裸眼視力").inputValue(), "", "a new record starts empty");
   await page.getByRole("tab", { name: "眼位" }).click();
-  await page.getByRole("button", { name: "全て正常" }).click();
+  await page.getByRole("button", { name: "すべて正常" }).click();
   await page.getByLabel("左上 左眼").selectOption("-2");
   assert.equal(await page.locator(".rd-nine-cell.is-abnormal").count(), 1);
   await page.getByRole("button", { name: "右上 クリア" }).click();

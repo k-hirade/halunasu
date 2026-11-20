@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect } from "react";
+import { isImeKey } from "../lib/modal";
 
 // ポップオーバー（「…」メニュー・用法・テンキー・説明の吹き出しなど）の位置合わせ。
 // CSS の既定の位置（下向き・右寄せなど）で画面やスクロール枠に収まれば何もしない。
@@ -226,6 +227,33 @@ function syncDetails(details) {
   else untrack(panel);
 }
 
+// 開いたポップオーバー（details.more-menu・details[data-popover]・利用者メニュー）を、外を押したとき・Esc で閉じる。
+// Esc は開いているものの内側（なければ最後に開いたもの）だけを閉じ、フォーカスを開いたボタン（summary）へ戻す。
+// 閉じたときは preventDefault するので、ダイアログ・カルテの Esc（引き出しを閉じる）は同じ Esc では動かない。
+const DISMISSABLE = "details.more-menu[open], details[data-popover][open], details.eh-user[open]";
+
+const openPopovers = () => [...document.querySelectorAll(DISMISSABLE)];
+
+function closeOutside(event) {
+  const target = event.target;
+  if (!(target instanceof Node)) return;
+  for (const details of openPopovers()) if (!details.contains(target)) details.open = false;
+}
+
+function closeOnEscape(event) {
+  if (event.key !== "Escape" || event.defaultPrevented || isImeKey(event)) return;
+  // ダイアログの後ろ（inert）のものは対象にしない（その Esc はダイアログを閉じる）
+  const list = openPopovers().filter((details) => !details.closest("[inert]"));
+  if (!list.length) return;
+  const active = document.activeElement;
+  // 入れ子は内側を先に閉じる（querySelectorAll は外側が先に並ぶ）
+  const details = [...list].reverse().find((item) => item.contains(active)) || list.at(-1);
+  event.preventDefault();
+  const hadFocus = details.contains(active) || active === document.body;
+  details.open = false;
+  if (hadFocus) details.querySelector(":scope > summary")?.focus({ preventScroll: true });
+}
+
 // details.more-menu / details[data-popover] の開閉を見張り、開いたときに位置を合わせる。
 // MutationObserver は描画の前に動くので、既定の位置が一瞬見えることはない。
 export function PopoverAutoPlacement() {
@@ -235,7 +263,14 @@ export function PopoverAutoPlacement() {
     });
     observer.observe(document.body, { attributeFilter: ["open"], attributes: true, subtree: true });
     for (const details of document.querySelectorAll("details[open]")) if (isPopoverDetails(details)) syncDetails(details);
-    return () => observer.disconnect();
+    // 捕捉（capture）で先に受け、ほかの部品の Esc より前に閉じる
+    document.addEventListener("pointerdown", closeOutside, true);
+    document.addEventListener("keydown", closeOnEscape, true);
+    return () => {
+      observer.disconnect();
+      document.removeEventListener("pointerdown", closeOutside, true);
+      document.removeEventListener("keydown", closeOnEscape, true);
+    };
   }, []);
   return null;
 }

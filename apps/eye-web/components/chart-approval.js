@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Modal } from "./modal";
 import { approvalTag, isUnapproved, versionApproval } from "../lib/approval";
 import { formatDateTime } from "../lib/format";
 
@@ -81,29 +82,27 @@ function ReturnDialog({ version, onConfirm, onCancel }) {
     if (!done) setError("差し戻せませんでした。画面を読み込み直してください。");
   }
   return (
-    <div className="dialog-backdrop" role="presentation">
-      <div aria-labelledby="approval-return-heading" className="dialog" role="dialog">
-        <h2 id="approval-return-heading">v{version} を差し戻す</h2>
-        <p className="small">書いた人に直してもらう点を入れます。カルテは確定済みのまま残り、会計へも送れます。</p>
-        {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
-        <label className="field">
-          <span>差し戻しの理由<em>必須</em></span>
-          <textarea
-            autoFocus
-            className="input"
-            maxLength={1000}
-            onChange={(event) => setComment(event.target.value)}
-            onKeyDown={(event) => { if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && !event.nativeEvent.isComposing) submit(); }}
-            rows={3}
-            value={comment}
-          />
-        </label>
-        <div className="dialog-actions">
-          <button className="btn btn-ghost" disabled={busy} onClick={onCancel} type="button">キャンセル</button>
-          <button className="btn btn-danger" disabled={busy} onClick={submit} type="button">{busy ? "送っています…" : "差し戻す"}</button>
-        </div>
+    <Modal busy={busy} className="dialog" dirty={Boolean(comment.trim())} labelledBy="approval-return-heading" onClose={onCancel}>
+      <h2 id="approval-return-heading">v{version} を差し戻す</h2>
+      <p className="small">書いた人に直してもらう点を入れます。カルテは確定済みのまま残り、会計へも送れます。</p>
+      {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
+      <label className="field">
+        <span>差し戻しの理由<em>必須</em></span>
+        <textarea
+          autoFocus
+          className="input"
+          maxLength={1000}
+          onChange={(event) => setComment(event.target.value)}
+          onKeyDown={(event) => { if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && !event.nativeEvent.isComposing) submit(); }}
+          rows={3}
+          value={comment}
+        />
+      </label>
+      <div className="dialog-actions">
+        <button className="btn btn-ghost" disabled={busy} onClick={onCancel} type="button">キャンセル</button>
+        <button className="btn btn-danger" disabled={busy} onClick={submit} type="button">{busy ? "送っています…" : "差し戻す"}</button>
       </div>
-    </div>
+    </Modal>
   );
 }
 

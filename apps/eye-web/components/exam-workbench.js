@@ -16,6 +16,7 @@ import { SaveIndicator } from "./encounter-dialogs";
 import { DilationFlags, Orders } from "./encounter-sections";
 import { VaDatalist } from "./exam-inputs";
 import { copyDeviceValues, DevicePanels, EXAM_TABS, ExamTabBody, tabHasValues, useScrollEdge, writeValue } from "./exam-regdata";
+import { Modal } from "./modal";
 import { PatientBanner } from "./patient-banner";
 import { useEncounterDraft } from "./use-encounter-draft";
 import { withImportedDevice } from "../lib/device-import";
@@ -173,7 +174,7 @@ export function ExamWorkbench({ encounterId }) {
   const previous = detail.previous;
   const confirmations = encounter.examConfirmations || { od: null, os: null };
   const flags = content.flags || {};
-  // 値のある眼: カルテの検査値・登録済みの記録・入力中（未登録）の記録のどれかに値がある眼
+  // 値のある眼: カルテの検査値・登録済みの記録・入力中（登録前）の記録のどれかに値がある眼
   const savedSides = eyesWithValues(content);
   const draftChanged = (side) => dirty && recordHasEyeValues(form.values, side)
     && !sameValues(eyeRecordValues(form.values, side), eyeRecordValues(baseline.values, side));
@@ -352,7 +353,7 @@ export function ExamWorkbench({ encounterId }) {
 
   const closeMenu = (event) => { event.currentTarget.closest("details")?.removeAttribute("open"); };
   const phrases = (bootstrap.phrases || []).filter((item) => item.active !== false && item.target === "staffNote");
-  // 入力中（未登録）の値も「未確認」に数える（登録すると、値の変わった眼の確認は外れる）
+  // 入力中（登録前）の値も「未確認」に数える（登録すると、値の変わった眼の確認は外れる）
   const eyeState = (side) => (confirmations[side] && !draftChanged(side) ? "確認済" : valueSides.includes(side) ? "未確認" : "未入力");
   const finishEye = valueSides.length === 1 ? EYE_LABELS[valueSides[0]] : "";
   const finishLabel = willMove ? (finishEye ? `${finishEye}を確認 → 診察待ちへ` : "検査終了 → 診察待ちへ") : (finishEye ? `${finishEye}を確認する` : "検査値を確認する");
@@ -410,7 +411,7 @@ export function ExamWorkbench({ encounterId }) {
         <button className="btn btn-primary rd-register" disabled={!canRegister || busy !== ""} onClick={register} title={selectedId ? "選んでいる記録を更新します" : "この時刻の記録を1件追加します"} type="button">
           {busy === "register" ? "登録中…" : "登録"}
         </button>
-        {dirty ? <span className="rd-dirty" role="status">未登録の入力があります</span> : null}
+        {dirty ? <span className="rd-dirty" role="status">登録していない入力があります</span> : null}
       </fieldset>
       <div className="rd-records" role="group" aria-label="本日の検査記録">
         <span className="rd-records-label">本日の記録 {records.length}件</span>
@@ -507,7 +508,7 @@ export function ExamWorkbench({ encounterId }) {
 
       <div aria-label="検査の操作" className="exam-bar rd-bar" data-fixed-bar="bottom" ref={examBarRef} role="region">
         <div className="exam-bar-row">
-          {/* 状態は 1 つだけ: 未登録の入力があるときは記録の行の「未登録の入力があります」（と［登録］）だけにする */}
+          {/* 状態は 1 つだけ: 登録していない入力があるときは記録の行の「登録していない入力があります」（と［登録］）だけにする */}
           {editable && (!dirty || saveState === "saving" || saveState === "error") ? <SaveIndicator onRetry={save} state={saveState} /> : null}
           <span className="exam-bar-eyes">
             {SIDES.map((side) => (
@@ -580,11 +581,9 @@ function ExamReport({ records, previous, patient, encounterDate, onClose }) {
   const [withPrevious, setWithPrevious] = useState(false);
   const bodyRef = useRef(null);
   useEffect(() => {
-    const onKey = (event) => { if (event.key === "Escape" && !event.isComposing) onClose(); };
-    window.addEventListener("keydown", onKey);
     document.body.classList.add("rd-report-printing");
-    return () => { window.removeEventListener("keydown", onKey); document.body.classList.remove("rd-report-printing"); };
-  }, [onClose]);
+    return () => { document.body.classList.remove("rd-report-printing"); };
+  }, []);
   const previousRecords = useMemo(() => previousExamRecords(previous), [previous]);
   const visits = [
     { key: "today", label: `本日 ${formatDate(encounterDate)}`, records },
@@ -604,62 +603,60 @@ function ExamReport({ records, previous, patient, encounterDate, onClose }) {
     target?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
   return (
-    <div className="dialog-backdrop rd-report-backdrop" onClick={onClose} role="presentation">
-      <section aria-label="本日の検査記録" aria-modal="true" className="dialog rd-report" onClick={(event) => event.stopPropagation()} role="dialog">
-        <div className="rd-report-head">
-          <h2>検査データ表示</h2>
-          {patient ? <span className="rd-report-patient">{patient.displayName || ""}</span> : null}
-          <span className="rd-report-spacer" />
-          {previous ? (
-            <button aria-pressed={withPrevious} className="btn btn-chip btn-sm" onClick={() => setWithPrevious(!withPrevious)} title="前回受診の検査記録も並べます" type="button">前回</button>
-          ) : null}
-          <button className="btn btn-ghost btn-sm rd-report-print" onClick={() => window.print()} type="button">印刷</button>
-          <button className="btn btn-ghost btn-sm" onClick={onClose} type="button">閉じる</button>
+    <Modal as="section" backdropClassName="dialog-backdrop rd-report-backdrop" className="dialog rd-report" isolate label="本日の検査記録" onClose={onClose}>
+      <div className="rd-report-head">
+        <h2>検査データ表示</h2>
+        {patient ? <span className="rd-report-patient">{patient.displayName || ""}</span> : null}
+        <span className="rd-report-spacer" />
+        {previous ? (
+          <button aria-pressed={withPrevious} className="btn btn-chip btn-sm" onClick={() => setWithPrevious(!withPrevious)} title="前回受診の検査記録も並べます" type="button">前回</button>
+        ) : null}
+        <button className="btn btn-ghost btn-sm rd-report-print" onClick={() => window.print()} type="button">印刷</button>
+        <button className="btn btn-ghost btn-sm" onClick={onClose} type="button">閉じる</button>
+      </div>
+      <div className="rd-report-main">
+        <nav aria-label="検査の目次" className="rd-report-index">
+          {visits.map((visit) => (
+            <div className="rd-report-index-group" key={visit.key}>
+              <p className="rd-report-index-visit">{visit.label}</p>
+              {headings.filter((item) => item.visit === visit.key).map((item) => (
+                <button className="rd-report-index-link" key={item.id} onClick={() => jump(item.id)} type="button">{item.heading}</button>
+              ))}
+              {!headings.some((item) => item.visit === visit.key) ? <p className="muted small">記録はありません</p> : null}
+            </div>
+          ))}
+        </nav>
+        <div className="rd-report-body" ref={bodyRef} tabIndex={-1}>
+          {visits.map((visit) => (
+            <div className="rd-report-visit" key={visit.key}>
+              {visits.length > 1 ? <h3 className="rd-report-visit-title">{visit.label}</h3> : null}
+              {!visit.records.length ? <p className="empty">検査記録はありません。</p> : null}
+              {visit.records.map((record, recordIndex) => {
+                const blocks = recordSummary(record.values);
+                return (
+                  <article className="rd-report-record" key={record.recordId || recordIndex}>
+                    {blocks.map(([heading, lines]) => (
+                      <section className="rd-report-block" id={`rd-report-${visit.key}-${recordIndex}-${headingKey(heading)}`} key={heading}>
+                        <h4 className="rd-report-band">{heading}</h4>
+                        <p className="rd-report-meta">
+                          <span><strong>測定</strong> {recordClock(record.at) || "—"}</span>
+                          {record.updatedAt ? <span><strong>更新</strong> {stamp(record.updatedAt)}</span> : null}
+                          {record.recordedAt || record.createdAt ? <span><strong>登録</strong> {stamp(record.recordedAt || record.createdAt)}</span> : null}
+                          <span><strong>検者</strong> {record.examinerName || record.recordedBy?.displayName || "—"}</span>
+                          {record.note ? <span className="rd-report-note">{record.note}</span> : null}
+                        </p>
+                        {lines.map((line, index) => <p className="rd-report-line" key={index}>{line}</p>)}
+                      </section>
+                    ))}
+                    {!blocks.length ? <p className="muted small">{recordLabel(record) || "時刻なし"}: 値はありません</p> : null}
+                  </article>
+                );
+              })}
+            </div>
+          ))}
         </div>
-        <div className="rd-report-main">
-          <nav aria-label="検査の目次" className="rd-report-index">
-            {visits.map((visit) => (
-              <div className="rd-report-index-group" key={visit.key}>
-                <p className="rd-report-index-visit">{visit.label}</p>
-                {headings.filter((item) => item.visit === visit.key).map((item) => (
-                  <button className="rd-report-index-link" key={item.id} onClick={() => jump(item.id)} type="button">{item.heading}</button>
-                ))}
-                {!headings.some((item) => item.visit === visit.key) ? <p className="muted small">記録はありません</p> : null}
-              </div>
-            ))}
-          </nav>
-          <div className="rd-report-body" ref={bodyRef} tabIndex={-1}>
-            {visits.map((visit) => (
-              <div className="rd-report-visit" key={visit.key}>
-                {visits.length > 1 ? <h3 className="rd-report-visit-title">{visit.label}</h3> : null}
-                {!visit.records.length ? <p className="empty">検査記録はありません。</p> : null}
-                {visit.records.map((record, recordIndex) => {
-                  const blocks = recordSummary(record.values);
-                  return (
-                    <article className="rd-report-record" key={record.recordId || recordIndex}>
-                      {blocks.map(([heading, lines]) => (
-                        <section className="rd-report-block" id={`rd-report-${visit.key}-${recordIndex}-${headingKey(heading)}`} key={heading}>
-                          <h4 className="rd-report-band">{heading}</h4>
-                          <p className="rd-report-meta">
-                            <span><strong>測定</strong> {recordClock(record.at) || "—"}</span>
-                            {record.updatedAt ? <span><strong>更新</strong> {stamp(record.updatedAt)}</span> : null}
-                            {record.recordedAt || record.createdAt ? <span><strong>登録</strong> {stamp(record.recordedAt || record.createdAt)}</span> : null}
-                            <span><strong>検者</strong> {record.examinerName || record.recordedBy?.displayName || "—"}</span>
-                            {record.note ? <span className="rd-report-note">{record.note}</span> : null}
-                          </p>
-                          {lines.map((line, index) => <p className="rd-report-line" key={index}>{line}</p>)}
-                        </section>
-                      ))}
-                      {!blocks.length ? <p className="muted small">{recordLabel(record) || "時刻なし"}: 値はありません</p> : null}
-                    </article>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-    </div>
+      </div>
+    </Modal>
   );
 }
 

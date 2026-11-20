@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { eraYearLabel, normalizeKanaName } from "@halunasu/eye-contracts";
 import { AppointmentDialog } from "./appointment-dialog";
 import { useEyeApi } from "./eye-api";
+import { Modal, useChangedSince } from "./modal";
 import { ageOn, patientBirthLine, todayIso } from "../lib/format";
 
 const SEX_OPTIONS = [["male", "男性"], ["female", "女性"], ["other", "その他"]];
@@ -62,19 +63,10 @@ export function PatientRegisterDialog({
   const linking = Boolean(submitLabel);
   const heading = title || (editing ? "患者情報の編集" : "新規患者を登録");
 
-  // 開いたら最初の欄へ。閉じたら開く前の場所にフォーカスを戻す。Esc で閉じる。
-  useEffect(() => {
-    const opener = typeof document !== "undefined" ? document.activeElement : null;
-    firstFieldRef.current?.focus();
-    return () => { if (opener instanceof HTMLElement && opener.isConnected) opener.focus(); };
-  }, []);
-  useEffect(() => {
-    function onKeyDown(event) {
-      if (event.key === "Escape" && !busy && !receiving) onCancel();
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [busy, onCancel, receiving]);
+  // 開いたら最初の欄へ・閉じたら元の場所へ・Esc と背景で閉じる、は Modal が受け持つ。
+  // 入力を変えていれば（登録前なら）閉じる前に確かめる。
+  const changed = useChangedSince(draft);
+  const dirty = changed && !created;
 
   // 似た患者（同じフリガナ・氏名・患者番号）を既存の検索で探す。登録は止めず、押す前に目に入るようにする。
   const nameQuery = (draft.displayNameKana || draft.displayName).trim();
@@ -203,124 +195,122 @@ export function PatientRegisterDialog({
   const blocked = busy || !draft.displayName.trim() || kanaMissing;
   const primaryLabel = busy ? "登録中…" : editing ? "更新" : created ? "続きをやり直す" : linking ? submitLabel : sameBirth ? "別人として登録" : "登録";
   return (
-    <div className="dialog-backdrop" role="presentation">
-      <form aria-labelledby="register-heading" aria-modal="true" className={`dialog register-dialog${similar.length && !created ? " has-side" : ""}`} onSubmit={submit} role="dialog">
-        <h2 id="register-heading">{heading}</h2>
-        <div className="register-body">
-          <div className="register-form">
-            <div className="register-row">
-              <label htmlFor="reg-number">患者番号</label>
-              <div>
-                <input
-                  autoCapitalize="characters"
-                  autoComplete="off"
-                  className="input"
-                  disabled={locked}
-                  id="reg-number"
-                  onChange={(event) => { setDraft({ ...draft, primaryPatientNumber: event.target.value }); setNumberError(""); }}
-                  placeholder="レセコンの患者番号"
-                  ref={firstFieldRef}
-                  value={draft.primaryPatientNumber}
-                />
-                {numberError ? <small className="register-error" role="alert">{numberError}</small> : <small className="muted">レセコンの番号と同じにします。空欄なら後で入力できます。</small>}
-              </div>
+    <Modal as="form" busy={busy} className={`dialog register-dialog${similar.length && !created ? " has-side" : ""}`} dirty={dirty} initialFocus={firstFieldRef} labelledBy="register-heading" onClose={onCancel} onSubmit={submit}>
+      <h2 id="register-heading">{heading}</h2>
+      <div className="register-body">
+        <div className="register-form">
+          <div className="register-row">
+            <label htmlFor="reg-number">患者番号</label>
+            <div>
+              <input
+                autoCapitalize="characters"
+                autoComplete="off"
+                className="input"
+                disabled={locked}
+                id="reg-number"
+                onChange={(event) => { setDraft({ ...draft, primaryPatientNumber: event.target.value }); setNumberError(""); }}
+                placeholder="レセコンの患者番号"
+                ref={firstFieldRef}
+                value={draft.primaryPatientNumber}
+              />
+              {numberError ? <small className="register-error" role="alert">{numberError}</small> : <small className="muted">レセコンの番号と同じにします。空欄なら後で入力できます。</small>}
             </div>
-            <div className="register-row">
-              <label htmlFor="reg-name">氏名 <em>必須</em></label>
-              <input autoComplete="off" className="input" disabled={locked} id="reg-name" onChange={set("displayName")} required value={draft.displayName} />
-            </div>
-            <div className="register-row">
-              <label htmlFor="reg-kana">フリガナ <em>必須</em></label>
-              <div>
-                <input
-                  autoComplete="off"
-                  className="input"
-                  disabled={locked}
-                  id="reg-kana"
-                  onBlur={() => setDraft((current) => ({ ...current, displayNameKana: normalizeKanaName(current.displayNameKana) }))}
-                  onChange={set("displayNameKana")}
-                  placeholder="ミホン ハナコ"
-                  required
-                  value={draft.displayNameKana}
-                />
-                <small className="muted">ひらがなで入れてもカタカナにそろえます。</small>
-              </div>
-            </div>
-            <div className="register-row">
-              <span id="reg-sex-label">性別</span>
-              <div>
-                <div className="segmented" role="radiogroup" aria-labelledby="reg-sex-label">
-                  {SEX_OPTIONS.map(([value, label]) => (
-                    <button aria-checked={draft.sex === value} className="segmented-option" disabled={locked} key={value} onClick={() => { setSexTouched(true); setDraft({ ...draft, sex: draft.sex === value ? "unknown" : value }); }} role="radio" type="button">{label}</button>
-                  ))}
-                </div>
-                {draft.sex === "unknown" && sexTouched ? <small className="register-warn">未入力です（レセコン連携で必要です）</small> : null}
-              </div>
-            </div>
-            <div className="register-row">
-              <label htmlFor="reg-birth">生年月日</label>
-              <div>
-                <input className="input" disabled={locked} id="reg-birth" max="2100-12-31" min="1868-01-01" onChange={set("birthDate")} type="date" value={draft.birthDate} />
-                <small className="muted register-birth-check" aria-live="polite">{draft.birthDate ? `${eraYearLabel(draft.birthDate) || ""}${age !== null && age >= 0 ? ` ・ ${age}歳` : ""}` : " "}</small>
-              </div>
-            </div>
-            {/* 住所・電話は患者のもの。ブラウザが端末の持ち主（職員）の住所・電話を自動入力しないよう、autocomplete は off にし、住所らしい name も付けない */}
-            <fieldset className="register-row register-address" disabled={locked}>
-              <legend>住所</legend>
-              <div className="register-address-fields">
-                <input aria-label="郵便番号" autoComplete="off" className="input" name="reg-patient-c1" inputMode="numeric" maxLength={8} onChange={set("postalCode")} placeholder="郵便番号" title="郵便番号（ハイフンなしでも入力できます）" value={draft.postalCode} />
-                <select aria-label="都道府県" autoComplete="off" className="input" name="reg-patient-c2" onChange={set("prefecture")} value={draft.prefecture}>
-                  <option value="">都道府県</option>
-                  {PREFECTURES.map((name) => <option key={name} value={name}>{name}</option>)}
-                </select>
-                <input aria-label="市区町村" autoComplete="off" className="input" name="reg-patient-c3" onChange={set("address1")} placeholder="市区町村" value={draft.address1} />
-                <input aria-label="番地" autoComplete="off" className="input" name="reg-patient-c4" onChange={set("address2")} placeholder="番地" value={draft.address2} />
-                <input aria-label="建物" autoComplete="off" className="input" name="reg-patient-c5" onChange={set("address3")} placeholder="建物名・部屋番号" value={draft.address3} />
-              </div>
-            </fieldset>
-            <div className="register-row">
-              <label htmlFor="reg-phone1">電話番号1</label>
-              <input autoComplete="off" className="input" disabled={locked} id="reg-phone1" name="reg-patient-c6" inputMode="tel" onChange={set("phone1")} value={draft.phone1} />
-            </div>
-            <div className="register-row">
-              <label htmlFor="reg-phone2">電話番号2</label>
-              <input autoComplete="off" className="input" disabled={locked} id="reg-phone2" name="reg-patient-c7" inputMode="tel" onChange={set("phone2")} value={draft.phone2} />
-            </div>
-            <p className="muted small register-note">保険証・資格確認はレセコンで登録します。</p>
           </div>
-
-          {similar.length && !created ? (
-            <aside className={`register-similar${sameBirth ? " is-strong" : ""}`} role="status">
-              <p><strong>{sameBirth ? "同じ生年月日の似た患者がいます" : "似た患者がいます"}</strong>　同じ人なら新しく登録しないでください。</p>
-              <ul>
-                {similar.map((patient) => (
-                  <li key={patient.patientId}>
-                    <span className="mono">{patient.primaryPatientNumber || "番号なし"}</span>
-                    <strong>{patient.displayName}</strong>
-                    <span className="muted">{patient.displayNameKana}</span>
-                    <span className={draft.birthDate && patient.birthDate === draft.birthDate ? "register-same" : "muted"}>{patientBirthLine(patient)}</span>
-                    {onPickExisting ? <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => pick(patient)} type="button">{pickExistingLabel}</button> : null}
-                  </li>
+          <div className="register-row">
+            <label htmlFor="reg-name">氏名 <em>必須</em></label>
+            <input autoComplete="off" className="input" disabled={locked} id="reg-name" onChange={set("displayName")} required value={draft.displayName} />
+          </div>
+          <div className="register-row">
+            <label htmlFor="reg-kana">フリガナ <em>必須</em></label>
+            <div>
+              <input
+                autoComplete="off"
+                className="input"
+                disabled={locked}
+                id="reg-kana"
+                onBlur={() => setDraft((current) => ({ ...current, displayNameKana: normalizeKanaName(current.displayNameKana) }))}
+                onChange={set("displayNameKana")}
+                placeholder="ミホン ハナコ"
+                required
+                value={draft.displayNameKana}
+              />
+              <small className="muted">ひらがなで入れてもカタカナにそろえます。</small>
+            </div>
+          </div>
+          <div className="register-row">
+            <span id="reg-sex-label">性別</span>
+            <div>
+              <div className="segmented" role="radiogroup" aria-labelledby="reg-sex-label">
+                {SEX_OPTIONS.map(([value, label]) => (
+                  <button aria-checked={draft.sex === value} className="segmented-option" disabled={locked} key={value} onClick={() => { setSexTouched(true); setDraft({ ...draft, sex: draft.sex === value ? "unknown" : value }); }} role="radio" type="button">{label}</button>
                 ))}
-              </ul>
-            </aside>
-          ) : null}
+              </div>
+              {draft.sex === "unknown" && sexTouched ? <small className="register-warn">未入力です（レセコン連携で必要です）</small> : null}
+            </div>
+          </div>
+          <div className="register-row">
+            <label htmlFor="reg-birth">生年月日</label>
+            <div>
+              <input className="input" disabled={locked} id="reg-birth" max="2100-12-31" min="1868-01-01" onChange={set("birthDate")} type="date" value={draft.birthDate} />
+              <small className="muted register-birth-check" aria-live="polite">{draft.birthDate ? `${eraYearLabel(draft.birthDate) || ""}${age !== null && age >= 0 ? ` ・ ${age}歳` : ""}` : " "}</small>
+            </div>
+          </div>
+          {/* 住所・電話は患者のもの。ブラウザが端末の持ち主（職員）の住所・電話を自動入力しないよう、autocomplete は off にし、住所らしい name も付けない */}
+          <fieldset className="register-row register-address" disabled={locked}>
+            <legend>住所</legend>
+            <div className="register-address-fields">
+              <input aria-label="郵便番号" autoComplete="off" className="input" name="reg-patient-c1" inputMode="numeric" maxLength={8} onChange={set("postalCode")} placeholder="郵便番号" title="郵便番号（ハイフンなしでも入力できます）" value={draft.postalCode} />
+              <select aria-label="都道府県" autoComplete="off" className="input" name="reg-patient-c2" onChange={set("prefecture")} value={draft.prefecture}>
+                <option value="">都道府県</option>
+                {PREFECTURES.map((name) => <option key={name} value={name}>{name}</option>)}
+              </select>
+              <input aria-label="市区町村" autoComplete="off" className="input" name="reg-patient-c3" onChange={set("address1")} placeholder="市区町村" value={draft.address1} />
+              <input aria-label="番地" autoComplete="off" className="input" name="reg-patient-c4" onChange={set("address2")} placeholder="番地" value={draft.address2} />
+              <input aria-label="建物" autoComplete="off" className="input" name="reg-patient-c5" onChange={set("address3")} placeholder="建物名・部屋番号" value={draft.address3} />
+            </div>
+          </fieldset>
+          <div className="register-row">
+            <label htmlFor="reg-phone1">電話番号1</label>
+            <input autoComplete="off" className="input" disabled={locked} id="reg-phone1" name="reg-patient-c6" inputMode="tel" onChange={set("phone1")} value={draft.phone1} />
+          </div>
+          <div className="register-row">
+            <label htmlFor="reg-phone2">電話番号2</label>
+            <input autoComplete="off" className="input" disabled={locked} id="reg-phone2" name="reg-patient-c7" inputMode="tel" onChange={set("phone2")} value={draft.phone2} />
+          </div>
+          <p className="muted small register-note">保険証・資格確認はレセコンで登録します。</p>
         </div>
 
-        {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
-        <div className="dialog-actions">
-          <button className="btn btn-ghost" disabled={busy} onClick={onCancel} type="button">キャンセル</button>
-          <button className={`btn ${editing || linking ? "btn-primary" : "btn-outline"}`} data-intent="register" disabled={blocked} onClick={() => { intentRef.current = "register"; }} type="submit">
-            {primaryLabel}
+        {similar.length && !created ? (
+          <aside className={`register-similar${sameBirth ? " is-strong" : ""}`} role="status">
+            <p><strong>{sameBirth ? "同じ生年月日の似た患者がいます" : "似た患者がいます"}</strong>　同じ人なら新しく登録しないでください。</p>
+            <ul>
+              {similar.map((patient) => (
+                <li key={patient.patientId}>
+                  <span className="mono">{patient.primaryPatientNumber || "番号なし"}</span>
+                  <strong>{patient.displayName}</strong>
+                  <span className="muted">{patient.displayNameKana}</span>
+                  <span className={draft.birthDate && patient.birthDate === draft.birthDate ? "register-same" : "muted"}>{patientBirthLine(patient)}</span>
+                  {onPickExisting ? <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => pick(patient)} type="button">{pickExistingLabel}</button> : null}
+                </li>
+              ))}
+            </ul>
+          </aside>
+        ) : null}
+      </div>
+
+      {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
+      <div className="dialog-actions">
+        <button className="btn btn-ghost" disabled={busy} onClick={onCancel} type="button">キャンセル</button>
+        <button className={`btn ${editing || linking ? "btn-primary" : "btn-outline"}`} data-intent="register" disabled={blocked} onClick={() => { intentRef.current = "register"; }} type="submit">
+          {primaryLabel}
+        </button>
+        {editing || linking ? null : (
+          <button className="btn btn-primary" data-intent="receive" disabled={blocked} onClick={() => { intentRef.current = "receive"; }} type="submit">
+            {created ? "受付へ進む" : "登録して受付"}
           </button>
-          {editing || linking ? null : (
-            <button className="btn btn-primary" data-intent="receive" disabled={blocked} onClick={() => { intentRef.current = "receive"; }} type="submit">
-              {created ? "受付へ進む" : "登録して受付"}
-            </button>
-          )}
-        </div>
-      </form>
-    </div>
+        )}
+      </div>
+    </Modal>
   );
 }
 

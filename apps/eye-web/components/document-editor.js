@@ -8,6 +8,7 @@ import { DocumentFieldsEditor, TemplatePicker } from "./document-fields";
 import { DocumentInsertPanel } from "./document-insert-panel";
 import { useEyeApi } from "./eye-api";
 import { LoadErrorPage } from "./load-error";
+import { Modal } from "./modal";
 import { LetterSheet } from "./letter-sheet";
 import { usePrintNames } from "./use-print-names";
 import { usePrintSettings } from "./print-settings";
@@ -339,7 +340,7 @@ export function DocumentEditor({ documentId }) {
             <span>{patient.displayName}</span>
             {age !== null ? <span>{age}歳</span> : null}
             {SEX_LABELS[patient.sex] ? <span>{SEX_LABELS[patient.sex]}</span> : null}
-            {patient.primaryPatientNumber ? <span>No.{patient.primaryPatientNumber}</span> : null}
+            {patient.primaryPatientNumber ? <span>患者番号 {patient.primaryPatientNumber}</span> : null}
             {document.status === "finalized" ? <span>確定 {formatDateTime(document.finalizedAt)} {document.finalizedBy?.displayName || ""}</span> : null}
           </p>
         </div>
@@ -547,18 +548,16 @@ export function DocumentEditor({ documentId }) {
 function FinalizeDocumentDialog({ blockers, warnings, onConfirm, onCancel }) {
   const [busy, setBusy] = useState(false);
   return (
-    <div className="dialog-backdrop" role="presentation">
-      <div aria-labelledby="doc-finalize-heading" className="dialog" role="dialog">
-        <h2 id="doc-finalize-heading">文書を確定しますか？</h2>
-        {blockers.length ? <ul className="readiness">{blockers.map((item) => <li className="is-blocker" key={item.code}>{item.message}</li>)}</ul> : null}
-        {warnings.length ? <ul className="readiness">{warnings.map((item) => <li className="is-warning" key={item.code}>{item.message}</li>)}</ul> : null}
-        <p>確定すると内容は変更できません。修正が必要な場合は「複製して修正」から新しい文書を作ります。</p>
-        <div className="dialog-actions">
-          <button className="btn btn-ghost" onClick={onCancel} type="button">戻って編集</button>
-          <button autoFocus className="btn btn-primary" disabled={busy || blockers.length > 0} onClick={async () => { setBusy(true); await onConfirm(); setBusy(false); }} type="button">確定する</button>
-        </div>
+    <Modal busy={busy} className="dialog" closeOnBackdrop={false} labelledBy="doc-finalize-heading" onClose={onCancel}>
+      <h2 id="doc-finalize-heading">文書を確定しますか？</h2>
+      {blockers.length ? <ul className="readiness">{blockers.map((item) => <li className="is-blocker" key={item.code}>{item.message}</li>)}</ul> : null}
+      {warnings.length ? <ul className="readiness">{warnings.map((item) => <li className="is-warning" key={item.code}>{item.message}</li>)}</ul> : null}
+      <p>確定すると内容は変更できません。修正が必要な場合は「複製して修正」から新しい文書を作ります。</p>
+      <div className="dialog-actions">
+        <button className="btn btn-ghost" onClick={onCancel} type="button">戻って編集</button>
+        <button autoFocus className="btn btn-primary" disabled={busy || blockers.length > 0} onClick={async () => { setBusy(true); await onConfirm(); setBusy(false); }} type="button">確定する</button>
       </div>
-    </div>
+    </Modal>
   );
 }
 

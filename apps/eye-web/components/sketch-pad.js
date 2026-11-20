@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { Modal } from "./modal";
 import { EYE_LABELS } from "../lib/format";
 
 const SIZE = 1000;
@@ -410,25 +411,23 @@ function TemplatePreview({ template, eye }) {
 // シェーマの追加: 下絵の格子から選ぶ（左右のある図は右眼・左眼、白紙）。
 export function SketchTemplateDialog({ onPick, onCancel }) {
   return (
-    <div className="dialog-backdrop" role="presentation">
-      <div aria-labelledby="sketch-template-heading" className="dialog dialog-wide" role="dialog">
-        <h2 id="sketch-template-heading">シェーマ追加</h2>
-        <div className="sketch-template-grid">
-          {TEMPLATE_CHOICES.map(([template, eye]) => {
-            const label = choiceLabel(template, eye);
-            return (
-              <button aria-label={label} className="sketch-template-choice" key={`${template}-${eye}`} onClick={() => onPick({ template, eye })} type="button">
-                <TemplatePreview eye={eye} template={template} />
-                <span>{label}</span>
-              </button>
-            );
-          })}
-        </div>
-        <div className="dialog-actions">
-          <button className="btn btn-ghost" onClick={onCancel} type="button">キャンセル</button>
-        </div>
+    <Modal className="dialog dialog-wide" labelledBy="sketch-template-heading" onClose={onCancel}>
+      <h2 id="sketch-template-heading">シェーマ追加</h2>
+      <div className="sketch-template-grid">
+        {TEMPLATE_CHOICES.map(([template, eye]) => {
+          const label = choiceLabel(template, eye);
+          return (
+            <button aria-label={label} className="sketch-template-choice" key={`${template}-${eye}`} onClick={() => onPick({ template, eye })} type="button">
+              <TemplatePreview eye={eye} template={template} />
+              <span>{label}</span>
+            </button>
+          );
+        })}
       </div>
-    </div>
+      <div className="dialog-actions">
+        <button className="btn btn-ghost" onClick={onCancel} type="button">キャンセル</button>
+      </div>
+    </Modal>
   );
 }
 
@@ -509,114 +508,112 @@ export function SketchEditDialog({ sketch, onSave, onCancel, onDelete = null, re
   const title = `シェーマ ${EYE_LABELS[draft.eye] && draft.template !== "blank" ? EYE_LABELS[draft.eye] : ""}${SKETCH_TEMPLATE_LABELS[draft.template] || ""}`;
 
   return (
-    <div className="dialog-backdrop" role="presentation">
-      <div aria-labelledby="sketch-edit-heading" className={`dialog dialog-wide sketch-dialog${readOnly ? "" : " sketch-editor-dialog"}`} role="dialog">
-        <h2 id="sketch-edit-heading">{title}</h2>
-        {readOnly ? (
-          <SketchCanvas readOnly sketch={draft} />
-        ) : (
-          <div className="sketch-editor">
-            <div aria-label="シェーマの道具" aria-orientation="vertical" className="sketch-toolbar" role="toolbar">
-              {TOOLS.map((item) => (
-                <button aria-label={item.label} aria-pressed={tool === item.key} className="sketch-tool" key={item.key} onClick={() => { setTool(item.key); setHint(""); if (item.key === "text") requestAnimationFrame(() => textRef.current?.focus()); }} title={item.label} type="button">
-                  <span aria-hidden="true" className="sketch-tool-icon">{item.icon}</span>
-                  <span className="sketch-tool-label">{item.label}</span>
+    <Modal className={`dialog dialog-wide sketch-dialog${readOnly ? "" : " sketch-editor-dialog"}`} dirty={!readOnly && past.length > 0} labelledBy="sketch-edit-heading" onClose={onCancel}>
+      <h2 id="sketch-edit-heading">{title}</h2>
+      {readOnly ? (
+        <SketchCanvas readOnly sketch={draft} />
+      ) : (
+        <div className="sketch-editor">
+          <div aria-label="シェーマの道具" aria-orientation="vertical" className="sketch-toolbar" role="toolbar">
+            {TOOLS.map((item) => (
+              <button aria-label={item.label} aria-pressed={tool === item.key} className="sketch-tool" key={item.key} onClick={() => { setTool(item.key); setHint(""); if (item.key === "text") requestAnimationFrame(() => textRef.current?.focus()); }} title={item.label} type="button">
+                <span aria-hidden="true" className="sketch-tool-icon">{item.icon}</span>
+                <span className="sketch-tool-label">{item.label}</span>
+              </button>
+            ))}
+            <span className="sketch-toolbar-sep" />
+            <button aria-label="元に戻す" className="sketch-tool" disabled={!past.length} onClick={undo} title="元に戻す（Ctrl+Z）" type="button">
+              <span aria-hidden="true" className="sketch-tool-icon">↶</span><span className="sketch-tool-label">戻す</span>
+            </button>
+            <button aria-label="やり直す" className="sketch-tool" disabled={!future.length} onClick={redo} title="やり直す（Ctrl+Shift+Z）" type="button">
+              <span aria-hidden="true" className="sketch-tool-icon">↷</span><span className="sketch-tool-label">やり直し</span>
+            </button>
+            <button aria-label="すべて消す" className="sketch-tool" disabled={!strokes.length} onClick={() => commit({ ...draft, strokes: [] })} title="書き込みをすべて消す（元に戻せます）" type="button">
+              <span aria-hidden="true" className="sketch-tool-icon">✕</span><span className="sketch-tool-label">全消去</span>
+            </button>
+          </div>
+          <div className="sketch-props" aria-label="線の設定" role="group">
+            <span className="sketch-props-label">色</span>
+            <div className="sketch-colors" role="group" aria-label="色">
+              {COLORS.map((option) => (
+                <button aria-label={`${option.label}ペン`} aria-pressed={color === option.value} className="sketch-color" key={option.value} onClick={() => setColor(option.value)} style={{ "--swatch": option.value }} title={option.label} type="button">
+                  <span aria-hidden="true" className="sketch-color-chip" />
+                  <span className="sketch-color-name">{option.label}</span>
                 </button>
               ))}
-              <span className="sketch-toolbar-sep" />
-              <button aria-label="元に戻す" className="sketch-tool" disabled={!past.length} onClick={undo} title="元に戻す（Ctrl+Z）" type="button">
-                <span aria-hidden="true" className="sketch-tool-icon">↶</span><span className="sketch-tool-label">戻す</span>
-              </button>
-              <button aria-label="やり直す" className="sketch-tool" disabled={!future.length} onClick={redo} title="やり直す（Ctrl+Shift+Z）" type="button">
-                <span aria-hidden="true" className="sketch-tool-icon">↷</span><span className="sketch-tool-label">やり直し</span>
-              </button>
-              <button aria-label="すべて消す" className="sketch-tool" disabled={!strokes.length} onClick={() => commit({ ...draft, strokes: [] })} title="書き込みをすべて消す（元に戻せます）" type="button">
-                <span aria-hidden="true" className="sketch-tool-icon">✕</span><span className="sketch-tool-label">全消去</span>
-              </button>
             </div>
-            <div className="sketch-props" aria-label="線の設定" role="group">
-              <span className="sketch-props-label">色</span>
-              <div className="sketch-colors" role="group" aria-label="色">
-                {COLORS.map((option) => (
-                  <button aria-label={`${option.label}ペン`} aria-pressed={color === option.value} className="sketch-color" key={option.value} onClick={() => setColor(option.value)} style={{ "--swatch": option.value }} title={option.label} type="button">
-                    <span aria-hidden="true" className="sketch-color-chip" />
-                    <span className="sketch-color-name">{option.label}</span>
-                  </button>
-                ))}
-              </div>
-              <span className="sketch-props-label">太さ</span>
-              <div className="sketch-widths" role="group" aria-label="太さ">
-                {WIDTHS.map((option) => (
-                  <button aria-label={`太さ ${option.label}`} aria-pressed={width === option.value} className="btn btn-chip btn-sm" key={option.value} onClick={() => setWidth(option.value)} type="button">{option.label}</button>
-                ))}
-              </div>
-              <span className="sketch-props-label">塗り</span>
-              <div className="sketch-fills" role="group" aria-label="塗り">
-                {FILLS.map(([value, label]) => (
-                  <button aria-label={`塗り ${label}`} aria-pressed={fill === value} className="btn btn-chip btn-sm" disabled={!closed} key={value || "none"} onClick={() => setFill(value)} title={closed ? "" : "円・四角のときに使えます"} type="button">{label}</button>
-                ))}
-              </div>
-              {tool === "text" ? (
-                <label className="sketch-text-field">
-                  <span className="sketch-props-label">文字</span>
-                  <input aria-label="シェーマに書く文字" className="input input-compact" maxLength={100} onChange={(event) => setText(event.target.value)} placeholder="例: KP+" ref={textRef} value={text} />
-                </label>
-              ) : null}
+            <span className="sketch-props-label">太さ</span>
+            <div className="sketch-widths" role="group" aria-label="太さ">
+              {WIDTHS.map((option) => (
+                <button aria-label={`太さ ${option.label}`} aria-pressed={width === option.value} className="btn btn-chip btn-sm" key={option.value} onClick={() => setWidth(option.value)} type="button">{option.label}</button>
+              ))}
             </div>
-            <div className="sketch-stage">
-              <SketchCanvas
-                color={color}
-                fill={fill}
-                onAdd={addStroke}
-                onErase={(index) => commit({ ...draft, strokes: strokes.filter((_, itemIndex) => itemIndex !== index) })}
-                onNeedText={() => { setHint("左の「文字」の欄に書く文字を入れてから、図を押してください。"); textRef.current?.focus(); }}
-                sketch={draft}
-                text={text}
-                tool={tool}
-                width={width}
-              />
-              {hint ? <p className="sketch-hint" role="status">{hint}</p> : null}
+            <span className="sketch-props-label">塗り</span>
+            <div className="sketch-fills" role="group" aria-label="塗り">
+              {FILLS.map(([value, label]) => (
+                <button aria-label={`塗り ${label}`} aria-pressed={fill === value} className="btn btn-chip btn-sm" disabled={!closed} key={value || "none"} onClick={() => setFill(value)} title={closed ? "" : "円・四角のときに使えます"} type="button">{label}</button>
+              ))}
             </div>
-            <aside aria-label="下絵と前回のシェーマ" className="sketch-side">
-              <h3 className="sketch-side-head">下絵</h3>
-              <ul className="sketch-template-list">
-                {TEMPLATE_CHOICES.map(([template, eye]) => {
-                  const selected = draft.template === template && (template === "blank" || draft.eye === eye);
-                  return (
-                    <li key={`${template}-${eye}`}>
-                      <button aria-label={`下絵を${choiceLabel(template, eye)}にする`} aria-pressed={selected} className="sketch-template-row" onClick={() => { if (!selected) commit({ ...draft, template, eye }); }} type="button">
-                        <TemplatePreview eye={eye} template={template} />
-                        <span>{choiceLabel(template, eye)}</span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-              {pastSketches.length ? (
-                <>
-                  <h3 className="sketch-side-head">前回のシェーマ</h3>
-                  <ul className="sketch-past-list">
-                    {pastSketches.map((item) => (
-                      <li className="sketch-past" key={item.sketchId}>
-                        <SketchThumb sketch={item} />
-                        <button aria-label={`前回の${EYE_LABELS[item.eye] || ""}${SKETCH_TEMPLATE_LABELS[item.template] || ""}の書き込みを重ねる`} className="btn btn-chip btn-sm" disabled={!(item.strokes || []).length} onClick={() => overlay(item)} type="button">重ねる</button>
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              ) : null}
-            </aside>
+            {tool === "text" ? (
+              <label className="sketch-text-field">
+                <span className="sketch-props-label">文字</span>
+                <input aria-label="シェーマに書く文字" className="input input-compact" maxLength={100} onChange={(event) => setText(event.target.value)} placeholder="例: KP+" ref={textRef} value={text} />
+              </label>
+            ) : null}
           </div>
-        )}
-        {!readOnly ? (
-          <input aria-label="シェーマの説明" className="input" maxLength={200} onChange={(event) => setDraft({ ...draft, caption: event.target.value })} placeholder="説明（任意）" value={draft.caption || ""} />
-        ) : null}
-        <div className="dialog-actions">
-          {onDelete && !readOnly ? <button className="btn btn-ghost danger-text dialog-action-left" onClick={onDelete} type="button">削除</button> : null}
-          <button className="btn btn-ghost" onClick={onCancel} type="button">{readOnly ? "閉じる" : "キャンセル"}</button>
-          {!readOnly ? <button className="btn btn-primary" onClick={() => onSave(draft)} type="button">保存</button> : null}
+          <div className="sketch-stage">
+            <SketchCanvas
+              color={color}
+              fill={fill}
+              onAdd={addStroke}
+              onErase={(index) => commit({ ...draft, strokes: strokes.filter((_, itemIndex) => itemIndex !== index) })}
+              onNeedText={() => { setHint("左の「文字」の欄に書く文字を入れてから、図を押してください。"); textRef.current?.focus(); }}
+              sketch={draft}
+              text={text}
+              tool={tool}
+              width={width}
+            />
+            {hint ? <p className="sketch-hint" role="status">{hint}</p> : null}
+          </div>
+          <aside aria-label="下絵と前回のシェーマ" className="sketch-side">
+            <h3 className="sketch-side-head">下絵</h3>
+            <ul className="sketch-template-list">
+              {TEMPLATE_CHOICES.map(([template, eye]) => {
+                const selected = draft.template === template && (template === "blank" || draft.eye === eye);
+                return (
+                  <li key={`${template}-${eye}`}>
+                    <button aria-label={`下絵を${choiceLabel(template, eye)}にする`} aria-pressed={selected} className="sketch-template-row" onClick={() => { if (!selected) commit({ ...draft, template, eye }); }} type="button">
+                      <TemplatePreview eye={eye} template={template} />
+                      <span>{choiceLabel(template, eye)}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+            {pastSketches.length ? (
+              <>
+                <h3 className="sketch-side-head">前回のシェーマ</h3>
+                <ul className="sketch-past-list">
+                  {pastSketches.map((item) => (
+                    <li className="sketch-past" key={item.sketchId}>
+                      <SketchThumb sketch={item} />
+                      <button aria-label={`前回の${EYE_LABELS[item.eye] || ""}${SKETCH_TEMPLATE_LABELS[item.template] || ""}の書き込みを重ねる`} className="btn btn-chip btn-sm" disabled={!(item.strokes || []).length} onClick={() => overlay(item)} type="button">重ねる</button>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : null}
+          </aside>
         </div>
+      )}
+      {!readOnly ? (
+        <input aria-label="シェーマの説明" className="input" maxLength={200} onChange={(event) => setDraft({ ...draft, caption: event.target.value })} placeholder="説明（任意）" value={draft.caption || ""} />
+      ) : null}
+      <div className="dialog-actions">
+        {onDelete && !readOnly ? <button className="btn btn-ghost danger-text dialog-action-left" onClick={onDelete} type="button">削除</button> : null}
+        <button className="btn btn-ghost" onClick={onCancel} type="button">{readOnly ? "閉じる" : "キャンセル"}</button>
+        {!readOnly ? <button className="btn btn-primary" onClick={() => onSave(draft)} type="button">保存</button> : null}
       </div>
-    </div>
+    </Modal>
   );
 }

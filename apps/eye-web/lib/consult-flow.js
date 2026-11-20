@@ -31,7 +31,7 @@ export function consultStageOf(item, encountersByPatient = {}, now = Date.now())
   return null;
 }
 
-// 診察の患者一覧の場所タブ（トプコンの「場所一覧」: 受付・検査・暗室・診察 … 会計・全て に倣う）
+// 診察の患者一覧の場所タブ（トプコンの「場所一覧」: 受付・検査・暗室・診察 … 会計・すべて に倣う）
 export const LIST_STAGES = [
   { key: "waiting", label: "診察待", status: "waiting_doctor" },
   { key: "consult", label: "診察中", status: "in_consult" },

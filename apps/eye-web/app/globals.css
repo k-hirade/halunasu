@@ -984,6 +984,11 @@ fieldset:disabled .input::placeholder {
   margin-bottom: 12px;
 }
 
+/* 共通のダイアログ（components/modal.js）は開いたとき枠そのものにフォーカスを置くことがある。枠に線は出さない。 */
+[data-modal]:focus {
+  outline: none;
+}
+
 /* 下の余白（--dialog-pad-y）の分だけ下へ伸ばして下端に貼り付ける。左右の余白は影で同じ色に塗り、
  * スクロールした本文がボタンの横から透けないようにする（広い画面で収まっているときの見た目は変わらない）。 */
 .dialog-actions {

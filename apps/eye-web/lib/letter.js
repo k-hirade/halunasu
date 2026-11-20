@@ -82,7 +82,7 @@ export function letterChecks({ type, recipient = {}, body = "", sender = {} }) {
     sender.phone ? "" : "電話番号"
   ].filter(Boolean);
   if (missing.length) {
-    checks.push({ code: "sender_incomplete", level: "warning", message: `差出人の${missing.join("・")}が未登録です（施設情報の登録が必要です）。` });
+    checks.push({ code: "sender_incomplete", level: "warning", message: `差出人の${missing.join("・")}が未記入です（施設情報の登録が必要です）。` });
   }
   return checks;
 }

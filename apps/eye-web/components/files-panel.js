@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useEyeApi, useEyeFileTransfer } from "./eye-api";
+import { Modal, useChangedSince } from "./modal";
 import { EYE_LABELS, formatDate, formatDateTime, todayIso } from "../lib/format";
 
 export const FILE_KIND_LABELS = {
@@ -221,11 +222,8 @@ export function UploadDialog({ patientId, encounterId = "", defaultKind = "oct",
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef(null);
 
-  useEffect(() => {
-    const onKey = (event) => { if (event.key === "Escape" && !busy) onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [busy, onClose]);
+  const formChanged = useChangedSince(form);
+  const dirty = formChanged || Boolean(fileName);
 
   function onDrop(event) {
     event.preventDefault();
@@ -267,50 +265,48 @@ export function UploadDialog({ patientId, encounterId = "", defaultKind = "oct",
   }
 
   return (
-    <div className="dialog-backdrop" role="presentation">
-      <form aria-labelledby="upload-heading" className="dialog upload-dialog" onSubmit={upload} role="dialog">
-        <h2 id="upload-heading">画像・ファイルを取り込む</h2>
-        {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
-        {/* ブラウザ標準の「Choose File」は英語表示になるため、見た目は日本語のボタンにする */}
-        <label
-          className={`file-picker file-drop${dragging ? " is-dragging" : ""}`}
-          onDragLeave={() => setDragging(false)}
-          onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
-          onDrop={onDrop}
-        >
-          <input accept={ACCEPT} aria-label="ファイル" className="file-picker-input" onChange={(event) => setFileName(event.target.files?.[0]?.name || "")} ref={inputRef} required type="file" />
-          <span className="btn btn-ghost" aria-hidden="true">ファイルを選択</span>
-          <span className={fileName ? "file-picker-name" : "muted small"}>{fileName || "またはここにドロップ（PDF・JPEG・PNG・WebP、20MB まで）"}</span>
-        </label>
-        <div className="upload-fields">
-          <label className="field">
-            <span>種類</span>
-            <select aria-label="ファイルの種類" className="input" onChange={(event) => setForm({ ...form, kind: event.target.value })} value={form.kind}>
-              {Object.entries(FILE_KIND_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-          </label>
-          <label className="field">
-            <span>眼</span>
-            <select aria-label="ファイルの眼" className="input" onChange={(event) => setForm({ ...form, eye: event.target.value })} value={form.eye}>
-              <option value="">指定なし</option>
-              {Object.entries(EYE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-          </label>
-          <label className="field">
-            <span>検査日</span>
-            <input aria-label="検査日" className="input" onChange={(event) => setForm({ ...form, takenOn: event.target.value })} type="date" value={form.takenOn} />
-          </label>
-        </div>
+    <Modal as="form" busy={busy} className="dialog upload-dialog" dirty={dirty} labelledBy="upload-heading" onClose={onClose} onSubmit={upload}>
+      <h2 id="upload-heading">画像・ファイルを取り込む</h2>
+      {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
+      {/* ブラウザ標準の「Choose File」は英語表示になるため、見た目は日本語のボタンにする */}
+      <label
+        className={`file-picker file-drop${dragging ? " is-dragging" : ""}`}
+        onDragLeave={() => setDragging(false)}
+        onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
+        onDrop={onDrop}
+      >
+        <input accept={ACCEPT} aria-label="ファイル" className="file-picker-input" onChange={(event) => setFileName(event.target.files?.[0]?.name || "")} ref={inputRef} required type="file" />
+        <span className="btn btn-ghost" aria-hidden="true">ファイルを選択</span>
+        <span className={fileName ? "file-picker-name" : "muted small"}>{fileName || "またはここにドロップ（PDF・JPEG・PNG・WebP、20MB まで）"}</span>
+      </label>
+      <div className="upload-fields">
         <label className="field">
-          <span>題名</span>
-          <input aria-label="ファイルの題名" className="input" onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="省略時はファイル名" value={form.title} />
+          <span>種類</span>
+          <select aria-label="ファイルの種類" className="input" onChange={(event) => setForm({ ...form, kind: event.target.value })} value={form.kind}>
+            {Object.entries(FILE_KIND_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
         </label>
-        <div className="dialog-actions">
-          <button className="btn btn-ghost" disabled={busy} onClick={onClose} type="button">キャンセル</button>
-          <button className="btn btn-primary" disabled={busy} type="submit">{busy ? "取り込み中…" : "取り込む"}</button>
-        </div>
-      </form>
-    </div>
+        <label className="field">
+          <span>眼</span>
+          <select aria-label="ファイルの眼" className="input" onChange={(event) => setForm({ ...form, eye: event.target.value })} value={form.eye}>
+            <option value="">指定なし</option>
+            {Object.entries(EYE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+        </label>
+        <label className="field">
+          <span>検査日</span>
+          <input aria-label="検査日" className="input" onChange={(event) => setForm({ ...form, takenOn: event.target.value })} type="date" value={form.takenOn} />
+        </label>
+      </div>
+      <label className="field">
+        <span>題名</span>
+        <input aria-label="ファイルの題名" className="input" onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="省略時はファイル名" value={form.title} />
+      </label>
+      <div className="dialog-actions">
+        <button className="btn btn-ghost" disabled={busy} onClick={onClose} type="button">キャンセル</button>
+        <button className="btn btn-primary" disabled={busy} type="submit">{busy ? "取り込み中…" : "取り込む"}</button>
+      </div>
+    </Modal>
   );
 }
 
@@ -358,42 +354,40 @@ export function FileViewerDialog({ file, url, context, onClose, onSaved }) {
   }
 
   return (
-    <div className="dialog-backdrop" role="presentation">
-      <div aria-labelledby="viewer-heading" className="dialog dialog-viewer" role="dialog">
-        <div className="panel-head">
-          <h2 id="viewer-heading">{current.title}</h2>
-          <button className="btn btn-ghost" onClick={onClose} type="button">閉じる</button>
-        </div>
-        <p className="muted small">{FILE_KIND_LABELS[current.kind]} {current.eye ? EYE_LABELS[current.eye] : ""} ・ 検査日 {formatDate(current.takenOn)} ・ 取り込み {formatDateTime(current.createdAt)} {current.uploadedBy?.displayName}</p>
-        {error ? <p className="alert alert-danger">{error}</p> : null}
-        <FilePreview file={current} url={url} />
-        {current.kind === "paper_chart" ? (
-          <div className="paper-summary">
-            <label className="field">
-              <span>紙カルテの要約（病名・処方の変更・視力や眼圧の推移など）</span>
-              <textarea className="input" disabled={!context?.canWriteDocuments} onChange={(event) => setSummary(event.target.value)} rows={4} value={summary} />
-            </label>
-            <div className="row-line">
-              {context?.canWriteDocuments ? <button className="btn btn-ghost" disabled={summary === (current.paper?.summary || "")} onClick={saveSummary} type="button">要約を保存</button> : null}
-              {current.paper?.reviewedBy ? (
-                <span className="confirm-ok">医師確認済み（{current.paper.reviewedBy.displayName} {formatDateTime(current.paper.reviewedAt)}）</span>
-              ) : context?.canFinalize ? (
-                <button className="btn btn-primary" disabled={!current.paper?.summary || summary !== current.paper.summary} onClick={review} type="button">要約を確認済みにする</button>
-              ) : <span className="confirm-pending">医師の確認待ち</span>}
-            </div>
-          </div>
-        ) : null}
-        {context?.canFinalize ? (
-          <details className="archive-box">
-            <summary>このファイルを削除する</summary>
-            <div className="row-line">
-              <input aria-label="削除の理由" className="input grow" onChange={(event) => setReason(event.target.value)} placeholder="理由（例: 別の患者のファイルだった）" value={reason} />
-              <button className="btn btn-danger" disabled={!reason.trim()} onClick={archive} type="button">削除する</button>
-            </div>
-            <p className="muted small">一覧から消えますが、記録は残ります。</p>
-          </details>
-        ) : null}
+    <Modal className="dialog dialog-viewer" dirty={summary !== (current.paper?.summary || "") || Boolean(reason.trim())} labelledBy="viewer-heading" onClose={onClose}>
+      <div className="panel-head">
+        <h2 id="viewer-heading">{current.title}</h2>
+        <button className="btn btn-ghost" onClick={onClose} type="button">閉じる</button>
       </div>
-    </div>
+      <p className="muted small">{FILE_KIND_LABELS[current.kind]} {current.eye ? EYE_LABELS[current.eye] : ""} ・ 検査日 {formatDate(current.takenOn)} ・ 取り込み {formatDateTime(current.createdAt)} {current.uploadedBy?.displayName}</p>
+      {error ? <p className="alert alert-danger">{error}</p> : null}
+      <FilePreview file={current} url={url} />
+      {current.kind === "paper_chart" ? (
+        <div className="paper-summary">
+          <label className="field">
+            <span>紙カルテの要約（病名・処方の変更・視力や眼圧の推移など）</span>
+            <textarea className="input" disabled={!context?.canWriteDocuments} onChange={(event) => setSummary(event.target.value)} rows={4} value={summary} />
+          </label>
+          <div className="row-line">
+            {context?.canWriteDocuments ? <button className="btn btn-ghost" disabled={summary === (current.paper?.summary || "")} onClick={saveSummary} type="button">要約を保存</button> : null}
+            {current.paper?.reviewedBy ? (
+              <span className="confirm-ok">医師確認済み（{current.paper.reviewedBy.displayName} {formatDateTime(current.paper.reviewedAt)}）</span>
+            ) : context?.canFinalize ? (
+              <button className="btn btn-primary" disabled={!current.paper?.summary || summary !== current.paper.summary} onClick={review} type="button">要約を確認済みにする</button>
+            ) : <span className="confirm-pending">医師の確認待ち</span>}
+          </div>
+        </div>
+      ) : null}
+      {context?.canFinalize ? (
+        <details className="archive-box">
+          <summary>このファイルを削除する</summary>
+          <div className="row-line">
+            <input aria-label="削除の理由" className="input grow" onChange={(event) => setReason(event.target.value)} placeholder="理由（例: 別の患者のファイルだった）" value={reason} />
+            <button className="btn btn-danger" disabled={!reason.trim()} onClick={archive} type="button">削除する</button>
+          </div>
+          <p className="muted small">一覧から消えますが、記録は残ります。</p>
+        </details>
+      ) : null}
+    </Modal>
   );
 }

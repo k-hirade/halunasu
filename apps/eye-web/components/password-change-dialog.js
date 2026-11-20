@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { PasswordToggleIcon } from "@halunasu/web-ui/login-views";
 import { toUserFacingErrorMessage } from "@halunasu/web-ui/user-facing-error";
 import { PASSWORD_MIN_LENGTH, passwordChangeErrorField, validatePasswordChange } from "../lib/password-change";
+import { Modal } from "./modal";
 import { usePlatformAuth } from "./platform-auth";
 
 const FIELDS = [
@@ -25,19 +26,7 @@ export function PasswordChangeDialog({ onClose }) {
   const inputRefs = useRef({});
   const doneRef = useRef(null);
 
-  // 開いたら最初の欄へ。閉じたら開く前の場所にフォーカスを戻す。Esc で閉じる（送信中は閉じない）
-  useEffect(() => {
-    const opener = typeof document !== "undefined" ? document.activeElement : null;
-    inputRefs.current.currentPassword?.focus();
-    return () => { if (opener instanceof HTMLElement && opener.isConnected) opener.focus(); };
-  }, []);
-  useEffect(() => {
-    function onKeyDown(event) {
-      if (event.key === "Escape" && !busy) onClose();
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [busy, onClose]);
+  // 開いたら最初の欄へ・閉じたら元の場所へ・Esc と背景で閉じる（送信中は閉じない）は Modal が受け持つ
   useEffect(() => {
     if (done) doneRef.current?.focus();
   }, [done]);
@@ -87,71 +76,69 @@ export function PasswordChangeDialog({ onClose }) {
   }
 
   return (
-    <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }} role="presentation">
-      <div aria-labelledby="pw-heading" aria-modal="true" className="dialog pw-dialog" role="dialog">
-        <h2 id="pw-heading">パスワード変更</h2>
-        {done ? (
-          <>
-            <p className="alert alert-ok pw-done" role="status">
-              パスワードを変更しました。この端末はログインしたままです。ほかの端末やブラウザでは、新しいパスワードでログインし直してください。
-            </p>
-            <div className="dialog-actions">
-              <button className="btn btn-primary" onClick={onClose} ref={doneRef} type="button">閉じる</button>
-            </div>
-          </>
-        ) : (
-          <form noValidate onKeyDown={onFormKeyDown} onSubmit={submit}>
-            {FIELDS.map((field) => {
-              const id = `pw-${field.name}`;
-              const shown = Boolean(visible[field.name]);
-              const describedBy = [field.hint ? "pw-policy" : "", capsLock ? "pw-caps" : "", error?.field === field.name ? "pw-error" : ""].filter(Boolean).join(" ");
-              return (
-                <div className="field pw-field" key={field.name}>
-                  <label className="pw-label" htmlFor={id}>{field.label}</label>
-                  <div className="pw-input">
-                    <input
-                      aria-describedby={describedBy || undefined}
-                      aria-invalid={error?.field === field.name ? "true" : undefined}
-                      autoCapitalize="off"
-                      autoComplete={field.autoComplete}
-                      className="input"
-                      disabled={busy}
-                      id={id}
-                      name={field.name}
-                      onBlur={() => setCapsLock(false)}
-                      onChange={(event) => update(field.name, event.target.value)}
-                      onKeyDown={watchCapsLock}
-                      onKeyUp={watchCapsLock}
-                      ref={(node) => { inputRefs.current[field.name] = node; }}
-                      spellCheck={false}
-                      type={shown ? "text" : "password"}
-                      value={values[field.name]}
-                    />
-                    <button
-                      aria-label={shown ? `${field.label}を隠す` : `${field.label}を表示`}
-                      aria-pressed={shown}
-                      className="pw-toggle"
-                      disabled={busy}
-                      onClick={() => setVisible((current) => ({ ...current, [field.name]: !current[field.name] }))}
-                      type="button"
-                    >
-                      <PasswordToggleIcon visible={shown} />
-                    </button>
-                  </div>
-                  {field.hint ? <small className="muted pw-hint" id="pw-policy">{PASSWORD_MIN_LENGTH}文字以上。英字・数字・記号を組み合わせると安全です。現在と同じものは使えません。</small> : null}
+    <Modal busy={busy} className="dialog pw-dialog" dirty={!done && Object.values(values).some(Boolean)} initialFocus="input" labelledBy="pw-heading" onClose={onClose}>
+      <h2 id="pw-heading">パスワード変更</h2>
+      {done ? (
+        <>
+          <p className="alert alert-ok pw-done" role="status">
+            パスワードを変更しました。この端末はログインしたままです。ほかの端末やブラウザでは、新しいパスワードでログインし直してください。
+          </p>
+          <div className="dialog-actions">
+            <button className="btn btn-primary" onClick={onClose} ref={doneRef} type="button">閉じる</button>
+          </div>
+        </>
+      ) : (
+        <form noValidate onKeyDown={onFormKeyDown} onSubmit={submit}>
+          {FIELDS.map((field) => {
+            const id = `pw-${field.name}`;
+            const shown = Boolean(visible[field.name]);
+            const describedBy = [field.hint ? "pw-policy" : "", capsLock ? "pw-caps" : "", error?.field === field.name ? "pw-error" : ""].filter(Boolean).join(" ");
+            return (
+              <div className="field pw-field" key={field.name}>
+                <label className="pw-label" htmlFor={id}>{field.label}</label>
+                <div className="pw-input">
+                  <input
+                    aria-describedby={describedBy || undefined}
+                    aria-invalid={error?.field === field.name ? "true" : undefined}
+                    autoCapitalize="off"
+                    autoComplete={field.autoComplete}
+                    className="input"
+                    disabled={busy}
+                    id={id}
+                    name={field.name}
+                    onBlur={() => setCapsLock(false)}
+                    onChange={(event) => update(field.name, event.target.value)}
+                    onKeyDown={watchCapsLock}
+                    onKeyUp={watchCapsLock}
+                    ref={(node) => { inputRefs.current[field.name] = node; }}
+                    spellCheck={false}
+                    type={shown ? "text" : "password"}
+                    value={values[field.name]}
+                  />
+                  <button
+                    aria-label={shown ? `${field.label}を隠す` : `${field.label}を表示`}
+                    aria-pressed={shown}
+                    className="pw-toggle"
+                    disabled={busy}
+                    onClick={() => setVisible((current) => ({ ...current, [field.name]: !current[field.name] }))}
+                    type="button"
+                  >
+                    <PasswordToggleIcon visible={shown} />
+                  </button>
                 </div>
-              );
-            })}
-            {capsLock ? <p className="pw-caps" id="pw-caps">Caps Lock がオンです</p> : null}
-            {error ? <p className="alert alert-danger pw-error" id="pw-error" role="alert">{error.message}</p> : null}
-            <p className="muted small pw-note">変更すると、ほかの端末やブラウザでのログインは終了します。この端末はログインしたままです。</p>
-            <div className="dialog-actions">
-              <button className="btn" disabled={busy} onClick={onClose} type="button">キャンセル</button>
-              <button className="btn btn-primary" disabled={busy} type="submit">{busy ? "変更中…" : "変更する"}</button>
-            </div>
-          </form>
-        )}
-      </div>
-    </div>
+                {field.hint ? <small className="muted pw-hint" id="pw-policy">{PASSWORD_MIN_LENGTH}文字以上。英字・数字・記号を組み合わせると安全です。現在と同じものは使えません。</small> : null}
+              </div>
+            );
+          })}
+          {capsLock ? <p className="pw-caps" id="pw-caps">Caps Lock がオンです</p> : null}
+          {error ? <p className="alert alert-danger pw-error" id="pw-error" role="alert">{error.message}</p> : null}
+          <p className="muted small pw-note">変更すると、ほかの端末やブラウザでのログインは終了します。この端末はログインしたままです。</p>
+          <div className="dialog-actions">
+            <button className="btn" disabled={busy} onClick={onClose} type="button">キャンセル</button>
+            <button className="btn btn-primary" disabled={busy} type="submit">{busy ? "変更中…" : "変更する"}</button>
+          </div>
+        </form>
+      )}
+    </Modal>
   );
 }

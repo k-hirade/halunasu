@@ -28,7 +28,11 @@ export function isTypingTarget(target) {
 
 export function closeMenu(event) {
   const menu = event.currentTarget.closest("details");
-  if (menu) menu.open = false;
+  if (!menu) return;
+  // 中の項目にフォーカスがあれば、閉じたあとは開いたボタン（summary）へ戻す（キーボードで続けて操作できるように）
+  const hadFocus = menu.contains(document.activeElement);
+  menu.open = false;
+  if (hadFocus) menu.querySelector(":scope > summary")?.focus({ preventScroll: true });
 }
 
 // 公開マスターの検索（語を打ち終えてから 250ms 後に 1 回）。type: drug | disease | modifier | procedure

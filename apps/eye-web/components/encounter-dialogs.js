@@ -7,6 +7,7 @@ import { createPortal } from "react-dom";
 import { NEXT_VISIT_PLAN_PRESETS } from "@halunasu/eye-contracts";
 import { WarnIcon } from "./chart-icons";
 import { useEyeApi } from "./eye-api";
+import { Modal, useChangedSince } from "./modal";
 import { formatDate, prescriptionText } from "../lib/format";
 
 // 保存状態。自動保存なので「いま保存されているか」だけをはっきり見せる。
@@ -71,94 +72,92 @@ export function WarningsDialog({ content, readiness, version, error = "", procee
     if (dialogRef.current) dialogRef.current.scrollTop = 0;
   }, []);
   return (
-    <div className="dialog-backdrop" role="presentation">
-      <div aria-labelledby="warnings-heading" className="dialog dialog-wide warnings-dialog" ref={dialogRef} role="dialog">
-        <h2 id="warnings-heading">{blockers.length || warnings.length ? "警告一覧" : "カルテを確定します"}（v{version}）</h2>
-        {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
-        {blockers.length || warnings.length ? (
-          <>
-            <p className="small">{blockers.length ? "記録として成り立たない行があります。直してから進んでください。" : "確認が必要な項目があります。確認したうえでそのまま進めます。"}</p>
-            <div className="table-scroll">
-              <table className="data-table warnings-table">
-                <thead><tr><th scope="col">対象</th><th scope="col">種類</th><th scope="col">メッセージ</th><th aria-label="操作" scope="col" /></tr></thead>
-                <tbody>
-                  {[...blockers.map((item) => ({ ...item, blocker: true })), ...warnings].map((item, index) => {
-                    const [target, kind] = warningKind(item);
-                    const level = item.blocker ? "blocker" : item.level === "high" ? "high" : "low";
-                    return (
-                      <tr className={`is-${level === "blocker" ? "blocker" : level}`} key={`${item.code}-${index}`}>
-                        <td className="warn-target">{target}</td>
-                        <td className="warn-kind">
-                          <span className="warn-kind-line">
-                            <span className={`warn-icon is-${level}`} title={LEVEL_LABELS[level]}><WarnIcon level={level} /></span>
-                            <span className={`warn-level is-${level}`}>{LEVEL_LABELS[level]}</span>
-                            <span>{kind}</span>
-                          </span>
-                        </td>
-                        <td className="warn-message">{item.message}</td>
-                        <td className="warn-fix">
-                          <span className="warn-actions">
-                            {onFix && item.code === "order_planned" && item.field ? <button className="btn btn-chip" onClick={() => onFix(item)} type="button">実施にする</button> : null}
-                            {!item.blocker && onDismiss ? (
-                              <button aria-label={`「${item.message}」を今回は確認しない`} className="btn btn-chip warn-dismiss" onClick={() => onDismiss(warningKey(item))} title="今回はこの確認を出さない（確定の記録には残ります）" type="button">今回は確認しない</button>
-                            ) : null}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            {onFix && planned > 1 ? <button className="btn btn-chip" onClick={() => onFix({ code: "order_planned_all" })} type="button">予定の {planned} 件をすべて実施済にする</button> : null}
-          </>
-        ) : null}
-        {hiddenCount ? (
-          <p className="muted small warnings-hidden">
-            今回は確認しない項目 {hiddenCount}件（確定の記録には警告として残ります）
-            {onRestore ? <button className="link-button" onClick={onRestore} type="button">元に戻す</button> : null}
-          </p>
-        ) : null}
-        <table className="data-table finalize-summary">
-          <tbody>
-            <tr>
-              <th scope="row">視力</th>
-              <td><span className="eye-od">R</span> {exam.od.vaUncorrected || "—"}（{exam.od.vaCorrected || "—"}）　<span className="eye-os">L</span> {exam.os.vaUncorrected || "—"}（{exam.os.vaCorrected || "—"}）</td>
-            </tr>
-            <tr>
-              <th scope="row">眼圧</th>
-              <td><span className="eye-od">R</span> {exam.od.iop ?? "—"}　<span className="eye-os">L</span> {exam.os.iop ?? "—"} mmHg</td>
-            </tr>
-            <tr>
-              <th scope="row">処方</th>
-              <td>
-                {issued.length === 0 ? "なし" : (
-                  <ul className="plain">
-                    {issued.map((item, index) => <li key={index}>{prescriptionText(item)}{item.carriedOver ? <span className="tag tag-warn">前回から引き継ぎ</span> : null}</li>)}
-                  </ul>
-                )}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        {confirmsInDialog && !blockers.length ? (
-          <p className="muted small">進むと、値のある眼の検査値を確認済みにし、引き継いだ処方を今回の処方として確定します。</p>
-        ) : null}
-        <p className="muted small">確定後も直せます。直して確定するたびに新しい版になり、前の版も残ります。</p>
-        <div className="dialog-actions">
-          <button className="btn btn-ghost" onClick={onCancel} type="button">戻って編集</button>
-          <button
-            className="btn btn-primary"
-            disabled={busy || blockers.length > 0}
-            onClick={async () => { setBusy(true); await onProceed(); setBusy(false); }}
-            ref={proceedRef}
-            type="button"
-          >
-            {proceedLabel}
-          </button>
-        </div>
+    <Modal busy={busy} className="dialog dialog-wide warnings-dialog" dialogRef={dialogRef} labelledBy="warnings-heading" onClose={onCancel}>
+      <h2 id="warnings-heading">{blockers.length || warnings.length ? "警告一覧" : "カルテを確定します"}（v{version}）</h2>
+      {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
+      {blockers.length || warnings.length ? (
+        <>
+          <p className="small">{blockers.length ? "記録として成り立たない行があります。直してから進んでください。" : "確認が必要な項目があります。確認したうえでそのまま進めます。"}</p>
+          <div className="table-scroll">
+            <table className="data-table warnings-table">
+              <thead><tr><th scope="col">対象</th><th scope="col">種類</th><th scope="col">メッセージ</th><th aria-label="操作" scope="col" /></tr></thead>
+              <tbody>
+                {[...blockers.map((item) => ({ ...item, blocker: true })), ...warnings].map((item, index) => {
+                  const [target, kind] = warningKind(item);
+                  const level = item.blocker ? "blocker" : item.level === "high" ? "high" : "low";
+                  return (
+                    <tr className={`is-${level === "blocker" ? "blocker" : level}`} key={`${item.code}-${index}`}>
+                      <td className="warn-target">{target}</td>
+                      <td className="warn-kind">
+                        <span className="warn-kind-line">
+                          <span className={`warn-icon is-${level}`} title={LEVEL_LABELS[level]}><WarnIcon level={level} /></span>
+                          <span className={`warn-level is-${level}`}>{LEVEL_LABELS[level]}</span>
+                          <span>{kind}</span>
+                        </span>
+                      </td>
+                      <td className="warn-message">{item.message}</td>
+                      <td className="warn-fix">
+                        <span className="warn-actions">
+                          {onFix && item.code === "order_planned" && item.field ? <button className="btn btn-chip" onClick={() => onFix(item)} type="button">実施にする</button> : null}
+                          {!item.blocker && onDismiss ? (
+                            <button aria-label={`「${item.message}」を今回は確認しない`} className="btn btn-chip warn-dismiss" onClick={() => onDismiss(warningKey(item))} title="今回はこの確認を出さない（確定の記録には残ります）" type="button">今回は確認しない</button>
+                          ) : null}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {onFix && planned > 1 ? <button className="btn btn-chip" onClick={() => onFix({ code: "order_planned_all" })} type="button">予定の {planned} 件をすべて実施済にする</button> : null}
+        </>
+      ) : null}
+      {hiddenCount ? (
+        <p className="muted small warnings-hidden">
+          今回は確認しない項目 {hiddenCount}件（確定の記録には警告として残ります）
+          {onRestore ? <button className="link-button" onClick={onRestore} type="button">元に戻す</button> : null}
+        </p>
+      ) : null}
+      <table className="data-table finalize-summary">
+        <tbody>
+          <tr>
+            <th scope="row">視力</th>
+            <td><span className="eye-od">R</span> {exam.od.vaUncorrected || "—"}（{exam.od.vaCorrected || "—"}）　<span className="eye-os">L</span> {exam.os.vaUncorrected || "—"}（{exam.os.vaCorrected || "—"}）</td>
+          </tr>
+          <tr>
+            <th scope="row">眼圧</th>
+            <td><span className="eye-od">R</span> {exam.od.iop ?? "—"}　<span className="eye-os">L</span> {exam.os.iop ?? "—"} mmHg</td>
+          </tr>
+          <tr>
+            <th scope="row">処方</th>
+            <td>
+              {issued.length === 0 ? "なし" : (
+                <ul className="plain">
+                  {issued.map((item, index) => <li key={index}>{prescriptionText(item)}{item.carriedOver ? <span className="tag tag-warn">前回から引き継ぎ</span> : null}</li>)}
+                </ul>
+              )}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      {confirmsInDialog && !blockers.length ? (
+        <p className="muted small">進むと、値のある眼の検査値を確認済みにし、引き継いだ処方を今回の処方として確定します。</p>
+      ) : null}
+      <p className="muted small">確定後も直せます。直して確定するたびに新しい版になり、前の版も残ります。</p>
+      <div className="dialog-actions">
+        <button className="btn btn-ghost" onClick={onCancel} type="button">戻って編集</button>
+        <button
+          className="btn btn-primary"
+          disabled={busy || blockers.length > 0}
+          onClick={async () => { setBusy(true); await onProceed(); setBusy(false); }}
+          ref={proceedRef}
+          type="button"
+        >
+          {proceedLabel}
+        </button>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -172,57 +171,53 @@ export function StatusChoiceDialog({ appointment, statusMenu, labels, loading, e
     setBusy(false);
   };
   return (
-    <div className="dialog-backdrop" role="presentation">
-      <div aria-labelledby="status-heading" className="dialog status-dialog" role="dialog">
-        <h2 id="status-heading">患者ステータス選択</h2>
-        {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
-        {loading ? <p className="loading">受付を確認しています…</p> : (
-          <div className="status-choice">
-            <div className="status-current">
-              <span className="muted small">現在のステータス</span>
-              <strong>{appointment ? labels[appointment.displayStatus || appointment.status] || appointment.status : "受付なし"}</strong>
-              {!appointment ? <span className="muted small">本日の受付が見つからないため、受付の状態は変えずに確定します。</span> : null}
-            </div>
-            {appointment ? (
-              <fieldset className="status-next plain-fieldset">
-                <legend className="muted small">次のステータス</legend>
-                {statusMenu.map((value) => (
-                  <label className="check-line" key={value}>
-                    <input checked={status === value} name="next-status" onChange={() => setStatus(value)} type="radio" value={value} />
-                    {labels[value]}
-                  </label>
-                ))}
-              </fieldset>
-            ) : null}
+    <Modal busy={busy} className="dialog status-dialog" closeOnBackdrop={false} labelledBy="status-heading" onClose={onCancel}>
+      <h2 id="status-heading">患者ステータス選択</h2>
+      {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
+      {loading ? <p className="loading">受付を確認しています…</p> : (
+        <div className="status-choice">
+          <div className="status-current">
+            <span className="muted small">現在のステータス</span>
+            <strong>{appointment ? labels[appointment.displayStatus || appointment.status] || appointment.status : "受付なし"}</strong>
+            {!appointment ? <span className="muted small">本日の受付が見つからないため、受付の状態は変えずに確定します。</span> : null}
           </div>
-        )}
-        <div className="dialog-actions">
-          {appointment ? <button className="btn btn-ghost dialog-action-left" disabled={busy || loading} onClick={() => run(onFinalizeOnly)} type="button">確定のみ（受付は変えない）</button> : null}
-          <button className="btn btn-ghost" onClick={onCancel} type="button">キャンセル</button>
-          <button autoFocus className="btn btn-primary" disabled={busy || loading} onClick={() => run(() => (appointment ? onConfirm(status) : onFinalizeOnly()))} type="button">決定</button>
+          {appointment ? (
+            <fieldset className="status-next plain-fieldset">
+              <legend className="muted small">次のステータス</legend>
+              {statusMenu.map((value) => (
+                <label className="check-line" key={value}>
+                  <input checked={status === value} name="next-status" onChange={() => setStatus(value)} type="radio" value={value} />
+                  {labels[value]}
+                </label>
+              ))}
+            </fieldset>
+          ) : null}
         </div>
+      )}
+      <div className="dialog-actions">
+        {appointment ? <button className="btn btn-ghost dialog-action-left" disabled={busy || loading} onClick={() => run(onFinalizeOnly)} type="button">確定のみ（受付は変えない）</button> : null}
+        <button className="btn btn-ghost" onClick={onCancel} type="button">キャンセル</button>
+        <button autoFocus className="btn btn-primary" disabled={busy || loading} onClick={() => run(() => (appointment ? onConfirm(status) : onFinalizeOnly()))} type="button">決定</button>
       </div>
-    </div>
+    </Modal>
   );
 }
 
 // 次へのあと、診察待ちの人がいなかったとき・受付を動かせなかったときの知らせ。
 export function CloseResultDialog({ result, onStay, onReception, onNext }) {
   return (
-    <div className="dialog-backdrop" role="presentation">
-      <div aria-labelledby="close-result-heading" className="dialog" role="dialog">
-        <h2 id="close-result-heading">確定しました{result.version ? `（v${result.version.version}）` : ""}</h2>
-        {result.appointmentMoved ? <p>受付を「{result.statusLabel}」にしました。</p> : null}
-        {result.appointmentError ? <p className="alert alert-warn">{result.appointmentError.message || "受付の状態は変えていません。"}</p> : null}
-        {result.warnings?.length ? <p className="muted small">確認事項 {result.warnings.length}件のまま確定しました。</p> : null}
-        {result.nextPatient ? <p>次の診察待ち: <strong>{result.nextPatient.patientName}</strong>{result.nextPatient.queueNumber ? `（#${result.nextPatient.queueNumber}）` : ""}</p> : <p className="muted">診察待ちの患者はいません。</p>}
-        <div className="dialog-actions">
-          <button className="btn btn-ghost" onClick={onStay} type="button">このカルテに戻る</button>
-          <button className="btn btn-ghost" onClick={onReception} type="button">受付一覧へ</button>
-          {result.nextPatient ? <button autoFocus className="btn btn-primary" onClick={onNext} type="button">次の患者を開く</button> : null}
-        </div>
+    <Modal className="dialog" labelledBy="close-result-heading" onClose={onStay}>
+      <h2 id="close-result-heading">確定しました{result.version ? `（v${result.version.version}）` : ""}</h2>
+      {result.appointmentMoved ? <p>受付を「{result.statusLabel}」にしました。</p> : null}
+      {result.appointmentError ? <p className="alert alert-warn">{result.appointmentError.message || "受付の状態は変えていません。"}</p> : null}
+      {result.warnings?.length ? <p className="muted small">確認事項 {result.warnings.length}件のまま確定しました。</p> : null}
+      {result.nextPatient ? <p>次の診察待ち: <strong>{result.nextPatient.patientName}</strong>{result.nextPatient.queueNumber ? `（#${result.nextPatient.queueNumber}）` : ""}</p> : <p className="muted">診察待ちの患者はいません。</p>}
+      <div className="dialog-actions">
+        <button className="btn btn-ghost" onClick={onStay} type="button">このカルテに戻る</button>
+        <button className="btn btn-ghost" onClick={onReception} type="button">受付一覧へ</button>
+        {result.nextPatient ? <button autoFocus className="btn btn-primary" onClick={onNext} type="button">次の患者を開く</button> : null}
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -247,47 +242,45 @@ export function SendDialog({ patient, encounterId, encounterDate, error = "", on
   const item = state.item;
   const groups = item ? Object.entries(item.items.reduce((acc, row) => ({ ...acc, [row.category]: [...(acc[row.category] || []), row] }), {})) : [];
   return (
-    <div className="dialog-backdrop" role="presentation">
-      <div aria-labelledby="send-heading" className="dialog send-dialog" role="dialog">
-        <h2 id="send-heading">会計情報をレセコンへ送りますか？</h2>
-        {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
-        <p className="send-who">
-          <strong>{patient.displayName}</strong>
-          <span className="mono">{patient.primaryPatientNumber || "—"}</span>
-          <span>{formatDate(encounterDate)}</span>
-          {item ? <span className="muted">カルテ v{item.version}</span> : null}
-          {item ? <UnapprovedTag approval={item.approval} /> : null}
-        </p>
-        {item && isUnapproved(item.approval) ? <p className="alert alert-warn small" data-approval-note="send">このカルテは指導医の承認がまだです（{item.approval.status === "returned" ? "差し戻し中" : "承認待ち"}）。会計へは送れます。承認後に内容が変わったときは、もう一度送ってください。</p> : null}
-        {state.loading ? <p className="loading">送る内容を確認しています…</p> : null}
-        {state.error ? <p className="alert alert-warn">送る内容を読めませんでした（{state.error}）。送信はできます。</p> : null}
-        {!state.loading && !state.error && !item ? <p className="alert alert-warn">この日の確定済みのカルテが見つかりません。確定してから送ってください。</p> : null}
-        {item ? (
-          <div aria-label="送る内容" className="send-items" role="table">
-            {groups.length ? groups.map(([category, rows]) => (
-              <div className="send-group" key={category} role="row">
-                <span className="send-category" role="rowheader">{category}</span>
-                <ul className="send-rows" role="cell">
-                  {rows.map((row, index) => (
-                    <li key={`${row.code}-${index}`}>
-                      <span className="send-name">{row.name}</span>
-                      {row.eye ? <span className="tag">{{ od: "右", os: "左", ou: "両" }[row.eye] || row.eye}</span> : null}
-                      <span className="muted small">{[row.quantity ? `${row.quantity}${row.unit || ""}` : "", row.route, row.usage, row.days ? `${row.days}日` : ""].filter(Boolean).join(" ")}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )) : <p className="muted small">品目はありません（受診のみ）。</p>}
-          </div>
-        ) : null}
-        {item && SEND_STATE_NOTES[item.handoff?.state] ? <p className="alert alert-warn small">{SEND_STATE_NOTES[item.handoff.state]}</p> : null}
-        <p className="muted small">レセコンが取り込む CSV を保存します。受付が「会計待」なら「会計済」にします。</p>
-        <div className="dialog-actions">
-          <button className="btn btn-ghost" disabled={busy} onClick={onCancel} type="button">キャンセル</button>
-          <button autoFocus className="btn btn-primary" disabled={busy || state.loading || (!item && !state.error)} onClick={async () => { setBusy(true); await onSend(); setBusy(false); }} type="button">{busy ? "送信中…" : "送信"}</button>
+    <Modal busy={busy} className="dialog send-dialog" closeOnBackdrop={false} labelledBy="send-heading" onClose={onCancel}>
+      <h2 id="send-heading">会計情報をレセコンへ送りますか？</h2>
+      {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
+      <p className="send-who">
+        <strong>{patient.displayName}</strong>
+        <span className="mono">{patient.primaryPatientNumber || "—"}</span>
+        <span>{formatDate(encounterDate)}</span>
+        {item ? <span className="muted">カルテ v{item.version}</span> : null}
+        {item ? <UnapprovedTag approval={item.approval} /> : null}
+      </p>
+      {item && isUnapproved(item.approval) ? <p className="alert alert-warn small" data-approval-note="send">このカルテは指導医の承認がまだです（{item.approval.status === "returned" ? "差し戻し中" : "承認待ち"}）。会計へは送れます。承認後に内容が変わったときは、もう一度送ってください。</p> : null}
+      {state.loading ? <p className="loading">送る内容を確認しています…</p> : null}
+      {state.error ? <p className="alert alert-warn">送る内容を読めませんでした（{state.error}）。送信はできます。</p> : null}
+      {!state.loading && !state.error && !item ? <p className="alert alert-warn">この日の確定済みのカルテが見つかりません。確定してから送ってください。</p> : null}
+      {item ? (
+        <div aria-label="送る内容" className="send-items" role="table">
+          {groups.length ? groups.map(([category, rows]) => (
+            <div className="send-group" key={category} role="row">
+              <span className="send-category" role="rowheader">{category}</span>
+              <ul className="send-rows" role="cell">
+                {rows.map((row, index) => (
+                  <li key={`${row.code}-${index}`}>
+                    <span className="send-name">{row.name}</span>
+                    {row.eye ? <span className="tag">{{ od: "右", os: "左", ou: "両" }[row.eye] || row.eye}</span> : null}
+                    <span className="muted small">{[row.quantity ? `${row.quantity}${row.unit || ""}` : "", row.route, row.usage, row.days ? `${row.days}日` : ""].filter(Boolean).join(" ")}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )) : <p className="muted small">品目はありません（受診のみ）。</p>}
         </div>
+      ) : null}
+      {item && SEND_STATE_NOTES[item.handoff?.state] ? <p className="alert alert-warn small">{SEND_STATE_NOTES[item.handoff.state]}</p> : null}
+      <p className="muted small">レセコンが取り込む CSV を保存します。受付が「会計待」なら「会計済」にします。</p>
+      <div className="dialog-actions">
+        <button className="btn btn-ghost" disabled={busy} onClick={onCancel} type="button">キャンセル</button>
+        <button autoFocus className="btn btn-primary" disabled={busy || state.loading || (!item && !state.error)} onClick={async () => { setBusy(true); await onSend(); setBusy(false); }} type="button">{busy ? "送信中…" : "送信"}</button>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -299,32 +292,30 @@ export function ShortcutHelpDialog({ leftTabs, categories, onClose }) {
     <dl className="shortcut-list">{items.map(([key, label]) => <div key={key}><dd>{label}</dd><dt><kbd>{key}</kbd></dt></div>)}</dl>
   );
   return (
-    <div className="dialog-backdrop" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }} role="presentation">
-      <div aria-labelledby="shortcut-heading" className="dialog dialog-wide shortcut-dialog" role="dialog">
-        <h2 id="shortcut-heading">ショートカット</h2>
-        <div className="shortcut-cols">
-          <section className="shortcut-common">
-            <h3>よく使う操作</h3>
-            <div className="shortcut-common-cols">
-              {list(common.slice(0, half))}
-              {list(common.slice(half))}
-            </div>
-          </section>
-          <section>
-            <h3>左のタブ</h3>
-            {list(leftTabs.map((tab) => [tab.keyLabel, tab.label]))}
-          </section>
-          <section>
-            <h3>右のオーダー</h3>
-            {list(categories.map((item) => [item.key, item.label]))}
-          </section>
-        </div>
-        <div className="dialog-actions shortcut-foot">
-          <p className="muted small">文字のキーは、入力欄にカーソルが無いときに効きます。</p>
-          <button autoFocus className="btn btn-primary" onClick={onClose} type="button">閉じる</button>
-        </div>
+    <Modal className="dialog dialog-wide shortcut-dialog" labelledBy="shortcut-heading" onClose={onClose}>
+      <h2 id="shortcut-heading">ショートカット</h2>
+      <div className="shortcut-cols">
+        <section className="shortcut-common">
+          <h3>よく使う操作</h3>
+          <div className="shortcut-common-cols">
+            {list(common.slice(0, half))}
+            {list(common.slice(half))}
+          </div>
+        </section>
+        <section>
+          <h3>左のタブ</h3>
+          {list(leftTabs.map((tab) => [tab.keyLabel, tab.label]))}
+        </section>
+        <section>
+          <h3>右のオーダー</h3>
+          {list(categories.map((item) => [item.key, item.label]))}
+        </section>
       </div>
-    </div>
+      <div className="dialog-actions shortcut-foot">
+        <p className="muted small">文字のキーは、入力欄にカーソルが無いときに効きます。</p>
+        <button autoFocus className="btn btn-primary" onClick={onClose} type="button">閉じる</button>
+      </div>
+    </Modal>
   );
 }
 
@@ -340,6 +331,7 @@ export function SetCreateDialog({ api, encounterId, orderSets, setFolders: initi
   const [folders, setFolders] = useState(initialFolders);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const dirty = useChangedSince({ name, folderId, overwrite, include, adding: Boolean(newFolder?.name) });
 
   async function addFolder() {
     if (!newFolder?.name.trim()) return;
@@ -374,73 +366,69 @@ export function SetCreateDialog({ api, encounterId, orderSets, setFolders: initi
   }
 
   return (
-    <div className="dialog-backdrop" role="presentation">
-      <form aria-labelledby="set-create-heading" className="dialog dialog-wide" onSubmit={submit} role="dialog">
-        <h2 id="set-create-heading">セット登録（現在のカルテから）</h2>
-        {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
-        <label className="field">
-          <span>上書きするセット</span>
-          <select aria-label="上書きするセット" className="input" onChange={(event) => setOverwrite(event.target.value)} value={overwrite}>
-            <option value="">新しいセットを作る</option>
-            {orderSets.filter((item) => item.active !== false).map((item) => <option key={item.setId} value={item.setId}>{item.name}（現在のカルテで上書き）</option>)}
-          </select>
-        </label>
-        <label className="field">
-          <span>セット名{overwrite ? "（空なら今の名前のまま）" : ""}</span>
-          <input aria-label="セット名" autoFocus className="input" maxLength={200} onChange={(event) => setName(event.target.value)} required={!overwrite} value={name} />
-        </label>
-        {!overwrite ? (
-          <div className="field">
-            <span>フォルダ</span>
+    <Modal as="form" busy={busy} className="dialog dialog-wide" dirty={dirty} labelledBy="set-create-heading" onClose={onCancel} onSubmit={submit}>
+      <h2 id="set-create-heading">セット登録（現在のカルテから）</h2>
+      {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
+      <label className="field">
+        <span>上書きするセット</span>
+        <select aria-label="上書きするセット" className="input" onChange={(event) => setOverwrite(event.target.value)} value={overwrite}>
+          <option value="">新しいセットを作る</option>
+          {orderSets.filter((item) => item.active !== false).map((item) => <option key={item.setId} value={item.setId}>{item.name}（現在のカルテで上書き）</option>)}
+        </select>
+      </label>
+      <label className="field">
+        <span>セット名{overwrite ? "（空なら今の名前のまま）" : ""}</span>
+        <input aria-label="セット名" autoFocus className="input" maxLength={200} onChange={(event) => setName(event.target.value)} required={!overwrite} value={name} />
+      </label>
+      {!overwrite ? (
+        <div className="field">
+          <span>フォルダ</span>
+          <div className="row-line">
+            <select aria-label="フォルダ" className="input grow" onChange={(event) => setFolderId(event.target.value)} value={folderId}>
+              <option value="">（フォルダなし）</option>
+              {folders.filter((item) => item.active !== false).map((item) => <option key={item.folderId} value={item.folderId}>{item.name}</option>)}
+            </select>
+            <button className="btn btn-chip" onClick={() => setNewFolder(newFolder ? null : { name: "", parentId: "" })} type="button">＋ フォルダ</button>
+          </div>
+          {newFolder ? (
             <div className="row-line">
-              <select aria-label="フォルダ" className="input grow" onChange={(event) => setFolderId(event.target.value)} value={folderId}>
-                <option value="">（フォルダなし）</option>
-                {folders.filter((item) => item.active !== false).map((item) => <option key={item.folderId} value={item.folderId}>{item.name}</option>)}
+              <input aria-label="新しいフォルダ名" className="input grow" maxLength={200} onChange={(event) => setNewFolder({ ...newFolder, name: event.target.value })} placeholder="フォルダ名" value={newFolder.name} />
+              <select aria-label="親フォルダ" className="input" onChange={(event) => setNewFolder({ ...newFolder, parentId: event.target.value })} value={newFolder.parentId}>
+                <option value="">親フォルダなし</option>
+                {folders.map((item) => <option key={item.folderId} value={item.folderId}>{item.name}</option>)}
               </select>
-              <button className="btn btn-chip" onClick={() => setNewFolder(newFolder ? null : { name: "", parentId: "" })} type="button">＋ フォルダ</button>
+              <button className="btn btn-ghost" disabled={busy || !newFolder.name.trim()} onClick={addFolder} type="button">追加</button>
             </div>
-            {newFolder ? (
-              <div className="row-line">
-                <input aria-label="新しいフォルダ名" className="input grow" maxLength={200} onChange={(event) => setNewFolder({ ...newFolder, name: event.target.value })} placeholder="フォルダ名" value={newFolder.name} />
-                <select aria-label="親フォルダ" className="input" onChange={(event) => setNewFolder({ ...newFolder, parentId: event.target.value })} value={newFolder.parentId}>
-                  <option value="">親フォルダなし</option>
-                  {folders.map((item) => <option key={item.folderId} value={item.folderId}>{item.name}</option>)}
-                </select>
-                <button className="btn btn-ghost" disabled={busy || !newFolder.name.trim()} onClick={addFolder} type="button">追加</button>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-        <fieldset className="field plain-fieldset">
-          <legend className="field-legend">セットに入れる項目</legend>
-          <div className="chip-toggles">
-            {Object.entries(SET_PART_LABELS).map(([key, label]) => (
-              <label className="check-line" key={key}><input checked={include[key]} onChange={(event) => setInclude({ ...include, [key]: event.target.checked })} type="checkbox" />{label}</label>
-            ))}
-          </div>
-        </fieldset>
-        <div className="dialog-actions">
-          <button className="btn btn-ghost" onClick={onCancel} type="button">キャンセル</button>
-          <button className="btn btn-primary" disabled={busy} type="submit">保存</button>
+          ) : null}
         </div>
-      </form>
-    </div>
+      ) : null}
+      <fieldset className="field plain-fieldset">
+        <legend className="field-legend">セットに入れる項目</legend>
+        <div className="chip-toggles">
+          {Object.entries(SET_PART_LABELS).map(([key, label]) => (
+            <label className="check-line" key={key}><input checked={include[key]} onChange={(event) => setInclude({ ...include, [key]: event.target.checked })} type="checkbox" />{label}</label>
+          ))}
+        </div>
+      </fieldset>
+      <div className="dialog-actions">
+        <button className="btn btn-ghost" onClick={onCancel} type="button">キャンセル</button>
+        <button className="btn btn-primary" disabled={busy} type="submit">保存</button>
+      </div>
+    </Modal>
   );
 }
 
-export function ConfirmDialog({ title, children, confirmLabel, onConfirm, onCancel, danger = false }) {
+export function ConfirmDialog({ title, children, confirmLabel, onConfirm, onCancel, danger = false, dirty = false }) {
   const [busy, setBusy] = useState(false);
   return (
-    <div className="dialog-backdrop" role="presentation">
-      <div aria-labelledby="confirm-heading" className="dialog" role="dialog">
-        <h2 id="confirm-heading">{title}</h2>
-        {children}
-        <div className="dialog-actions">
-          <button className="btn btn-ghost" onClick={onCancel} type="button">キャンセル</button>
-          <button className={`btn ${danger ? "btn-danger" : "btn-primary"}`} disabled={busy} onClick={async () => { setBusy(true); await onConfirm(); setBusy(false); }} type="button">{confirmLabel}</button>
-        </div>
+    <Modal busy={busy} className="dialog" dirty={dirty} labelledBy="confirm-heading" onClose={onCancel}>
+      <h2 id="confirm-heading">{title}</h2>
+      {children}
+      <div className="dialog-actions">
+        <button className="btn btn-ghost" onClick={onCancel} type="button">キャンセル</button>
+        <button className={`btn ${danger ? "btn-danger" : "btn-primary"}`} disabled={busy} onClick={async () => { setBusy(true); await onConfirm(); setBusy(false); }} type="button">{confirmLabel}</button>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -448,7 +436,7 @@ export function ConfirmDialog({ title, children, confirmLabel, onConfirm, onCanc
 export function AmendDialog({ onConfirm, onCancel }) {
   const [reason, setReason] = useState("");
   return (
-    <ConfirmDialog confirmLabel="修正を始める" onCancel={onCancel} onConfirm={() => onConfirm(reason.trim())} title="確定済みのカルテを修正">
+    <ConfirmDialog confirmLabel="修正を始める" dirty={Boolean(reason.trim())} onCancel={onCancel} onConfirm={() => onConfirm(reason.trim())} title="確定済みのカルテを修正">
       <p>修正内容は新しい版として保存され、元の版も残ります。</p>
       <label className="field">
         <span>修正理由（任意）</span>
@@ -474,55 +462,53 @@ export function ExamRequestDialog({ catalog, plannedCodes, appointment, appointm
   });
   const addPreset = (codes) => setPicked((current) => new Set([...current, ...codes.filter((code) => exams.some((item) => item.code === code))]));
   return (
-    <div className="dialog-backdrop" role="presentation">
-      <div aria-labelledby="exam-request-heading" className="dialog dialog-wide exam-request-dialog" role="dialog">
-        <h2 id="exam-request-heading">検査依頼</h2>
-        <p className="small">検査してほしい項目を選びます。今日のカルテに「予定」として入り、受付を「{statusLabel}」にします。</p>
-        {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
-        <div aria-label="よく使う組み合わせ" className="exam-request-presets" role="group">
-          {NEXT_VISIT_PLAN_PRESETS.filter((preset) => preset.codes.length).map((preset) => (
-            <button className="btn btn-chip" key={preset.presetId} onClick={() => addPreset(preset.codes)} type="button">＋{preset.label}</button>
-          ))}
-        </div>
-        <fieldset className="plain-fieldset exam-request-items">
-          <legend className="field-legend">検査項目</legend>
-          {exams.map((item) => {
-            const already = plannedCodes.has(item.code);
-            return (
-              <label className={`exam-request-item${picked.has(item.code) ? " is-picked" : ""}`} key={item.code}>
-                <input checked={picked.has(item.code)} disabled={already} onChange={() => toggle(item.code)} type="checkbox" />
-                <span>{item.name}</span>
-                {already ? <span className="tag">予定済</span> : null}
-              </label>
-            );
-          })}
-        </fieldset>
-        <div className="exam-request-eye">
-          <span className="field-legend">眼</span>
-          <span className="segmented" role="group" aria-label="検査する眼">
-            {EXAM_EYES.map(([value, label]) => <button aria-pressed={eye === value} key={value} onClick={() => setEye(value)} type="button">{label}</button>)}
-          </span>
-        </div>
-        <p className="muted small">
-          {appointmentLoading ? "受付を確認しています…" : appointment ? `受付: 現在「${appointment.label}」→「${statusLabel}」` : "本日の受付が見つからないため、受付の状態は変えずに予定だけ入れます。"}
-        </p>
-        <div className="dialog-actions">
-          <button className="btn btn-ghost" onClick={onCancel} type="button">キャンセル</button>
-          <button
-            className="btn btn-primary"
-            disabled={busy || !picked.size || appointmentLoading}
-            onClick={async () => {
-              setBusy(true);
-              await onSubmit({ items: exams.filter((item) => picked.has(item.code)), eye });
-              setBusy(false);
-            }}
-            type="button"
-          >
-            {picked.size ? `${picked.size}件を依頼` : "依頼する"}
-          </button>
-        </div>
+    <Modal busy={busy} className="dialog dialog-wide exam-request-dialog" dirty={picked.size > 0} labelledBy="exam-request-heading" onClose={onCancel}>
+      <h2 id="exam-request-heading">検査依頼</h2>
+      <p className="small">検査してほしい項目を選びます。今日のカルテに「予定」として入り、受付を「{statusLabel}」にします。</p>
+      {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
+      <div aria-label="よく使う組み合わせ" className="exam-request-presets" role="group">
+        {NEXT_VISIT_PLAN_PRESETS.filter((preset) => preset.codes.length).map((preset) => (
+          <button className="btn btn-chip" key={preset.presetId} onClick={() => addPreset(preset.codes)} type="button">＋{preset.label}</button>
+        ))}
       </div>
-    </div>
+      <fieldset className="plain-fieldset exam-request-items">
+        <legend className="field-legend">検査項目</legend>
+        {exams.map((item) => {
+          const already = plannedCodes.has(item.code);
+          return (
+            <label className={`exam-request-item${picked.has(item.code) ? " is-picked" : ""}`} key={item.code}>
+              <input checked={picked.has(item.code)} disabled={already} onChange={() => toggle(item.code)} type="checkbox" />
+              <span>{item.name}</span>
+              {already ? <span className="tag">予定済</span> : null}
+            </label>
+          );
+        })}
+      </fieldset>
+      <div className="exam-request-eye">
+        <span className="field-legend">眼</span>
+        <span className="segmented" role="group" aria-label="検査する眼">
+          {EXAM_EYES.map(([value, label]) => <button aria-pressed={eye === value} key={value} onClick={() => setEye(value)} type="button">{label}</button>)}
+        </span>
+      </div>
+      <p className="muted small">
+        {appointmentLoading ? "受付を確認しています…" : appointment ? `受付: 現在「${appointment.label}」→「${statusLabel}」` : "本日の受付が見つからないため、受付の状態は変えずに予定だけ入れます。"}
+      </p>
+      <div className="dialog-actions">
+        <button className="btn btn-ghost" onClick={onCancel} type="button">キャンセル</button>
+        <button
+          className="btn btn-primary"
+          disabled={busy || !picked.size || appointmentLoading}
+          onClick={async () => {
+            setBusy(true);
+            await onSubmit({ items: exams.filter((item) => picked.has(item.code)), eye });
+            setBusy(false);
+          }}
+          type="button"
+        >
+          {picked.size ? `${picked.size}件を依頼` : "依頼する"}
+        </button>
+      </div>
+    </Modal>
   );
 }
 
@@ -534,6 +520,7 @@ export function RegularOrderDialog({ mode = "create", initial = {}, summary = []
   const [repeat, setRepeat] = useState(initial.repeat || "next");
   const [months, setMonths] = useState(initial.repeatMonths || 3);
   const [busy, setBusy] = useState(false);
+  const dirty = useChangedSince({ name, repeat, months });
   const submit = async (event) => {
     event.preventDefault();
     if (!name.trim()) return;
@@ -542,47 +529,45 @@ export function RegularOrderDialog({ mode = "create", initial = {}, summary = []
     setBusy(false);
   };
   return (
-    <div className="dialog-backdrop" role="presentation">
-      <form aria-labelledby="regular-heading" className="dialog regular-dialog" onSubmit={submit} role="dialog">
-        <h2 id="regular-heading">{mode === "create" ? "定期登録" : "定期の編集"}</h2>
-        {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
-        {mode === "create" ? <p className="small">今のカルテの処方・検査処置を、この患者の定期にします。右の「定期」から次のカルテへ入れられます。</p> : null}
-        <label className="field">
-          <span>定期の名前</span>
-          <input autoFocus className="input" maxLength={200} onChange={(event) => setName(event.target.value)} placeholder="例: 緑内障 点眼・眼圧" required value={name} />
-        </label>
-        <fieldset className="field plain-fieldset">
-          <legend className="field-legend">繰り返し</legend>
-          <div className="regular-repeat">
-            {REGULAR_REPEAT_CHOICES.map(([value, label, hint]) => (
-              <label className="check-line" key={value}>
-                <input checked={repeat === value} name="regular-repeat" onChange={() => setRepeat(value)} type="radio" value={value} />
-                {value === "months" ? (
-                  <span className="regular-months">
-                    <select aria-label="何か月ごと" className="input input-short" disabled={repeat !== "months"} onChange={(event) => setMonths(event.target.value)} value={months}>
-                      {Array.from({ length: 12 }, (_, index) => index + 1).map((value) => <option key={value} value={value}>{value}</option>)}
-                    </select>
-                    {label}
-                  </span>
-                ) : label}
-                <span className="muted small">{hint}</span>
-              </label>
-            ))}
-          </div>
-        </fieldset>
-        {summary.length ? (
-          <div className="regular-summary">
-            <span className="field-legend">入る内容</span>
-            <ul className="plain small">{summary.map((line, index) => <li key={index}>{line}</li>)}</ul>
-          </div>
-        ) : null}
-        <div className="dialog-actions">
-          {onDelete ? <button className="btn btn-ghost danger-text dialog-action-left" disabled={busy} onClick={async () => { setBusy(true); await onDelete(); setBusy(false); }} type="button">この定期を削除</button> : null}
-          <button className="btn btn-ghost" onClick={onCancel} type="button">キャンセル</button>
-          <button className="btn btn-primary" disabled={busy || !name.trim()} type="submit">{mode === "create" ? "登録" : "更新"}</button>
+    <Modal as="form" busy={busy} className="dialog regular-dialog" dirty={dirty} labelledBy="regular-heading" onClose={onCancel} onSubmit={submit}>
+      <h2 id="regular-heading">{mode === "create" ? "定期登録" : "定期の編集"}</h2>
+      {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
+      {mode === "create" ? <p className="small">今のカルテの処方・検査処置を、この患者の定期にします。右の「定期」から次のカルテへ入れられます。</p> : null}
+      <label className="field">
+        <span>定期の名前</span>
+        <input autoFocus className="input" maxLength={200} onChange={(event) => setName(event.target.value)} placeholder="例: 緑内障 点眼・眼圧" required value={name} />
+      </label>
+      <fieldset className="field plain-fieldset">
+        <legend className="field-legend">繰り返し</legend>
+        <div className="regular-repeat">
+          {REGULAR_REPEAT_CHOICES.map(([value, label, hint]) => (
+            <label className="check-line" key={value}>
+              <input checked={repeat === value} name="regular-repeat" onChange={() => setRepeat(value)} type="radio" value={value} />
+              {value === "months" ? (
+                <span className="regular-months">
+                  <select aria-label="何か月ごと" className="input input-short" disabled={repeat !== "months"} onChange={(event) => setMonths(event.target.value)} value={months}>
+                    {Array.from({ length: 12 }, (_, index) => index + 1).map((value) => <option key={value} value={value}>{value}</option>)}
+                  </select>
+                  {label}
+                </span>
+              ) : label}
+              <span className="muted small">{hint}</span>
+            </label>
+          ))}
         </div>
-      </form>
-    </div>
+      </fieldset>
+      {summary.length ? (
+        <div className="regular-summary">
+          <span className="field-legend">入る内容</span>
+          <ul className="plain small">{summary.map((line, index) => <li key={index}>{line}</li>)}</ul>
+        </div>
+      ) : null}
+      <div className="dialog-actions">
+        {onDelete ? <button className="btn btn-ghost danger-text dialog-action-left" disabled={busy} onClick={async () => { setBusy(true); await onDelete(); setBusy(false); }} type="button">この定期を削除</button> : null}
+        <button className="btn btn-ghost" onClick={onCancel} type="button">キャンセル</button>
+        <button className="btn btn-primary" disabled={busy || !name.trim()} type="submit">{mode === "create" ? "登録" : "更新"}</button>
+      </div>
+    </Modal>
   );
 }
 
@@ -595,51 +580,43 @@ export function RpCommentDialog({ kind = "rx", onAdd, onCancel }) {
   const [scope, setScope] = useState("free");
   const [query, setQuery] = useState("");
   const inputRef = useRef(null);
-  useEffect(() => { inputRef.current?.focus({ preventScroll: true }); }, []);
   const q = query.trim();
   const suggestions = (kind === "rx" ? RX_COMMENT_SUGGESTIONS : ORDER_COMMENT_SUGGESTIONS).filter((text) => !q || text.includes(q));
   const freeLabel = kind === "rx" ? "処方箋・レセプトに載せる" : "レセプトに載せる";
   // Rp の中から開くので body へ描き、押した操作が Rp の選択（束を押すと選択）へ伝わらないようにする
   if (typeof document === "undefined") return null;
   return createPortal(
-    <div
-      className="dialog-backdrop"
-      onClick={(event) => { event.stopPropagation(); if (event.target === event.currentTarget) onCancel(); }}
-      onKeyDown={(event) => { event.stopPropagation(); if (event.key === "Escape") onCancel(); }}
-      role="presentation"
-    >
-      <div aria-labelledby="rp-comment-heading" className="dialog rp-comment-dialog" role="dialog">
-        <div className="rp-comment-head">
-          <h2 id="rp-comment-heading">コメント追加</h2>
-          <button aria-label="閉じる" className="btn btn-chip" onClick={onCancel} type="button">×</button>
-        </div>
-        <fieldset className="plain-fieldset rp-comment-scope-pick">
-          <legend className="field-legend">記載先</legend>
-          <label className="check-line"><input checked={scope === "free"} name="rp-comment-scope" onChange={() => setScope("free")} type="radio" />{freeLabel}</label>
-          <label className="check-line"><input checked={scope === "chart"} name="rp-comment-scope" onChange={() => setScope("chart")} type="radio" />カルテのみ</label>
-        </fieldset>
-        <input
-          aria-label="コメントを探す"
-          className="input"
-          onChange={(event) => setQuery(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key !== "Enter" || event.nativeEvent.isComposing || event.keyCode === 229) return;
-            event.preventDefault();
-            onAdd({ text: q, scope });
-          }}
-          placeholder="キーワード（Enter でこの文のまま入れる）"
-          ref={inputRef}
-          type="search"
-          value={query}
-        />
-        <ul className="rp-comment-list">
-          <li><button className="rp-comment-choice is-free" onClick={() => onAdd({ text: q, scope })} type="button">{q ? `「${q}」をそのまま入れる` : "自由に書く（空のコメント行を入れる）"}</button></li>
-          {suggestions.map((text) => (
-            <li key={text}><button className="rp-comment-choice" onClick={() => onAdd({ text, scope })} type="button">{text}</button></li>
-          ))}
-        </ul>
+    <Modal className="dialog rp-comment-dialog" dirty={Boolean(q)} initialFocus={inputRef} isolate labelledBy="rp-comment-heading" onClose={onCancel}>
+      <div className="rp-comment-head">
+        <h2 id="rp-comment-heading">コメント追加</h2>
+        <button aria-label="閉じる" className="btn btn-chip" onClick={onCancel} type="button">×</button>
       </div>
-    </div>,
+      <fieldset className="plain-fieldset rp-comment-scope-pick">
+        <legend className="field-legend">記載先</legend>
+        <label className="check-line"><input checked={scope === "free"} name="rp-comment-scope" onChange={() => setScope("free")} type="radio" />{freeLabel}</label>
+        <label className="check-line"><input checked={scope === "chart"} name="rp-comment-scope" onChange={() => setScope("chart")} type="radio" />カルテのみ</label>
+      </fieldset>
+      <input
+        aria-label="コメントを探す"
+        className="input"
+        onChange={(event) => setQuery(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" || event.nativeEvent.isComposing || event.keyCode === 229) return;
+          event.preventDefault();
+          onAdd({ text: q, scope });
+        }}
+        placeholder="キーワード（Enter でこの文のまま入れる）"
+        ref={inputRef}
+        type="search"
+        value={query}
+      />
+      <ul className="rp-comment-list">
+        <li><button className="rp-comment-choice is-free" onClick={() => onAdd({ text: q, scope })} type="button">{q ? `「${q}」をそのまま入れる` : "自由に書く（空のコメント行を入れる）"}</button></li>
+        {suggestions.map((text) => (
+          <li key={text}><button className="rp-comment-choice" onClick={() => onAdd({ text, scope })} type="button">{text}</button></li>
+        ))}
+      </ul>
+    </Modal>,
     document.body
   );
 }

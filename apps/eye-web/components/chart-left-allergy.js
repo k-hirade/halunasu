@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useMasterSearch } from "./chart-shared";
+import { useChangedSince } from "./modal";
 import { DeleteButton, LeftDialog, OnsetField, onsetText, saveErrorMessage, SectionHead, useSaveProfileSection } from "./chart-left-shared";
 
 const CATEGORY_LABELS = { drug: "薬剤", food: "食物", contrast: "造影剤", latex: "ラテックス", other: "その他" };
@@ -171,10 +172,11 @@ function useDialogSave(onClose) {
 function AllergyDialog({ item, onSave, onDelete, onClose }) {
   const [draft, setDraft] = useState(() => ({ category: "drug", substance: "", reaction: "", severity: "unknown", onset: "", ...(item || {}) }));
   const state = useDialogSave(onClose);
+  const dirty = useChangedSince(draft);
   const set = (patch) => setDraft((current) => ({ ...current, ...patch }));
   return (
     <LeftDialog
-      busy={state.busy}
+      busy={state.busy} dirty={dirty}
       error={state.error}
       footerLeft={item ? <DeleteButton armed={state.armed} disabled={state.busy} onArm={() => state.setArmed(true)} onDelete={() => state.run(onDelete)} /> : null}
       onClose={onClose}
@@ -251,10 +253,11 @@ function DrugAddDialog({ title, existing, onAdd, onClose }) {
 function AdverseDialog({ item, onSave, onDelete, onClose }) {
   const [draft, setDraft] = useState(() => ({ reaction: "", note: "", onset: "", ...item }));
   const state = useDialogSave(onClose);
+  const dirty = useChangedSince(draft);
   const set = (patch) => setDraft((current) => ({ ...current, ...patch }));
   return (
     <LeftDialog
-      busy={state.busy}
+      busy={state.busy} dirty={dirty}
       error={state.error}
       footerLeft={<DeleteButton armed={state.armed} disabled={state.busy} onArm={() => state.setArmed(true)} onDelete={() => state.run(onDelete)} />}
       onClose={onClose}
@@ -278,10 +281,11 @@ function AdverseDialog({ item, onSave, onDelete, onClose }) {
 function RegularDialog({ item, onSave, onDelete, onClose }) {
   const [draft, setDraft] = useState(() => ({ usage: "", note: "", ...item, current: item.current !== false }));
   const state = useDialogSave(onClose);
+  const dirty = useChangedSince(draft);
   const set = (patch) => setDraft((current) => ({ ...current, ...patch }));
   return (
     <LeftDialog
-      busy={state.busy}
+      busy={state.busy} dirty={dirty}
       error={state.error}
       footerLeft={<DeleteButton armed={state.armed} disabled={state.busy} onArm={() => state.setArmed(true)} onDelete={() => state.run(onDelete)} />}
       onClose={onClose}
@@ -306,9 +310,10 @@ function PastHistoryDialog({ profile, onSave, onClose }) {
     contactLensUser: Boolean(profile?.contactLensUser)
   }));
   const state = useDialogSave(onClose);
+  const dirty = useChangedSince(draft);
   const set = (patch) => setDraft((current) => ({ ...current, ...patch }));
   return (
-    <LeftDialog busy={state.busy} error={state.error} onClose={onClose} onSubmit={() => state.run(() => onSave(draft))} submitLabel="更新" title="既往歴の編集" wide>
+    <LeftDialog busy={state.busy} dirty={dirty} error={state.error} onClose={onClose} onSubmit={() => state.run(() => onSave(draft))} submitLabel="更新" title="既往歴の編集" wide>
       <div className="cl-form">
         <label className="cl-row is-top"><span>全身既往・内服</span><textarea aria-label="全身既往・内服" className="input" maxLength={4000} onChange={(event) => set({ medicalHistory: event.target.value })} placeholder="高血圧、糖尿病、抗凝固薬内服 など" rows={3} value={draft.medicalHistory} /></label>
         <label className="cl-row is-top"><span>眼科既往</span><textarea aria-label="眼科既往" className="input" maxLength={4000} onChange={(event) => set({ ophthalmicHistory: event.target.value })} placeholder="手術・外傷など" rows={3} value={draft.ophthalmicHistory} /></label>

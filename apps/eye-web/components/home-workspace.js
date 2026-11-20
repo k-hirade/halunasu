@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useEyeApi } from "./eye-api";
+import { Modal } from "./modal";
 import { PatientSummaryPane, usePatientSummary } from "./patient-summary-pane";
 import { linkAppointmentToPatient, PatientRegisterDialog } from "./patient-register-dialog";
 import { useMediaQuery } from "./use-media-query";
@@ -137,7 +138,7 @@ export function HomeWorkspace() {
     return groups;
   }, [appointments, data.encountersByPatient, now]);
 
-  // 最初の表示: 診察待ちがいればそのタブ、いなければ全て
+  // 最初の表示: 診察待ちがいればそのタブ、いなければすべて
   useEffect(() => {
     if (loaded && tab === null) setTab(byStage.waiting.length ? "waiting" : "all");
   }, [byStage.waiting.length, loaded, tab]);
@@ -468,7 +469,7 @@ export function HomeWorkspace() {
           </button>
         ))}
         <button aria-selected={activeTab === "all"} className="cl-tab" onClick={() => setTab("all")} role="tab" type="button">
-          全て<span className="cl-tab-count">{totalShown}</span>
+          すべて<span className="cl-tab-count">{totalShown}</span>
         </button>
         {canWrite ? (
           <>
@@ -494,7 +495,7 @@ export function HomeWorkspace() {
                 <p className="empty">
                   {appointments.length === 0 && unlinked.length === 0
                     ? "本日の予約・受付はまだありません。受付で当日受付するか、上の検索（/）から患者を開きます。"
-                    : `「${activeTab === "all" ? "全て" : STAGE_LABELS[activeTab]}」の患者はいません。`}
+                    : `「${activeTab === "all" ? "すべて" : STAGE_LABELS[activeTab]}」の患者はいません。`}
                 </p>
               ) : null}
               {rows.length ? (
@@ -541,12 +542,10 @@ export function HomeWorkspace() {
         {launcher}
       </div>
       {!isTask && !wide && selected && sheetOpen ? (
-        <div className="cl-sheet-backdrop" onClick={() => setSheetOpen(false)} role="presentation">
-          <div aria-label="カルテ概要" aria-modal="true" className="cl-sheet" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => { if (event.key === "Escape" && !event.nativeEvent.isComposing) setSheetOpen(false); }} role="dialog">
-            <button aria-label="概要を閉じる" className="btn btn-ghost btn-sm cl-sheet-close" onClick={() => setSheetOpen(false)} type="button">閉じる</button>
-            {pane}
-          </div>
-        </div>
+        <Modal backdropClassName="cl-sheet-backdrop" className="cl-sheet" isolate label="カルテ概要" onClose={() => setSheetOpen(false)}>
+          <button aria-label="概要を閉じる" className="btn btn-ghost btn-sm cl-sheet-close" onClick={() => setSheetOpen(false)} type="button">閉じる</button>
+          {pane}
+        </Modal>
       ) : null}
 
       {registering ? (

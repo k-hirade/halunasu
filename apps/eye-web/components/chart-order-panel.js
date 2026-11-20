@@ -7,7 +7,7 @@ import { pointsLabel, useMasterLookup } from "./chart-points";
 import { PHRASE_TARGET_LABELS } from "../lib/format";
 import { displayDrugName } from "../lib/drug-name";
 
-// 右のオーダー欄の区分タブ（デジカルの 2 段の区分 + 全て）。key はショートカットの数字キー。
+// 右のオーダー欄の区分タブ（デジカルの 2 段の区分 + すべて）。key はショートカットの数字キー。
 export const ORDER_CATEGORIES = [
   { id: "set", label: "セット", key: "1" },
   { id: "consult", label: "診察", key: "2", sections: ["A"] },
@@ -19,7 +19,7 @@ export const ORDER_CATEGORIES = [
   { id: "imaging", label: "画像", key: "8", sections: ["E"] },
   { id: "optical", label: "眼鏡・CL", key: "9" },
   { id: "phrase", label: "定型文", key: "0" },
-  { id: "all", label: "全て", key: "¥" }
+  { id: "all", label: "すべて", key: "¥" }
 ];
 const DRUG_CATEGORIES = new Set(["drug", "injection", "all"]);
 const PROCEDURE_CATEGORIES = new Set(["consult", "injection", "procedure", "surgery", "exam", "imaging", "all"]);

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useEyeApi } from "./eye-api";
+import { Modal, useChangedSince } from "./modal";
 import { formatDate, formatDiopter, todayIso } from "../lib/format";
 import { hasPreopValues, preopSummary } from "../lib/preop";
 
@@ -167,11 +168,7 @@ function IolDialog({ record, onSubmit, onCancel }) {
   const [draft, setDraft] = useState(record);
   const [busy, setBusy] = useState(false);
   const set = (key) => (event) => setDraft({ ...draft, [key]: event.target.value });
-  useEffect(() => {
-    const onKey = (event) => { if (event.key === "Escape" && !event.isComposing) onCancel(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onCancel]);
+  const dirty = useChangedSince(draft);
   async function submit(event) {
     event.preventDefault();
     setBusy(true);
@@ -181,42 +178,40 @@ function IolDialog({ record, onSubmit, onCancel }) {
   }
   const eyeLabel = SIDES.find(([side]) => side === draft.eye)?.[1] || "";
   return (
-    <div className="dialog-backdrop" role="presentation">
-      <form aria-labelledby="iol-dialog-heading" className="dialog dialog-wide iol-dialog" onSubmit={submit} role="dialog">
-        <h2 id="iol-dialog-heading">IOL の記録（{eyeLabel}）</h2>
-        <div className="iol-form">
-          <label className="field"><span>眼</span>
-            <select className="input" onChange={set("eye")} value={draft.eye}>{SIDES.map(([side, label]) => <option key={side} value={side}>{label}</option>)}</select>
+    <Modal as="form" busy={busy} className="dialog dialog-wide iol-dialog" dirty={dirty} labelledBy="iol-dialog-heading" onClose={onCancel} onSubmit={submit}>
+      <h2 id="iol-dialog-heading">IOL の記録（{eyeLabel}）</h2>
+      <div className="iol-form">
+        <label className="field"><span>眼</span>
+          <select className="input" onChange={set("eye")} value={draft.eye}>{SIDES.map(([side, label]) => <option key={side} value={side}>{label}</option>)}</select>
+        </label>
+        <label className="field"><span>状態</span>
+          <select className="input" onChange={set("status")} value={draft.status}>{Object.entries(IOL_STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+        </label>
+        <label className="field"><span>手術日</span><input className="input" onChange={set("surgeryDate")} type="date" value={draft.surgeryDate} /></label>
+        <label className="field is-wide"><span>レンズ（型番）</span><input className="input" maxLength={100} onChange={set("model")} required value={draft.model} /></label>
+        <label className="field"><span>メーカー</span><input className="input" maxLength={100} onChange={set("manufacturer")} value={draft.manufacturer} /></label>
+        <label className="field"><span>種類</span>
+          <select className="input" onChange={set("lensType")} value={draft.lensType}>{Object.entries(LENS_TYPE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+        </label>
+        {NUMBER_FIELDS.map(([key, label, unit, step]) => (
+          <label className="field" key={key}>
+            <span>{label}{unit ? `（${unit}）` : ""}</span>
+            <input className="input mono" inputMode="decimal" onChange={set(key)} step={step} type="number" value={draft[key]} />
           </label>
-          <label className="field"><span>状態</span>
-            <select className="input" onChange={set("status")} value={draft.status}>{Object.entries(IOL_STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
-          </label>
-          <label className="field"><span>手術日</span><input className="input" onChange={set("surgeryDate")} type="date" value={draft.surgeryDate} /></label>
-          <label className="field is-wide"><span>レンズ（型番）</span><input className="input" maxLength={100} onChange={set("model")} required value={draft.model} /></label>
-          <label className="field"><span>メーカー</span><input className="input" maxLength={100} onChange={set("manufacturer")} value={draft.manufacturer} /></label>
-          <label className="field"><span>種類</span>
-            <select className="input" onChange={set("lensType")} value={draft.lensType}>{Object.entries(LENS_TYPE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
-          </label>
-          {NUMBER_FIELDS.map(([key, label, unit, step]) => (
-            <label className="field" key={key}>
-              <span>{label}{unit ? `（${unit}）` : ""}</span>
-              <input className="input mono" inputMode="decimal" onChange={set(key)} step={step} type="number" value={draft[key]} />
-            </label>
-          ))}
-          <label className="field"><span>計算式</span><input className="input" maxLength={40} onChange={set("formula")} placeholder="例: SRK/T" value={draft.formula} /></label>
-          <label className="field"><span>挿入位置</span>
-            <select className="input" onChange={set("placement")} value={draft.placement}>{Object.entries(PLACEMENT_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
-          </label>
-          <label className="field"><span>ロット・シリアル</span><input className="input" maxLength={60} onChange={set("serial")} value={draft.serial} /></label>
-          <label className="field"><span>術者</span><input className="input" maxLength={100} onChange={set("surgeon")} value={draft.surgeon} /></label>
-          <label className="field is-wide"><span>メモ</span><textarea className="input" maxLength={500} onChange={set("note")} rows={2} value={draft.note} /></label>
-        </div>
-        <div className="dialog-actions">
-          <button className="btn btn-ghost" onClick={onCancel} type="button">キャンセル</button>
-          <button className="btn btn-primary" disabled={busy || !draft.model.trim()} type="submit">{busy ? "保存中…" : "保存"}</button>
-        </div>
-      </form>
-    </div>
+        ))}
+        <label className="field"><span>計算式</span><input className="input" maxLength={40} onChange={set("formula")} placeholder="例: SRK/T" value={draft.formula} /></label>
+        <label className="field"><span>挿入位置</span>
+          <select className="input" onChange={set("placement")} value={draft.placement}>{Object.entries(PLACEMENT_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+        </label>
+        <label className="field"><span>ロット・シリアル</span><input className="input" maxLength={60} onChange={set("serial")} value={draft.serial} /></label>
+        <label className="field"><span>術者</span><input className="input" maxLength={100} onChange={set("surgeon")} value={draft.surgeon} /></label>
+        <label className="field is-wide"><span>メモ</span><textarea className="input" maxLength={500} onChange={set("note")} rows={2} value={draft.note} /></label>
+      </div>
+      <div className="dialog-actions">
+        <button className="btn btn-ghost" onClick={onCancel} type="button">キャンセル</button>
+        <button className="btn btn-primary" disabled={busy || !draft.model.trim()} type="submit">{busy ? "保存中…" : "保存"}</button>
+      </div>
+    </Modal>
   );
 }
 

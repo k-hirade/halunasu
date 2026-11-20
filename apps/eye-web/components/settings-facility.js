@@ -86,7 +86,7 @@ export function FacilitySection({ canEdit }) {
                 <dd>
                   {own ? <span className="kv-value">{own}</span> : base ? (
                     <span className="kv-value is-base">{base}<span className="kv-note">基本情報</span></span>
-                  ) : <span className="muted">未登録</span>}
+                  ) : <span className="muted">未記入</span>}
                 </dd>
               </div>
             );

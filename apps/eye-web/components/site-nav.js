@@ -9,6 +9,7 @@ import { countWaiting, WAITING_COUNT_EVENT } from "../lib/consult-flow";
 import { todayIso } from "../lib/format";
 import { THEME_STORAGE_KEY } from "../lib/theme";
 import { useEyeApi } from "./eye-api";
+import { isModalOpen, Modal } from "./modal";
 import { FACILITY_CHANGED_EVENT, OPEN_PATIENT_SEARCH_EVENT, SHORTCUT_HELP_EVENT } from "./patient-search";
 import { PasswordChangeDialog } from "./password-change-dialog";
 import { PatientSearchModal } from "./patient-search-modal";
@@ -39,7 +40,7 @@ export function screenName(pathname) {
 const DESTINATIONS = [
   { id: "reception", href: "/reception", label: "受付画面", match: (path) => path.startsWith("/reception") && !path.startsWith("/reception/schedule") },
   { id: "list", href: "/", label: "患者リスト", title: "患者リスト（診察）", match: (path) => path === "/", badge: true },
-  { id: "schedule", href: "/reception/schedule", label: "予約表", match: (path) => path.startsWith("/reception/schedule") },
+  { id: "schedule", href: "/reception/schedule", label: "予約状況", match: (path) => path.startsWith("/reception/schedule") },
   { id: "billing", href: "/billing", label: "会計連携", match: (path) => path.startsWith("/billing") }
 ];
 // 管理者だけの行き先（施設管理の中の画面）
@@ -185,7 +186,7 @@ export function SiteNav() {
       if (typing || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || event.isComposing || event.key === "?") return;
       // 日本語入力モードでは「/」が「・」になる環境があるので、キーの位置（Slash）も見る
       if (event.key !== "/" && event.code !== "Slash") return;
-      if (document.querySelector(".dialog-backdrop")) return;
+      if (isModalOpen() || document.querySelector(".dialog-backdrop")) return;
       event.preventDefault();
       openSearch();
     }
@@ -344,11 +345,6 @@ export function SiteNav() {
 
 // カルテ以外の画面のキー一覧（カルテの画面は自分の一覧を出す）
 function GlobalHelpDialog({ onClose }) {
-  useEffect(() => {
-    const onKeyDown = (event) => { if (event.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
   // タッチ端末（キーボードがないことが多い）では、指での操作の案内を先に出し、キーの一覧はたたむ
   const [touch, setTouch] = useState(false);
   useEffect(() => { setTouch(window.matchMedia?.("(pointer: coarse)").matches || false); }, []);
@@ -356,32 +352,30 @@ function GlobalHelpDialog({ onClose }) {
   const keyList = <dl className="shortcut-list">{keys.map(([key, label]) => <div key={key}><dt><kbd>{key}</kbd></dt><dd>{label}</dd></div>)}</dl>;
   const keyNote = <p className="muted small">文字のキーは、入力欄にカーソルが無いときに効きます。カルテの画面では ? でその画面の一覧が出ます。</p>;
   return (
-    <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }} role="presentation">
-      <div aria-labelledby="eh-help-heading" aria-modal="true" className="dialog eh-help" role="dialog">
-        <h2 id="eh-help-heading">{touch ? "操作のヘルプ・ショートカット" : "ショートカット"}</h2>
-        {touch ? (
-          <>
-            <ul className="eh-help-touch">
-              <li>患者検索は、画面右上の虫めがねのボタン（またはメニューの「患者検索」）から開きます。</li>
-              <li>受付の行を押すとカルテ（または患者のページ）が開きます。「…」で検査入力・受付の編集などを選べます。</li>
-              <li>表が画面に入りきらないときは、表を左右になぞると続きが見えます。</li>
-            </ul>
-            <details className="eh-help-keys">
-              <summary>キーボードをつないだときのショートカット</summary>
-              {keyList}
-              {keyNote}
-            </details>
-          </>
-        ) : (
-          <>
+    <Modal className="dialog eh-help" labelledBy="eh-help-heading" onClose={onClose}>
+      <h2 id="eh-help-heading">{touch ? "操作のヘルプ・ショートカット" : "ショートカット"}</h2>
+      {touch ? (
+        <>
+          <ul className="eh-help-touch">
+            <li>患者検索は、画面右上の虫めがねのボタン（またはメニューの「患者検索」）から開きます。</li>
+            <li>受付の行を押すとカルテ（または患者のページ）が開きます。「…」で検査入力・受付の編集などを選べます。</li>
+            <li>表が画面に入りきらないときは、表を左右になぞると続きが見えます。</li>
+          </ul>
+          <details className="eh-help-keys">
+            <summary>キーボードをつないだときのショートカット</summary>
             {keyList}
             {keyNote}
-          </>
-        )}
-        <div className="dialog-actions">
-          <button autoFocus className="btn btn-primary" onClick={onClose} type="button">閉じる</button>
-        </div>
+          </details>
+        </>
+      ) : (
+        <>
+          {keyList}
+          {keyNote}
+        </>
+      )}
+      <div className="dialog-actions">
+        <button autoFocus className="btn btn-primary" onClick={onClose} type="button">閉じる</button>
       </div>
-    </div>
+    </Modal>
   );
 }

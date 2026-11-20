@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useEyeApi } from "./eye-api";
 import { byNewest, useFileUrls } from "./files-panel";
+import { Modal } from "./modal";
 import { formatDate } from "../lib/format";
 
 // 顔写真の確認（トプコンの「顔写真確認」に倣う）。ファイルの種類「顔写真」(face_photo) の最新 1 枚を、
@@ -53,12 +54,6 @@ export function PatientPhoto({ patientId, name = "", size = "sm" }) {
   const file = usePatientPhoto(patientId);
   const { urls, failed } = useFileUrls(file ? [file.fileId] : []);
   const [open, setOpen] = useState(false);
-  useEffect(() => {
-    if (!open) return undefined;
-    const onKey = (event) => { if (event.key === "Escape") setOpen(false); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
   if (!file || failed[file.fileId]) return null;
   const url = urls[file.fileId];
   return (
@@ -73,16 +68,14 @@ export function PatientPhoto({ patientId, name = "", size = "sm" }) {
         {url ? <img alt="" src={url} /> : <span aria-hidden="true" className="pt-photo-wait" />}
       </button>
       {open ? createPortal(
-        <div className="dialog-backdrop" onClick={() => setOpen(false)} role="presentation">
-          <div aria-label="顔写真" aria-modal="true" className="dialog pt-photo-dialog" onClick={(event) => event.stopPropagation()} role="dialog">
-            <div className="dialog-head">
-              <h2>顔写真{name ? ` ${name}` : ""}</h2>
-              <button className="btn btn-ghost btn-sm" onClick={() => setOpen(false)} type="button">閉じる</button>
-            </div>
-            {url ? <img alt={`${name}の顔写真`} className="pt-photo-large" src={url} /> : <p className="loading">読み込み中…</p>}
-            <p className="muted small">撮影日 {formatDate(file.takenOn)}{file.title ? ` ・ ${file.title}` : ""}</p>
+        <Modal className="dialog pt-photo-dialog" isolate label="顔写真" onClose={() => setOpen(false)}>
+          <div className="dialog-head">
+            <h2>顔写真{name ? ` ${name}` : ""}</h2>
+            <button className="btn btn-ghost btn-sm" onClick={() => setOpen(false)} type="button">閉じる</button>
           </div>
-        </div>,
+          {url ? <img alt={`${name}の顔写真`} className="pt-photo-large" src={url} /> : <p className="loading">読み込み中…</p>}
+          <p className="muted small">撮影日 {formatDate(file.takenOn)}{file.title ? ` ・ ${file.title}` : ""}</p>
+        </Modal>,
         document.body
       ) : null}
     </>

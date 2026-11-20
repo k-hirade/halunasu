@@ -189,7 +189,7 @@ const STATES = {
   "home-summary": {
     path: "home",
     run: async (page) => {
-      await page.getByRole("tab", { name: /^全て/u }).click().catch(() => null);
+      await page.getByRole("tab", { name: /^すべて/u }).click().catch(() => null);
       await page.locator(".consult-row").first().click();
       await page.waitForTimeout(1200);
     }
@@ -198,13 +198,13 @@ const STATES = {
   "home-launcher": {
     path: "home",
     run: async (page) => {
-      await page.getByRole("tab", { name: /^全て/u }).click().catch(() => null);
+      await page.getByRole("tab", { name: /^すべて/u }).click().catch(() => null);
       await page.locator(".consult-row").first().click();
       await page.waitForTimeout(1200);
     }
   },
   "home-tasks": { path: "home", run: async (page) => { await page.getByRole("tab", { name: /^未確定カルテ/u }).click(); await page.waitForTimeout(500); } },
-  "home-all": { path: "home", run: async (page) => { await page.getByRole("tab", { name: /^全て/u }).click(); await page.waitForTimeout(500); } },
+  "home-all": { path: "home", run: async (page) => { await page.getByRole("tab", { name: /^すべて/u }).click(); await page.waitForTimeout(500); } },
   search: {
     path: "home",
     run: async (page) => {
@@ -268,7 +268,7 @@ const STATES = {
   "editor-order-exam": rightCategory("検査"),
   "editor-order-optical": rightCategory("眼鏡・CL"),
   "editor-order-phrase": rightCategory("定型文"),
-  "editor-order-all": rightCategory("全て", "眼"),
+  "editor-order-all": rightCategory("すべて", "眼"),
   "editor-rp": {
     path: editorPath,
     run: async (page) => {

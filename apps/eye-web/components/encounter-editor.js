@@ -30,6 +30,7 @@ import { openPatientSearch, SHORTCUT_HELP_EVENT } from "./patient-search";
 import { useEncounterDraft } from "./use-encounter-draft";
 import { useMeasuredHeight } from "./use-measured-height";
 import { useMediaQuery } from "./use-media-query";
+import { isModalOpen, Modal } from "./modal";
 import { addDays, formatDate, formatDateTime, phraseTargetPath, prescriptionText, todayIso, VISIT_TYPE_LABELS } from "../lib/format";
 import { applyCopy, appendRpRows } from "../lib/chart-copy";
 import { chartGuide, GUIDE_STATE_LABELS } from "../lib/chart-guide";
@@ -215,12 +216,13 @@ export function EncounterEditor({ encounterId }) {
         actions.next();
         return;
       }
+      // ダイアログが開いているときは、Esc はダイアログが受ける（引き出しは閉じない）
+      if (isModalOpen() || document.querySelector(".dialog-backdrop")) return;
       if (event.key === "Escape") {
-        setDrawer(null);
+        if (!event.defaultPrevented) setDrawer(null);
         return;
       }
       if (event.metaKey || event.ctrlKey || event.altKey) return;
-      if (document.querySelector(".dialog-backdrop")) return;
       if (isTypingTarget(event.target)) return;
       if (event.key === "?") {
         event.preventDefault();
@@ -613,9 +615,10 @@ export function EncounterEditor({ encounterId }) {
     }
     const payload = await runAction(`/v1/eye/encounters/${encounterId}/finalize`, {});
     if (!payload) return;
+    // 先にダイアログを閉じる（ダイアログの間は後ろが inert。読み直しの間もすぐ打ち始められるように）
+    setFlow(null);
     // 版の一覧などを読み直す（確定の直後に打ち始めた入力は消さない）
     await load();
-    setFlow(null);
     setNotice(`確定しました（v${payload.version?.version || ""}）。${payload.warnings?.length ? `確認事項 ${payload.warnings.length}件のまま確定しました。` : ""}${payload.approval?.status === "pending" && payload.approval.current ? "指導医の承認待ちになりました。" : ""}`);
   }
 
@@ -940,14 +943,12 @@ export function EncounterEditor({ encounterId }) {
       ) : null}
       {dialog === "visit" ? <VisitMetaDialog meta={meta} onClose={() => setDialog(null)} updateMeta={updateMeta} /> : null}
       {dialog === "versions" ? (
-        <div className="dialog-backdrop" role="presentation">
-          <div aria-labelledby="versions-heading" className="dialog" role="dialog">
-            <h2 id="versions-heading">版履歴</h2>
-            <p className="muted small">確定のたびに版が残ります。版を押すと、その版の印刷用の表示を開きます。</p>
-            <VersionsPanel encounterId={encounterId} versions={detail.versions} />
-            <div className="dialog-actions"><button autoFocus className="btn btn-primary" onClick={() => setDialog(null)} type="button">閉じる</button></div>
-          </div>
-        </div>
+        <Modal className="dialog" labelledBy="versions-heading" onClose={() => setDialog(null)}>
+          <h2 id="versions-heading">版履歴</h2>
+          <p className="muted small">確定のたびに版が残ります。版を押すと、その版の印刷用の表示を開きます。</p>
+          <VersionsPanel encounterId={encounterId} versions={detail.versions} />
+          <div className="dialog-actions"><button autoFocus className="btn btn-primary" onClick={() => setDialog(null)} type="button">閉じる</button></div>
+        </Modal>
       ) : null}
       {dialog === "shortcuts" ? <ShortcutHelpDialog categories={ORDER_CATEGORIES} leftTabs={LEFT_TABS} onClose={() => setDialog(null)} /> : null}
       {dialog === "set-create" ? (
@@ -1117,22 +1118,20 @@ export function EncounterEditor({ encounterId }) {
 // 診療日・区分（見出しの［✎］から）。
 function VisitMetaDialog({ meta, updateMeta, onClose }) {
   return (
-    <div className="dialog-backdrop" role="presentation">
-      <div aria-labelledby="visit-heading" className="dialog" role="dialog">
-        <h2 id="visit-heading">カルテ更新</h2>
-        <label className="field">
-          <span>診療日</span>
-          <input className="input input-date" onChange={(event) => updateMeta({ encounterDate: event.target.value })} type="date" value={meta.encounterDate} />
-        </label>
-        <label className="field">
-          <span>区分</span>
-          <select className="input" onChange={(event) => updateMeta({ visitType: event.target.value })} value={meta.visitType}>
-            <option value="initial">初診</option>
-            <option value="revisit">再診</option>
-          </select>
-        </label>
-        <div className="dialog-actions"><button autoFocus className="btn btn-primary" onClick={onClose} type="button">閉じる</button></div>
-      </div>
-    </div>
+    <Modal className="dialog" labelledBy="visit-heading" onClose={onClose}>
+      <h2 id="visit-heading">カルテ更新</h2>
+      <label className="field">
+        <span>診療日</span>
+        <input className="input input-date" onChange={(event) => updateMeta({ encounterDate: event.target.value })} type="date" value={meta.encounterDate} />
+      </label>
+      <label className="field">
+        <span>区分</span>
+        <select className="input" onChange={(event) => updateMeta({ visitType: event.target.value })} value={meta.visitType}>
+          <option value="initial">初診</option>
+          <option value="revisit">再診</option>
+        </select>
+      </label>
+      <div className="dialog-actions"><button autoFocus className="btn btn-primary" onClick={onClose} type="button">閉じる</button></div>
+    </Modal>
   );
 }

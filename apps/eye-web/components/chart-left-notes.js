@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { resolveReferenceRanges } from "@halunasu/eye-core";
 import { ResultMatrix } from "./chart-left-matrix";
 import { DeleteButton, LeftDialog, saveErrorMessage, SectionHead, useSaveProfileSection } from "./chart-left-shared";
+import { useChangedSince } from "./modal";
 import { formatDate, formatDateTime, formatShortDate } from "../lib/format";
 
 // 左「問診」「バイタル」「サマリー」（デジカルの同名タブ）。どれも患者ごとの記録で、区画ごとに保存する。
@@ -109,6 +110,7 @@ function VitalDialog({ entry, encounterDate, onSave, onDelete, onClose, onInsert
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [armed, setArmed] = useState(false);
+  const dirty = useChangedSince(draft);
   const set = (patch) => setDraft((current) => ({ ...current, ...patch }));
   const built = () => ({
     ...(entry || {}),
@@ -143,6 +145,7 @@ function VitalDialog({ entry, encounterDate, onSave, onDelete, onClose, onInsert
     <LeftDialog
       busy={busy}
       error={error}
+      dirty={dirty}
       extraActions={onInsert ? <button className="btn btn-ghost" disabled={busy} onClick={() => submit(true)} type="button">登録して複写</button> : null}
       footerLeft={entry ? <DeleteButton armed={armed} disabled={busy} onArm={() => setArmed(true)} onDelete={() => run(onDelete)} /> : null}
       onClose={onClose}
@@ -216,6 +219,7 @@ export function InterviewTab({ patientId, profile, context, onSaved, encounterDa
 function TextEntryDialog({ title, dateValue, textValue, onSave, onDelete, onClose }) {
   const [date, setDate] = useState(dateValue || "");
   const [text, setText] = useState(textValue || "");
+  const dirty = useChangedSince({ date, text });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [armed, setArmed] = useState(false);
@@ -234,6 +238,7 @@ function TextEntryDialog({ title, dateValue, textValue, onSave, onDelete, onClos
     <LeftDialog
       busy={busy}
       error={error}
+      dirty={dirty}
       footerLeft={onDelete ? <DeleteButton armed={armed} disabled={busy} onArm={() => setArmed(true)} onDelete={() => run(onDelete)} /> : null}
       onClose={onClose}
       onSubmit={() => (text.trim() ? run(() => onSave({ date, text: text.trim() })) : setError("内容を入れてください。"))}
@@ -275,11 +280,13 @@ export function SummaryTab({ patientId, profile, context, onSaved }) {
 
 function SummaryDialog({ value, onSave, onClose }) {
   const [text, setText] = useState(value);
+  const dirty = useChangedSince(text);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   return (
     <LeftDialog
       busy={busy}
+      dirty={dirty}
       error={error}
       onClose={onClose}
       onSubmit={async () => {

@@ -150,7 +150,7 @@ export function PrintView({ encounterId }) {
         <div className="cs-patient">
           <h1>{patient.displayName}{patient.displayNameKana ? <span className="cs-kana">（{patient.displayNameKana}）</span> : null}</h1>
           <p>
-            {[SEX_LABELS[patient.sex], patient.birthDate ? `${formatDate(patient.birthDate)}生` : "", age === null ? "" : `${age}歳`, patient.primaryPatientNumber ? `No.${patient.primaryPatientNumber}` : ""].filter(Boolean).join("　")}
+            {[SEX_LABELS[patient.sex], patient.birthDate ? `${formatDate(patient.birthDate)}生` : "", age === null ? "" : `${age}歳`, patient.primaryPatientNumber ? `患者番号 ${patient.primaryPatientNumber}` : ""].filter(Boolean).join("　")}
           </p>
         </div>
         <p className="cs-visit">

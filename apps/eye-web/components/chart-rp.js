@@ -383,7 +383,7 @@ function UsagePill({ row, onChange, editable, invalid = false }) {
       <div className="more-menu-list usage-list">
         <div aria-label="1日の回数" className="usage-times" role="group">
           {[1, 2, 3, 4, 5, 6].map((times) => (
-            <button aria-pressed={row.timesPerDay === times} className="btn btn-chip" key={times} onClick={() => onChange({ timesPerDay: row.timesPerDay === times ? null : times })} type="button">{times}回</button>
+            <button aria-pressed={row.timesPerDay === times} className="btn btn-chip" key={times} onClick={(event) => { closeMenu(event); onChange({ timesPerDay: row.timesPerDay === times ? null : times }); }} type="button">{times}回</button>
           ))}
         </div>
         <div className="usage-choices">
@@ -536,7 +536,7 @@ export function NextPlan({ content, update, editable, catalog, encounterDate, su
             {items.length ? (
               <div aria-label="部位を一括で変える" className="plan-all" role="group">
                 {PLAN_EYES.map((eye) => (
-                  <button className="btn btn-chip" key={eye} onClick={() => setItems(setPlanItemsEye(items, eye))} type="button">全て{PLAN_ITEM_EYE_LABELS[eye]}</button>
+                  <button className="btn btn-chip" key={eye} onClick={() => setItems(setPlanItemsEye(items, eye))} type="button">すべて{PLAN_ITEM_EYE_LABELS[eye]}</button>
                 ))}
               </div>
             ) : null}

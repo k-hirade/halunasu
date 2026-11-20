@@ -41,7 +41,7 @@ export function LetterSheet({ document, showEmpty = false, printNames = {}, sett
       </div>
       <div className="ls-from">
         {sender.address ? <p>{sender.address}</p> : null}
-        <p className="ls-facility">{sender.facilityName || (showEmpty ? <span className="ls-missing">医療機関名 未登録</span> : "")}</p>
+        <p className="ls-facility">{sender.facilityName || (showEmpty ? <span className="ls-missing">医療機関名 未記入</span> : "")}</p>
         {sender.phone || sender.fax ? <p>{[sender.phone ? `TEL ${sender.phone}` : "", sender.fax ? `FAX ${sender.fax}` : ""].filter(Boolean).join("　")}</p> : null}
         <p className="ls-sign">
           <span>医師</span>

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useEyeApi, useEyeFileTransfer } from "./eye-api";
+import { Modal } from "./modal";
 import { usePrintSettings } from "./print-settings";
 import { UnapprovedTag } from "./chart-approval";
 import { BILLING_TABS, billingRows, countByState, diffChips, diffItems, groupByCategory, itemSummary } from "../lib/billing-diff";
@@ -311,7 +312,7 @@ export function BillingWorkspace() {
             <strong>{name}</strong>
             {patient?.displayNameKana ? <span className="flow-kana" title={patient.displayNameKana}>{patient.displayNameKana}</span> : null}
           </span>
-          <span className="bill-meta" data-number={patient?.primaryPatientNumber ? `No.${patient.primaryPatientNumber}` : ""}>
+          <span className="bill-meta" data-number={patient?.primaryPatientNumber ? `患者番号 ${patient.primaryPatientNumber}` : ""}>
             <span className="bill-age">{age !== null ? `${age}${sex}` : sex}</span>
             <span className="bill-visit">{item.visitType === "initial" ? <span className="flow-new">初</span> : null}{VISIT_TYPE_LABELS[item.visitType] || ""}</span>
           </span>
@@ -508,17 +509,15 @@ export function BillingWorkspace() {
       ) : null}
 
       {confirmAll ? (
-        <div className="dialog-backdrop no-print" role="presentation">
-          <div aria-labelledby="bill-all-heading" aria-modal="true" className="dialog" role="dialog">
-            <h2 id="bill-all-heading">全件 CSV を保存しますか</h2>
-            <p>{formatDate(date)} の確定済みカルテ {encounters.length}人分を、連携済みも含めて CSV にします。連携の状態は変わりません。</p>
-            <p className="bill-warning">確認用です。レセコンへの取込には使わないでください（連携済みの患者が二重に登録されます）。</p>
-            <div className="dialog-actions">
-              <button autoFocus className="btn btn-ghost" onClick={() => setConfirmAll(false)} type="button">やめる</button>
-              <button className="btn btn-primary" disabled={busy} onClick={downloadAll} type="button">確認用に保存する</button>
-            </div>
+        <Modal backdropClassName="dialog-backdrop no-print" className="dialog" labelledBy="bill-all-heading" onClose={() => setConfirmAll(false)}>
+          <h2 id="bill-all-heading">全件 CSV を保存しますか</h2>
+          <p>{formatDate(date)} の確定済みカルテ {encounters.length}人分を、連携済みも含めて CSV にします。連携の状態は変わりません。</p>
+          <p className="bill-warning">確認用です。レセコンへの取込には使わないでください（連携済みの患者が二重に登録されます）。</p>
+          <div className="dialog-actions">
+            <button autoFocus className="btn btn-ghost" onClick={() => setConfirmAll(false)} type="button">やめる</button>
+            <button className="btn btn-primary" disabled={busy} onClick={downloadAll} type="button">確認用に保存する</button>
           </div>
-        </div>
+        </Modal>
       ) : null}
 
       {printTargets.length ? (
@@ -538,55 +537,46 @@ function SendDialog({ row, busy, onCancel, onConfirm, printAfter = false, onPrin
   const again = row.state === "changed";
   const chips = again && item.handoff.previousItems ? diffChips(diffItems(item.handoff.previousItems, item.items)) : null;
   const toDone = appointment?.status === "checkout";
-  useEffect(() => {
-    const onKeyDown = (event) => {
-      if (event.key === "Escape" && !busy) onCancel();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [busy, onCancel]);
   return (
-    <div className="dialog-backdrop no-print" role="presentation">
-      <div aria-describedby="bill-send-who" aria-labelledby="bill-send-heading" aria-modal="true" className="dialog bill-send-dialog" role="dialog">
-        <h2 id="bill-send-heading">{again ? "会計情報をもう一度レセコンへ渡しますか？" : "会計情報をレセコンへ渡しますか？"}</h2>
-        <p className="bill-send-who" id="bill-send-who">
-          <strong>{patient?.displayName}</strong>
-          <span className="mono">{patient?.primaryPatientNumber || ""}</span>
-          <span>{VISIT_TYPE_LABELS[item.visitType] || ""}</span>
-          <span className="muted">カルテ v{item.version}</span>
-          <UnapprovedTag approval={item.approval} />
-        </p>
-        {/* デジカルの会計画面の 1 行目（診療日・医師）に合わせる */}
-        <p className="bill-send-visit">
-          <span>診療日 {formatDateJa(item.encounterDate)}</span>
-          {item.finalizedBy?.displayName ? <span>確定 {item.finalizedBy.displayName}</span> : null}
-        </p>
-        <div className="bill-send-items">
-          <ItemGroups items={item.items} />
-        </div>
-        {again ? (
-          <p className="bill-warning">
-            前回（v{item.handoff.version}）からの変更: {chips ? (chips.length ? chips.map((chip) => chip.label).join(" ") : "品目の違いなし") : "前回の品目の記録なし"}。
-            レセコン側で前回分を取り消してから取り込んでください。
-          </p>
-        ) : null}
-        <p className="muted small">
-          レセコンが取り込む CSV を保存します。
-          {toDone ? "受付を「会計済」にします。" : appointment ? `受付の状態（${APPOINTMENT_STATUS_LABELS[appointment.displayStatus || appointment.status] || ""}）は変えません。` : "この日の受付はありません。"}
-        </p>
-        {/* デジカルの会計画面の帳票のチェック（領収書・明細書…）にあたる。ハルナスの紙は会計連絡票だけ */}
-        {onPrintChange ? (
-          <label className="field-check bill-send-print">
-            <input checked={printAfter} onChange={(event) => onPrintChange(event.target.checked)} type="checkbox" />
-            連携したあとに会計連絡票を印刷する
-          </label>
-        ) : null}
-        <div className="dialog-actions">
-          <button className="btn btn-ghost" disabled={busy} onClick={onCancel} type="button">やめる</button>
-          <button autoFocus className="btn btn-primary" disabled={busy} onClick={onConfirm} type="button">{busy ? "連携中…" : again ? "再連携する" : "連携する"}</button>
-        </div>
+    <Modal aria-describedby="bill-send-who" backdropClassName="dialog-backdrop no-print" busy={busy} className="dialog bill-send-dialog" closeOnBackdrop={false} labelledBy="bill-send-heading" onClose={onCancel}>
+      <h2 id="bill-send-heading">{again ? "会計情報をもう一度レセコンへ渡しますか？" : "会計情報をレセコンへ渡しますか？"}</h2>
+      <p className="bill-send-who" id="bill-send-who">
+        <strong>{patient?.displayName}</strong>
+        <span className="mono">{patient?.primaryPatientNumber || ""}</span>
+        <span>{VISIT_TYPE_LABELS[item.visitType] || ""}</span>
+        <span className="muted">カルテ v{item.version}</span>
+        <UnapprovedTag approval={item.approval} />
+      </p>
+      {/* デジカルの会計画面の 1 行目（診療日・医師）に合わせる */}
+      <p className="bill-send-visit">
+        <span>診療日 {formatDateJa(item.encounterDate)}</span>
+        {item.finalizedBy?.displayName ? <span>確定 {item.finalizedBy.displayName}</span> : null}
+      </p>
+      <div className="bill-send-items">
+        <ItemGroups items={item.items} />
       </div>
-    </div>
+      {again ? (
+        <p className="bill-warning">
+          前回（v{item.handoff.version}）からの変更: {chips ? (chips.length ? chips.map((chip) => chip.label).join(" ") : "品目の違いなし") : "前回の品目の記録なし"}。
+          レセコン側で前回分を取り消してから取り込んでください。
+        </p>
+      ) : null}
+      <p className="muted small">
+        レセコンが取り込む CSV を保存します。
+        {toDone ? "受付を「会計済」にします。" : appointment ? `受付の状態（${APPOINTMENT_STATUS_LABELS[appointment.displayStatus || appointment.status] || ""}）は変えません。` : "この日の受付はありません。"}
+      </p>
+      {/* デジカルの会計画面の帳票のチェック（領収書・明細書…）にあたる。ハルナスの紙は会計連絡票だけ */}
+      {onPrintChange ? (
+        <label className="field-check bill-send-print">
+          <input checked={printAfter} onChange={(event) => onPrintChange(event.target.checked)} type="checkbox" />
+          連携したあとに会計連絡票を印刷する
+        </label>
+      ) : null}
+      <div className="dialog-actions">
+        <button className="btn btn-ghost" disabled={busy} onClick={onCancel} type="button">やめる</button>
+        <button autoFocus className="btn btn-primary" disabled={busy} onClick={onConfirm} type="button">{busy ? "連携中…" : again ? "再連携する" : "連携する"}</button>
+      </div>
+    </Modal>
   );
 }
 
@@ -651,30 +641,23 @@ function Slip({ item, date, facilityName, settings = null }) {
 
 // 会計連絡票の印刷プレビュー（デジカルの帳票の PDF 表示に合わせる: 上に帳票名・枚数・［印刷］、下に紙面を並べる）
 function SlipPreview({ items, date, facilityName, settings, onPrint, onClose }) {
-  useEffect(() => {
-    const onKeyDown = (event) => { if (event.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
   return (
-    <div className="dialog-backdrop bill-preview-backdrop no-print" role="presentation">
-      <div aria-labelledby="bill-preview-heading" aria-modal="true" className="bill-preview" role="dialog">
-        <header className="bill-preview-bar">
-          <h2 id="bill-preview-heading">会計連絡票</h2>
-          <span className="bill-preview-count">{items.length}枚 ・ A4 縦</span>
-          <button autoFocus className="btn btn-primary" onClick={onPrint} type="button">印刷</button>
-          <button className="btn btn-ghost bill-preview-close" onClick={onClose} type="button">閉じる</button>
-        </header>
-        <div className="bill-preview-pages">
-          {items.map((item, index) => (
-            <div className="bill-preview-sheet" key={item.encounterId}>
-              <Slip date={date} facilityName={facilityName} item={item} settings={settings} />
-              <span aria-hidden="true" className="bill-preview-page">{index + 1} / {items.length}</span>
-            </div>
-          ))}
-        </div>
+    <Modal backdropClassName="dialog-backdrop bill-preview-backdrop no-print" className="bill-preview" labelledBy="bill-preview-heading" onClose={onClose}>
+      <header className="bill-preview-bar">
+        <h2 id="bill-preview-heading">会計連絡票</h2>
+        <span className="bill-preview-count">{items.length}枚 ・ A4 縦</span>
+        <button autoFocus className="btn btn-primary" onClick={onPrint} type="button">印刷</button>
+        <button className="btn btn-ghost bill-preview-close" onClick={onClose} type="button">閉じる</button>
+      </header>
+      <div className="bill-preview-pages">
+        {items.map((item, index) => (
+          <div className="bill-preview-sheet" key={item.encounterId}>
+            <Slip date={date} facilityName={facilityName} item={item} settings={settings} />
+            <span aria-hidden="true" className="bill-preview-page">{index + 1} / {items.length}</span>
+          </div>
+        ))}
       </div>
-    </div>
+    </Modal>
   );
 }
 

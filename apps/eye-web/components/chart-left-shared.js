@@ -1,8 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useEyeApi } from "./eye-api";
+import { Modal } from "./modal";
+import { isImeKey } from "../lib/modal";
 
 // カルテ左ペインのタブで共通に使う部品（区画の見出し・小さな編集ダイアログ・区画ごとの保存）。
 
@@ -29,43 +31,31 @@ export function SectionHead({ title, count = null, children = null, id }) {
   );
 }
 
-// 小さな編集ダイアログ。Esc で閉じ、開いたら最初の入力へ、閉じたら元の場所へフォーカスを戻す。
+// 小さな編集ダイアログ。Esc・背景で閉じ（dirty なら確かめる）、開いたら最初の入力へ、閉じたら元の場所へフォーカスを戻す。
 // Enter は IME の変換中（isComposing）なら送らない。
-export function LeftDialog({ title, onClose, onSubmit, busy = false, error = "", children, footerLeft = null, submitLabel = "保存", extraActions = null, wide = false, label }) {
-  const ref = useRef(null);
-  useEffect(() => {
-    const opener = typeof document !== "undefined" ? document.activeElement : null;
-    const first = ref.current?.querySelector("input:not([type=hidden]):not([disabled]), textarea, select");
-    first?.focus();
-    return () => { if (opener instanceof HTMLElement && opener.isConnected) opener.focus(); };
-  }, []);
-  useEffect(() => {
-    const onKey = (event) => { if (event.key === "Escape" && !busy) onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [busy, onClose]);
-  const headingId = `cl-dialog-${String(label || title).replace(/[^a-z0-9]/giu, "") || "x"}`;
+export function LeftDialog({ title, onClose, onSubmit, busy = false, dirty = false, error = "", children, footerLeft = null, submitLabel = "保存", extraActions = null, wide = false, label }) {
   const dialog = (
-    <div className="dialog-backdrop" role="presentation">
-      <form
-        aria-label={label || title}
-        className={`dialog cl-dialog${wide ? " dialog-wide" : ""}`}
-        onKeyDown={(event) => { if (event.key === "Enter" && (event.nativeEvent.isComposing || event.keyCode === 229)) event.preventDefault(); }}
-        onSubmit={(event) => { event.preventDefault(); if (!busy) onSubmit?.(event); }}
-        ref={ref}
-        role="dialog"
-      >
-        <h2 className="cl-dialog-title" id={headingId}>{title}</h2>
-        <div className="cl-dialog-body">{children}</div>
-        {error ? <p className="alert alert-danger small" role="alert">{error}</p> : null}
-        <div className="dialog-actions">
-          {footerLeft}
-          <button className="btn btn-ghost" disabled={busy} onClick={onClose} type="button">キャンセル</button>
-          {extraActions}
-          {onSubmit ? <button className="btn btn-primary" disabled={busy} type="submit">{busy ? "保存中…" : submitLabel}</button> : null}
-        </div>
-      </form>
-    </div>
+    <Modal
+      as="form"
+      busy={busy}
+      className={`dialog cl-dialog${wide ? " dialog-wide" : ""}`}
+      dirty={dirty}
+      initialFocus="input:not([type=hidden]), textarea, select"
+      label={label || title}
+      onClose={onClose}
+      onKeyDown={(event) => { if (event.key === "Enter" && isImeKey(event)) event.preventDefault(); }}
+      onSubmit={(event) => { event.preventDefault(); if (!busy) onSubmit?.(event); }}
+    >
+      <h2 className="cl-dialog-title" id={`cl-dialog-${String(label || title).replace(/[^a-z0-9]/giu, "") || "x"}`}>{title}</h2>
+      <div className="cl-dialog-body">{children}</div>
+      {error ? <p className="alert alert-danger small" role="alert">{error}</p> : null}
+      <div className="dialog-actions">
+        {footerLeft}
+        <button className="btn btn-ghost" disabled={busy} onClick={onClose} type="button">キャンセル</button>
+        {extraActions}
+        {onSubmit ? <button className="btn btn-primary" disabled={busy} type="submit">{busy ? "保存中…" : submitLabel}</button> : null}
+      </div>
+    </Modal>
   );
   return inPortal(dialog);
 }

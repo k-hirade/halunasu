@@ -4,6 +4,7 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { isSuspectedDiagnosis } from "@halunasu/eye-contracts";
 import { useEyeApi } from "./eye-api";
+import { Modal, useChangedSince } from "./modal";
 import { PatientPhoto } from "./patient-photo";
 import { EYE_LABELS, formatDate, patientLine, todayIso } from "../lib/format";
 
@@ -105,6 +106,7 @@ export function ProfileDialog({ patientId, profile, canEditDiagnoses, onCancel, 
   }));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const dirty = useChangedSince(draft);
 
   const setAllergy = (index, patch) => setDraft({ ...draft, allergies: draft.allergies.map((item, i) => (i === index ? { ...item, ...patch } : item)) });
   const setDiagnosis = (index, patch) => setDraft({ ...draft, diagnoses: draft.diagnoses.map((item, i) => (i === index ? { ...item, ...patch } : item)) });
@@ -126,77 +128,75 @@ export function ProfileDialog({ patientId, profile, canEditDiagnoses, onCancel, 
   }
 
   return (
-    <div className="dialog-backdrop" role="presentation">
-      <form aria-labelledby="profile-heading" className="dialog dialog-wide profile-dialog" onSubmit={submit} role="dialog">
-        <h2 id="profile-heading">アレルギー・病名・既往</h2>
-        {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
+    <Modal as="form" busy={busy} className="dialog dialog-wide profile-dialog" dirty={dirty} labelledBy="profile-heading" onClose={onCancel} onSubmit={submit}>
+      <h2 id="profile-heading">アレルギー・病名・既往</h2>
+      {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
 
-        <h3>アレルギー・副作用歴</h3>
-        <label className="check-line">
-          <input checked={draft.noKnownAllergies} disabled={draft.allergies.length > 0} onChange={(event) => setDraft({ ...draft, noKnownAllergies: event.target.checked })} type="checkbox" />
-          アレルギー・副作用歴なし（本人に確認済み）
-        </label>
-        {draft.allergies.map((item, index) => (
-          <div className="row-line" key={item.allergyId || index}>
-            <select aria-label="分類" className="input" onChange={(event) => setAllergy(index, { category: event.target.value })} value={item.category}>
-              {Object.entries(ALLERGY_CATEGORY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-            <input aria-label="原因" className="input grow" onChange={(event) => setAllergy(index, { substance: event.target.value })} placeholder="原因（薬剤名・成分など）" required value={item.substance} />
-            <input aria-label="症状" className="input grow" onChange={(event) => setAllergy(index, { reaction: event.target.value })} placeholder="症状（発疹など）" value={item.reaction} />
-            <select aria-label="程度" className="input" onChange={(event) => setAllergy(index, { severity: event.target.value })} value={item.severity}>
-              {Object.entries(SEVERITY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-            <button aria-label="このアレルギーを削除" className="btn btn-chip danger-text" onClick={() => setDraft({ ...draft, allergies: draft.allergies.filter((_, i) => i !== index) })} type="button">削除</button>
+      <h3>アレルギー・副作用歴</h3>
+      <label className="check-line">
+        <input checked={draft.noKnownAllergies} disabled={draft.allergies.length > 0} onChange={(event) => setDraft({ ...draft, noKnownAllergies: event.target.checked })} type="checkbox" />
+        アレルギー・副作用歴なし（本人に確認済み）
+      </label>
+      {draft.allergies.map((item, index) => (
+        <div className="row-line" key={item.allergyId || index}>
+          <select aria-label="分類" className="input" onChange={(event) => setAllergy(index, { category: event.target.value })} value={item.category}>
+            {Object.entries(ALLERGY_CATEGORY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+          <input aria-label="原因" className="input grow" onChange={(event) => setAllergy(index, { substance: event.target.value })} placeholder="原因（薬剤名・成分など）" required value={item.substance} />
+          <input aria-label="症状" className="input grow" onChange={(event) => setAllergy(index, { reaction: event.target.value })} placeholder="症状（発疹など）" value={item.reaction} />
+          <select aria-label="程度" className="input" onChange={(event) => setAllergy(index, { severity: event.target.value })} value={item.severity}>
+            {Object.entries(SEVERITY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+          <button aria-label="このアレルギーを削除" className="btn btn-chip danger-text" onClick={() => setDraft({ ...draft, allergies: draft.allergies.filter((_, i) => i !== index) })} type="button">削除</button>
+        </div>
+      ))}
+      <button className="btn btn-ghost" onClick={() => setDraft({ ...draft, noKnownAllergies: false, allergies: [...draft.allergies, { category: "drug", substance: "", reaction: "", severity: "unknown" }] })} type="button">アレルギーを追加</button>
+
+      <h3>傷病名{canEditDiagnoses ? "" : "（変更は医師のみ）"}</h3>
+      <fieldset className="plain-fieldset" disabled={!canEditDiagnoses}>
+        {draft.diagnoses.map((item, index) => (
+          <div className="dx-row" key={item.diagnosisId || index}>
+            <div className="row-line">
+              <label className="inline-field" title="主病名"><input checked={Boolean(item.primary)} onChange={(event) => setDiagnosis(index, { primary: event.target.checked })} type="checkbox" /><span>主</span></label>
+              <input aria-label="傷病名" className="input grow" list="common-diagnoses" onChange={(event) => setDiagnosis(index, { name: event.target.value })} placeholder="傷病名" required value={item.name} />
+              <select aria-label="眼" className="input" onChange={(event) => setDiagnosis(index, { eye: event.target.value })} value={item.eye}>
+                {Object.entries(EYE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+              <label className="inline-field" title="疑い病名"><input checked={Boolean(item.suspected)} onChange={(event) => setDiagnosis(index, { suspected: event.target.checked })} type="checkbox" /><span>疑い</span></label>
+              <select aria-label="状態" className="input" onChange={(event) => setDiagnosis(index, { status: event.target.value, outcome: event.target.value === "resolved" ? (item.outcome || "cured") : "" })} value={item.status}>
+                {Object.entries(STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+              <button aria-label="この傷病名を削除" className="btn btn-chip danger-text" onClick={() => setDraft({ ...draft, diagnoses: draft.diagnoses.filter((_, i) => i !== index) })} type="button">削除</button>
+            </div>
+            <div className="row-line">
+              <label className="inline-field"><span>開始日</span><input className="input" onChange={(event) => setDiagnosis(index, { startDate: event.target.value })} type="date" value={item.startDate || ""} /></label>
+              {item.status === "resolved" ? (
+                <>
+                  <label className="inline-field"><span>終了日</span><input className="input" onChange={(event) => setDiagnosis(index, { endDate: event.target.value })} type="date" value={item.endDate || ""} /></label>
+                  <label className="inline-field">
+                    <span>転帰</span>
+                    <select className="input" onChange={(event) => setDiagnosis(index, { outcome: event.target.value })} value={item.outcome || "cured"}>
+                      {Object.entries(OUTCOME_LABELS).filter(([value]) => value).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    </select>
+                  </label>
+                </>
+              ) : null}
+            </div>
           </div>
         ))}
-        <button className="btn btn-ghost" onClick={() => setDraft({ ...draft, noKnownAllergies: false, allergies: [...draft.allergies, { category: "drug", substance: "", reaction: "", severity: "unknown" }] })} type="button">アレルギーを追加</button>
+        <button className="btn btn-ghost" onClick={() => setDraft({ ...draft, diagnoses: [...draft.diagnoses, { name: "", eye: "ou", status: "active", startDate: todayIso(), endDate: "", outcome: "", primary: false, note: "" }] })} type="button">傷病名を追加</button>
+      </fieldset>
 
-        <h3>傷病名{canEditDiagnoses ? "" : "（変更は医師のみ）"}</h3>
-        <fieldset className="plain-fieldset" disabled={!canEditDiagnoses}>
-          {draft.diagnoses.map((item, index) => (
-            <div className="dx-row" key={item.diagnosisId || index}>
-              <div className="row-line">
-                <label className="inline-field" title="主病名"><input checked={Boolean(item.primary)} onChange={(event) => setDiagnosis(index, { primary: event.target.checked })} type="checkbox" /><span>主</span></label>
-                <input aria-label="傷病名" className="input grow" list="common-diagnoses" onChange={(event) => setDiagnosis(index, { name: event.target.value })} placeholder="傷病名" required value={item.name} />
-                <select aria-label="眼" className="input" onChange={(event) => setDiagnosis(index, { eye: event.target.value })} value={item.eye}>
-                  {Object.entries(EYE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                </select>
-                <label className="inline-field" title="疑い病名"><input checked={Boolean(item.suspected)} onChange={(event) => setDiagnosis(index, { suspected: event.target.checked })} type="checkbox" /><span>疑い</span></label>
-                <select aria-label="状態" className="input" onChange={(event) => setDiagnosis(index, { status: event.target.value, outcome: event.target.value === "resolved" ? (item.outcome || "cured") : "" })} value={item.status}>
-                  {Object.entries(STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                </select>
-                <button aria-label="この傷病名を削除" className="btn btn-chip danger-text" onClick={() => setDraft({ ...draft, diagnoses: draft.diagnoses.filter((_, i) => i !== index) })} type="button">削除</button>
-              </div>
-              <div className="row-line">
-                <label className="inline-field"><span>開始日</span><input className="input" onChange={(event) => setDiagnosis(index, { startDate: event.target.value })} type="date" value={item.startDate || ""} /></label>
-                {item.status === "resolved" ? (
-                  <>
-                    <label className="inline-field"><span>終了日</span><input className="input" onChange={(event) => setDiagnosis(index, { endDate: event.target.value })} type="date" value={item.endDate || ""} /></label>
-                    <label className="inline-field">
-                      <span>転帰</span>
-                      <select className="input" onChange={(event) => setDiagnosis(index, { outcome: event.target.value })} value={item.outcome || "cured"}>
-                        {Object.entries(OUTCOME_LABELS).filter(([value]) => value).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                      </select>
-                    </label>
-                  </>
-                ) : null}
-              </div>
-            </div>
-          ))}
-          <button className="btn btn-ghost" onClick={() => setDraft({ ...draft, diagnoses: [...draft.diagnoses, { name: "", eye: "ou", status: "active", startDate: todayIso(), endDate: "", outcome: "", primary: false, note: "" }] })} type="button">傷病名を追加</button>
-        </fieldset>
+      <h3>既往・その他</h3>
+      <label className="check-line"><input checked={draft.contactLensUser} onChange={(event) => setDraft({ ...draft, contactLensUser: event.target.checked })} type="checkbox" />コンタクトレンズ装用者</label>
+      <label className="field"><span>眼科既往（手術・外傷など）</span><textarea className="input" onChange={(event) => setDraft({ ...draft, ophthalmicHistory: event.target.value })} rows={2} value={draft.ophthalmicHistory} /></label>
+      <label className="field"><span>全身既往・内服</span><textarea className="input" onChange={(event) => setDraft({ ...draft, medicalHistory: event.target.value })} rows={2} value={draft.medicalHistory} /></label>
 
-        <h3>既往・その他</h3>
-        <label className="check-line"><input checked={draft.contactLensUser} onChange={(event) => setDraft({ ...draft, contactLensUser: event.target.checked })} type="checkbox" />コンタクトレンズ装用者</label>
-        <label className="field"><span>眼科既往（手術・外傷など）</span><textarea className="input" onChange={(event) => setDraft({ ...draft, ophthalmicHistory: event.target.value })} rows={2} value={draft.ophthalmicHistory} /></label>
-        <label className="field"><span>全身既往・内服</span><textarea className="input" onChange={(event) => setDraft({ ...draft, medicalHistory: event.target.value })} rows={2} value={draft.medicalHistory} /></label>
-
-        <div className="dialog-actions">
-          <button className="btn btn-ghost" onClick={onCancel} type="button">キャンセル</button>
-          <button className="btn btn-primary" disabled={busy} type="submit">保存</button>
-        </div>
-      </form>
-    </div>
+      <div className="dialog-actions">
+        <button className="btn btn-ghost" onClick={onCancel} type="button">キャンセル</button>
+        <button className="btn btn-primary" disabled={busy} type="submit">保存</button>
+      </div>
+    </Modal>
   );
 }
 

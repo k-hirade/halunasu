@@ -39,7 +39,7 @@ export function DocumentPrint({ documentId }) {
       </p>
     );
   }
-  if (senderMissing) alerts.push(<p className="print-alert is-warn" key="sender">差出人の医療機関名・住所・電話のいずれかが未登録です。</p>);
+  if (senderMissing) alerts.push(<p className="print-alert is-warn" key="sender">差出人の医療機関名・住所・電話のいずれかが未記入です。</p>);
 
   return (
     <PrintShell

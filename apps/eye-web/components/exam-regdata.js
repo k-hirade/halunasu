@@ -446,7 +446,7 @@ function NineGazeTab({ values, set }) {
           <input aria-label="9方向眼位の条件" className="input input-compact" onChange={(event) => set(["tests", "nineGaze", "condition"], event.target.value)} placeholder="例: 裸眼" value={nine.condition || ""} />
         </label>
         <span className="rd-tools-spacer" />
-        <button className="btn btn-ghost btn-sm" onClick={allNormal} type="button">全て正常</button>
+        <button className="btn btn-ghost btn-sm" onClick={allNormal} type="button">すべて正常</button>
         <button className="btn btn-ghost btn-sm" onClick={() => set(["tests", "nineGaze", "cells"], undefined)} type="button">リセット</button>
       </div>
       <div className="rd-nine-grid" role="group" aria-label="9方向眼位（患者から見た向き）">

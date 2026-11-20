@@ -4,12 +4,14 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { BookingCalendar } from "./booking-calendar";
 import { useEyeApi } from "./eye-api";
+import { Modal } from "./modal";
 import { formatDayButton } from "./mini-calendar";
 import { useClinicSchedule } from "./use-clinic-hours";
 import { DEFAULT_DEPARTMENTS, doctorName, useDoctors } from "./use-doctors";
 import { ageOn, APPOINTMENT_PURPOSE_LABELS, APPOINTMENT_STATUS_LABELS, patientLine, SEX_LABELS, todayIso } from "../lib/format";
 import { birthWithEra } from "../lib/reception-table";
 import { outsideHoursNotice } from "../lib/booking-hours";
+import { isImeKey } from "../lib/modal";
 import { receptionPrintHref } from "../lib/reception-extras";
 
 // 予約登録・受付登録・受付編集（デジカルの予約登録ダイアログと受付登録ダイアログ）。
@@ -44,16 +46,16 @@ export function AppointmentDialog({ title, initial = {}, fixedPatient = null, ap
   // 来院済みの受付の編集（受付編集）は 1 列。予約の登録・編集は左に予約一覧を出す 2 列
   const twoPane = !walkIn && !(editing && editing.status !== "booked");
 
-  useEffect(() => {
-    function onKeyDown(event) {
-      if (event.key !== "Escape" || busy) return;
-      if (calendarOpen) setCalendarOpen(false);
-      else if (confirmCancel) setConfirmCancel(null);
-      else onCancel();
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [busy, calendarOpen, confirmCancel, onCancel]);
+  // 入力を 1 度でも変えたら dirty（Esc・背景で閉じる前に確かめる）
+  const [edited, setEdited] = useState(false);
+  // Esc は、開いている予約状況・取消の確認を先に閉じる（ダイアログは閉じない）
+  const closeInnerOnEscape = (event) => {
+    if (event.key !== "Escape" || isImeKey(event) || !(calendarOpen || confirmCancel)) return;
+    event.preventDefault();
+    if (busy) return;
+    if (calendarOpen) setCalendarOpen(false);
+    else setConfirmCancel(null);
+  };
 
   useEffect(() => {
     if (fixedPatient || patient || !query.trim()) {
@@ -301,72 +303,70 @@ export function AppointmentDialog({ title, initial = {}, fixedPatient = null, ap
   );
 
   return (
-    <div className="dialog-backdrop" role="presentation">
-      <form aria-labelledby="appointment-heading" aria-modal="true" className={`dialog ap-dialog${twoPane ? " is-two-pane" : ""}${calendarOpen ? " is-calendar" : ""}`} onSubmit={submit} role="dialog">
-        <h2 id="appointment-heading">{editingItem && editingItem !== editing ? "予約の編集" : title}</h2>
-        {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
-        <div className="ap-body">
-          {twoPane ? (
-            <section aria-label="この患者の予約" className={`ap-list${listOpen ? " is-open" : ""}`}>
-              <div className="ap-list-head">
-                <strong className="ap-list-title">予約一覧</strong>
-                {/* 720px 以下は一覧をたたみ、フォームと［登録］を先に見せる */}
-                <button aria-expanded={listOpen} className="btn btn-ghost btn-sm ap-list-toggle" onClick={() => setListOpen(!listOpen)} type="button">
-                  予約一覧{patient && upcoming.length ? `（${upcoming.length}件）` : ""} {listOpen ? "▴" : "▾"}
-                </button>
-                {patient ? <button aria-label="新しい予約" className="btn btn-ghost btn-sm" disabled={!editingItem} onClick={startNew} type="button">＋</button> : null}
-              </div>
-              <div className="ap-list-content">
-              {!patient ? <p className="muted small">患者を選ぶと、その人の予約が出ます。</p>
-                : history.loading && history.patientId !== patientId ? <p className="muted small">読み込み中…</p>
-                  : upcoming.length === 0 ? <p className="muted small">予約はありません。</p> : (
-                    <ul className="ap-list-rows">
-                      {upcoming.map((item) => (
-                        <li className={`ap-list-row${item.date < today ? " is-past" : ""}${editingItem?.appointmentId === item.appointmentId ? " is-selected" : ""}`} key={item.appointmentId}>
-                          <div className="ap-list-main">
-                            <span className="mono">{item.date.replaceAll("-", "/")} {item.time || "時刻なし"}</span>
-                            <span className="muted small">{APPOINTMENT_STATUS_LABELS[item.displayStatus || item.status]}{item.doctorMemberId ? ` ・ ${doctorName(doctors, item.doctorMemberId)}` : ""}</span>
-                          </div>
-                          <div className="ap-list-actions">
-                            <button aria-label={`${item.date} の予約を編集`} className="btn btn-ghost btn-sm" onClick={() => startEdit(item)} type="button">✎</button>
-                            {item.status === "booked" ? <button aria-label={`${item.date} の予約を取り消す`} className="btn btn-ghost btn-sm" onClick={() => setConfirmCancel(item)} type="button">取消</button> : null}
-                            {patient ? <Link className="btn btn-ghost btn-sm" href={`/patients/${patient.patientId}`}>カルテ</Link> : null}
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-              </div>
-            </section>
-          ) : null}
-          <div className="ap-form">{formFields}</div>
-        </div>
-        <div className="dialog-actions">
-          <button className="btn btn-ghost" onClick={onCancel} type="button">キャンセル</button>
-          <button className="btn btn-primary" disabled={busy || (!patient && !editingItem && !unregisteredReady) || !form.date} title={!patient && !editingItem && candidatesShown && asNewName !== query.trim() ? "候補から選ぶか「別の人として登録」を押してください" : undefined} type="submit">{submitLabel}</button>
-        </div>
+    <Modal as="form" busy={busy} className={`dialog ap-dialog${twoPane ? " is-two-pane" : ""}${calendarOpen ? " is-calendar" : ""}`} dirty={edited} labelledBy="appointment-heading" onChange={() => setEdited(true)} onClose={onCancel} onKeyDown={closeInnerOnEscape} onSubmit={submit}>
+      <h2 id="appointment-heading">{editingItem && editingItem !== editing ? "予約の編集" : title}</h2>
+      {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
+      <div className="ap-body">
+        {twoPane ? (
+          <section aria-label="この患者の予約" className={`ap-list${listOpen ? " is-open" : ""}`}>
+            <div className="ap-list-head">
+              <strong className="ap-list-title">予約一覧</strong>
+              {/* 720px 以下は一覧をたたみ、フォームと［登録］を先に見せる */}
+              <button aria-expanded={listOpen} className="btn btn-ghost btn-sm ap-list-toggle" onClick={() => setListOpen(!listOpen)} type="button">
+                予約一覧{patient && upcoming.length ? `（${upcoming.length}件）` : ""} {listOpen ? "▴" : "▾"}
+              </button>
+              {patient ? <button aria-label="新しい予約" className="btn btn-ghost btn-sm" disabled={!editingItem} onClick={startNew} type="button">＋</button> : null}
+            </div>
+            <div className="ap-list-content">
+            {!patient ? <p className="muted small">患者を選ぶと、その人の予約が出ます。</p>
+              : history.loading && history.patientId !== patientId ? <p className="muted small">読み込み中…</p>
+                : upcoming.length === 0 ? <p className="muted small">予約はありません。</p> : (
+                  <ul className="ap-list-rows">
+                    {upcoming.map((item) => (
+                      <li className={`ap-list-row${item.date < today ? " is-past" : ""}${editingItem?.appointmentId === item.appointmentId ? " is-selected" : ""}`} key={item.appointmentId}>
+                        <div className="ap-list-main">
+                          <span className="mono">{item.date.replaceAll("-", "/")} {item.time || "時刻なし"}</span>
+                          <span className="muted small">{APPOINTMENT_STATUS_LABELS[item.displayStatus || item.status]}{item.doctorMemberId ? ` ・ ${doctorName(doctors, item.doctorMemberId)}` : ""}</span>
+                        </div>
+                        <div className="ap-list-actions">
+                          <button aria-label={`${item.date} の予約を編集`} className="btn btn-ghost btn-sm" onClick={() => startEdit(item)} type="button">✎</button>
+                          {item.status === "booked" ? <button aria-label={`${item.date} の予約を取り消す`} className="btn btn-ghost btn-sm" onClick={() => setConfirmCancel(item)} type="button">取消</button> : null}
+                          {patient ? <Link className="btn btn-ghost btn-sm" href={`/patients/${patient.patientId}`}>カルテ</Link> : null}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+            </div>
+          </section>
+        ) : null}
+        <div className="ap-form">{formFields}</div>
+      </div>
+      <div className="dialog-actions">
+        <button className="btn btn-ghost" onClick={onCancel} type="button">キャンセル</button>
+        <button className="btn btn-primary" disabled={busy || (!patient && !editingItem && !unregisteredReady) || !form.date} title={!patient && !editingItem && candidatesShown && asNewName !== query.trim() ? "候補から選ぶか「別の人として登録」を押してください" : undefined} type="submit">{submitLabel}</button>
+      </div>
 
-        {calendarOpen ? (
-          <div className="ap-calendar" role="dialog" aria-label="予約状況">
-            <div className="ap-calendar-head">
-              <strong>予約状況</strong>
-              <span className="muted small">枠を押すと予約日と予約時間に入ります</span>
-              <button className="btn btn-ghost btn-sm" onClick={() => setCalendarOpen(false)} type="button">閉じる</button>
-            </div>
-            <BookingCalendar date={form.date || today} onPickSlot={(date, time) => { setForm((current) => ({ ...current, date, time })); setCalendarOpen(false); }} />
+      {calendarOpen ? (
+        <div className="ap-calendar" role="dialog" aria-label="予約状況">
+          <div className="ap-calendar-head">
+            <strong>予約状況</strong>
+            <span className="muted small">枠を押すと予約日と予約時間に入ります</span>
+            <button className="btn btn-ghost btn-sm" onClick={() => setCalendarOpen(false)} type="button">閉じる</button>
           </div>
-        ) : null}
-        {confirmCancel ? (
-          <div className="ap-confirm" role="alertdialog" aria-label="予約の取消">
-            <p>{confirmCancel.date.replaceAll("-", "/")} {confirmCancel.time} の予約を取り消しますか。</p>
-            <div className="dialog-actions">
-              <button className="btn btn-ghost" onClick={() => setConfirmCancel(null)} type="button">戻る</button>
-              <button className="btn btn-danger" disabled={busy} onClick={() => cancelAppointment(confirmCancel)} type="button">取り消す</button>
-            </div>
+          <BookingCalendar date={form.date || today} onPickSlot={(date, time) => { setForm((current) => ({ ...current, date, time })); setCalendarOpen(false); }} />
+        </div>
+      ) : null}
+      {confirmCancel ? (
+        <div className="ap-confirm" role="alertdialog" aria-label="予約の取消">
+          <p>{confirmCancel.date.replaceAll("-", "/")} {confirmCancel.time} の予約を取り消しますか。</p>
+          <div className="dialog-actions">
+            <button className="btn btn-ghost" onClick={() => setConfirmCancel(null)} type="button">戻る</button>
+            <button className="btn btn-danger" disabled={busy} onClick={() => cancelAppointment(confirmCancel)} type="button">取り消す</button>
           </div>
-        ) : null}
-      </form>
-    </div>
+        </div>
+      ) : null}
+    </Modal>
   );
 }
 
@@ -403,7 +403,7 @@ function snapshotPatient(appointment) {
 function candidateLine(patient = {}) {
   const age = ageOn(patient.birthDate);
   return [
-    patient.primaryPatientNumber ? `No.${patient.primaryPatientNumber}` : "",
+    patient.primaryPatientNumber ? `患者番号 ${patient.primaryPatientNumber}` : "",
     patient.birthDate ? birthWithEra(patient.birthDate) : "生年月日なし",
     age === null ? "" : `${age}歳`,
     patient.sex && patient.sex !== "unknown" ? SEX_LABELS[patient.sex] || "" : ""

@@ -9,6 +9,7 @@ import { CancelReceptionDialog, DayHistoryDialog, MarkBadges, MarksDialog, Recep
 import { useEyeApi } from "./eye-api";
 import { waitTimeOf } from "../lib/consult-flow";
 import { DateNav } from "./mini-calendar";
+import { Modal } from "./modal";
 import { usePopoverPlacement } from "./popover-placement";
 import { linkAppointmentToPatient, PatientRegisterDialog, RECEPTION_CHANGED_EVENT } from "./patient-register-dialog";
 import { doctorName, useDoctors } from "./use-doctors";
@@ -663,16 +664,14 @@ export function ReceptionWorkspace() {
       {historyOf ? <ReceptionHistoryDialog api={api} appointment={historyOf} doctorName={(id) => doctorName(doctors, id)} onClose={() => setHistoryOf(null)} /> : null}
       {dayHistoryOpen ? <DayHistoryDialog api={api} appointments={appointments} date={date} doctorName={(id) => doctorName(doctors, id)} onClose={() => setDayHistoryOpen(false)} /> : null}
       {billing.confirm ? (
-        <div className="dialog-backdrop" role="presentation">
-          <div aria-labelledby="rc-billing-heading" aria-modal="true" className="dialog" role="alertdialog">
-            <h2 id="rc-billing-heading">レセコンへ会計情報を渡しますか？</h2>
-            <p>{billing.confirm.patientName}（{queueLabel(billing.confirm)}）の確定済みカルテの会計情報を CSV にして渡し、{billing.confirm.status === "checkout" ? "会計済にします。" : "連携済みにします。"}</p>
-            <div className="dialog-actions">
-              <button className="btn btn-ghost" disabled={billing.busy} onClick={() => setBilling((current) => ({ ...current, confirm: null }))} type="button">キャンセル</button>
-              <button autoFocus className="btn btn-primary" disabled={billing.busy} onClick={() => sendBilling(billing.confirm)} type="button">{billing.busy ? "渡しています…" : "渡す"}</button>
-            </div>
+        <Modal busy={billing.busy} className="dialog" labelledBy="rc-billing-heading" onClose={() => setBilling((current) => ({ ...current, confirm: null }))} role="alertdialog">
+          <h2 id="rc-billing-heading">レセコンへ会計情報を渡しますか？</h2>
+          <p>{billing.confirm.patientName}（{queueLabel(billing.confirm)}）の確定済みカルテの会計情報を CSV にして渡し、{billing.confirm.status === "checkout" ? "会計済にします。" : "連携済みにします。"}</p>
+          <div className="dialog-actions">
+            <button className="btn btn-ghost" disabled={billing.busy} onClick={() => setBilling((current) => ({ ...current, confirm: null }))} type="button">キャンセル</button>
+            <button autoFocus className="btn btn-primary" disabled={billing.busy} onClick={() => sendBilling(billing.confirm)} type="button">{billing.busy ? "渡しています…" : "渡す"}</button>
           </div>
-        </div>
+        </Modal>
       ) : null}
     </main>
   );
@@ -858,11 +857,6 @@ function MemoDialog({ label, note, patientName, text, onCancel, onSave }) {
   const [value, setValue] = useState(text);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  useEffect(() => {
-    const onKey = (event) => { if (event.key === "Escape" && !busy) onCancel(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [busy, onCancel]);
   async function submit(event) {
     event.preventDefault();
     setBusy(true);
@@ -875,18 +869,16 @@ function MemoDialog({ label, note, patientName, text, onCancel, onSave }) {
     }
   }
   return (
-    <div className="dialog-backdrop" role="presentation">
-      <form aria-labelledby="rc-memo-heading" aria-modal="true" className="dialog rc-memo-dialog" onSubmit={submit} role="dialog">
-        <h2 id="rc-memo-heading">{label}（{patientName}）</h2>
-        <p className="muted small">{note}</p>
-        {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
-        <textarea aria-label={label} autoFocus className="input" maxLength={1000} onChange={(event) => setValue(event.target.value)} rows={5} value={value} />
-        <div className="dialog-actions">
-          <button className="btn btn-ghost" disabled={busy} onClick={onCancel} type="button">キャンセル</button>
-          <button className="btn btn-primary" disabled={busy || value.trim() === text.trim()} type="submit">登録</button>
-        </div>
-      </form>
-    </div>
+    <Modal as="form" busy={busy} className="dialog rc-memo-dialog" dirty={value.trim() !== text.trim()} labelledBy="rc-memo-heading" onClose={onCancel} onSubmit={submit}>
+      <h2 id="rc-memo-heading">{label}（{patientName}）</h2>
+      <p className="muted small">{note}</p>
+      {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
+      <textarea aria-label={label} autoFocus className="input" maxLength={1000} onChange={(event) => setValue(event.target.value)} rows={5} value={value} />
+      <div className="dialog-actions">
+        <button className="btn btn-ghost" disabled={busy} onClick={onCancel} type="button">キャンセル</button>
+        <button className="btn btn-primary" disabled={busy || value.trim() === text.trim()} type="submit">登録</button>
+      </div>
+    </Modal>
   );
 }
 

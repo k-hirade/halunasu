@@ -45,7 +45,7 @@ export function PatientSummaryPane({ summary = null, loading = false, error = ""
           {patient?.patientId ? <PatientPhoto name={patient.displayName} patientId={patient.patientId} size="lg" /> : null}
           {patient ? (
             <dl className="ps-dl">
-              <div><dt>患者ID</dt><dd className="mono">{patient.primaryPatientNumber || "—"}</dd></div>
+              <div><dt>患者番号</dt><dd className="mono">{patient.primaryPatientNumber || "—"}</dd></div>
               <div><dt>氏名</dt><dd><strong className="ps-nw">{patient.displayName}</strong>{patient.displayNameKana ? <> <span className="ps-kana">{patient.displayNameKana}</span></> : null}</dd></div>
               <div><dt>性別・生年月日</dt><dd><Breakable parts={[SEX_LABELS[patient.sex] && patient.sex !== "unknown" ? SEX_LABELS[patient.sex] : "", patient.birthDate ? formatDate(patient.birthDate) : "", patient.birthDate ? `（${ageWithMonths(patient.birthDate, date)}）` : ""]} /></dd></div>
               <div><dt>担当医</dt><dd>{summary.doctorName || "—"}</dd></div>

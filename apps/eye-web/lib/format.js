@@ -58,7 +58,7 @@ export function formatRefraction(value = {}) {
 export function patientLine(patient = {}, onDate = undefined) {
   const age = ageOn(patient.birthDate, onDate || undefined);
   return [
-    patient.primaryPatientNumber ? `No.${patient.primaryPatientNumber}` : "",
+    patient.primaryPatientNumber ? `患者番号 ${patient.primaryPatientNumber}` : "",
     age === null ? "" : `${age}歳`,
     SEX_LABELS[patient.sex] || ""
   ].filter(Boolean).join(" ・ ");

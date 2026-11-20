@@ -5,6 +5,7 @@ import { diagnosisName } from "@halunasu/eye-core";
 import { isSuspectedDiagnosis } from "@halunasu/eye-contracts";
 import { useEyeApi } from "./eye-api";
 import { useMasterSearch } from "./chart-shared";
+import { Modal, useChangedSince } from "./modal";
 import { COMMON_DIAGNOSES } from "./patient-banner";
 import { EYE_LABELS, formatDate } from "../lib/format";
 
@@ -257,40 +258,38 @@ function DiagnosisAddDialog({ encounterDate, learning, onAdd, onClose, existing 
   };
 
   return (
-    <div className="dialog-backdrop" role="presentation">
-      <div aria-labelledby="dx-add-heading" className="dialog dialog-wide dx-add-dialog" role="dialog">
-        <h2 id="dx-add-heading">傷病名新規登録</h2>
-        <div className="dx-add-search">
-          <input aria-label="傷病名を検索" autoFocus className="input grow" onChange={(event) => setQuery(event.target.value)} placeholder="傷病名・カナで検索" value={query} />
-          <span aria-describedby={eye ? undefined : "dx-eye-hint"} aria-label="眼（必ず選ぶ）" className={`segmented${eye ? "" : " is-missing"}`} role="group">
-            {EYES.map(([key, label]) => <button aria-pressed={eye === key} key={key} onClick={() => setEye(key)} type="button">{label}</button>)}
-          </span>
-          <label className="check-line small"><input checked={eyeOnly} onChange={(event) => setEyeOnly(event.target.checked)} type="checkbox" />眼科のみ</label>
-        </div>
-        {eye ? null : <p className="dx-eye-hint" id="dx-eye-hint">眼を選んでください（右・左・両）。選ぶと登録できます。</p>}
-        <p className="muted small">開始日は診療日（{formatDate(encounterDate)}）になります。{query.trim() ? "" : "空欄のときは、この医院でよく使う病名を出しています。"}</p>
-        {search.error ? <p className="alert alert-danger small">{search.error}</p> : null}
-        <ul className="dx-add-list">
-          {suggestions.map((entry) => (
-            <li className="dx-add-row" key={entry.key}>
-              <span className="dx-add-name">{entry.name}{entry.code ? <span className="dx-code">{entry.code}</span> : null}{entry.learned ? <span className="muted small"> {entry.learned}回</span> : null}{registeredTag(entry)}</span>
-              {buttons(entry)}
-            </li>
-          ))}
-          {query.trim() && !search.loading && !suggestions.some((entry) => entry.name === query.trim()) ? (
-            <li className="dx-add-row is-free">
-              <span className="dx-add-name">「{query.trim()}」をそのまま登録（コードなし）{registeredTag({ name: query.trim(), code: "" })}</span>
-              {buttons({ name: query.trim(), code: "" })}
-            </li>
-          ) : null}
-          {search.loading ? <li className="muted small">検索中…</li> : null}
-        </ul>
-        {added.length ? <p className="alert alert-ok small" role="status">登録しました: {added.join("、")}</p> : null}
-        <div className="dialog-actions">
-          <button className="btn btn-primary" onClick={onClose} type="button">閉じる</button>
-        </div>
+    <Modal busy={busy} className="dialog dialog-wide dx-add-dialog" labelledBy="dx-add-heading" onClose={onClose}>
+      <h2 id="dx-add-heading">傷病名新規登録</h2>
+      <div className="dx-add-search">
+        <input aria-label="傷病名を検索" autoFocus className="input grow" onChange={(event) => setQuery(event.target.value)} placeholder="傷病名・カナで検索" value={query} />
+        <span aria-describedby={eye ? undefined : "dx-eye-hint"} aria-label="眼（必ず選ぶ）" className={`segmented${eye ? "" : " is-missing"}`} role="group">
+          {EYES.map(([key, label]) => <button aria-pressed={eye === key} key={key} onClick={() => setEye(key)} type="button">{label}</button>)}
+        </span>
+        <label className="check-line small"><input checked={eyeOnly} onChange={(event) => setEyeOnly(event.target.checked)} type="checkbox" />眼科のみ</label>
       </div>
-    </div>
+      {eye ? null : <p className="dx-eye-hint" id="dx-eye-hint">眼を選んでください（右・左・両）。選ぶと登録できます。</p>}
+      <p className="muted small">開始日は診療日（{formatDate(encounterDate)}）になります。{query.trim() ? "" : "空欄のときは、この医院でよく使う病名を出しています。"}</p>
+      {search.error ? <p className="alert alert-danger small">{search.error}</p> : null}
+      <ul className="dx-add-list">
+        {suggestions.map((entry) => (
+          <li className="dx-add-row" key={entry.key}>
+            <span className="dx-add-name">{entry.name}{entry.code ? <span className="dx-code">{entry.code}</span> : null}{entry.learned ? <span className="muted small"> {entry.learned}回</span> : null}{registeredTag(entry)}</span>
+            {buttons(entry)}
+          </li>
+        ))}
+        {query.trim() && !search.loading && !suggestions.some((entry) => entry.name === query.trim()) ? (
+          <li className="dx-add-row is-free">
+            <span className="dx-add-name">「{query.trim()}」をそのまま登録（コードなし）{registeredTag({ name: query.trim(), code: "" })}</span>
+            {buttons({ name: query.trim(), code: "" })}
+          </li>
+        ) : null}
+        {search.loading ? <li className="muted small">検索中…</li> : null}
+      </ul>
+      {added.length ? <p className="alert alert-ok small" role="status">登録しました: {added.join("、")}</p> : null}
+      <div className="dialog-actions">
+        <button className="btn btn-primary" onClick={onClose} type="button">閉じる</button>
+      </div>
+    </Modal>
   );
 }
 
@@ -305,6 +304,7 @@ function DiagnosisEditDialog({ item, onSave, onCancel, onDelete }) {
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const dirty = useChangedSince(draft);
   const search = useMasterSearch("modifier", query);
   const common = useCommonModifiers();
   const candidates = query.trim() ? search.results : common.results;
@@ -322,89 +322,87 @@ function DiagnosisEditDialog({ item, onSave, onCancel, onDelete }) {
   }
 
   return (
-    <div className="dialog-backdrop" role="presentation">
-      <form aria-labelledby="dx-edit-heading" className="dialog dialog-wide dx-edit-dialog" onSubmit={submit} role="dialog">
-        <h2 id="dx-edit-heading">傷病名編集</h2>
-        <div className="dx-edit-grid">
-          <div className="dx-edit-form">
-            <label className="check-line"><input checked={Boolean(draft.primary)} onChange={(event) => set({ primary: event.target.checked })} type="checkbox" />主病</label>
-            <div className="dx-edit-name">
-              <label className="field grow">
-                <span>傷病名{draft.code ? <span className="dx-code">{draft.code}</span> : null}</span>
-                <input aria-label="傷病名" className="input" maxLength={200} onChange={(event) => set({ name: event.target.value })} required value={draft.name} />
-              </label>
-              <label className="check-line"><input checked={draft.suspected} onChange={(event) => set({ suspected: event.target.checked })} type="checkbox" />疑い</label>
-            </div>
-            {draft.modifiers.length ? (
-              <p className="dx-modifiers">
-                表示: <strong>{diagnosisName(draft)}</strong>
-                {draft.modifiers.map((modifier, index) => (
-                  <button aria-label={`修飾語「${modifier.name}」を外す`} className="btn btn-chip" key={`${modifier.code || modifier.name}-${index}`} onClick={() => set({ modifiers: draft.modifiers.filter((_, modifierIndex) => modifierIndex !== index) })} type="button">{modifier.name} ×</button>
-                ))}
-              </p>
-            ) : null}
-            <label className="field">
-              <span>眼</span>
-              <select aria-label="眼" className="input" onChange={(event) => set({ eye: event.target.value })} value={draft.eye || "ou"}>
-                {Object.entries(EYE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-              </select>
+    <Modal as="form" busy={busy} className="dialog dialog-wide dx-edit-dialog" dirty={dirty} labelledBy="dx-edit-heading" onClose={onCancel} onSubmit={submit}>
+      <h2 id="dx-edit-heading">傷病名編集</h2>
+      <div className="dx-edit-grid">
+        <div className="dx-edit-form">
+          <label className="check-line"><input checked={Boolean(draft.primary)} onChange={(event) => set({ primary: event.target.checked })} type="checkbox" />主病</label>
+          <div className="dx-edit-name">
+            <label className="field grow">
+              <span>傷病名{draft.code ? <span className="dx-code">{draft.code}</span> : null}</span>
+              <input aria-label="傷病名" className="input" maxLength={200} onChange={(event) => set({ name: event.target.value })} required value={draft.name} />
             </label>
-            <label className="field">
-              <span>傷病名補足</span>
-              <input aria-label="傷病名補足" className="input" maxLength={200} onChange={(event) => set({ note: event.target.value })} value={draft.note || ""} />
-            </label>
-            <label className="field">
-              <span>開始日</span>
-              <input aria-label="開始日" className="input input-date" onChange={(event) => set({ startDate: event.target.value })} type="date" value={draft.startDate || ""} />
-            </label>
-            <fieldset className="field plain-fieldset">
-              <legend className="field-legend">転帰</legend>
-              <div className="dx-outcomes" role="radiogroup">
-                {OUTCOMES.map(([value, label]) => (
-                  <label className="check-line" key={value || "active"}>
-                    <input checked={outcome === value} name="dx-outcome" onChange={() => setOutcome(value)} type="radio" />{label}
-                  </label>
-                ))}
-              </div>
-              {draft.status === "resolved" ? (
-                <label className="inline-field"><span>転帰日</span><input aria-label="転帰日" className="input input-date" onChange={(event) => set({ endDate: event.target.value })} type="date" value={draft.endDate || ""} /></label>
-              ) : null}
-            </fieldset>
-            <label className="field">
-              <span>診療科</span>
-              <input aria-label="診療科" className="input" maxLength={40} onChange={(event) => set({ department: event.target.value })} value={draft.department || ""} />
-            </label>
+            <label className="check-line"><input checked={draft.suspected} onChange={(event) => set({ suspected: event.target.checked })} type="checkbox" />疑い</label>
           </div>
-          <div className="dx-edit-modifiers">
-            <h3>修飾語</h3>
-            <input aria-label="修飾語を検索" className="input" onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") event.preventDefault(); }} placeholder="修飾語を検索（例: 急性・術後）" value={query} />
-            <p className="muted small dx-modifier-hint">{query.trim() ? "押すと傷病名に付きます。" : "よく使う修飾語です。押すと傷病名に付きます（前 = 病名の前、後 = 病名の後）。"}</p>
-            <ul aria-label="修飾語の候補" className="dx-modifier-list dx-modifier-candidates">
-              {candidates.map((modifier) => (
-                <li key={modifier.code}>
-                  <button aria-label={`修飾語「${modifier.name}」を付ける（${modifier.position === "suffix" ? "後" : "前"}）`} className="dx-modifier-pick" onClick={() => addModifier(modifier)} type="button">
-                    <span aria-hidden="true" className={`dx-modifier-pos${modifier.position === "suffix" ? " is-suffix" : ""}`}>{modifier.position === "suffix" ? "後" : "前"}</span>
-                    <span>{modifier.name}</span>
-                  </button>
-                </li>
+          {draft.modifiers.length ? (
+            <p className="dx-modifiers">
+              表示: <strong>{diagnosisName(draft)}</strong>
+              {draft.modifiers.map((modifier, index) => (
+                <button aria-label={`修飾語「${modifier.name}」を外す`} className="btn btn-chip" key={`${modifier.code || modifier.name}-${index}`} onClick={() => set({ modifiers: draft.modifiers.filter((_, modifierIndex) => modifierIndex !== index) })} type="button">{modifier.name} ×</button>
               ))}
-              {query.trim() && search.loading ? <li className="muted small">検索中…</li> : null}
-              {query.trim() && !search.loading && !search.results.length ? <li className="muted small">見つかりません。</li> : null}
-              {!query.trim() && common.error ? <li className="muted small">候補を読み込めませんでした。検索してください。</li> : null}
-            </ul>
-          </div>
+            </p>
+          ) : null}
+          <label className="field">
+            <span>眼</span>
+            <select aria-label="眼" className="input" onChange={(event) => set({ eye: event.target.value })} value={draft.eye || "ou"}>
+              {Object.entries(EYE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
+          <label className="field">
+            <span>傷病名補足</span>
+            <input aria-label="傷病名補足" className="input" maxLength={200} onChange={(event) => set({ note: event.target.value })} value={draft.note || ""} />
+          </label>
+          <label className="field">
+            <span>開始日</span>
+            <input aria-label="開始日" className="input input-date" onChange={(event) => set({ startDate: event.target.value })} type="date" value={draft.startDate || ""} />
+          </label>
+          <fieldset className="field plain-fieldset">
+            <legend className="field-legend">転帰</legend>
+            <div className="dx-outcomes" role="radiogroup">
+              {OUTCOMES.map(([value, label]) => (
+                <label className="check-line" key={value || "active"}>
+                  <input checked={outcome === value} name="dx-outcome" onChange={() => setOutcome(value)} type="radio" />{label}
+                </label>
+              ))}
+            </div>
+            {draft.status === "resolved" ? (
+              <label className="inline-field"><span>転帰日</span><input aria-label="転帰日" className="input input-date" onChange={(event) => set({ endDate: event.target.value })} type="date" value={draft.endDate || ""} /></label>
+            ) : null}
+          </fieldset>
+          <label className="field">
+            <span>診療科</span>
+            <input aria-label="診療科" className="input" maxLength={40} onChange={(event) => set({ department: event.target.value })} value={draft.department || ""} />
+          </label>
         </div>
-        <div className="dialog-actions">
-          {confirmDelete ? (
-            <button className="btn btn-danger dialog-action-left" onClick={onDelete} type="button">本当に削除する</button>
-          ) : (
-            <button className="btn btn-ghost danger-text dialog-action-left" onClick={() => setConfirmDelete(true)} type="button">削除</button>
-          )}
-          <button className="btn btn-ghost" onClick={onCancel} type="button">キャンセル</button>
-          <button className="btn btn-primary" disabled={busy} type="submit">保存</button>
+        <div className="dx-edit-modifiers">
+          <h3>修飾語</h3>
+          <input aria-label="修飾語を検索" className="input" onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") event.preventDefault(); }} placeholder="修飾語を検索（例: 急性・術後）" value={query} />
+          <p className="muted small dx-modifier-hint">{query.trim() ? "押すと傷病名に付きます。" : "よく使う修飾語です。押すと傷病名に付きます（前 = 病名の前、後 = 病名の後）。"}</p>
+          <ul aria-label="修飾語の候補" className="dx-modifier-list dx-modifier-candidates">
+            {candidates.map((modifier) => (
+              <li key={modifier.code}>
+                <button aria-label={`修飾語「${modifier.name}」を付ける（${modifier.position === "suffix" ? "後" : "前"}）`} className="dx-modifier-pick" onClick={() => addModifier(modifier)} type="button">
+                  <span aria-hidden="true" className={`dx-modifier-pos${modifier.position === "suffix" ? " is-suffix" : ""}`}>{modifier.position === "suffix" ? "後" : "前"}</span>
+                  <span>{modifier.name}</span>
+                </button>
+              </li>
+            ))}
+            {query.trim() && search.loading ? <li className="muted small">検索中…</li> : null}
+            {query.trim() && !search.loading && !search.results.length ? <li className="muted small">見つかりません。</li> : null}
+            {!query.trim() && common.error ? <li className="muted small">候補を読み込めませんでした。検索してください。</li> : null}
+          </ul>
         </div>
-      </form>
-    </div>
+      </div>
+      <div className="dialog-actions">
+        {confirmDelete ? (
+          <button className="btn btn-danger dialog-action-left" onClick={onDelete} type="button">本当に削除する</button>
+        ) : (
+          <button className="btn btn-ghost danger-text dialog-action-left" onClick={() => setConfirmDelete(true)} type="button">削除</button>
+        )}
+        <button className="btn btn-ghost" onClick={onCancel} type="button">キャンセル</button>
+        <button className="btn btn-primary" disabled={busy} type="submit">保存</button>
+      </div>
+    </Modal>
   );
 }
 
@@ -426,23 +424,22 @@ function BulkOutcomeDialog({ defaultDate, onSave, onCancel }) {
   const [endDate, setEndDate] = useState(defaultDate);
   const [outcome, setOutcome] = useState("cured");
   const [busy, setBusy] = useState(false);
+  const dirty = useChangedSince({ endDate, outcome });
   return (
-    <div className="dialog-backdrop" role="presentation">
-      <div aria-labelledby="dx-bulk-heading" className="dialog" role="dialog">
-        <h2 id="dx-bulk-heading">一括転帰</h2>
-        <p className="muted small">選んだ病名のうち、転帰がまだ入っていないものにだけ入れます。</p>
-        <label className="field"><span>転帰日</span><input aria-label="転帰日" className="input input-date" onChange={(event) => setEndDate(event.target.value)} type="date" value={endDate} /></label>
-        <label className="field">
-          <span>転帰</span>
-          <select aria-label="転帰" className="input" onChange={(event) => setOutcome(event.target.value)} value={outcome}>
-            {OUTCOMES.filter(([value]) => value).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select>
-        </label>
-        <div className="dialog-actions">
-          <button className="btn btn-ghost" onClick={onCancel} type="button">キャンセル</button>
-          <button className="btn btn-primary" disabled={busy || !endDate} onClick={async () => { setBusy(true); await onSave({ outcome, endDate }); setBusy(false); }} type="button">登録</button>
-        </div>
+    <Modal busy={busy} className="dialog" dirty={dirty} labelledBy="dx-bulk-heading" onClose={onCancel}>
+      <h2 id="dx-bulk-heading">一括転帰</h2>
+      <p className="muted small">選んだ病名のうち、転帰がまだ入っていないものにだけ入れます。</p>
+      <label className="field"><span>転帰日</span><input aria-label="転帰日" className="input input-date" onChange={(event) => setEndDate(event.target.value)} type="date" value={endDate} /></label>
+      <label className="field">
+        <span>転帰</span>
+        <select aria-label="転帰" className="input" onChange={(event) => setOutcome(event.target.value)} value={outcome}>
+          {OUTCOMES.filter(([value]) => value).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select>
+      </label>
+      <div className="dialog-actions">
+        <button className="btn btn-ghost" onClick={onCancel} type="button">キャンセル</button>
+        <button className="btn btn-primary" disabled={busy || !endDate} onClick={async () => { setBusy(true); await onSave({ outcome, endDate }); setBusy(false); }} type="button">登録</button>
       </div>
-    </div>
+    </Modal>
   );
 }

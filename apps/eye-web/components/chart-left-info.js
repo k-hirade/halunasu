@@ -89,8 +89,8 @@ export function PatientInfoTab({ patient: snapshot, profile, context, onEditProf
             <tr><th scope="row">性別</th><td>{SEX_FULL[shown.sex] || SEX_LABELS[shown.sex] || "—"}</td></tr>
             <tr><th scope="row">生年月日</th><td>{birthText(shown.birthDate) || "—"}</td></tr>
             <tr><th scope="row">年齢</th><td>{age === null ? "—" : `${age}歳`}</td></tr>
-            <tr><th scope="row">住所</th><td>{patient ? addressText(contact) || <span className="muted">未登録</span> : <span className="muted">読み込み中…</span>}</td></tr>
-            <tr><th scope="row">電話番号</th><td className="mono">{patient ? (phones.length ? phones.join(" ／ ") : <span className="muted">未登録</span>) : <span className="muted">読み込み中…</span>}</td></tr>
+            <tr><th scope="row">住所</th><td>{patient ? addressText(contact) || <span className="muted">未記入</span> : <span className="muted">読み込み中…</span>}</td></tr>
+            <tr><th scope="row">電話番号</th><td className="mono">{patient ? (phones.length ? phones.join(" ／ ") : <span className="muted">未記入</span>) : <span className="muted">読み込み中…</span>}</td></tr>
           </tbody>
         </table>
       </section>
