@@ -302,7 +302,7 @@ export function HomeWorkspace() {
     return (
       <tr
         aria-selected={isSelected}
-        className={`cl-row stage-${stage}${isSelected ? " is-selected" : ""}`}
+        className={`consult-row stage-${stage}${isSelected ? " is-selected" : ""}`}
         data-row-id={item.appointmentId}
         key={item.appointmentId}
         onClick={() => selectRow(item)}

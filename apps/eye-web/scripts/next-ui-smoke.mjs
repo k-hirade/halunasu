@@ -1141,7 +1141,7 @@ async function runOrthoptistFlow(browser) {
   // 診察: 受付で検査を終えた患者が「診察待ち」に出て、ナビに人数が出る。要対応のチップで一覧を切り替える
   // 患者一覧: 最初は「診察待」のタブ。行を 1 回押すと右に概要（カルテは開かない）
   await page.getByRole("heading", { name: "診察", exact: true }).waitFor();
-  const waitingRow = page.locator(".cl-row.stage-waiting").filter({ hasText: "試験 一郎" });
+  const waitingRow = page.locator(".consult-row.stage-waiting").filter({ hasText: "試験 一郎" });
   await waitingRow.waitFor();
   assert.equal(await page.getByRole("tab", { name: /^診察待/u }).getAttribute("aria-selected"), "true");
   assert.equal((await page.locator(".eh-tool-list .eh-badge").innerText()).trim(), "1");
@@ -1169,7 +1169,7 @@ async function runOrthoptistFlow(browser) {
   await page.getByRole("tab", { name: /^未確定カルテ/u }).click();
   await page.getByRole("region", { name: "未確定カルテ" }).waitFor();
   await page.getByRole("tab", { name: /^全て/u }).click();
-  await page.locator(".cl-row").filter({ hasText: "試験 一郎" }).waitFor();
+  await page.locator(".consult-row").filter({ hasText: "試験 一郎" }).waitFor();
   await openPatientFromSearch(page, "試験", "試験 一郎");
   await page.getByRole("button", { name: "初診カルテを作成" }).click();
   await page.getByRole("heading", { name: "検査", exact: true }).waitFor();
