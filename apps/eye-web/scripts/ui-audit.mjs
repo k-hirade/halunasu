@@ -229,6 +229,15 @@ const STATES = {
   "editor-dark": { path: editorPath },
   "editor-tab-info": leftTab("患者情報"),
   "editor-tab-exam": leftTab("検査"),
+  // 視力のグラフ（0.01〜2.0 の対数軸）: 矯正視力の行をグラフに出す
+  "editor-tab-exam-va": {
+    path: editorPath,
+    run: async (page, view) => {
+      await leftTab("検査").run(page, view);
+      for (const box of await page.locator(".chart-left").getByRole("checkbox", { name: /視力をグラフに出す/u }).all()) await box.check();
+      await page.locator(".chart-left .cl-graph").last().scrollIntoViewIfNeeded();
+    }
+  },
   "editor-tab-historylist": leftTab("診療履歴"),
   "editor-tab-drugs": leftTab("薬歴"),
   "editor-tab-files": leftTab("ファイル"),
