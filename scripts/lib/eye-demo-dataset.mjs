@@ -59,7 +59,12 @@ export const EYE_DEMO_PHRASES = Object.freeze([
   { target: "findings.lens", label: "IOL 良好", text: "IOL 嚢内固定 良好" },
   { target: "findings.fundus", label: "眼底 異常なし", text: "異常なし" },
   { target: "plan", label: "点眼継続", text: "点眼継続。次回同様。" },
-  { target: "plan", label: "アドヒアランス指導", text: "点眼の時間を決めるよう指導（歯みがきの後など）。" }
+  { target: "plan", label: "アドヒアランス指導", text: "点眼の時間を決めるよう指導（歯みがきの後など）。" },
+  // 主訴・所見（自由記載）に S)・O)・A)・P) の頭をつけて入れる定型文（区分つき。カルテの定型文の一覧で S・O・A・P の見出しに分かれる）
+  { target: "findingsText", label: "S) 自覚症状の変化なし", text: "S) 自覚症状の変化なし", soap: "S" },
+  { target: "findingsText", label: "O) 新たな所見なし", text: "O) 前眼部・眼底に新たな所見なし", soap: "O" },
+  { target: "findingsText", label: "A) 状態は安定", text: "A) 状態は安定している", soap: "A" },
+  { target: "findingsText", label: "P) 点眼継続・同間隔で再診", text: "P) 点眼を続け、同じ間隔で再診", soap: "P" }
 ]);
 
 export function buildEyeDemoDataset({ today }) {

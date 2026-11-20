@@ -68,6 +68,9 @@ export function useEncounterDraft(encounterId, { allowFinalizedEdit = false } = 
       orderSets: bootstrapPayload.orderSets || [],
       setFolders: bootstrapPayload.setFolders || [],
       phrases: bootstrapPayload.phrases || [],
+      // 記載の型（医師ごと。有効なものだけ）と医師の氏名（「型」ボタンの候補に出す）
+      chartTemplates: bootstrapPayload.chartTemplates || [],
+      printNames: bootstrapPayload.printNames || {},
       // 医院の基準値（バイタル・検査）。古い API で無いときは既定の値（chart-left が使う）
       referenceRanges: bootstrapPayload.clinicConfig?.referenceRanges || null
     });

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { COPY_DRAG_TYPE } from "./chart-shared";
+import { closeMenu, COPY_DRAG_TYPE, insertAtCursor } from "./chart-shared";
 import { CounsellingFields, PatientHistoryLine, previousCdHint } from "./encounter-extras";
 import { NumberField } from "./exam-inputs";
 import { SketchEditDialog, SketchTemplateDialog, SketchThumb } from "./sketch-pad";
@@ -41,7 +41,7 @@ function findingsFilled(findings = {}) {
 
 // 中央の左の列「主訴・所見」（デジカルの 1 つの自由記載＋シェーマ）。上に検査の帯、下に追加の欄。
 export function FindingsColumn({
-  content, update, replaceContent, editable, previous, profile, onEditHistory, textareaRef, onDropCopy, onClearText
+  content, update, replaceContent, editable, previous, profile, onEditHistory, textareaRef, onDropCopy, onClearText, templates = []
 }) {
   const [fontSize, setFontSize] = useState(14);
   const [opened, setOpened] = useState(() => new Set());
@@ -111,6 +111,7 @@ export function FindingsColumn({
           <button aria-label="文字を小さく" className="col-tool" disabled={fontSize === FONT_SIZES[0]} onClick={() => changeFont(-1)} type="button">A−</button>
           <span className="col-tool-value" aria-label="文字の大きさ">{fontSize}</span>
           <button aria-label="文字を大きく" className="col-tool" disabled={fontSize === FONT_SIZES.at(-1)} onClick={() => changeFont(1)} type="button">A＋</button>
+          {editable && templates.length ? <TemplateMenu onInsert={(text) => update(["findingsText"], insertAtCursor(textareaRef?.current, content.findingsText, text))} templates={templates} /> : null}
           {editable && content.findingsText ? <button aria-label="主訴・所見の自由記載を消す" className="col-tool" onClick={onClearText} type="button">🗑</button> : null}
         </span>
       </div>
@@ -199,6 +200,27 @@ export function FindingsColumn({
         />
       ) : null}
     </section>
+  );
+}
+
+// 記載の型を入れる（要望 #40。型は設定の「記載の型」で医師ごとに決める）。カーソルの位置に入れる（自由記載の外なら末尾）。
+// 候補は このカルテの担当医 → 自分 → ほかの医師 の順。1 つならすぐ入れ、2 つ以上なら選ぶ。
+// 押してもフォーカスを自由記載から外さない（カーソルの位置を保つ）。
+const keepFocus = (event) => event.preventDefault();
+
+function TemplateMenu({ templates, onInsert }) {
+  if (templates.length === 1) {
+    return <button className="col-tool" onClick={() => onInsert(templates[0].text)} onMouseDown={keepFocus} title={`${templates[0].name}の記載の型を入れます`} type="button">型を入れる</button>;
+  }
+  return (
+    <details className="more-menu findings-template-menu">
+      <summary className="col-tool" onMouseDown={keepFocus} title="記載の型を入れます">型を入れる ▾</summary>
+      <div className="more-menu-list">
+        {templates.map((template) => (
+          <button className="btn btn-ghost" key={template.memberId} onClick={(event) => { closeMenu(event); onInsert(template.text); }} onMouseDown={keepFocus} title={template.text} type="button">{template.name}の型</button>
+        ))}
+      </div>
+    </details>
   );
 }
 

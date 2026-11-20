@@ -462,6 +462,36 @@ button.phrase-tile:hover:not(:disabled) {
   gap: 2px;
 }
 
+/* 定型文の S・O・A・P（要望 #40）: 入る欄の小さな添え書きと、区分の絞り込み */
+.phrase-tile-target {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 主訴・所見の見出しの「型を入れる」（記載の型が 2 つ以上なら選ぶ） */
+.findings-template-menu > summary.col-tool {
+  align-items: center;
+  display: inline-flex;
+}
+
+.findings-template-menu .more-menu-list .btn {
+  justify-content: flex-start;
+}
+
+.flow-chips.phrase-soap-chips {
+  margin: 0 0 6px;
+}
+
+.phrase-soap-chips .flow-chip {
+  font-size: var(--fs-sm);
+  gap: 4px;
+  min-height: 32px;
+  padding: 6px 8px 4px;
+}
+
 .phrase-tile-eyes .btn.btn-chip {
   flex: 1 1 0;
   font-size: var(--fs-xs);

@@ -246,6 +246,25 @@ test("accepts the new phrase targets", async () => {
   assert.ok(!PER_EYE_PHRASE_TARGETS.includes("findings.general"));
 });
 
+test("phrases take an optional SOAP category and chart templates are validated", async () => {
+  const { validatePhraseInput, validateChartTemplateInput, PHRASE_SOAP_CATEGORIES, MAX_CHART_TEMPLATE_TEXT, auditEventCategory } = await import("../src/index.js");
+  // 区分を送らない古い画面の保存では soap を持たない（保存済みの区分を消さない）
+  assert.equal("soap" in validatePhraseInput({ target: "plan", text: "経過観察" }), false);
+  assert.equal(validatePhraseInput({ target: "findingsText", text: "S) かわりなし", soap: "S" }).soap, "S");
+  assert.equal(validatePhraseInput({ target: "plan", text: "x", soap: "" }).soap, "", "empty means: decide from the target");
+  assert.equal(validatePhraseInput({ target: "plan", text: "x", soap: "none" }).soap, "none");
+  assert.throws(() => validatePhraseInput({ target: "plan", text: "x", soap: "X" }), (error) => error.field === "soap");
+  assert.deepEqual(PHRASE_SOAP_CATEGORIES, ["S", "O", "A", "P", "none"]);
+
+  assert.deepEqual(validateChartTemplateInput({ text: "S)\r\nO)\nA)\nP)\n\n" }), { expectedRevision: 0, text: "S)\nO)\nA)\nP)", active: true });
+  assert.equal(validateChartTemplateInput({ expectedRevision: 3, text: "", active: false }).active, false);
+  assert.throws(() => validateChartTemplateInput({ text: "x".repeat(MAX_CHART_TEMPLATE_TEXT + 1) }), (error) => error.field === "text");
+  assert.throws(() => validateChartTemplateInput({ expectedRevision: -1 }), (error) => error.field === "expectedRevision");
+  assert.throws(() => validateChartTemplateInput({ active: "yes" }), (error) => error.field === "active");
+  assert.throws(() => validateChartTemplateInput([]), (error) => error.field === "body");
+  assert.equal(auditEventCategory("eye.chart_template_saved"), "settings");
+});
+
 test("next-visit plan items and exam records are optional and keep old content unchanged", async () => {
   const { validateExamRecordInput, PLAN_ITEM_EYES } = await import("../src/index.js");
   const old = validateEncounterContent({ nextVisit: { intervalWeeks: 4 }, examRecords: [] });

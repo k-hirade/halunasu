@@ -6,6 +6,7 @@ import {
   chartingEncounterPath,
   careFeeAuditLogPath,
   eyeAuditLogPath,
+  eyeChartTemplatePath,
   eyeDrugPresetPath,
   eyeEncounterPath,
   eyeEncounterVersionPath,
@@ -93,6 +94,7 @@ test("builds platform document paths", () => {
   assert.equal(eyeDrugPresetPath("org_123", "edp_1"), "organizations/org_123/eye_drug_presets/edp_1");
   assert.equal(eyeSetFolderPath("org_123", "esf_1"), "organizations/org_123/eye_set_folders/esf_1");
   assert.equal(eyeAuditLogPath("org_123", "eal_1"), "organizations/org_123/eye_audit_logs/eal_1");
+  assert.equal(eyeChartTemplatePath("org_123", "mem_1"), "organizations/org_123/eye_chart_templates/mem_1");
   assert.equal(careFeeMonthlyClaimPath("org_123", "ccm_456"), "organizations/org_123/care_fee_monthly_claims/ccm_456");
   assert.equal(careFeeMonthlyRunPath("org_123", "cmr_456"), "organizations/org_123/care_fee_monthly_runs/cmr_456");
   assert.equal(careFeeFacilitySettingsPath("org_123", "fac_456"), "organizations/org_123/care_fee_facility_settings/fac_456");

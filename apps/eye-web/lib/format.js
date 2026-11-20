@@ -153,6 +153,7 @@ export function minutesSince(iso, now = Date.now()) {
 export const COMMON_USAGES = ["就寝前", "朝", "朝・夕", "1日3回 朝昼夕", "1日4回 毎食後・就寝前", "疼痛時", "かゆい時", "起床時"];
 // 定型文の差し込み先。並びは S → O → A → P → その他（設定とカルテの「セット」で同じ順に出す）。
 export const PHRASE_TARGET_LABELS = {
+  findingsText: "主訴・所見（自由記載）",
   chiefComplaint: "主訴",
   history: "現病歴・経過",
   "findings.anterior": "所見：前眼部",
@@ -167,6 +168,8 @@ export const PHRASE_TARGET_LABELS = {
 };
 // 差し込み先の SOAP の区分（目印の表示用。空はスタッフメモなど区分なし）
 export const PHRASE_TARGET_SOAP = {
+  // 主訴・所見の自由記載は S〜P のどれも書くので区分なし（定型文ごとの区分か本文の頭「S)」で分ける。lib/chart-soap.js）
+  findingsText: "",
   chiefComplaint: "S",
   history: "S",
   "findings.anterior": "O",

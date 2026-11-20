@@ -95,6 +95,7 @@ export const AUDIT_EVENT_LABELS = {
   "eye.drug_preset_saved": "薬剤設定を保存",
   "eye.order_set_saved": "セットを保存",
   "eye.phrase_saved": "定型文を保存",
+  "eye.chart_template_saved": "記載の型を保存",
   "eye.staff_profile_saved": "印刷用の氏名を保存",
   "eye.set_folder_saved": "セットのフォルダを保存",
   "eye.facility_settings_saved": "医療機関情報を保存",

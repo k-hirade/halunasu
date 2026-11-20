@@ -35,6 +35,7 @@ import { useMediaQuery } from "./use-media-query";
 import { isModalOpen, Modal } from "./modal";
 import { addDays, formatDate, formatDateTime, phraseTargetPath, prescriptionText, todayIso, VISIT_TYPE_LABELS } from "../lib/format";
 import { applyCopy, appendRpRows } from "../lib/chart-copy";
+import { copyBaseContent, isUntouchedTemplate, orderChartTemplates } from "../lib/chart-soap";
 import { chartGuide, GUIDE_STATE_LABELS } from "../lib/chart-guide";
 import { approvalBriefOf, approvalGuideItem } from "../lib/approval";
 import { displayDrugName } from "../lib/drug-name";
@@ -449,7 +450,7 @@ export function EncounterEditor({ encounterId }) {
   }
 
   function copyFrom(kind, source, payload = {}) {
-    const result = applyCopy(content, source.content, kind, payload);
+    const result = applyCopy(copyBaseContent(content, source.content, kind, bootstrap.chartTemplates), source.content, kind, payload);
     replaceContent(result.content);
     setNotice(`${formatDate(source.encounterDate)} のカルテから${result.label}を複写しました。${result.note}`);
     if (!wide && drawer === "left") setDrawer(null);
@@ -533,7 +534,7 @@ export function EncounterEditor({ encounterId }) {
       ...rekey(order), orderId: `ord_${stamp}${index}`, status: "planned", statusChangedAt: "", statusChangedBy: null
     }))];
     const plan = orderSet.plan && !content.plan.includes(orderSet.plan) ? [content.plan, orderSet.plan].filter(Boolean).join("\n") : content.plan;
-    const findingsText = content.findingsText || orderSet.findingsText || "";
+    const findingsText = (orderSet.findingsText && isUntouchedTemplate(content.findingsText, bootstrap.chartTemplates) ? "" : content.findingsText) || orderSet.findingsText || "";
     replaceContent({ ...content, prescriptions, orders, plan, ...(findingsText ? { findingsText } : {}) });
     let dxNote = "";
     if (orderSet.diagnoses?.length && context?.canEditDiagnoses) {
@@ -822,6 +823,7 @@ export function EncounterEditor({ encounterId }) {
               previous={previous}
               profile={profile}
               replaceContent={replaceContent}
+              templates={orderChartTemplates(bootstrap.chartTemplates, { encounterMemberId: encounter.templateMemberId, selfMemberId: context?.memberId, names: bootstrap.printNames })}
               textareaRef={findingsRef}
               update={update}
             />

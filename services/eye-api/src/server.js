@@ -107,6 +107,7 @@ import { defaultMasterIndex, MASTER_SEARCH_LIMIT, parseLookupCodes } from "./mas
 import { commonModifiers } from "./modifier-common.js";
 import { handleRegularOrderRoute, withoutRegularOrders } from "./regular-orders.js";
 import { createId } from "./ids.js";
+import { activeChartTemplates, chartTemplateForNewEncounter, handleChartTemplateRoute, resolveTemplateDoctor } from "./chart-templates.js";
 import {
   applyFinalizeApproval,
   approvalBrief,
@@ -241,7 +242,7 @@ async function routeEyeApiRequest(input = {}) {
   if (receptionResponse) return receptionResponse;
 
   if (method === "GET" && matches(parts, ["v1", "eye", "bootstrap"])) {
-    const [facilities, drugPresets, orderSets, setFolders, phrases, staff, facilitySettings, clinicConfig] = await Promise.all([
+    const [facilities, drugPresets, orderSets, setFolders, phrases, staff, facilitySettings, clinicConfig, chartTemplates] = await Promise.all([
       platformStore.listFacilities(orgId),
       eyeStore.listDrugPresets(orgId),
       Promise.resolve(eyeStore.listOrderSets(orgId)).then(withoutRegularOrders).then(sortSets),
@@ -252,7 +253,9 @@ async function routeEyeApiRequest(input = {}) {
       // 医療機関情報（設定）。読めなくても起動は止めず、基本の施設情報で紙を作る。
       loadFacilitySettings(eyeStore, orgId),
       // 施設管理の追加の設定（診療時間・帳票設定など。受付ラベル・患者マークは受付の設定 /v1/eye/reception-settings）。読めなくても起動は止めず、既定の値を使う。
-      loadClinicConfig(eyeStore, orgId, ["labLists", "clinicHours", "printSettings", "otherSettings", "approval", "referenceRanges"])
+      loadClinicConfig(eyeStore, orgId, ["labLists", "clinicHours", "printSettings", "otherSettings", "approval", "referenceRanges"]),
+      // 記載の型（医師ごと。有効なものだけ）。読めなくても起動は止めない。
+      Promise.resolve().then(() => eyeStore.listChartTemplates(orgId)).then(activeChartTemplates).catch(() => [])
     ]);
     const printNames = Object.fromEntries(staff.map((item) => [item.memberId, item.resolvedName]));
     return ok({
@@ -261,7 +264,7 @@ async function routeEyeApiRequest(input = {}) {
       facilities: facilitiesWithSettings(facilities, facilitySettings),
       facilitySettings: facilitySettingsView(facilitySettings),
       // オーダーの候補 = 既定の候補 + 施設管理の院内検査項目（有効なもの）
-      drugPresets, orderSets, setFolders, phrases, orderCatalog: [...DEFAULT_ORDER_CATALOG, ...labCatalogItems(clinicConfig.labLists.value)], printNames,
+      drugPresets, orderSets, setFolders, phrases, orderCatalog: [...DEFAULT_ORDER_CATALOG, ...labCatalogItems(clinicConfig.labLists.value)], printNames, chartTemplates,
       clinicConfig: { clinicHours: clinicConfig.clinicHours.value, printSettings: clinicConfig.printSettings.value, otherSettings: clinicConfig.otherSettings.value,
         // カルテの承認を使うか・基準値（バイタル・検査）
         approval: clinicConfig.approval.value, referenceRanges: clinicConfig.referenceRanges.value } });
@@ -395,11 +398,11 @@ async function routeEyeApiRequest(input = {}) {
     const patients = await platformStore.listPatients(orgId);
     const bundles = [];
     for (const patient of patients) bundles.push(await exportPatient(eyeStore, orgId, patient));
-    const [drugPresets, orderSets, setFolders, phrases, facilitySettings, clinicConfig, receptionSettings] = await Promise.all([eyeStore.listDrugPresets(orgId), eyeStore.listOrderSets(orgId), eyeStore.listSetFolders(orgId), eyeStore.listPhrases(orgId), loadFacilitySettings(eyeStore, orgId), loadClinicConfig(eyeStore, orgId), loadReceptionSettings(eyeStore, orgId)]);
+    const [drugPresets, orderSets, setFolders, phrases, facilitySettings, clinicConfig, receptionSettings, chartTemplates] = await Promise.all([eyeStore.listDrugPresets(orgId), eyeStore.listOrderSets(orgId), eyeStore.listSetFolders(orgId), eyeStore.listPhrases(orgId), loadFacilitySettings(eyeStore, orgId), loadClinicConfig(eyeStore, orgId), loadReceptionSettings(eyeStore, orgId), eyeStore.listChartTemplates(orgId)]);
     await audit({ eventType: "eye.clinic_exported", targetType: "organization", targetId: orgId, safePayload: { patientCount: bundles.length } });
     // 施設管理の追加の設定は保存したものだけを入れる（形は { 項目: { value, revision } }）
     const savedConfig = Object.fromEntries(Object.entries(clinicConfig).filter(([, item]) => item.revision > 0));
-    return ok({ format: "halunasu-eye-export-v1", exportedAt: now, orgId, settings: { drugPresets, orderSets, setFolders, phrases, ...(facilitySettings ? { facilitySettings: facilitySettingsView(facilitySettings) } : {}), ...(Object.keys(savedConfig).length ? { clinicConfig: savedConfig } : {}), ...(receptionSettings.revision > 0 || receptionSettings.legacyRevision ? { receptionSettings } : {}) }, patients: bundles });
+    return ok({ format: "halunasu-eye-export-v1", exportedAt: now, orgId, settings: { drugPresets, orderSets, setFolders, phrases, ...(facilitySettings ? { facilitySettings: facilitySettingsView(facilitySettings) } : {}), ...(Object.keys(savedConfig).length ? { clinicConfig: savedConfig } : {}), ...(receptionSettings.revision > 0 || receptionSettings.legacyRevision ? { receptionSettings } : {}), ...(chartTemplates.length ? { chartTemplates } : {}) }, patients: bundles });
   }
 
   if (method === "POST" && matches(parts, ["v1", "eye", "patients"])) {
@@ -535,7 +538,7 @@ async function routeEyeApiRequest(input = {}) {
     const patient = await requirePatient(platformStore, orgId, validated.patientId);
     const copySource = await resolveCopySource(eyeStore, orgId, patient.patientId, validated);
     const planSource = await resolvePlanSource(eyeStore, orgId, patient.patientId, validated.encounterDate);
-    const encounter = buildDraftEncounter({
+    const draft = buildDraftEncounter({
       encounterId: createId("eenc"),
       orgId,
       patientSnapshot: patientSnapshot(patient, new Date(now)),
@@ -546,6 +549,12 @@ async function routeEyeApiRequest(input = {}) {
       actor,
       now
     });
+    // 記載の型: 主訴・所見が空の新しいカルテに担当医の型を入れる（取り込みなど中身を送って作るときは入れない）
+    const template = validated.content ? null : await chartTemplateForNewEncounter({
+      eyeStore, orgId, content: draft.content,
+      doctorMemberId: await resolveTemplateDoctor({ eyeStore, orgId, patientId: patient.patientId, encounterDate: validated.encounterDate, actorMemberId: context.session.memberId, actorIsDoctor: hasProductAccess(context.session, EYE_PRODUCT_ID, ["doctor"]) })
+    });
+    const encounter = template ? { ...draft, content: { ...draft.content, findingsText: template.text }, templateMemberId: template.memberId } : draft;
     await eyeStore.createEncounter(orgId, encounter);
     await audit({
       eventType: "eye.encounter_created",
@@ -554,7 +563,8 @@ async function routeEyeApiRequest(input = {}) {
       patientId: encounter.patientId,
       safePayload: {
         copiedFromEncounterId: encounter.copiedFromEncounterId,
-        plannedFromEncounterId: (encounter.content.orders || []).find((order) => order.sourceEncounterId)?.sourceEncounterId || ""
+        plannedFromEncounterId: (encounter.content.orders || []).find((order) => order.sourceEncounterId)?.sourceEncounterId || "",
+        ...(template ? { chartTemplateMemberId: template.memberId } : {})
       }
     });
     return created({ encounter });
@@ -1348,6 +1358,16 @@ async function routeEyeApiRequest(input = {}) {
     const setFolder = await eyeStore.upsertSetFolder(orgId, { ...validated, folderId });
     await audit({ eventType: "eye.set_folder_saved", targetType: "set_folder", targetId: folderId });
     return ok({ setFolder });
+  }
+
+  // 記載の型（医師ごとの主訴・所見のひな形。chart-templates.js）
+  {
+    const response = await handleChartTemplateRoute({
+      method, parts, input, context, eyeStore, orgId, actor, now, audit,
+      loadStaff: () => loadEyeStaff(platformStore, eyeStore, orgId),
+      helpers: { ok, requireAccess, requireCsrf: requirePlatformCsrf, hasAccess: (roles) => hasProductAccess(context.session, EYE_PRODUCT_ID, roles), notFound: notFoundError, badRequest }
+    });
+    if (response) return response;
   }
 
   if (method === "POST" && matches(parts, ["v1", "eye", "phrases"])) {

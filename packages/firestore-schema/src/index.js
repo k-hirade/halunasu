@@ -56,6 +56,7 @@ export const collections = Object.freeze({
   eyeDailyCounters: "eye_daily_counters",
   eyeReceptionSettings: "eye_reception_settings",
   eyePatientMarks: "eye_patient_marks",
+  eyeChartTemplates: "eye_chart_templates",
   referrals: "referrals"
 });
 
@@ -306,6 +307,11 @@ export function eyePatientMarksPath(orgId, patientId) {
 // 施設管理の追加の設定（文書雛形・検査会社・受付ラベルなど）。医院ごと・項目ごとに 1 件。
 export function eyeClinicConfigPath(orgId, section) {
   return orgDocPath(orgId, collections.eyeClinicConfig, section, "section");
+}
+
+// 記載の型（医師ごとの主訴・所見のひな形）。医師ごとに 1 件。
+export function eyeChartTemplatePath(orgId, memberId) {
+  return orgDocPath(orgId, collections.eyeChartTemplates, memberId, "memberId");
 }
 
 export function eyePatientProfilePath(orgId, patientId) {
