@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { LoadErrorPage } from "./load-error";
 import { daysUntilNextVisit, diffEncounterContent, evaluateFinalizeReadiness, groupRps } from "@halunasu/eye-core";
 import { APPOINTMENT_STATUS_LABELS, APPOINTMENT_STATUS_MENU, isActiveAppointmentStatus, PER_EYE_PHRASE_TARGETS } from "@halunasu/eye-contracts";
 import { AppointmentDialog } from "./appointment-dialog";
@@ -272,7 +273,7 @@ export function EncounterEditor({ encounterId }) {
     return () => window.removeEventListener(SHORTCUT_HELP_EVENT, onHelp);
   }, []);
 
-  if (error && !detail) return <main className="eye-page"><p className="alert alert-danger" role="alert">{error}</p></main>;
+  if (error && !detail) return <LoadErrorPage message={error} />;
   if (!detail || !content) return <main className="eye-page"><p className="loading">読み込み中…</p></main>;
 
   const patient = encounter.patientSnapshot;

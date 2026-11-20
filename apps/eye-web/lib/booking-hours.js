@@ -76,7 +76,8 @@ export function hoursForGrid(schedule, bookedTimes = []) {
 export function countBySlot(appointments = [], slotMinutes = DEFAULT_SLOT_MINUTES) {
   const counts = {};
   for (const item of appointments) {
-    if (!item?.date || !isActiveAppointmentStatus(item.status)) continue;
+    // 予約なしの当日受付（walkIn）は予約の件数に入れない
+    if (!item?.date || item.walkIn || !isActiveAppointmentStatus(item.status)) continue;
     const minutes = minutesOf(item.time);
     if (minutes === null) continue;
     const key = timeOf(Math.floor(minutes / slotMinutes) * slotMinutes);

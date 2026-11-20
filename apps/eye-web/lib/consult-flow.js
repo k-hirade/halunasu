@@ -1,6 +1,6 @@
 // 診察画面（/）とヘッダーの人数バッジで使う「段階」の決め方。
 // 受付（reception-workspace.js）と同じ基準: 散瞳の点眼から 20 分たつまでは「散瞳中」として扱う。
-import { minutesSince } from "./format.js";
+import { minutesSince, todayIso } from "./format.js";
 
 export const CONSULT_REFRESH_MS = 15000;
 export const DILATION_READY_MINUTES = 20;
@@ -68,6 +68,28 @@ export function publishWaitingCount(count) {
 // 段階に入った時刻（受付の状態が最後に変わった時刻）
 export function stageEnteredAt(item) {
   return item.statusHistory?.at(-1)?.at || item.checkedInAt || "";
+}
+
+// 院内（待ち時間を数える）状態
+export const WAIT_COUNTED_STATUSES = ["checked_in", "in_exam", "in_treatment", "waiting_doctor", "in_consult", "checkout"];
+
+// 待ち時間。今の状態に入った時刻から、その待ちが終わった時刻まで（今日で院内なら今まで）。
+// - 会計済（done）は、会計待に入った時刻から会計済になった時刻まで（増え続けない）
+// - 過去の日で院内の状態のまま残った受付は、数えずに { unfinished: true }（since = 最後に更新した時刻）
+// 返り値: { minutes, unfinished, since }。待ちを出さない状態は null。
+export function waitTimeOf(item, { now = Date.now(), today = todayIso() } = {}) {
+  const history = Array.isArray(item?.statusHistory) ? item.statusHistory : [];
+  if (item?.status === "done") {
+    const index = history.findLastIndex((entry) => entry.status === "checkout");
+    const end = index >= 0 ? history[index + 1] : null;
+    if (!end) return null;
+    return { minutes: minutesSince(history[index].at, Date.parse(end.at)), unfinished: false, since: history[index].at };
+  }
+  if (!WAIT_COUNTED_STATUSES.includes(item?.status)) return null;
+  const since = stageEnteredAt(item);
+  if (!since) return null;
+  if (item.date && item.date < today) return { minutes: null, unfinished: true, since };
+  return { minutes: minutesSince(since, now), unfinished: false, since };
 }
 
 function byStageEntered(left, right) {

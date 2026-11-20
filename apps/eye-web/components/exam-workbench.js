@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { LoadErrorPage } from "./load-error";
 import {
   COVER_DIRECTION_LABELS,
   COVER_KIND_LABELS,
@@ -166,7 +167,7 @@ export function ExamWorkbench({ encounterId }) {
     return () => { cancelled = true; };
   }, [canReceive, encounter?.status, encounterDate, findMatches, patientId]);
 
-  if (error && !detail) return <main className="eye-page"><p className="alert alert-danger" role="alert">{error}</p></main>;
+  if (error && !detail) return <LoadErrorPage message={error} />;
   if (!detail || !content || !form) return <main className="eye-page"><p className="loading">読み込み中…</p></main>;
 
   const previous = detail.previous;

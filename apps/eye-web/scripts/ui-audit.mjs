@@ -190,7 +190,7 @@ const STATES = {
     path: "home",
     run: async (page) => {
       await page.getByRole("tab", { name: /^全て/u }).click().catch(() => null);
-      await page.locator(".cl-row").first().click();
+      await page.locator(".consult-row").first().click();
       await page.waitForTimeout(1200);
     }
   },
@@ -199,7 +199,7 @@ const STATES = {
     path: "home",
     run: async (page) => {
       await page.getByRole("tab", { name: /^全て/u }).click().catch(() => null);
-      await page.locator(".cl-row").first().click();
+      await page.locator(".consult-row").first().click();
       await page.waitForTimeout(1200);
     }
   },

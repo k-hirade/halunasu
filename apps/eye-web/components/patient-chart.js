@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useEyeApi } from "./eye-api";
+import { LoadErrorPage } from "./load-error";
 import { ApprovalTag } from "./chart-approval";
 import { DocumentsPanel } from "./documents-panel";
 import { FilesPanel, UploadDialog } from "./files-panel";
@@ -77,12 +78,13 @@ export function PatientChart({ patientId }) {
     reloadPaper();
   }, [api, patientId, reloadPaper]);
 
-  if (loadError) return <main className="eye-page"><p className="alert alert-danger" role="alert">{loadError}</p></main>;
+  if (loadError) return <LoadErrorPage message={loadError} />;
   if (!chart) return <main className="eye-page"><p className="loading">読み込み中…</p></main>;
 
   const { patient, encounters = [], latestFinalized, trend, upcomingAppointments = [] } = chart;
   const today = todayIso();
-  const todayDraft = encounters.find((encounter) => encounter.encounterDate === today && encounter.status === "draft");
+  // 今日のカルテ（下書きでも確定済みでも）。一覧は新しい順なので先頭が最新
+  const todayChart = encounters.find((encounter) => encounter.encounterDate === today);
   const hasFinalized = Boolean(latestFinalized);
   const canUpload = Boolean(context?.canWriteDocuments);
 
@@ -110,8 +112,8 @@ export function PatientChart({ patientId }) {
     }
   }
 
-  const primary = todayDraft ? (
-    <Link className="btn btn-primary" href={`/encounters/${todayDraft.encounterId}`}>本日のカルテを開く</Link>
+  const primary = todayChart ? (
+    <Link className="btn btn-primary" href={`/encounters/${todayChart.encounterId}`}>本日のカルテを開く</Link>
   ) : context?.canWrite ? (
     <button className="btn btn-primary" disabled={busy} onClick={startEncounter} title={hasFinalized ? "前回の確定カルテから処方などを引き継ぎます" : undefined} type="button">
       {hasFinalized ? "本日のカルテを作成" : "初診カルテを作成"}
@@ -119,6 +121,8 @@ export function PatientChart({ patientId }) {
   ) : null;
 
   const menu = [
+    // 同じ日に 2 枚目のカルテを作るのは、ここから明示して選んだときだけ（主ボタンは今日のカルテを開く）
+    todayChart && context?.canWrite ? { label: "同じ日にもう1枚作成", note: "本日のカルテとは別に作ります", action: () => { if (!busy) startEncounter(); } } : null,
     canUpload ? { label: "画像・ファイルを取り込む", action: () => setUploading(true) } : null,
     { label: "画像の比較", href: `/patients/${patientId}/images` },
     context?.canFinalize ? { label: "この患者のデータを出力", note: "開示請求・移行用（JSON）", action: exportData } : null

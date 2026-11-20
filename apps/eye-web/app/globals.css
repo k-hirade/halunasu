@@ -2265,8 +2265,12 @@ kbd {
   --st-booked: #94a3b8;
   --st-checked_in: #64748b;
   --st-in_exam: #2563eb;
-  --st-in_treatment: #4f46e5;
+  --st-in_treatment: var(--treat);
   --st-dilating: #7c3aed;
+  /* 処置中（検査中の青・診察の緑と分ける） */
+  --treat: #a21caf;
+  --treat-soft: #fdf4ff;
+  --treat-line: #f0abfc;
   --st-waiting_doctor: #d97706;
   --st-in_consult: #0f766e;
   --st-checkout: #0891b2;
@@ -2277,8 +2281,11 @@ kbd {
   --st-booked: #64748b;
   --st-checked_in: #94a3b8;
   --st-in_exam: #60a5fa;
-  --st-in_treatment: #818cf8;
+  --st-in_treatment: var(--treat);
   --st-dilating: #a78bfa;
+  --treat: #f0abfc;
+  --treat-soft: rgba(232, 121, 249, 0.14);
+  --treat-line: rgba(232, 121, 249, 0.4);
   --st-waiting_doctor: #fbbf24;
   --st-in_consult: #2dd4bf;
   --st-checkout: #22d3ee;
@@ -2853,4 +2860,17 @@ kbd {
     min-width: 36px;
     text-align: center;
   }
+}
+
+/* 画面を開けなかったときの表示（components/load-error.js）: 文言と戻り先のボタン */
+.load-error {
+  margin: 24px auto;
+  max-width: 560px;
+}
+
+.load-error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
 }

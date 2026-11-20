@@ -73,8 +73,8 @@ function Icon({ name }) {
     return <svg {...common}><rect height="15" rx="2" width="17" x="3.5" y="5" /><path d="M3.5 9.5h17M8 3.5v3M16 3.5v3" /><path d="M12 12.5v3l2 1.2" /></svg>;
   }
   if (name === "settings") {
-    // 歯車
-    return <svg {...common}><circle cx="12" cy="12" r="3" /><path d="M12 3.5v2.2M12 18.3v2.2M3.5 12h2.2M18.3 12h2.2M6 6l1.6 1.6M16.4 16.4 18 18M6 18l1.6-1.6M16.4 7.6 18 6" /></svg>;
+    // 歯車（8 枚の歯の輪郭と軸の穴。放射線だけだと太陽に見えるので輪郭で描く）
+    return <svg {...common}><path d="M18.3 10L20.4 10.3V13.7L18.3 14L17.8 15.1L19.2 16.8L16.8 19.2L15.1 17.8L14 18.3L13.7 20.4H10.3L10 18.3L8.9 17.8L7.2 19.2L4.8 16.8L6.2 15.1L5.7 14L3.6 13.7V10.3L5.7 10L6.2 8.9L4.8 7.2L7.2 4.8L8.9 6.2L10 5.7L10.3 3.6H13.7L14 5.7L15.1 6.2L16.8 4.8L19.2 7.2L17.8 8.9Z" /><circle cx="12" cy="12" r="2.8" /></svg>;
   }
   if (name === "audit") {
     // 記録の帳面と虫めがね
@@ -352,7 +352,7 @@ function GlobalHelpDialog({ onClose }) {
   // タッチ端末（キーボードがないことが多い）では、指での操作の案内を先に出し、キーの一覧はたたむ
   const [touch, setTouch] = useState(false);
   useEffect(() => { setTouch(window.matchMedia?.("(pointer: coarse)").matches || false); }, []);
-  const keys = [["/", "患者検索を開く"], ["↑ ↓", "検索結果の行を選ぶ"], ["Enter", "選んだ患者のカルテを開く"], ["Esc", "検索・ダイアログを閉じる"], ["?", "カルテの画面のショートカット一覧"]];
+  const keys = [["/", "患者検索を開く"], ["↑ ↓", "検索結果の行を選ぶ"], ["Enter", "選んだ患者のページを開く"], ["Esc", "検索・ダイアログを閉じる"], ["?", "カルテの画面のショートカット一覧"]];
   const keyList = <dl className="shortcut-list">{keys.map(([key, label]) => <div key={key}><dt><kbd>{key}</kbd></dt><dd>{label}</dd></div>)}</dl>;
   const keyNote = <p className="muted small">文字のキーは、入力欄にカーソルが無いときに効きます。カルテの画面では ? でその画面の一覧が出ます。</p>;
   return (

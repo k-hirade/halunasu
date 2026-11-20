@@ -16,7 +16,8 @@ export function weekStartOf(iso) {
 // 右に週 × 時間の表（「終日」＝時刻なしの段と、予約枠の長さごとの段）。枠を押すとその日時を onPickSlot(date, time) で返す。
 // 枠の長さと休診（曜日・時間）は施設管理の「診療時間・予約枠」。未設定なら 8〜18 時・30 分で、どの枠も押せる。
 // 休診の枠は押せない（予約が入っていれば件数は出す）。時間外の予約は予約登録の時刻の欄で入れられる。
-export function BookingCalendar({ date = todayIso(), onPickSlot, onPickDay = null, refreshKey = 0 }) {
+// 過去の日の枠は予約を作らない。件数のある枠は onOpenDay(date)（その日の受付一覧）を開く（渡されなければ押せない）。
+export function BookingCalendar({ date = todayIso(), onPickSlot, onPickDay = null, onOpenDay = null, refreshKey = 0 }) {
   const api = useEyeApi();
   const doctors = useDoctors();
   const schedule = useClinicSchedule();
@@ -105,7 +106,7 @@ export function BookingCalendar({ date = todayIso(), onPickSlot, onPickDay = nul
             ))}
             <div className="bk-hour bk-allday">終日</div>
             {days.map((day) => (
-              <SlotCell closed={isClosedDay(schedule, day)} count={byDate.get(day)?.untimed || 0} date={day} key={`${day}-all`} label="時刻なし" onPick={() => onPickSlot(day, "")} past={day < today} />
+              <SlotCell closed={isClosedDay(schedule, day)} count={byDate.get(day)?.untimed || 0} date={day} key={`${day}-all`} label="時刻なし" onOpenDay={onOpenDay} onPick={() => onPickSlot(day, "")} past={day < today} />
             ))}
             {hours.map((hour) => {
               const hh = String(hour).padStart(2, "0");
@@ -121,6 +122,7 @@ export function BookingCalendar({ date = todayIso(), onPickSlot, onPickDay = nul
                       half={index === minutes.length - 1}
                       key={`${day}-${time}`}
                       label={`${hour}:${time.slice(3)}`}
+                      onOpenDay={onOpenDay}
                       onPick={() => onPickSlot(day, time)}
                       past={day < today}
                     />
@@ -135,8 +137,20 @@ export function BookingCalendar({ date = todayIso(), onPickSlot, onPickDay = nul
   );
 }
 
-function SlotCell({ date, label, count, half = false, past, closed = false, onPick }) {
+function SlotCell({ date, label, count, half = false, past, closed = false, onPick, onOpenDay = null }) {
   const day = `${Number(date.slice(5, 7))}月${Number(date.slice(8, 10))}日(${weekdayOf(date)}) ${label}`;
+  // 過去の日には予約を作らない。件数があればその日の受付一覧を開ける
+  if (past) {
+    const content = count ? <span className="bk-count">{label === "時刻なし" ? null : <span className="bk-count-time">{label} – </span>}{count}件</span> : null;
+    if (count && onOpenDay) {
+      return (
+        <button aria-label={`${day} 予約${count}件（過去の日。受付一覧を開く）`} className={`bk-slot is-past has-count${half ? " is-half" : ""}`} onClick={() => onOpenDay(date)} title="過去の日には予約できません。押すとこの日の受付一覧を開きます" type="button">
+          {content}
+        </button>
+      );
+    }
+    return <div aria-label={`${day} 過去の日${count ? `・予約${count}件` : ""}`} className={`bk-slot is-past is-inert${count ? " has-count" : ""}${half ? " is-half" : ""}`} role="img" title="過去の日には予約できません">{content}</div>;
+  }
   // 休診で予約の無い枠は押せない（表の形を保つため、ボタンではなく空のセル）
   if (closed && !count) return <div aria-label={`${day} 休診`} className={`bk-slot is-closed${half ? " is-half" : ""}`} role="img" />;
   return (

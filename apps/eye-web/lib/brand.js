@@ -1,6 +1,8 @@
 export const BRAND_NAME = "ハルナス";
 export const PRODUCT_NAME = "眼科カルテ";
 export const BRAND_TITLE = `${BRAND_NAME} ${PRODUCT_NAME}`;
+// 画面ごとのタブの名前（例「受付｜ハルナス」）
+export const PAGE_TITLE_TEMPLATE = `%s｜${BRAND_NAME}`;
 export const BRAND_DESCRIPTION = "眼科に特化した電子カルテ。左右眼の検査値、シェーマ、点眼処方、経過をひとつの画面で扱います。";
 // 病院コードは秘密ではないので端末に覚える（ログイン後に保存し、次回は入力を省く）
 export const ORGANIZATION_STORAGE_KEY = "halunasu-eye-organization-code";

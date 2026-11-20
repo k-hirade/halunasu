@@ -55,6 +55,8 @@ export function PatientRegisterDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [numberError, setNumberError] = useState("");
+  // 性別の「未入力」は、性別を触ったか登録を押したあとだけ出す（開いた直後から警告を出さない）
+  const [sexTouched, setSexTouched] = useState(false);
   const firstFieldRef = useRef(null);
   const intentRef = useRef("register");
   const linking = Boolean(submitLabel);
@@ -121,6 +123,7 @@ export function PatientRegisterDialog({
   async function submit(event) {
     event.preventDefault();
     const intent = event.nativeEvent?.submitter?.dataset?.intent || intentRef.current;
+    setSexTouched(true);
     setBusy(true);
     setError("");
     setNumberError("");
@@ -224,7 +227,7 @@ export function PatientRegisterDialog({
             </div>
             <div className="register-row">
               <label htmlFor="reg-name">氏名 <em>必須</em></label>
-              <input className="input" disabled={locked} id="reg-name" onChange={set("displayName")} required value={draft.displayName} />
+              <input autoComplete="off" className="input" disabled={locked} id="reg-name" onChange={set("displayName")} required value={draft.displayName} />
             </div>
             <div className="register-row">
               <label htmlFor="reg-kana">フリガナ <em>必須</em></label>
@@ -248,10 +251,10 @@ export function PatientRegisterDialog({
               <div>
                 <div className="segmented" role="radiogroup" aria-labelledby="reg-sex-label">
                   {SEX_OPTIONS.map(([value, label]) => (
-                    <button aria-checked={draft.sex === value} className="segmented-option" disabled={locked} key={value} onClick={() => setDraft({ ...draft, sex: draft.sex === value ? "unknown" : value })} role="radio" type="button">{label}</button>
+                    <button aria-checked={draft.sex === value} className="segmented-option" disabled={locked} key={value} onClick={() => { setSexTouched(true); setDraft({ ...draft, sex: draft.sex === value ? "unknown" : value }); }} role="radio" type="button">{label}</button>
                   ))}
                 </div>
-                {draft.sex === "unknown" ? <small className="register-warn">未入力です（レセコン連携で必要です）</small> : null}
+                {draft.sex === "unknown" && sexTouched ? <small className="register-warn">未入力です（レセコン連携で必要です）</small> : null}
               </div>
             </div>
             <div className="register-row">
@@ -261,26 +264,27 @@ export function PatientRegisterDialog({
                 <small className="muted register-birth-check" aria-live="polite">{draft.birthDate ? `${eraYearLabel(draft.birthDate) || ""}${age !== null && age >= 0 ? ` ・ ${age}歳` : ""}` : " "}</small>
               </div>
             </div>
+            {/* 住所・電話は患者のもの。ブラウザが端末の持ち主（職員）の住所・電話を自動入力しないよう、autocomplete は off にし、住所らしい name も付けない */}
             <fieldset className="register-row register-address" disabled={locked}>
               <legend>住所</legend>
               <div className="register-address-fields">
-                <input aria-label="郵便番号" autoComplete="postal-code" className="input" inputMode="numeric" maxLength={8} onChange={set("postalCode")} placeholder="郵便番号" title="郵便番号（ハイフンなしでも入力できます）" value={draft.postalCode} />
-                <select aria-label="都道府県" className="input" onChange={set("prefecture")} value={draft.prefecture}>
+                <input aria-label="郵便番号" autoComplete="off" className="input" name="reg-patient-c1" inputMode="numeric" maxLength={8} onChange={set("postalCode")} placeholder="郵便番号" title="郵便番号（ハイフンなしでも入力できます）" value={draft.postalCode} />
+                <select aria-label="都道府県" autoComplete="off" className="input" name="reg-patient-c2" onChange={set("prefecture")} value={draft.prefecture}>
                   <option value="">都道府県</option>
                   {PREFECTURES.map((name) => <option key={name} value={name}>{name}</option>)}
                 </select>
-                <input aria-label="市区町村" autoComplete="address-level2" className="input" onChange={set("address1")} placeholder="市区町村" value={draft.address1} />
-                <input aria-label="番地" autoComplete="address-line1" className="input" onChange={set("address2")} placeholder="番地" value={draft.address2} />
-                <input aria-label="建物" autoComplete="address-line2" className="input" onChange={set("address3")} placeholder="建物名・部屋番号" value={draft.address3} />
+                <input aria-label="市区町村" autoComplete="off" className="input" name="reg-patient-c3" onChange={set("address1")} placeholder="市区町村" value={draft.address1} />
+                <input aria-label="番地" autoComplete="off" className="input" name="reg-patient-c4" onChange={set("address2")} placeholder="番地" value={draft.address2} />
+                <input aria-label="建物" autoComplete="off" className="input" name="reg-patient-c5" onChange={set("address3")} placeholder="建物名・部屋番号" value={draft.address3} />
               </div>
             </fieldset>
             <div className="register-row">
               <label htmlFor="reg-phone1">電話番号1</label>
-              <input autoComplete="tel" className="input" disabled={locked} id="reg-phone1" inputMode="tel" onChange={set("phone1")} value={draft.phone1} />
+              <input autoComplete="off" className="input" disabled={locked} id="reg-phone1" name="reg-patient-c6" inputMode="tel" onChange={set("phone1")} value={draft.phone1} />
             </div>
             <div className="register-row">
               <label htmlFor="reg-phone2">電話番号2</label>
-              <input className="input" disabled={locked} id="reg-phone2" inputMode="tel" onChange={set("phone2")} value={draft.phone2} />
+              <input autoComplete="off" className="input" disabled={locked} id="reg-phone2" name="reg-patient-c7" inputMode="tel" onChange={set("phone2")} value={draft.phone2} />
             </div>
             <p className="muted small register-note">保険証・資格確認はレセコンで登録します。</p>
           </div>

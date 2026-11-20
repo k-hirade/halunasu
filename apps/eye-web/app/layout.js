@@ -3,12 +3,13 @@ import { headers } from "next/headers";
 import { AuthGate, PlatformAuthProvider } from "../components/platform-auth";
 import { PopoverAutoPlacement } from "../components/popover-placement";
 import { SiteNav } from "../components/site-nav";
-import { BRAND_DESCRIPTION, BRAND_LOGIN, BRAND_NAME, BRAND_TITLE, PRODUCT_NAME } from "../lib/brand";
+import { BRAND_DESCRIPTION, BRAND_LOGIN, BRAND_NAME, BRAND_TITLE, PAGE_TITLE_TEMPLATE, PRODUCT_NAME } from "../lib/brand";
 import { eyeRuntimeConfigFromEnv } from "../lib/runtime-config";
 import { THEME_BOOT_SCRIPT } from "../lib/theme";
 
+// タブの名前は画面ごと（各 page.js の metadata.title →「受付｜ハルナス」）。共有の画面に出るので患者名は入れない
 export const metadata = {
-  title: BRAND_TITLE,
+  title: { default: BRAND_TITLE, template: PAGE_TITLE_TEMPLATE },
   description: BRAND_DESCRIPTION,
   icons: {
     icon: "/brand/harunas-mark.png",
