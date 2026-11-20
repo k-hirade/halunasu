@@ -2,11 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { eraYearLabel, normalizeKanaName } from "@halunasu/eye-contracts";
+import { normalizeKanaName } from "@halunasu/eye-contracts";
 import { AppointmentDialog } from "./appointment-dialog";
 import { useEyeApi } from "./eye-api";
 import { Modal, useChangedSince } from "./modal";
 import { ageOn, patientBirthLine, todayIso } from "../lib/format";
+import { birthDateLabel, birthDateShort, parseBirthDateInput } from "../lib/birth-date";
+import { autoKana, createKanaCapture, kanaCaptureStep, readingOf } from "../lib/kana-capture";
 
 const SEX_OPTIONS = [["male", "男性"], ["female", "女性"], ["other", "その他"]];
 export const PREFECTURES = [
@@ -60,12 +62,22 @@ export function PatientRegisterDialog({
   const [sexTouched, setSexTouched] = useState(false);
   const firstFieldRef = useRef(null);
   const intentRef = useRef("register");
+  // 生年月日は和暦でも西暦でも打てる欄（S50.1.1・昭和50年1月1日・19750101 など）。カレンダーでも選べる。
+  const [birthText, setBirthText] = useState(() => birthDateShort(source.birthDate));
+  const [birthTouched, setBirthTouched] = useState(false);
+  const [birthCalendar, setBirthCalendar] = useState(false);
+  const birthCalendarRef = useRef(null);
+  // 氏名を日本語入力で打ったときの読み（変換前のひらがな）をフリガナに入れる。フリガナを手で直したら止める。
+  const kanaCapture = useRef(createKanaCapture());
+  const autoKanaRef = useRef("");
+  const kanaRef = useRef(draft.displayNameKana);
+  kanaRef.current = draft.displayNameKana;
   const linking = Boolean(submitLabel);
   const heading = title || (editing ? "患者情報の編集" : "新規患者を登録");
 
   // 開いたら最初の欄へ・閉じたら元の場所へ・Esc と背景で閉じる、は Modal が受け持つ。
   // 入力を変えていれば（登録前なら）閉じる前に確かめる。
-  const changed = useChangedSince(draft);
+  const changed = useChangedSince({ draft, birthText });
   const dirty = changed && !created;
 
   // 似た患者（同じフリガナ・氏名・患者番号）を既存の検索で探す。登録は止めず、押す前に目に入るようにする。
@@ -94,6 +106,46 @@ export function PatientRegisterDialog({
 
   const sameBirth = similar.some((patient) => draft.birthDate && patient.birthDate === draft.birthDate);
   const age = draft.birthDate ? ageOn(draft.birthDate) : null;
+  const birthError = parseBirthDateInput(birthText, { today: todayIso() }).error;
+
+  function changeBirthText(value) {
+    setBirthText(value);
+    const { iso } = parseBirthDateInput(value, { today: todayIso() });
+    setDraft((current) => ({ ...current, birthDate: iso }));
+  }
+
+  function pickBirthDate(value) {
+    setBirthText(birthDateShort(value));
+    setBirthTouched(true);
+    setDraft((current) => ({ ...current, birthDate: value }));
+  }
+
+  useEffect(() => {
+    if (birthCalendar) birthCalendarRef.current?.focus();
+  }, [birthCalendar]);
+
+  // 氏名の値から読みを出し直し、フリガナが空か前に自動で入れた値のままなら入れ替える
+  function syncKana(name) {
+    const result = autoKana({ kana: kanaRef.current, auto: autoKanaRef.current, reading: readingOf(kanaCapture.current, name) });
+    if (!result) return;
+    autoKanaRef.current = result.auto;
+    kanaRef.current = result.kana;
+    setDraft((current) => ({ ...current, displayNameKana: result.kana }));
+  }
+  const nameEvents = {
+    onCompositionStart: () => { kanaCapture.current = kanaCaptureStep(kanaCapture.current, { type: "start" }); },
+    onCompositionUpdate: (event) => { kanaCapture.current = kanaCaptureStep(kanaCapture.current, { type: "update", data: event.data }); },
+    onCompositionEnd: (event) => {
+      kanaCapture.current = kanaCaptureStep(kanaCapture.current, { type: "end", data: event.data });
+      syncKana(event.currentTarget.value);
+    },
+    onChange: (event) => {
+      const value = event.target.value;
+      setDraft((current) => ({ ...current, displayName: value }));
+      // 変換中は確定（compositionend）を待つ
+      if (!event.nativeEvent?.isComposing && !kanaCapture.current.composing) syncKana(value);
+    }
+  };
 
   function body() {
     const contact = { ...(editing?.contact || {}) };
@@ -192,7 +244,7 @@ export function PatientRegisterDialog({
   const set = (key) => (event) => setDraft({ ...draft, [key]: event.target.value });
   const locked = Boolean(created);
   const kanaMissing = !draft.displayNameKana.trim();
-  const blocked = busy || !draft.displayName.trim() || kanaMissing;
+  const blocked = busy || !draft.displayName.trim() || kanaMissing || Boolean(birthError);
   const primaryLabel = busy ? "登録中…" : editing ? "更新" : created ? "続きをやり直す" : linking ? submitLabel : sameBirth ? "別人として登録" : "登録";
   return (
     <Modal as="form" busy={busy} className={`dialog register-dialog${similar.length && !created ? " has-side" : ""}`} dirty={dirty} initialFocus={firstFieldRef} labelledBy="register-heading" onClose={onCancel} onSubmit={submit}>
@@ -218,7 +270,10 @@ export function PatientRegisterDialog({
           </div>
           <div className="register-row">
             <label htmlFor="reg-name">氏名 <em>必須</em></label>
-            <input autoComplete="off" className="input" disabled={locked} id="reg-name" onChange={set("displayName")} required value={draft.displayName} />
+            <div>
+              <input autoComplete="off" className="input" disabled={locked} id="reg-name" required value={draft.displayName} {...nameEvents} />
+              <small className="muted">日本語入力で打つと、フリガナに読みが入ります。</small>
+            </div>
           </div>
           <div className="register-row">
             <label htmlFor="reg-kana">フリガナ <em>必須</em></label>
@@ -234,7 +289,7 @@ export function PatientRegisterDialog({
                 required
                 value={draft.displayNameKana}
               />
-              <small className="muted">ひらがなで入れてもカタカナにそろえます。</small>
+              <small className="muted">ひらがなで入れてもカタカナにそろえます。違うときは直してください。</small>
             </div>
           </div>
           <div className="register-row">
@@ -251,8 +306,42 @@ export function PatientRegisterDialog({
           <div className="register-row">
             <label htmlFor="reg-birth">生年月日</label>
             <div>
-              <input className="input" disabled={locked} id="reg-birth" max="2100-12-31" min="1868-01-01" onChange={set("birthDate")} type="date" value={draft.birthDate} />
-              <small className="muted register-birth-check" aria-live="polite">{draft.birthDate ? `${eraYearLabel(draft.birthDate) || ""}${age !== null && age >= 0 ? ` ・ ${age}歳` : ""}` : " "}</small>
+              <div className="register-birth">
+                <input
+                  aria-describedby="reg-birth-check"
+                  aria-invalid={birthTouched && birthError ? true : undefined}
+                  autoComplete="off"
+                  className="input"
+                  disabled={locked}
+                  id="reg-birth"
+                  onBlur={() => setBirthTouched(true)}
+                  onChange={(event) => changeBirthText(event.target.value)}
+                  placeholder="S50.1.1 / 19750101"
+                  value={birthText}
+                />
+                <button aria-controls="reg-birth-calendar" aria-expanded={birthCalendar} className="btn btn-ghost btn-sm" disabled={locked} onClick={() => setBirthCalendar(!birthCalendar)} type="button">カレンダー</button>
+                {birthCalendar ? (
+                  <input
+                    aria-label="カレンダーで生年月日を選ぶ"
+                    className="input"
+                    disabled={locked}
+                    id="reg-birth-calendar"
+                    max={todayIso()}
+                    min="1868-01-25"
+                    onChange={(event) => pickBirthDate(event.target.value)}
+                    ref={birthCalendarRef}
+                    type="date"
+                    value={draft.birthDate}
+                  />
+                ) : null}
+              </div>
+              {birthTouched && birthError ? (
+                <small className="register-error" id="reg-birth-check" role="alert">{birthError}</small>
+              ) : (
+                <small className="muted register-birth-check" id="reg-birth-check" aria-live="polite">
+                  {draft.birthDate ? `${birthDateLabel(draft.birthDate)}${age !== null && age >= 0 ? ` ・ ${age}歳` : ""}` : "和暦（S50.1.1・昭和50年1月1日）でも西暦（19750101）でも入れられます。"}
+                </small>
+              )}
             </div>
           </div>
           {/* 住所・電話は患者のもの。ブラウザが端末の持ち主（職員）の住所・電話を自動入力しないよう、autocomplete は off にし、住所らしい name も付けない */}

@@ -67,3 +67,14 @@ test("search options send only filled fields", () => {
   assert.deepEqual(monthRange("2026-11-11"), { visitFrom: "2026-11-01", visitTo: "2026-11-30" });
   assert.deepEqual(monthRange("2026-01-15", -1), { visitFrom: "2025-12-01", visitTo: "2025-12-31" });
 });
+
+test("the search word becomes the first value of the new patient registration", async () => {
+  const { registerInitialFromQuery } = await import("../lib/reception-extras.js");
+  assert.deepEqual(registerInitialFromQuery("  山田  花子 "), { displayName: "山田 花子" });
+  assert.deepEqual(registerInitialFromQuery("やまだ はなこ"), { displayNameKana: "やまだ はなこ" });
+  assert.deepEqual(registerInitialFromQuery("ヤマダ"), { displayNameKana: "ヤマダ" });
+  assert.deepEqual(registerInitialFromQuery("０００１２３"), { primaryPatientNumber: "000123" });
+  assert.deepEqual(registerInitialFromQuery("A-12"), { primaryPatientNumber: "A-12" });
+  assert.deepEqual(registerInitialFromQuery(""), {});
+  assert.deepEqual(registerInitialFromQuery("Smith"), { displayName: "Smith" });
+});

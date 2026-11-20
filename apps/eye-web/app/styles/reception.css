@@ -1326,6 +1326,32 @@ fieldset.register-row > legend {
   margin-top: 4px;
 }
 
+/* 予約: 患者の検索欄の横に［新規患者登録］。氏名だけの古い予約の編集では、紐づけを促す一文 */
+.ap-patient-search {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ap-patient-search .input {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.ap-patient-search .btn {
+  flex: none;
+}
+
+.ap-link-note {
+  margin: 0 0 6px;
+}
+
+.ap-link-note .small {
+  display: block;
+  margin-top: 2px;
+}
+
 /* 候補があるときの「別の人として登録」 */
 .ap-new-person {
   align-items: center;

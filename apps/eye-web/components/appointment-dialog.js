@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { BookingCalendar } from "./booking-calendar";
 import { useEyeApi } from "./eye-api";
 import { Modal } from "./modal";
+import { PatientRegisterDialog } from "./patient-register-dialog";
 import { formatDayButton } from "./mini-calendar";
 import { useClinicSchedule } from "./use-clinic-hours";
 import { DEFAULT_DEPARTMENTS, doctorName, useDoctors } from "./use-doctors";
@@ -12,13 +13,15 @@ import { ageOn, APPOINTMENT_PURPOSE_LABELS, APPOINTMENT_STATUS_LABELS, patientLi
 import { birthWithEra } from "../lib/reception-table";
 import { outsideHoursNotice } from "../lib/booking-hours";
 import { isImeKey } from "../lib/modal";
-import { receptionPrintHref } from "../lib/reception-extras";
+import { receptionPrintHref, registerInitialFromQuery } from "../lib/reception-extras";
 
 // 予約登録・受付登録・受付編集（デジカルの予約登録ダイアログと受付登録ダイアログ）。
 // - 予約（walkIn なし）: 左にこの患者の予約一覧（✎ 編集・取消・カルテ）、右に予約フォーム（予約日＋予約状況・医師・診療科・目的・予約時間（空欄可）・受付メモ）。
 // - 当日受付（walkIn）: 1 列のフォーム（受付日・患者・医師・診療科・目的・受付メモ）。
 // - 編集（appointment を渡す）: 同じフォームで［更新］。
-// 医師と診療科は、この患者の前回の受付の値を最初から入れる。患者が決まっていなければ検索するか、未登録の氏名だけで受け付ける。
+// 医師と診療科は、この患者の前回の受付の値を最初から入れる。
+// 予約は登録済みの患者だけ（検索して選ぶか、［新規患者登録］で登録してそのまま選ぶ）。未登録の氏名だけで受け付けられるのは当日受付だけ。
+// 前に氏名だけで取った予約（未登録）を編集するときは、患者を選ぶか登録して紐づけるよう促す（紐づけずに更新もできる）。
 export function AppointmentDialog({ title, initial = {}, fixedPatient = null, appointment: editing = null, onCancel, onSaved }) {
   const api = useEyeApi();
   const doctors = useDoctors();
@@ -26,7 +29,9 @@ export function AppointmentDialog({ title, initial = {}, fixedPatient = null, ap
   const [form, setForm] = useState(() => formFrom(editing, initial));
   const [editingItem, setEditingItem] = useState(editing);
   const [patient, setPatient] = useState(fixedPatient || (editing?.patientId ? snapshotPatient(editing) : null));
-  const [query, setQuery] = useState(initial.patientName || "");
+  const [query, setQuery] = useState(initial.patientName || (editing && !editing.patientId ? editing.patientName || "" : ""));
+  // 新規患者登録（予約の患者欄から開く）
+  const [registering, setRegistering] = useState(false);
   const [candidates, setCandidates] = useState([]);
   // 候補を引き終えた検索語と、候補があっても「別の人として登録」を選んだ氏名（同じ人の重複登録を防ぐ）
   const [searchedQuery, setSearchedQuery] = useState("");
@@ -43,6 +48,8 @@ export function AppointmentDialog({ title, initial = {}, fixedPatient = null, ap
   const [printMemo, setPrintMemo] = useState(false);
   const touched = useRef({ doctor: Boolean(initial.doctorMemberId || editing), department: Boolean(initial.department || editing) });
   const walkIn = Boolean(form.walkIn) && !editingItem;
+  // 氏名だけの予約（患者登録を必須にする前に取ったもの）の編集。患者を選ぶ・登録すると紐づける
+  const linkingLegacy = Boolean(editingItem && !editingItem.patientId && editingItem.status === "booked" && !editingItem.walkIn);
   // 来院済みの受付の編集（受付編集）は 1 列。予約の登録・編集は左に予約一覧を出す 2 列
   const twoPane = !walkIn && !(editing && editing.status !== "booked");
 
@@ -137,6 +144,7 @@ export function AppointmentDialog({ title, initial = {}, fixedPatient = null, ap
           department: form.department.trim()
         };
         if (editingItem.status === "booked") body.date = form.date;
+        if (linkingLegacy && patient) body.patientId = patient.patientId;
         saved = (await api(`/v1/eye/appointments/${editingItem.appointmentId}`, { method: "PATCH", body })).appointment;
       } else {
         saved = (await api("/v1/eye/appointments", {
@@ -151,7 +159,7 @@ export function AppointmentDialog({ title, initial = {}, fixedPatient = null, ap
             walkIn: walkIn,
             ...(form.sourceEncounterId ? { sourceEncounterId: form.sourceEncounterId } : {}),
             patientId: patient?.patientId || "",
-            patientName: patient ? "" : (form.patientName || query).trim()
+            patientName: patient || !walkIn ? "" : (form.patientName || query).trim()
           }
         })).appointment;
       }
@@ -182,12 +190,15 @@ export function AppointmentDialog({ title, initial = {}, fixedPatient = null, ap
 
   const unregisteredName = (form.patientName || query).trim();
   // 未登録の氏名で登録できるのは、候補を引き終えて、候補が無いか「別の人として登録」を選んだときだけ
-  const candidatesShown = !patient && !editingItem && Boolean(query.trim()) && candidates.length > 0;
+  const candidatesShown = !patient && (!editingItem || linkingLegacy) && Boolean(query.trim()) && candidates.length > 0;
   const unregisteredReady = Boolean(unregisteredName) && searchedQuery === query.trim() && (!candidatesShown || asNewName === query.trim());
   const departments = [...new Set([...DEFAULT_DEPARTMENTS, ...history.items.map((item) => item.department).filter(Boolean)])];
   const today = todayIso();
   const upcoming = history.items.filter((item) => item.status !== "cancelled");
   const submitLabel = editingItem ? "更新" : "登録";
+  const submitHint = patient || editingItem ? undefined
+    : !walkIn ? "予約は登録済みの患者で取ります。患者を選ぶか［新規患者登録］をしてください"
+      : candidatesShown && asNewName !== query.trim() ? "候補から選ぶか「別の人として登録」を押してください" : undefined;
 
   const formFields = (
     <>
@@ -214,21 +225,30 @@ export function AppointmentDialog({ title, initial = {}, fixedPatient = null, ap
                 <strong>{patient.displayName}</strong>
                 <span className="muted small"> {patientLine(patient)}</span>
               </div>
-              {fixedPatient || editingItem ? null : <button className="btn btn-chip" onClick={() => setPatient(null)} type="button">変更</button>}
+              {fixedPatient || (editingItem && !linkingLegacy) ? null : <button className="btn btn-chip" onClick={() => setPatient(null)} type="button">変更</button>}
             </div>
-          ) : editingItem ? (
+          ) : editingItem && !linkingLegacy ? (
             <strong>{editingItem.patientName}<span className="tag tag-warn">未登録</span></strong>
           ) : (
             <>
-              <input
-                aria-label="患者を検索"
-                autoFocus
-                className="input"
-                onChange={(event) => { setQuery(event.target.value); setForm({ ...form, patientName: "" }); }}
-                placeholder="氏名・カナ・患者番号"
-                value={query}
-              />
-              {query.trim() ? null : <span className="muted small ap-hint">未登録の患者は、氏名を入れるとそのまま登録できます。</span>}
+              {linkingLegacy ? (
+                <p className="ap-link-note" role="status">
+                  <strong>{editingItem.patientName}</strong><span className="tag tag-warn">未登録</span>
+                  <span className="small">この予約は患者が未登録です。患者を選ぶか新規患者登録をすると、この予約に紐づけます。</span>
+                </p>
+              ) : null}
+              <div className="ap-patient-search">
+                <input
+                  aria-label="患者を検索"
+                  autoFocus
+                  className="input"
+                  onChange={(event) => { setQuery(event.target.value); setForm({ ...form, patientName: "" }); }}
+                  placeholder="氏名・カナ・患者番号"
+                  value={query}
+                />
+                {walkIn ? null : <button className="btn btn-ghost btn-sm" onClick={() => setRegistering(true)} type="button">新規患者登録</button>}
+              </div>
+              {query.trim() ? null : <span className="muted small ap-hint">{walkIn ? "未登録の患者は、氏名を入れるとそのまま登録できます。" : "予約は登録済みの患者で取ります。見つからないときは［新規患者登録］から登録してください。"}</span>}
               {candidates.length ? (
                 <ul className="candidate-list">
                   {candidates.map((candidate) => (
@@ -241,14 +261,16 @@ export function AppointmentDialog({ title, initial = {}, fixedPatient = null, ap
                   ))}
                 </ul>
               ) : null}
-              {candidatesShown && asNewName !== query.trim() ? (
+              {walkIn && candidatesShown && asNewName !== query.trim() ? (
                 <div className="ap-new-person">
                   <span className="muted small">同じ人がいれば選んでください。いなければ</span>
                   <button className="btn btn-ghost btn-sm" onClick={() => setAsNewName(query.trim())} type="button">別の人として登録</button>
                 </div>
               ) : null}
-              {candidatesShown && asNewName === query.trim() ? <span className="muted small">候補とは別の人として「{query.trim()}」を未登録のまま登録します。</span> : null}
-              {query.trim() && !candidates.length && searchedQuery === query.trim() ? <span className="muted small">該当なし。「{query.trim()}」として未登録のまま登録し、あとで患者登録できます。</span> : null}
+              {walkIn && candidatesShown && asNewName === query.trim() ? <span className="muted small">候補とは別の人として「{query.trim()}」を未登録のまま登録します。</span> : null}
+              {walkIn && query.trim() && !candidates.length && searchedQuery === query.trim() ? <span className="muted small">該当なし。「{query.trim()}」として未登録のまま登録し、あとで患者登録できます。</span> : null}
+              {!walkIn && query.trim() && !candidates.length && searchedQuery === query.trim() ? <span className="muted small">該当なし。［新規患者登録］から登録すると、そのまま予約できます。</span> : null}
+              {!walkIn && candidatesShown ? <span className="muted small">候補から選んでください。いなければ［新規患者登録］から登録します。</span> : null}
             </>
           )}
         </div>
@@ -303,6 +325,7 @@ export function AppointmentDialog({ title, initial = {}, fixedPatient = null, ap
   );
 
   return (
+    <>
     <Modal as="form" busy={busy} className={`dialog ap-dialog${twoPane ? " is-two-pane" : ""}${calendarOpen ? " is-calendar" : ""}`} dirty={edited} labelledBy="appointment-heading" onChange={() => setEdited(true)} onClose={onCancel} onKeyDown={closeInnerOnEscape} onSubmit={submit}>
       <h2 id="appointment-heading">{editingItem && editingItem !== editing ? "予約の編集" : title}</h2>
       {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
@@ -344,7 +367,7 @@ export function AppointmentDialog({ title, initial = {}, fixedPatient = null, ap
       </div>
       <div className="dialog-actions">
         <button className="btn btn-ghost" onClick={onCancel} type="button">キャンセル</button>
-        <button className="btn btn-primary" disabled={busy || (!patient && !editingItem && !unregisteredReady) || !form.date} title={!patient && !editingItem && candidatesShown && asNewName !== query.trim() ? "候補から選ぶか「別の人として登録」を押してください" : undefined} type="submit">{submitLabel}</button>
+        <button className="btn btn-primary" disabled={busy || (!patient && !editingItem && !(walkIn && unregisteredReady)) || !form.date} title={submitHint} type="submit">{submitLabel}</button>
       </div>
 
       {calendarOpen ? (
@@ -367,6 +390,18 @@ export function AppointmentDialog({ title, initial = {}, fixedPatient = null, ap
         </div>
       ) : null}
     </Modal>
+    {registering ? (
+      <PatientRegisterDialog
+        initial={registerInitialFromQuery(query)}
+        onCancel={() => setRegistering(false)}
+        onCreated={(created) => { setRegistering(false); setPatient(created); setEdited(true); }}
+        onPickExisting={(picked) => { setRegistering(false); setPatient(picked); setEdited(true); }}
+        pickExistingLabel="この患者で予約"
+        submitLabel="登録して予約へ"
+        title="新規患者登録"
+      />
+    ) : null}
+    </>
   );
 }
 

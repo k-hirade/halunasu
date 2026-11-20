@@ -1686,6 +1686,93 @@ async function runReceptionRep2Flow(browser) {
   await page.keyboard.press("Escape");
   await page.keyboard.press("Escape");
 
+  // 予約は登録済みの患者だけ: 未登録の氏名では［登録］できず、［新規患者登録］で登録するとそのまま予約の患者になる
+  await page.getByRole("button", { name: "予約を追加" }).click();
+  const newBooking = page.getByRole("dialog", { name: "予約登録" });
+  await newBooking.getByText("予約は登録済みの患者で取ります。見つからないときは［新規患者登録］から登録してください。").waitFor();
+  await newBooking.getByLabel("患者を検索").fill("予約 新子");
+  await newBooking.getByText("該当なし。［新規患者登録］から登録すると、そのまま予約できます。").waitFor();
+  assert.equal(await newBooking.getByRole("button", { name: "登録", exact: true }).isDisabled(), true, "a booking needs a registered patient");
+  assert.equal(await newBooking.getByRole("button", { name: "別の人として登録" }).count(), 0, "no name-only booking");
+  await newBooking.getByRole("button", { name: "新規患者登録" }).click();
+  const inlineRegister = page.getByRole("dialog", { name: "新規患者登録" });
+  assert.equal(await inlineRegister.getByLabel("氏名").inputValue(), "予約 新子", "the search word goes into the name");
+  // フリガナ: 日本語入力の変換前の読みが入る（CDP で IME の変換をまねる）。手で直したら変えない
+  const nameField = inlineRegister.getByLabel("氏名");
+  await nameField.fill("");
+  await nameField.focus();
+  const ime = await context.newCDPSession(page);
+  const compose = async (steps, committed) => {
+    for (const text of steps) await ime.send("Input.imeSetComposition", { text, selectionStart: text.length, selectionEnd: text.length });
+    await ime.send("Input.insertText", { text: committed });
+  };
+  await compose(["よ", "よや", "よやく", "予約"], "予約");
+  await page.keyboard.insertText(" ");
+  await compose(["し", "しん", "しんこ", "新子"], "新子");
+  assert.equal(await nameField.inputValue(), "予約 新子");
+  assert.equal(await inlineRegister.getByLabel("フリガナ").inputValue(), "ヨヤク シンコ", "the reading typed before conversion fills the furigana");
+  await nameField.press("Backspace");
+  await nameField.press("Backspace");
+  assert.equal(await inlineRegister.getByLabel("フリガナ").inputValue(), "ヨヤク", "deleting the given name drops its reading");
+  await compose(["あ", "あら", "あらた", "新子"], "新子");
+  assert.equal(await inlineRegister.getByLabel("フリガナ").inputValue(), "ヨヤク アラタ");
+  await inlineRegister.getByLabel("フリガナ").fill("ヨヤク シンコ");
+  await nameField.press("End");
+  await compose(["さ", "さん", "さん"], "さん");
+  assert.equal(await inlineRegister.getByLabel("フリガナ").inputValue(), "ヨヤク シンコ", "a furigana edited by hand is kept");
+  await nameField.press("Backspace");
+  await nameField.press("Backspace");
+  await ime.detach();
+  // 生年月日は和暦でも打てる。読めた日付は「1975年1月1日（昭和50年）」と出し、元号の境目を確かめる
+  const birthField = inlineRegister.getByLabel("生年月日", { exact: true });
+  await birthField.fill("h1.1.7");
+  await birthField.blur();
+  await inlineRegister.getByRole("alert").filter({ hasText: "平成元年1月7日はありません" }).waitFor();
+  assert.equal(await inlineRegister.getByRole("button", { name: "登録して予約へ" }).isDisabled(), true, "an impossible birth date blocks registration");
+  await birthField.fill("Ｓ５０．１．１");
+  await inlineRegister.getByText(/1975年1月1日（昭和50年）/u).waitFor();
+  await inlineRegister.getByRole("button", { name: "カレンダー" }).click();
+  const birthCalendar = inlineRegister.getByLabel("カレンダーで生年月日を選ぶ");
+  assert.equal(await birthCalendar.inputValue(), "1975-01-01");
+  await birthCalendar.fill("1975-01-02");
+  assert.equal(await birthField.inputValue(), "S50.1.2", "a date picked on the calendar shows in the era form");
+  await inlineRegister.getByText(/1975年1月2日（昭和50年）/u).waitFor();
+  await inlineRegister.getByRole("button", { name: "登録して予約へ" }).click();
+  await inlineRegister.waitFor({ state: "detached" });
+  await newBooking.locator(".picked-patient").getByText("予約 新子").waitFor();
+  await newBooking.getByLabel("予約時間").fill("16:00");
+  await newBooking.getByRole("button", { name: "登録", exact: true }).click();
+  await newBooking.waitFor({ state: "detached" });
+  const newBookingRow = page.locator(".rc-row").filter({ hasText: "予約 新子" });
+  await newBookingRow.waitFor();
+  assert.equal(await statusOf(newBookingRow), "booked");
+
+  // 前に氏名だけで取った予約（未登録）: 一覧に出て、編集を開くと患者を選ぶか登録して紐づけるよう促す（一覧の応答に足して確かめる）
+  await page.route(/\/v1\/eye\/appointments\?date=/u, async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    const base = body.appointments.find((item) => item.patientName === "予約 新子");
+    if (base) {
+      body.appointments.push({ ...base, appointmentId: "eapt_legacy_smoke", patientId: "", patientSnapshot: null, patientName: "電話 予約", time: "16:30", queueNumber: null, walkIn: false, status: "booked", displayStatus: "booked" });
+    }
+    await route.fulfill({ response, json: body });
+  });
+  await page.reload();
+  const legacyRow = page.locator(".rc-row").filter({ hasText: "電話 予約" });
+  await legacyRow.waitFor();
+  await legacyRow.getByText("未登録").waitFor();
+  await legacyRow.locator("summary").click();
+  await legacyRow.getByRole("button", { name: "予約を編集" }).click();
+  const legacyEdit = page.getByRole("dialog", { name: "予約の編集" });
+  await legacyEdit.getByText("この予約は患者が未登録です。患者を選ぶか新規患者登録をすると、この予約に紐づけます。").waitFor();
+  assert.equal(await legacyEdit.getByLabel("患者を検索").inputValue(), "電話 予約");
+  await legacyEdit.getByRole("button", { name: "新規患者登録" }).waitFor();
+  assert.equal(await legacyEdit.getByRole("button", { name: "更新", exact: true }).isDisabled(), false, "an old name-only booking can still be edited");
+  await legacyEdit.getByRole("button", { name: "キャンセル" }).click();
+  await page.unrouteAll({ behavior: "wait" });
+  await page.reload();
+  await newBookingRow.waitFor();
+
   // 院内掲示（デジカルの受付番号院内掲示）: 診察待・診察中の番号だけを大きく出す（氏名は出さない）
   await page.goto(`${baseUrl}/reception/display`);
   const board = page.getByRole("main", { name: "受付番号の院内掲示" });
@@ -1697,7 +1784,7 @@ async function runReceptionRep2Flow(browser) {
     const csrf = decodeURIComponent((document.cookie.match(/(?:^|; )halunasu_csrf=([^;]*)/u) || [])[1] || "");
     const call = async (method, path, body) => (await fetch(`/api/eye${path}`, { method, credentials: "include", headers: { "content-type": "application/json", "x-csrf-token": csrf }, body: body ? JSON.stringify(body) : undefined })).json();
     const { appointments } = await call("GET", `/v1/eye/appointments?date=${today}`);
-    for (const item of appointments.filter((row) => ["目印 花子", "掲示 次郎"].includes(row.patientName) && row.status !== "cancelled")) {
+    for (const item of appointments.filter((row) => ["目印 花子", "掲示 次郎", "予約 新子"].includes(row.patientName) && row.status !== "cancelled")) {
       await call("POST", `/v1/eye/appointments/${item.appointmentId}/status`, { expectedRevision: item.revision, status: "cancelled" });
     }
   }, { today });
