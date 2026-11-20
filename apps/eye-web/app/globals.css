@@ -43,6 +43,8 @@
   --amber: #8a4b06;
   --amber-soft: #fff6e8;
   --amber-line: #fedf89;
+  /* 塗りの注意（未入力のボタンなど。赤の「誤り」と分ける） */
+  --orange: #c2410c;
   --red: #b42318;
   --red-soft: #fef0ef;
   --red-line: #fecdca;
@@ -112,6 +114,7 @@
   --amber: #fbbf24;
   --amber-soft: rgba(251, 191, 36, 0.12);
   --amber-line: rgba(251, 191, 36, 0.4);
+  --orange: #fb923c;
   --red: #f87171;
   --red-soft: rgba(248, 113, 113, 0.12);
   --red-line: rgba(248, 113, 113, 0.4);

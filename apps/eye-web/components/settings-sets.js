@@ -284,7 +284,8 @@ function validateSet(draft) {
   return "";
 }
 
-const EYE_OPTIONS = [["ou", "両眼"], ["od", "右眼"], ["os", "左眼"]];
+// 眼の並びはどの画面も 右 → 左 → 両
+const EYE_OPTIONS = [["od", "右眼"], ["os", "左眼"], ["ou", "両眼"]];
 
 function EyeSelect({ value, onChange, label }) {
   return (

@@ -5,6 +5,7 @@ import { PER_EYE_PHRASE_TARGETS } from "@halunasu/eye-contracts";
 import { RX_BADGES, useMasterSearch } from "./chart-shared";
 import { pointsLabel, useMasterLookup } from "./chart-points";
 import { PHRASE_TARGET_LABELS } from "../lib/format";
+import { displayDrugName } from "../lib/drug-name";
 
 // 右のオーダー欄の区分タブ（デジカルの 2 段の区分 + 全て）。key はショートカットの数字キー。
 export const ORDER_CATEGORIES = [
@@ -165,7 +166,7 @@ export function OrderPanel({
                 {drugResults.map((item) => (
                   <button className="order-item" disabled={!editable} key={item.presetId || item.code} onClick={() => onAddDrug(item)} title={item.generic || item.name} type="button">
                     <span className="rp-badge">{RX_BADGES[item.kind] || "薬"}</span>
-                    <span className="order-item-name">{item.name}</span>
+                    <span className="order-item-name">{displayDrugName(item.name)}</span>
                     {item.preset ? <span className="muted small">よく使う</span> : item.price ? <span className="muted small">{item.price}円</span> : null}
                   </button>
                 ))}
@@ -211,7 +212,7 @@ export function OrderPanel({
                 {drugPresets.filter((preset) => preset.active !== false && (category !== "injection" || preset.kind === "injection")).map((preset) => (
                   <button className="order-item" disabled={!editable} key={preset.presetId} onClick={() => onAddDrug(preset)} type="button">
                     <span className="rp-badge">{RX_BADGES[preset.kind] || "薬"}</span>
-                    <span className="order-item-name">{preset.name}</span>
+                    <span className="order-item-name">{displayDrugName(preset.name)}</span>
                     {preset.defaultTimesPerDay ? <span className="muted small">1日{preset.defaultTimesPerDay}回</span> : null}
                   </button>
                 ))}
@@ -253,7 +254,7 @@ function RxBundle({ bundle, editable, onAdd }) {
         <span className="order-bundle-row" key={index}>
           <span className="rp-badge">{RX_BADGES[row.kind] || "薬"}</span>
           {/* 数量は「2 本」で割れないよう 1 つにまとめる */}
-          <span className="order-bundle-name">{row.name}{row.quantity ? <span className="order-bundle-qty"> {row.quantity}{row.unit || ""}</span> : null}</span>
+          <span className="order-bundle-name">{displayDrugName(row.name)}{row.quantity ? <span className="order-bundle-qty"> {row.quantity}{row.unit || ""}</span> : null}</span>
         </span>
       ))}
       {rows.length > 5 ? <span className="order-bundle-more">+{rows.length - 5}</span> : null}

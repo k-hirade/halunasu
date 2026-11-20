@@ -370,7 +370,15 @@ function stableJson(value) {
 // warnings の level: "high" は確定前に見直してほしいもの（以前は確定を止めていた項目）、"low" は気付きのためのもの。
 export const FINALIZE_HARD_CODES = Object.freeze(["prescription_name_missing", "diagnosis_name_missing", "comment_text_missing"]);
 
-export function evaluateFinalizeReadiness(content = {}, { examConfirmations = null } = {}) {
+// 検査値の種類と、その算定に使う検査オーダー（コードか名前のどれかが合えば「オーダーあり」）。
+const EXAM_ORDER_RULES = Object.freeze([
+  { label: "視力", has: (values) => Boolean(values.vaUncorrected || values.vaCorrected), codes: ["va"], names: ["視力"] },
+  { label: "眼圧", has: (values) => Number.isFinite(values.iop), codes: ["iop", "iop_gat"], names: ["眼圧"] },
+  { label: "屈折", has: (values) => Boolean(values.refraction) && Object.values(values.refraction).some((value) => value !== null && value !== undefined && value !== ""), codes: ["refraction"], names: ["屈折"] }
+]);
+
+// allergyProfile: 患者の { allergies, noKnownAllergies }。渡したときだけアレルギーの確認を見る（null は見ない）。
+export function evaluateFinalizeReadiness(content = {}, { examConfirmations = null, allergyProfile = null } = {}) {
   const blockers = [];
   const warnings = [];
   const high = (code, field, message) => warnings.push({ code, field, message, level: "high" });
@@ -403,12 +411,24 @@ export function evaluateFinalizeReadiness(content = {}, { examConfirmations = nu
   });
   const carried = (content.prescriptions || []).filter((item) => item.carriedOver && item.kind !== COMMENT_KIND).length;
   if (carried) high("prescription_carried_over", "content.prescriptions", `前回から引き継いだ処方 ${carried}件が未確認です。`);
+  // 処方・注射があるのに、アレルギー（あり・なし）を本人に確かめていない
+  const hasDrugs = (content.prescriptions || []).some((item) => item.kind !== COMMENT_KIND && String(item.name || "").trim());
+  if (hasDrugs && allergyProfile && !(allergyProfile.allergies || []).length && !allergyProfile.noKnownAllergies) {
+    high("allergy_unconfirmed", "profile.allergies", "処方・注射がありますが、アレルギーが未確認です。");
+  }
   for (const item of evaluateOpticalPrescription(content.optical)) high(item.code, item.field, item.message);
   // 主訴は「主訴・所見」の自由記載に書いてもよい
   if (!String(content.chiefComplaint || "").trim() && !String(content.findingsText || "").trim()) low("chief_complaint_empty", "主訴が空です。");
   if (!String(content.plan || "").trim()) low("plan_empty", "方針が空です。");
   if ((content.prescriptions || []).some((item) => item.kind !== COMMENT_KIND) && !content.nextVisit?.intervalWeeks && !content.nextVisit?.date) {
     low("next_visit_missing", "処方がありますが、次回受診が未設定です。");
+  }
+  // 検査値はあるのに、その検査のオーダーが無い（算定漏れの可能性）。取消のオーダーは数えない。
+  const activeOrders = (content.orders || []).filter((order) => order.kind !== COMMENT_KIND && order.status !== "cancelled");
+  for (const rule of EXAM_ORDER_RULES) {
+    if (!EYE_SIDES.some((side) => rule.has(content.exam?.[side] || {}))) continue;
+    const ordered = activeOrders.some((order) => rule.codes.includes(order.code) || rule.names.some((name) => String(order.name || "").includes(name)));
+    if (!ordered) low("exam_order_missing", `${rule.label}の検査値がありますが、検査のオーダーがありません（算定漏れの可能性）。`, "content.orders");
   }
   return { blockers, warnings };
 }

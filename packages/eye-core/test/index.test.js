@@ -165,6 +165,29 @@ test("finalize readiness warns instead of blocking, except for rows that are not
   assert.ok(!codes.includes("next_visit_missing"), "comment rows alone are not a prescription");
 });
 
+test("finalize readiness asks to confirm allergies before drugs and notes exam values without an order", () => {
+  const base = { chiefComplaint: "かすむ", plan: "継続", nextVisit: { intervalWeeks: 4 } };
+  const drugs = { ...base, prescriptions: [{ kind: "injection", name: "アフリベルセプト", eye: "od" }] };
+  const codes = (content, options) => evaluateFinalizeReadiness(content, options).warnings.map((item) => [item.code, item.level]);
+  // 患者の情報を渡さないときは見ない（従来どおり）
+  assert.deepEqual(codes(drugs), []);
+  assert.deepEqual(codes(drugs, { allergyProfile: { allergies: [], noKnownAllergies: false } }), [["allergy_unconfirmed", "high"]]);
+  assert.deepEqual(codes(drugs, { allergyProfile: { allergies: [], noKnownAllergies: true } }), []);
+  assert.deepEqual(codes(drugs, { allergyProfile: { allergies: [{ substance: "ペニシリン" }], noKnownAllergies: false } }), []);
+  // 処方が無ければアレルギーは問わない
+  assert.deepEqual(codes(base, { allergyProfile: { allergies: [], noKnownAllergies: false } }), []);
+
+  const exam = { ...base, exam: { od: { vaCorrected: "1.2", iop: 14 }, os: {} } };
+  const missing = evaluateFinalizeReadiness(exam).warnings;
+  assert.deepEqual(missing.map((item) => [item.code, item.level]), [["exam_order_missing", "low"], ["exam_order_missing", "low"]]);
+  assert.match(missing[0].message, /視力/);
+  assert.match(missing[1].message, /眼圧/);
+  const ordered = { ...exam, orders: [{ orderId: "o1", code: "va", name: "視力検査", status: "performed" }, { orderId: "o2", name: "精密眼圧測定（GAT）", status: "performed" }] };
+  assert.deepEqual(evaluateFinalizeReadiness(ordered).warnings, []);
+  const cancelled = { ...exam, orders: ordered.orders.map((order) => ({ ...order, status: "cancelled" })) };
+  assert.equal(evaluateFinalizeReadiness(cancelled).warnings.length, 2);
+});
+
 test("checks glasses and contact lens prescriptions only when they are issued", () => {
   assert.deepEqual(evaluateOpticalPrescription({ type: "glasses", issue: false }), []);
   const glasses = evaluateOpticalPrescription({

@@ -40,6 +40,7 @@ test("the chart guide marks empty, entered and needs-check items", () => {
   assert.equal(pending.find((item) => item.id === "rx").hint, "用法が未入力");
   assert.equal(stateOf(pending, "orders"), "warn");
   assert.equal(stateOf(chartGuide({ prescriptions: [{ kind: "eye_drop", name: "B", issued: false }] }), "rx"), "done", "a drug not issued this time needs no usage");
+  assert.equal(stateOf(chartGuide({ prescriptions: [{ kind: "injection", name: "アフリベルセプト", eye: "od" }] }), "rx"), "done", "an injection has no usage");
   assert.equal(stateOf(chartGuide({ prescriptions: [{ kind: "eye_drop", name: "B", usage: "就寝前", carriedOver: true }] }), "rx"), "warn");
   assert.equal(stateOf(chartGuide({ orders: [{ kind: "exam", name: "C", status: "cancelled" }] }), "orders"), "todo");
 });

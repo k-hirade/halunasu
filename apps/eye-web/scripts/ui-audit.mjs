@@ -228,12 +228,12 @@ const STATES = {
   editor: { path: editorPath },
   "editor-dark": { path: editorPath },
   "editor-tab-info": leftTab("患者情報"),
-  "editor-tab-exam": leftTab("検査"),
+  "editor-tab-exam": leftTab("検査結果"),
   // 視力のグラフ（0.01〜2.0 の対数軸）: 矯正視力の行をグラフに出す
   "editor-tab-exam-va": {
     path: editorPath,
     run: async (page, view) => {
-      await leftTab("検査").run(page, view);
+      await leftTab("検査結果").run(page, view);
       for (const box of await page.locator(".chart-left").getByRole("checkbox", { name: /視力をグラフに出す/u }).all()) await box.check();
       await page.locator(".chart-left .cl-graph").last().scrollIntoViewIfNeeded();
     }
@@ -324,6 +324,28 @@ const STATES = {
   },
   "editor-schema-pick": { path: editorPath, run: async (page) => { await page.locator(".sketch-add").click(); await page.getByRole("dialog").first().waitFor(); } },
   "editor-schema": {
+    path: editorPath,
+    run: async (page) => {
+      await page.locator(".sketch-add").click();
+      await page.getByRole("dialog").getByRole("button", { name: "右眼眼底" }).click();
+      await page.waitForTimeout(600);
+    }
+  },
+  // 眼別の所見（狭い列では右眼・左眼を上下に積む）
+  "editor-findings": { path: editorPath, run: async (page) => { if ((await page.locator("#field-eyes").getAttribute("open")) === null) await page.locator("#field-eyes > summary").click(); await page.locator("#field-eyes .findings-grid").scrollIntoViewIfNeeded(); await page.waitForTimeout(300); } },
+  // オーダー欄から薬を足した直後（トースト・足した束の強調。中くらいの幅は引き出しを開いたままページを暗くしない）
+  "editor-order-add": {
+    path: editorPath,
+    run: async (page, view) => {
+      await openRightPane(page, view);
+      await page.locator(".chart-right").getByRole("tab", { name: "投薬", exact: true }).click();
+      await page.getByLabel("オーダーを検索").fill("ラタノ");
+      await page.locator(".order-item").filter({ hasText: /ラタノ/u }).first().click();
+      await page.waitForTimeout(500);
+    }
+  },
+  // 暗室表示のシェーマ（画面では紙を暗くする。保存・印刷は白のまま）
+  "editor-schema-dark": {
     path: editorPath,
     run: async (page) => {
       await page.locator(".sketch-add").click();
@@ -914,6 +936,8 @@ async function prepare(browser) {
     await page.getByRole("button", { name: "病名を追加" }).click();
     const dxDialog = page.getByRole("dialog", { name: "傷病名新規登録" });
     await dxDialog.getByLabel("傷病名を検索").fill("開放隅角緑内障");
+    // 眼は既定なし（選ぶまで登録できない）
+    await dxDialog.getByRole("group", { name: /^眼/u }).getByRole("button", { name: "両" }).click();
     await dxDialog.locator(".dx-add-row").filter({ hasText: /^原発開放隅角緑内障/u }).first().getByRole("button", { name: "主病" }).click();
     await dxDialog.getByText(/登録しました/u).waitFor();
     await dxDialog.getByRole("button", { name: "閉じる" }).click();

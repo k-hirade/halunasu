@@ -316,7 +316,8 @@ test("finalizes with warnings, blocks only rows that are not records", async () 
   const finalized = await request(stores, "POST", `/v1/eye/encounters/${id}/finalize`, { expectedRevision: 1 }, doctor);
   assert.equal(finalized.statusCode, 200, JSON.stringify(finalized.body));
   const high = finalized.body.warnings.filter((item) => item.level === "high").map((item) => item.code);
-  assert.deepEqual(high, ["exam_unconfirmed", "order_planned", "prescription_eye_missing", "prescription_carried_over"]);
+  // 患者のアレルギーは未登録（未確認）なので、処方があると確認を促す
+  assert.deepEqual(high, ["exam_unconfirmed", "order_planned", "prescription_eye_missing", "prescription_carried_over", "allergy_unconfirmed"]);
   const logs = await request(stores, "GET", "/v1/eye/audit-logs?category=finalize", undefined, await signedHeaders(stores.platformStore, "director"));
   assert.ok(logs.body.auditLogs[0].safePayload.warningCodes.includes("exam_unconfirmed"));
 

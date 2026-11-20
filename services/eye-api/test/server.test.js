@@ -66,7 +66,7 @@ test("runs the draft, finalize, amend, and refinalize lifecycle with immutable v
   // 未確認の検査値は確定を止めない（確認を促す warnings として出る）。ここでは確認してから確定する。
   const detailBefore = await request(stores, "GET", `/v1/eye/encounters/${encounterId}`, undefined, doctor);
   assert.deepEqual(detailBefore.body.readiness.blockers, []);
-  assert.deepEqual(detailBefore.body.readiness.warnings.filter((item) => item.level === "high").map((item) => item.code), ["exam_unconfirmed", "exam_unconfirmed"]);
+  assert.deepEqual(detailBefore.body.readiness.warnings.filter((item) => item.level === "high").map((item) => item.code), ["exam_unconfirmed", "exam_unconfirmed", "allergy_unconfirmed"]);
 
   const confirmed = await request(stores, "POST", `/v1/eye/encounters/${encounterId}/exam-confirm`, { expectedRevision: 2, eye: "both" }, doctor);
   assert.equal(confirmed.body.encounter.examConfirmations.od.by.loginId, "eye-doctor");

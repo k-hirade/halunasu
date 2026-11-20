@@ -33,6 +33,7 @@ import { addDays, formatDate, formatDateTime, phraseTargetPath, prescriptionText
 import { applyCopy, appendRpRows } from "../lib/chart-copy";
 import { chartGuide, GUIDE_STATE_LABELS } from "../lib/chart-guide";
 import { approvalBriefOf, approvalGuideItem } from "../lib/approval";
+import { displayDrugName } from "../lib/drug-name";
 import { ApprovalBar, ApprovalTag } from "./chart-approval";
 
 const SIDES = ["od", "os"];
@@ -50,10 +51,15 @@ export function EncounterEditor({ encounterId }) {
   const router = useRouter();
   const draft = useEncounterDraft(encounterId, { allowFinalizedEdit: true });
   const {
-    api, detail, setDetail, context, bootstrap, content, meta, encounter, editable, saveState, error, setError, conflict,
+    api, detail, setDetail, context, bootstrap, content, meta, encounter, editable, saveState, error, errorField, setError, conflict,
     load, save, update, replaceContent, saveWith, updateMeta, runAction, confirmExam
   } = draft;
-  const [notice, setNotice] = useState("");
+  // 成功・案内のお知らせは小さなトースト（数秒で消える）。同じ文でも出し直せるよう id を持つ。誤りは上の赤い帯に残す
+  const [toast, setToast] = useState(null);
+  const setNotice = useCallback((text) => setToast(text ? { text, id: `${Date.now()}-${Math.random()}` } : null), []);
+  const notice = toast?.text || "";
+  // オーダー欄から足した束（rpId）。処置・行為の列でしばらく目立たせる
+  const [justAdded, setJustAdded] = useState("");
   const [leftTab, setLeftTab] = useState("history");
   const [category, setCategory] = useState("drug");
   const [selectedRp, setSelectedRp] = useState(null);
@@ -67,7 +73,7 @@ export function EncounterEditor({ encounterId }) {
   const [sets, setSets] = useState(null);
   const [highlight, setHighlight] = useState("");
   const [now, setNow] = useState(Date.now());
-  // 警告一覧で［無効化］した確認（このカルテを開いている間だけ覚える）
+  // 警告一覧で［今回は確認しない］にした確認（このカルテを開いている間だけ覚える）
   const [dismissed, setDismissed] = useState(() => new Set());
   // 定期（この患者の定期。右下の「定期」）と、その登録・編集のダイアログ
   const [regular, setRegular] = useState({ items: [], loading: true, error: "" });
@@ -98,17 +104,40 @@ export function EncounterEditor({ encounterId }) {
       return [];
     }
   }, [previous, content]);
+  // 患者のアレルギー（あり・なしの確認）も見る。処方・注射があるのに未確認なら確認を促す
+  const allergyProfile = detail?.profile || null;
   const readiness = useMemo(() => {
     if (!content) return { blockers: [], warnings: [] };
     try {
-      return evaluateFinalizeReadiness(content, { examConfirmations: encounter?.examConfirmations || null });
+      return evaluateFinalizeReadiness(content, { examConfirmations: encounter?.examConfirmations || null, allergyProfile });
     } catch {
       return { blockers: [], warnings: [] };
     }
-  }, [content, encounter?.examConfirmations]);
-  // 無効化した確認を除いた確認事項（次へのバッジと警告一覧に使う）
+  }, [content, encounter?.examConfirmations, allergyProfile]);
+  // 「今回は確認しない」にした確認を除いた確認事項（次へのバッジと警告一覧に使う）
   const activeWarnings = useMemo(() => readiness.warnings.filter((item) => !dismissed.has(warningKey(item))), [readiness.warnings, dismissed]);
 
+  // トーストは 4 秒で消す（新しいお知らせが来たら数え直す）
+  useEffect(() => {
+    if (!toast) return undefined;
+    const handle = setTimeout(() => setToast((current) => (current?.id === toast.id ? null : current)), 4000);
+    return () => clearTimeout(handle);
+  }, [toast]);
+
+  // 足した束を処置・行為の列で見える位置へ送る（引き出しの下に隠れるときは送らず、トーストで知らせる）
+  useEffect(() => {
+    if (!justAdded) return undefined;
+    const frame = requestAnimationFrame(() => {
+      const element = document.querySelector(`.chart-col-acts [data-rp="${CSS.escape(justAdded)}"]`);
+      if (!element) return;
+      const drawerPane = document.querySelector(".chart-page.is-drawer-right .chart-right");
+      const box = element.getBoundingClientRect();
+      const covered = drawerPane ? box.left + box.width / 2 > drawerPane.getBoundingClientRect().left : false;
+      if (!covered) element.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+    const handle = setTimeout(() => setJustAdded(""), 2200);
+    return () => { cancelAnimationFrame(frame); clearTimeout(handle); };
+  }, [justAdded]);
   // この患者の定期（受診日を渡すと「今回の対象」が付く）
   const regularPatientId = detail?.encounter?.patientId || "";
   const regularDate = meta?.encounterDate || "";
@@ -133,7 +162,10 @@ export function EncounterEditor({ encounterId }) {
     requestAnimationFrame(() => searchRef.current?.focus());
   }, [wide]);
 
-  // ---- 次へ（→）: 警告一覧 → 受付の状態 → 診察終了 → 次の診察待ちの患者 ----
+  // ---- 次へ（→）: 警告一覧（警告があるときだけ） → 受付の状態 → 診察終了 → 次の診察待ちの患者 ----
+  // 警告が無いときはデジカルと同じく一覧を出さずに受付の状態へ進む（検査値・引き継ぎ処方の確認は proceedWarnings が済ませる）
+  const proceedRef = useRef(null);
+  const hasWarnings = readiness.blockers.length + activeWarnings.length > 0;
   const startNext = useCallback(async () => {
     if (!detail?.encounter || !context?.canFinalize) {
       setNotice("確定（次へ）は医師が行います。");
@@ -142,8 +174,9 @@ export function EncounterEditor({ encounterId }) {
     const saved = await save();
     if (!saved) return;
     if (detail.encounter.status === "finalized" && !detail.encounter.amendment) setFlow({ step: "status", loading: true });
+    else if (!hasWarnings && proceedRef.current) await proceedRef.current();
     else setFlow({ step: "warnings" });
-  }, [context?.canFinalize, detail?.encounter, save]);
+  }, [context?.canFinalize, detail?.encounter, hasWarnings, save, setNotice]);
 
   // 受付を探す（同じ患者・同じ日の有効な受付。複数なら診察中・診察待を優先）
   const patientId = encounter?.patientId || "";
@@ -258,7 +291,15 @@ export function EncounterEditor({ encounterId }) {
   const approval = approvalBriefOf(encounter);
   const approvalGuide = approvalGuideItem(approval);
   const guide = [...chartGuide(content, { profile, confirmations: encounter.examConfirmations || null }), ...(approvalGuide ? [approvalGuide] : [])];
-  const highWarnings = readiness.blockers.length + activeWarnings.filter((item) => item.level === "high").length;
+  // 次へのバッジとツールチップは同じ分け方: 要確認（直す行・level high）を数えてバッジに、注意（low）はツールチップの別の段に出す
+  const attentionItems = [...readiness.blockers, ...activeWarnings.filter((item) => item.level === "high")];
+  const noteItems = activeWarnings.filter((item) => item.level !== "high");
+  const highWarnings = attentionItems.length;
+  const nextTitle = [
+    attentionItems.length ? `要確認 ${attentionItems.length}件\n${attentionItems.map((item) => `・${item.message}`).join("\n")}` : "",
+    noteItems.length ? `注意 ${noteItems.length}件\n${noteItems.map((item) => `・${item.message}`).join("\n")}` : "",
+    "次へ（Q・⌘/Ctrl+Enter）"
+  ].filter(Boolean).join("\n");
 
   function openSend() {
     if (!context?.canReceive) return;
@@ -417,13 +458,14 @@ export function EncounterEditor({ encounterId }) {
   }
 
   // 選択中の束（無ければ新しい束）に行を入れる。legacy の 1 行の束は、入れる前に rpId を振る。
+  // 入れた束の rpId を返す（処置・行為の列で目立たせるのに使う）
   function addToRp(field, buildRow) {
     const rows = content[field] || [];
     const group = selectedRp?.field === field ? groupRps(rows).find((item) => item.rpId === selectedRp.rpId) : null;
     if (!group) {
       const rpId = newRpId();
       update([field], [...rows, buildRow(rpId, null)]);
-      return;
+      return rpId;
     }
     const rpId = group.legacy ? newRpId() : group.rpId;
     const indexes = new Set(group.rows.map((item) => item.index));
@@ -431,19 +473,21 @@ export function EncounterEditor({ encounterId }) {
     const last = Math.max(...indexes);
     update([field], [...base.slice(0, last + 1), buildRow(rpId, group.head), ...base.slice(last + 1)]);
     if (group.legacy) setSelectedRp({ field, rpId });
+    return rpId;
   }
 
   function addDrug(drug) {
-    addToRp("prescriptions", (rpId, head) => {
+    const rpId = addToRp("prescriptions", (rpId, head) => {
       const row = prescriptionFromDrug(drug, rpId);
       // 同じ Rp に入れるときは、用法・日数などを Rp の先頭にそろえる
       return head ? { ...row, route: head.route, usage: head.usage, timesPerDay: head.timesPerDay, days: head.days, eye: head.eye } : row;
     });
-    setNotice(`処方に「${drug.name}」を追加しました。${selectedRp?.field === "prescriptions" ? "（選択中の Rp）" : ""}`);
+    setJustAdded(rpId);
+    setNotice(`処方に「${displayDrugName(drug.name)}」を追加しました。${selectedRp?.field === "prescriptions" ? "（選択中の Rp）" : ""}`);
   }
 
   function addOrder(item) {
-    addToRp("orders", (rpId) => orderFromItem(item, rpId));
+    setJustAdded(addToRp("orders", (rpId) => orderFromItem(item, rpId)));
     setNotice(`「${item.name}」を検査・処置に追加しました（予定）。`);
   }
 
@@ -521,7 +565,7 @@ export function EncounterEditor({ encounterId }) {
 
   // 次へ: 警告を見たうえで進む。検査値の確認・引き継ぎ処方の確認をここで済ませてから、受付の状態を選ぶ。
   async function proceedWarnings() {
-    // ［無効化］した確認は、ここでまとめて済ませずにそのまま残す（確定の記録に警告として残る）
+    // ［今回は確認しない］にした確認は、ここでまとめて済ませずにそのまま残す（確定の記録に警告として残る）
     const skipped = new Set(readiness.warnings.filter((item) => dismissed.has(warningKey(item))).map((item) => `${item.code}|${item.field || ""}`));
     if (content.prescriptions.some((item) => item.carriedOver) && !skipped.has("prescription_carried_over|content.prescriptions")) {
       const saved = await saveWith((current) => ({ ...current, prescriptions: current.prescriptions.map((item) => ({ ...item, carriedOver: false })) }));
@@ -536,6 +580,7 @@ export function EncounterEditor({ encounterId }) {
     }
     setFlow({ step: "status", loading: true });
   }
+  proceedRef.current = proceedWarnings;
 
   function fixWarning(item) {
     if (item.code === "order_planned_all") {
@@ -640,7 +685,10 @@ export function EncounterEditor({ encounterId }) {
           {conflict ? <> （{conflict.sections.join("・")}） <button className="btn btn-chip" onClick={() => load({ force: true })} type="button">最新の内容を読み込む（この端末の未保存の変更は破棄）</button></> : null}
         </p>
       ) : null}
-      {notice ? <p className="alert alert-ok chart-alert" role="status">{notice} <button className="btn btn-chip" onClick={() => setNotice("")} type="button">閉じる</button></p> : null}
+      {/* 成功・案内は画面下の小さなトースト（4 秒で消える・レイアウトを動かさない）。誤りは上の赤い帯に残す */}
+      <div aria-live="polite" className="chart-toast-slot" role="status">
+        {notice ? <p className="chart-toast" key={toast.id}>{notice} <button aria-label="このお知らせを消す" className="chart-toast-close" onClick={() => setNotice("")} type="button">×</button></p> : null}
+      </div>
 
       <div className="chart-shell">
         <aside aria-label="患者の情報" className="chart-left">
@@ -763,6 +811,8 @@ export function EncounterEditor({ encounterId }) {
               encounterDate={meta.encounterDate}
               encounterId={encounterId}
               nextDays={nextDays}
+              invalid={errorField}
+              justAdded={justAdded}
               onClearAll={() => setDialog("clear-acts")}
               onDropCopy={dropCopy}
               onSelectRp={setSelectedRp}
@@ -771,7 +821,6 @@ export function EncounterEditor({ encounterId }) {
               update={update}
             />
           </div>
-          {booking.saved ? <p className="alert alert-ok small chart-alert">予約しました: {formatDate(booking.saved.date)}{booking.saved.time ? ` ${booking.saved.time}` : ""}</p> : null}
         </div>
 
         <aside aria-label="オーダー" className="chart-right">
@@ -866,7 +915,7 @@ export function EncounterEditor({ encounterId }) {
                 aria-label={`次へ${highWarnings ? `（要確認 ${highWarnings}）` : ""}`}
                 className="action-tile is-next next-button"
                 onClick={startNext}
-                title={`${[...readiness.blockers, ...activeWarnings].map((item) => item.message).join("\n")}${readiness.blockers.length + activeWarnings.length ? "\n" : ""}次へ（Q・⌘/Ctrl+Enter）`}
+                title={nextTitle}
                 type="button"
               >
                 <NextIcon /><span className="action-tile-label">次へ</span>
@@ -875,7 +924,8 @@ export function EncounterEditor({ encounterId }) {
             ) : null}
           </span>
         </div>
-        {drawer ? <button aria-label="閉じる" className="drawer-backdrop" onClick={() => setDrawer(null)} type="button" /> : null}
+        {/* 中くらいの幅のオーダー引き出しはページを暗くしない（引き出しを開いたまま、足したものを見ながら続けられる） */}
+        {drawer && !(drawer === "right" && medium) ? <button aria-label="閉じる" className="drawer-backdrop" onClick={() => setDrawer(null)} type="button" /> : null}
       </div>
 
       {dialog === "profile" ? (
@@ -1021,7 +1071,7 @@ export function EncounterEditor({ encounterId }) {
             sourceEncounterId: encounterId
           }}
           onCancel={() => setBooking({ open: false, saved: null })}
-          onSaved={(appointment) => setBooking({ open: false, saved: appointment })}
+          onSaved={(appointment) => { setBooking({ open: false, saved: appointment }); setNotice(`予約しました: ${formatDate(appointment.date)}${appointment.time ? ` ${appointment.time}` : ""}`); }}
           title="次回予約"
         />
       ) : null}

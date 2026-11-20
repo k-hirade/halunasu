@@ -24,7 +24,8 @@ export function chartGuide(content = {}, { profile = null, confirmations = null 
   const examPending = confirmations ? SIDES.some((side) => !confirmations[side] && hasExamValues(exam[side])) : false;
   const rx = (content.prescriptions || []).filter((row) => row.kind !== "comment");
   const orders = (content.orders || []).filter((row) => row.kind !== "comment" && row.status !== "cancelled");
-  const usageMissing = rx.some((row) => row.issued !== false && !row.timesPerDay && !String(row.usage || "").trim());
+  // 注射は用法を持たない（デジカルの注射は回数だけ）ので、用法の未入力には数えない
+  const usageMissing = rx.some((row) => row.kind !== "injection" && row.issued !== false && !row.timesPerDay && !String(row.usage || "").trim());
   const carried = rx.some((row) => row.carriedOver);
   const planned = orders.some((row) => row.status === "planned");
   const activeDx = (profile?.diagnoses || []).filter((item) => item.status !== "resolved");

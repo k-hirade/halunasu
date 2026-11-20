@@ -9,16 +9,20 @@ import { closeMenu, COPY_DRAG_TYPE, newRpId, ORDER_BADGES, RX_BADGES, TOPICAL_KI
 import { pointsLabel, useMasterLookup } from "./chart-points";
 import { RpCommentDialog } from "./encounter-dialogs";
 import { addDays, COMMON_USAGES, EYE_LABELS, formatShortDate } from "../lib/format";
+import { displayDrugName } from "../lib/drug-name";
 
 const EYE_CHOICES = [["od", "R"], ["os", "L"], ["ou", "両"]];
 const ORDER_STATUS_LABELS = { planned: "予定", performed: "実施済", cancelled: "取消" };
 const PLAN_EYES = ["od", "os", "ou", "none"];
+// 処方の数値の範囲（API の検証と同じ）。範囲外は入れずに欄の横で知らせる
+const RX_RANGES = { quantity: { min: 0, max: 999, label: "数量" }, days: { min: 0, max: 365, label: "日数" } };
+const INJECTION_COUNT_LABEL = "回数";
 
 // 中央の右の列「処置・行為」。デジカルの区分バッジ付きの束（Rp）を並べる: 処方 → 検査・処置 → 眼鏡・CL → 次回予定。
 // 束を押すと「選択中」になり、右のオーダー欄で選んだ薬・行為はその束に入る（選択していなければ新しい束）。
 export function ActsColumn({
   content, update, editable, drugPresets, catalog, nextDays, selectedRp, onSelectRp, encounterId, encounterDate,
-  suggestion, bookAction, onDropCopy, onClearAll
+  suggestion, bookAction, onDropCopy, onClearAll, invalid = null, justAdded = ""
 }) {
   const [dropping, setDropping] = useState(false);
   const rxGroups = groupRps(content.prescriptions || []);
@@ -75,6 +79,8 @@ export function ActsColumn({
             drugPresets={drugPresets}
             editable={editable}
             group={group}
+            invalid={invalid}
+            justAdded={justAdded === group.rpId}
             key={group.rpId}
             nextDays={nextDays}
             number={index + 1}
@@ -91,6 +97,8 @@ export function ActsColumn({
             content={content}
             editable={editable}
             group={group}
+            invalid={invalid}
+            justAdded={justAdded === group.rpId}
             key={group.rpId}
             onSelect={() => onSelectRp(selectedRp?.field === "orders" && selectedRp.rpId === group.rpId ? null : { field: "orders", rpId: group.rpId })}
             pointsOf={pointsOf}
@@ -139,7 +147,15 @@ function RpBadgeMenu({ label, className = "", editable, children, title }) {
   );
 }
 
-function RxGroup({ group, number, content, update, editable, drugPresets, nextDays, selected, onSelect }) {
+// 範囲外の数値は入れない（API で弾かれて英語のエラーになるのを防ぐ）。入れられないときはその理由の文を返す
+function rangeProblem(key, value, injection = false) {
+  const range = RX_RANGES[key];
+  if (!range || value === null || value === undefined) return "";
+  if (value < range.min || value > range.max) return `${key === "days" && injection ? INJECTION_COUNT_LABEL : range.label}は${range.min}〜${range.max}で入れてください。`;
+  return "";
+}
+
+function RxGroup({ group, number, content, update, editable, drugPresets, nextDays, selected, onSelect, invalid = null, justAdded = false }) {
   const rows = content.prescriptions;
   const head = group.head || {};
   const indexes = new Set(group.rows.map((item) => item.index));
@@ -147,6 +163,24 @@ function RxGroup({ group, number, content, update, editable, drugPresets, nextDa
   const carried = group.items.some(({ row }) => row.carriedOver);
   const notIssued = group.items.length > 0 && group.items.every(({ row }) => row.issued === false);
   const [commentOpen, setCommentOpen] = useState(false);
+  // 範囲外の入力を入れなかったときの文 { index, key, message }（index が null は束の共有項目）
+  const [hint, setHint] = useState(null);
+  const injection = head.kind === "injection";
+  // 欄の横に出す誤り（保存で API に弾かれた欄、または入れなかった範囲外の入力）
+  function problemOf(key, index = null) {
+    if (hint && hint.key === key && (index === null || hint.index === index)) return hint.message;
+    if (!invalid?.field) return "";
+    const [field, at, name] = invalid.field.split(".");
+    if (field !== "prescriptions" || name !== key || !indexes.has(Number(at))) return "";
+    return index === null || Number(at) === index ? invalid.message || "値を確認してください。" : "";
+  }
+  function setNumber(key, value, index = null) {
+    const message = rangeProblem(key, value, injection);
+    setHint(message ? { key, index, message } : null);
+    if (message) return;
+    if (index === null) setShared({ [key]: value });
+    else setRow(index, { [key]: value });
+  }
 
   // Rp の共有項目（院内外・用法・回数・日数・眼）は束の全部の薬剤行にそろえる。
   function setShared(patch) {
@@ -182,15 +216,16 @@ function RxGroup({ group, number, content, update, editable, drugPresets, nextDa
     const position = rows.slice(0, first).filter((_, index) => !indexes.has(index)).length;
     update(["prescriptions"], [...kept.slice(0, position), ...right, ...left, ...kept.slice(position)]);
   }
+  // 注射の「回数」（days に入れる）はそろえない
   function setAllDays(days) {
-    update(["prescriptions"], rows.map((row) => (row.kind !== "comment" && row.issued !== false ? { ...row, days } : row)));
+    update(["prescriptions"], rows.map((row) => (row.kind !== "comment" && row.kind !== "injection" && row.issued !== false ? { ...row, days } : row)));
   }
 
   const badge = RX_BADGES[head.kind] || "薬";
   return (
     <div
       aria-label={`処方 Rp${number}`}
-      className={`rp-group is-rx${selected ? " is-selected" : ""}${carried ? " is-carried" : ""}${notIssued ? " is-not-issued" : ""}`}
+      className={`rp-group is-rx${selected ? " is-selected" : ""}${carried ? " is-carried" : ""}${notIssued ? " is-not-issued" : ""}${justAdded ? " is-just-added" : ""}`}
       data-rp={group.rpId}
       onClick={(event) => { if (editable && !event.target.closest("input, select, button, summary, textarea, a, details")) onSelect(); }}
       role="group"
@@ -231,7 +266,7 @@ function RxGroup({ group, number, content, update, editable, drugPresets, nextDa
               ) : (
                 <span className={`rp-name${row.name ? "" : " is-missing"}`} title={row.drugCode ? `医薬品コード ${row.drugCode}` : undefined}>
                   {row.issued === false ? <span className="rx-off">（今回なし）</span> : null}
-                  {row.name || "（薬剤名なし）"}
+                  {displayDrugName(row.name) || "（薬剤名なし）"}
                 </span>
               )}
               {row.carriedOver ? <span className="tag tag-warn rx-carried-tag" title="前回から引き継いだ処方です（未確認）">引継</span> : null}
@@ -240,7 +275,19 @@ function RxGroup({ group, number, content, update, editable, drugPresets, nextDa
                 <span className="rp-qty">
                   {editable ? (
                     <>
-                      <input aria-label="数量" className="input input-num rp-qty-input" disabled={row.issued === false} min="0" onChange={(event) => setRow(index, { quantity: parseNumber(event.target.value) })} step="any" type="number" value={row.quantity ?? ""} />
+                      <input
+                        aria-describedby={problemOf("quantity", index) ? `rx-err-${group.rpId}-${index}` : undefined}
+                        aria-invalid={problemOf("quantity", index) ? "true" : undefined}
+                        aria-label="数量"
+                        className={`input input-num rp-qty-input${problemOf("quantity", index) ? " is-invalid" : ""}`}
+                        disabled={row.issued === false}
+                        max={RX_RANGES.quantity.max}
+                        min="0"
+                        onChange={(event) => setNumber("quantity", parseNumber(event.target.value), index)}
+                        step="any"
+                        type="number"
+                        value={row.quantity ?? ""}
+                      />
                       <input aria-label="単位" className="input rp-unit-input" disabled={row.issued === false} maxLength={20} onChange={(event) => setRow(index, { unit: event.target.value })} placeholder="本" value={row.unit || ""} />
                     </>
                   ) : <span>{row.issued !== false && row.quantity ? `${row.quantity}${row.unit || ""}` : ""}</span>}
@@ -257,13 +304,17 @@ function RxGroup({ group, number, content, update, editable, drugPresets, nextDa
                 ) : null}
                 {editable ? <button aria-label={`${row.name || "薬剤"}を削除`} className="rp-x" onClick={() => removeRow(index)} type="button">×</button> : null}
               </span>
+              {problemOf("quantity", index) || problemOf("unit", index) || problemOf("name", index) ? (
+                <span className="rp-field-error" id={`rx-err-${group.rpId}-${index}`} role="alert">{problemOf("quantity", index) || problemOf("unit", index) || problemOf("name", index)}</span>
+              ) : null}
             </li>
           );
         })}
       </ul>
       <div className="rp-foot">
         <span className="rp-foot-group">
-          {editable ? (
+          {/* 注射は院内・院外と用法を持たない（デジカルの注射は回数だけ）。保存済みの値は消さずに残す */}
+          {injection ? null : editable ? (
             <select aria-label="院内・院外" className="input rp-route" onChange={(event) => setShared({ route: event.target.value })} value={head.route || "outside"}>
               <option value="outside">院外</option>
               <option value="inside">院内</option>
@@ -272,15 +323,28 @@ function RxGroup({ group, number, content, update, editable, drugPresets, nextDa
           {TOPICAL_KINDS.has(head.kind) || head.eye ? (
             <EyeSegment ariaLabel="処方の眼" editable={editable} missing={TOPICAL_KINDS.has(head.kind) && !head.eye} onChange={(eye) => setShared({ eye })} value={head.eye} />
           ) : null}
-          <UsagePill editable={editable} onChange={setShared} row={head} />
+          {injection ? null : <UsagePill editable={editable} invalid={Boolean(problemOf("usage") || problemOf("timesPerDay"))} onChange={setShared} row={head} />}
         </span>
-        {/* 日数〜削除は 2 つ目のかたまり（狭いときは 2 段目にまとめて落ちる） */}
+        {/* 日数（注射は回数）〜削除は 2 つ目のかたまり（狭いときは 2 段目にまとめて落ちる） */}
         <span className="rp-foot-group is-tail">
           <label className="rp-days">
-            {editable ? <input aria-label="日数" className="input input-num rp-days-input" min="0" onChange={(event) => setShared({ days: parseNumber(event.target.value) })} type="number" value={head.days ?? ""} /> : <span>{head.days ?? "—"}</span>}
-            <span>日</span>
+            {injection ? <span>{INJECTION_COUNT_LABEL}</span> : null}
+            {editable ? (
+              <input
+                aria-describedby={problemOf("days") ? `rx-err-${group.rpId}-days` : undefined}
+                aria-invalid={problemOf("days") ? "true" : undefined}
+                aria-label={injection ? INJECTION_COUNT_LABEL : "日数"}
+                className={`input input-num rp-days-input${problemOf("days") ? " is-invalid" : ""}`}
+                max={RX_RANGES.days.max}
+                min="0"
+                onChange={(event) => setNumber("days", parseNumber(event.target.value))}
+                type="number"
+                value={head.days ?? ""}
+              />
+            ) : <span>{head.days ?? "—"}</span>}
+            <span>{injection ? "回" : "日"}</span>
           </label>
-          {editable && head.days && rows.filter((row) => row.kind !== "comment").length > group.items.length ? (
+          {editable && !injection && head.days && rows.filter((row) => row.kind !== "comment" && row.kind !== "injection").length > group.items.length ? (
             <button className="btn btn-chip rp-days-all" onClick={() => setAllDays(head.days)} title="すべての処方の日数をこの日数にそろえる" type="button">一括反映</button>
           ) : null}
           {carried && editable ? (
@@ -288,6 +352,9 @@ function RxGroup({ group, number, content, update, editable, drugPresets, nextDa
           ) : null}
           {editable ? <button aria-label={`Rp${number}を削除`} className="col-tool rp-delete" onClick={removeGroup} title="この束を削除" type="button">🗑</button> : null}
         </span>
+        {problemOf("days") || problemOf("usage") || problemOf("timesPerDay") || problemOf("route") || problemOf("eye") ? (
+          <span className="rp-field-error" id={`rx-err-${group.rpId}-days`} role="alert">{problemOf("days") || problemOf("usage") || problemOf("timesPerDay") || problemOf("route") || problemOf("eye")}</span>
+        ) : null}
       </div>
       {commentOpen ? <RpCommentDialog kind="rx" onAdd={({ text, scope }) => { addComment(scope, text); setCommentOpen(false); }} onCancel={() => setCommentOpen(false)} /> : null}
     </div>
@@ -306,13 +373,13 @@ export function EyeSegment({ value, onChange, editable, ariaLabel, missing = fal
 }
 
 // 用法のピル（デジカルの「用法を選択してください」）。押すと 1 日の回数と用法の候補、自由入力。
-function UsagePill({ row, onChange, editable }) {
+function UsagePill({ row, onChange, editable, invalid = false }) {
   const text = [row.timesPerDay ? `1日${row.timesPerDay}回` : "", row.usage || ""].filter(Boolean).join(" ");
   if (!editable) return <span className="usage-pill is-static">{text || "用法なし"}</span>;
   return (
     <details className="more-menu usage-menu">
       {/* 未入力はデジカルと同じく目立つ色のボタン（押すと選べる） */}
-      <summary aria-label="用法" className={`usage-pill${text ? "" : " is-empty is-missing"}`}>{text || "用法を選んでください"}</summary>
+      <summary aria-invalid={invalid ? "true" : undefined} aria-label="用法" className={`usage-pill${text ? "" : " is-empty is-missing"}${invalid ? " is-invalid" : ""}`}>{text || "用法を選んでください"}</summary>
       <div className="more-menu-list usage-list">
         <div aria-label="1日の回数" className="usage-times" role="group">
           {[1, 2, 3, 4, 5, 6].map((times) => (
@@ -330,7 +397,7 @@ function UsagePill({ row, onChange, editable }) {
   );
 }
 
-function OrderGroup({ group, content, update, editable, selected, onSelect, pointsOf = () => null }) {
+function OrderGroup({ group, content, update, editable, selected, onSelect, pointsOf = () => null, invalid = null, justAdded = false }) {
   const rows = content.orders || [];
   const [commentOpen, setCommentOpen] = useState(false);
   const indexes = new Set(group.rows.map((item) => item.index));
@@ -346,7 +413,7 @@ function OrderGroup({ group, content, update, editable, selected, onSelect, poin
   return (
     <div
       aria-label="検査・処置"
-      className={`rp-group is-order${selected ? " is-selected" : ""}`}
+      className={`rp-group is-order${selected ? " is-selected" : ""}${justAdded ? " is-just-added" : ""}`}
       data-rp={group.rpId}
       onClick={(event) => { if (editable && !event.target.closest("input, select, button, summary, textarea, a, details")) onSelect(); }}
       role="group"
@@ -366,8 +433,10 @@ function OrderGroup({ group, content, update, editable, selected, onSelect, poin
             );
           }
           const status = row.status || "planned";
+          // 保存で API に弾かれた行（content.orders.N.*）は赤く囲み、理由を添える
+          const problem = invalid?.field?.startsWith(`orders.${index}.`) ? invalid.message || "値を確認してください。" : "";
           return (
-            <li className={`rp-row order-row is-${status}`} key={row.orderId}>
+            <li aria-invalid={problem ? "true" : undefined} className={`rp-row order-row is-${status}${problem ? " is-invalid" : ""}`} key={row.orderId}>
               <RpBadgeMenu className="is-order" editable={editable} label={ORDER_BADGES[row.kind] || "検査"}>
                 <button className="btn btn-ghost" onClick={(event) => { closeMenu(event); setCommentOpen(true); }} type="button">コメントを追加（探す・記載先を選ぶ）…</button>
                 <button className="btn btn-ghost" onClick={(event) => { closeMenu(event); addComment("free"); }} type="button">コメントを追加（レセプトに載せる）</button>
@@ -391,6 +460,7 @@ function OrderGroup({ group, content, update, editable, selected, onSelect, poin
                   {status !== "planned" ? <button className="btn btn-chip" onClick={() => setRow(index, { status: "planned" })} type="button">予定に戻す</button> : null}
                 </span>
               ) : null}
+              {problem ? <span className="rp-field-error" role="alert">{problem}</span> : null}
             </li>
           );
         })}

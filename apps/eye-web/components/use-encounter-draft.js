@@ -25,6 +25,8 @@ export function useEncounterDraft(encounterId, { allowFinalizedEdit = false } = 
   const [meta, setMeta] = useState({ encounterDate: "", visitType: "revisit" });
   const [saveState, setSaveState] = useState("saved");
   const [error, setError] = useState("");
+  // 入力エラーの欄 { field: "prescriptions.1.quantity", message: "数量は0〜999で入れてください。" }
+  const [errorField, setErrorField] = useState(null);
   const [conflict, setConflict] = useState(null);
   const revisionRef = useRef(0);
   const dirtyRef = useRef(new Set());
@@ -97,6 +99,7 @@ export function useEncounterDraft(encounterId, { allowFinalizedEdit = false } = 
         applyServerEncounter(payload.encounter);
         setSaveState(dirtyRef.current.size ? "dirty" : "saved");
         setError("");
+        setErrorField(null);
         // 保存中に入力が続いた場合は、次の入力を待たずに続けて保存する。
         if (dirtyRef.current.size) setTimeout(() => saveRef.current(), 0);
         return true;
@@ -104,6 +107,8 @@ export function useEncounterDraft(encounterId, { allowFinalizedEdit = false } = 
       .catch((nextError) => {
         for (const key of keys) dirtyRef.current.add(key);
         setSaveState("error");
+        // 入力エラーの欄（content.prescriptions.1.quantity など）。欄の横に印を付けるのに使う
+        setErrorField(nextError.status === 400 && nextError.field ? { field: String(nextError.field).replace(/^(content|sections)\./u, ""), message: nextError.fieldMessage || "" } : null);
         if (nextError.status === 409) {
           setConflict({ sections: (nextError.details?.sections || keys).map((key) => SECTION_LABELS[key] || key) });
         }
@@ -237,6 +242,7 @@ export function useEncounterDraft(encounterId, { allowFinalizedEdit = false } = 
     editable,
     saveState,
     error,
+    errorField,
     setError,
     conflict,
     revisionRef,

@@ -320,10 +320,10 @@
   min-width: 0;
 }
 
-/* ---- 29: 用法の未入力は目立つ色のボタン（デジカルの「用法を選択してください」） ---- */
+/* ---- 29: 用法の未入力は目立つ色のボタン（デジカルの「用法を選択してください」）。誤りではないので赤でなく橙 ---- */
 .usage-pill.is-missing {
-  background: var(--red);
-  border-color: var(--red);
+  background: var(--orange);
+  border-color: var(--orange);
   color: var(--on-accent);
 }
 
@@ -774,4 +774,49 @@ button.phrase-tile:hover:not(:disabled) {
 .rp-comment-choice.is-free {
   color: var(--teal-dark);
   font-weight: 700;
+}
+
+/* ---- 入力の誤り: API に弾かれた欄・範囲外の入力は赤枠と、欄の下の短い文 ---- */
+.rp-group .input.is-invalid,
+.usage-pill.is-invalid {
+  background: var(--red-soft);
+  border-color: var(--red);
+  box-shadow: 0 0 0 1px var(--red);
+}
+
+.usage-pill.is-invalid {
+  color: var(--red);
+}
+
+.rp-row.order-row.is-invalid {
+  background: var(--red-soft);
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px var(--red);
+}
+
+.rp-field-error {
+  color: var(--red);
+  flex-basis: 100%;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
+
+/* ---- オーダー欄から足した束を少しのあいだ目立たせる ---- */
+.rp-group.is-just-added {
+  animation: rp-just-added 2s ease-out;
+}
+
+@keyframes rp-just-added {
+  0%,
+  40% {
+    background: var(--highlight);
+    box-shadow: 0 0 0 2px var(--amber-line);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rp-group.is-just-added {
+    animation: none;
+    box-shadow: 0 0 0 2px var(--amber-line);
+  }
 }

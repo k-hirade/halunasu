@@ -258,6 +258,10 @@ function EyeFindings({ content, update, replaceContent, editable, previous, forc
                 <h3 className={`eye-heading eye-${side}`}>{side === "od" ? "右眼 R" : "左眼 L"}</h3>
                 {editable ? <button aria-label={`${EYE_LABELS[side]}の空欄を異常なしに`} className="btn btn-chip findings-normal" onClick={() => fillNormal([side])} type="button">異常なし</button> : null}
               </div>
+              {/* 列が狭いときは右眼・左眼を上下に積むので、眼ごとにも項目名を持つ（広いときは隠す） */}
+              {rows.map(([key, label], row) => (
+                <span aria-hidden="true" className="findings-label is-per-eye" key={`label-${key}`} style={{ "--r": row + 2 }}>{label}</span>
+              ))}
               {rows.map(([key, label], row) => {
                 const style = { "--c": column + 2, "--r": row + 2 };
                 if (key === "cdRatio") {

@@ -16,14 +16,14 @@ export { PatientInfoTab } from "./chart-left-info";
 export { FilesTab } from "./chart-left-files";
 
 // 左のペイン「患者の情報」のタブ（デジカルの 2 段の並び。code は Shift+数字のキー）。既定は診療履歴。
-// 上段: 患者情報・問診・副作用薬等・バイタル・検査、下段: 診療履歴・薬歴・ファイル・サマリー・病名。
+// 上段: 患者情報・問診・副作用薬等・バイタル・検査結果（オーダーの「検査」と分ける）、下段: 診療履歴・薬歴・ファイル・サマリー・病名。
 // Shift+2（デジカルの保険等）は保険をレセコンで扱うため患者情報を開く。
 export const LEFT_TABS = [
   { id: "info", label: "患者情報", codes: ["Digit1", "Digit2"], keyLabel: "Shift+1" },
   { id: "interview", label: "問診", codes: ["Digit3"], keyLabel: "Shift+3" },
   { id: "allergy", label: "副作用薬等", codes: ["Digit4"], keyLabel: "Shift+4" },
   { id: "vitals", label: "バイタル", codes: ["Digit5"], keyLabel: "Shift+5" },
-  { id: "exam", label: "検査", codes: ["Digit6"], keyLabel: "Shift+6" },
+  { id: "exam", label: "検査結果", codes: ["Digit6"], keyLabel: "Shift+6" },
   { id: "history", label: "診療履歴", codes: ["Digit7"], keyLabel: "Shift+7" },
   { id: "drugs", label: "薬歴", codes: ["Digit8"], keyLabel: "Shift+8" },
   { id: "files", label: "ファイル", codes: ["Digit9"], keyLabel: "Shift+9" },
