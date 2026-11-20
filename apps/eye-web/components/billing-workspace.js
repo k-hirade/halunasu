@@ -6,6 +6,7 @@ import { useEyeApi, useEyeFileTransfer } from "./eye-api";
 import { usePrintSettings } from "./print-settings";
 import { UnapprovedTag } from "./chart-approval";
 import { BILLING_TABS, billingRows, countByState, diffChips, diffItems, groupByCategory, itemSummary } from "../lib/billing-diff";
+import { displayDrugName } from "../lib/drug-name";
 import { addDays, ageOn, APPOINTMENT_STATUS_LABELS, DIAGNOSIS_STATUS_LABELS, formatDate, SEX_LABELS, todayIso, VISIT_TYPE_LABELS } from "../lib/format";
 
 const EYE = { od: "右", os: "左", ou: "両" };
@@ -695,8 +696,9 @@ function ItemGroups({ items }) {
 
 function ItemLine({ item, withCategory = false }) {
   const quantity = item.quantity !== null && item.quantity !== undefined && item.quantity !== "" ? `${item.quantity}${item.unit || ""}` : "";
-  const details = [quantity, item.days ? `${item.days}日` : "", item.route, item.usage, item.note].filter(Boolean).join(" ");
-  const chars = Array.from(String(item.name || ""));
+  const details = [quantity, item.days ? `${item.days}${item.category === "注射" ? "回" : "日"}` : "", item.route, item.usage, item.note].filter(Boolean).join(" ");
+  // 処方・注射の薬剤名は表示だけ半角にそろえる
+  const chars = Array.from(item.category === "処方" || item.category === "注射" ? displayDrugName(item.name) : String(item.name || ""));
   const nameHead = chars.slice(0, -1).join("");
   const nameTail = chars.slice(-1).join("");
   return (

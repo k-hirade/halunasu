@@ -1,4 +1,5 @@
 import { APPOINTMENT_STATUS_LABELS as CONTRACT_APPOINTMENT_STATUS_LABELS, formatBirthDateJp } from "@halunasu/eye-contracts";
+import { displayDrugName } from "./drug-name.js";
 
 export const EYE_LABELS = { od: "右眼", os: "左眼", ou: "両眼" };
 export const EYE_SHORT = { od: "R", os: "L", ou: "両" };
@@ -82,14 +83,17 @@ export function diagnosisText(diagnosis = {}) {
 export function prescriptionText(item = {}) {
   if (item.kind === "comment") return `※${item.text || ""}`;
   const details = [
-    item.route === "inside" ? "院内" : "",
+    item.route === "inside" && item.kind !== "injection" ? "院内" : "",
     item.eye ? EYE_LABELS[item.eye] : "",
     item.timesPerDay ? `1日${item.timesPerDay}回` : "",
     item.usage || "",
     item.issued === false ? "今回処方なし" : item.quantity ? `${item.quantity}${item.unit || ""}` : "",
-    item.issued !== false && item.days ? `${item.days}日分` : ""
+    // 注射の days は「回数」
+    item.issued !== false && item.days ? (item.kind === "injection" ? `${item.days}回` : `${item.days}日分`) : ""
   ].filter(Boolean);
-  return details.length ? `${item.name}（${details.join(" ")}）` : item.name;
+  // 薬剤名は表示だけ半角にそろえる（公的マスターの全角の数字・％）
+  const name = displayDrugName(item.name);
+  return details.length ? `${name}（${details.join(" ")}）` : name;
 }
 
 export const VA_CORRECTION_TYPE_LABELS = { glasses: "眼鏡", contact: "CL", pinhole: "ピンホール", trial: "試験枠" };

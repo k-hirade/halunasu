@@ -643,7 +643,7 @@ function OrderChecklist({ content, catalog, rows, editable, setStatus, remove, a
         adding ? (
           <div className="checklist-add">
             <div aria-label="検査の眼" className="segmented" role="group">
-              {["ou", "od", "os"].map((value) => (
+              {["od", "os", "ou"].map((value) => (
                 <button aria-pressed={eye === value} key={value} onClick={() => setEye(value)} type="button">{EYE_SHORT[value]}</button>
               ))}
             </div>
@@ -678,7 +678,9 @@ function orderHasValues(order, exam) {
   });
 }
 
-const DILATION_EYES = [["ou", "両眼"], ["od", "右のみ"], ["os", "左のみ"]];
+// 眼の並びはどの画面も 右 → 左 → 両。開始ボタンは選んだ眼を言う（「右眼の散瞳を開始」）
+const DILATION_EYES = [["od", "右"], ["os", "左"], ["ou", "両"]];
+const DILATION_EYE_NAMES = { od: "右眼", os: "左眼", ou: "両眼" };
 
 // 散瞳タイマー。散瞳から20分を過ぎたら診察可能の目安として色を変える。
 // variant="chip" はカルテの検査欄の見出し用（押すと選択肢）、"panel" は検査ページ用（ボタン 1 つ + 眼の選択）。
@@ -702,8 +704,8 @@ export function DilationFlags({ content, update, editable, now = Date.now(), var
         <div className="more-menu-list">
           {active ? (
             <button className="btn btn-ghost" onClick={(event) => { closeMenu(event); cancel(); }} type="button">散瞳を取り消す</button>
-          ) : DILATION_EYES.map(([value, text]) => (
-            <button className="btn btn-ghost" key={value} onClick={(event) => { closeMenu(event); start(value); }} type="button">{value === "ou" ? "両眼散瞳を開始" : `${text}散瞳`}</button>
+          ) : DILATION_EYES.map(([value]) => (
+            <button className="btn btn-ghost" key={value} onClick={(event) => { closeMenu(event); start(value); }} type="button">{DILATION_EYE_NAMES[value]}の散瞳を開始</button>
           ))}
         </div>
       </details>
@@ -732,11 +734,11 @@ export function DilationFlags({ content, update, editable, now = Date.now(), var
       ) : editable ? (
         <div className="dilation-start">
           <div aria-label="散瞳する眼" className="segmented" role="group">
-            {[["ou", "両"], ["od", "右"], ["os", "左"]].map(([value, text]) => (
+            {DILATION_EYES.map(([value, text]) => (
               <button aria-pressed={eye === value} key={value} onClick={() => setEye(value)} type="button">{text}</button>
             ))}
           </div>
-          <button className="btn btn-ghost" onClick={() => start(eye)} type="button">散瞳開始</button>
+          <button className="btn btn-ghost" onClick={() => start(eye)} type="button">{DILATION_EYE_NAMES[eye]}の散瞳を開始</button>
         </div>
       ) : <p className="muted small">散瞳していません。</p>}
     </div>

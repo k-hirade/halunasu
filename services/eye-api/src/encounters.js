@@ -257,11 +257,12 @@ function sectionRevision(encounter, key) {
 }
 
 // 確定。止めるのは記録として成り立たない入力（blockers）だけで、確認を促す項目（warnings）は返して確定する。
-export function finalizeEncounter(current, { actor, now }) {
+// profile（患者の情報）を渡すと、処方があるのにアレルギーが未確認かも見る。
+export function finalizeEncounter(current, { actor, now, profile = null }) {
   requireDraft(current);
   const version = current.versionCount + 1;
   const content = validateEncounterContent(current.content);
-  const { blockers, warnings } = evaluateFinalizeReadiness(content, { examConfirmations: current.examConfirmations });
+  const { blockers, warnings } = evaluateFinalizeReadiness(content, { examConfirmations: current.examConfirmations, allergyProfile: profile });
   if (blockers.length > 0) {
     const error = new Error(blockers.map((item) => item.message).join(" "));
     error.name = "FinalizeBlockedError";

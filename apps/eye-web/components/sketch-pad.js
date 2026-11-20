@@ -249,7 +249,7 @@ function SketchCanvas({ sketch, readOnly = false, tool = "pen", color = COLORS[0
   return (
     <svg
       aria-label={`${EYE_LABELS[sketch.eye] || ""}${SKETCH_TEMPLATE_LABELS[sketch.template] || ""}のシェーマ`}
-      className={`sketch-canvas${readOnly ? " is-readonly" : ""} is-tool-${tool}`}
+      className={`sketch-canvas sketch-surface${readOnly ? " is-readonly" : ""} is-tool-${tool}`}
       onPointerCancel={handlePointerUp}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
@@ -386,7 +386,7 @@ export function SketchThumb({ sketch, onOpen = null, label = "" }) {
   const prefix = safeId(useId());
   const title = label || `${EYE_LABELS[sketch.eye] || ""}${SKETCH_TEMPLATE_LABELS[sketch.template] || ""}`;
   const body = (
-    <svg aria-hidden="true" className="sketch-thumb-svg" viewBox={`0 0 ${SIZE} ${SIZE}`}>
+    <svg aria-hidden="true" className="sketch-thumb-svg sketch-surface" viewBox={`0 0 ${SIZE} ${SIZE}`}>
       <SketchLayers prefix={prefix} sketch={sketch} strokes={sketch.strokes || []} />
     </svg>
   );
@@ -400,7 +400,7 @@ export function SketchThumb({ sketch, onOpen = null, label = "" }) {
 
 function TemplatePreview({ template, eye }) {
   return (
-    <svg aria-hidden="true" viewBox={`0 0 ${SIZE} ${SIZE}`}>
+    <svg aria-hidden="true" className="sketch-surface" viewBox={`0 0 ${SIZE} ${SIZE}`}>
       <rect fill="#ffffff" height={SIZE} width={SIZE} />
       <SketchTemplate eye={eye} template={template} />
     </svg>

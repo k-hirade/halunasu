@@ -579,7 +579,7 @@ async function routeEyeApiRequest(input = {}) {
           .filter((item) => item.status === "finalized" && item.encounterId !== encounter.encounterId && item.encounterDate <= encounter.encounterDate)
           .reverse()
           .slice(0, 20),
-        readiness: evaluateFinalizeReadiness(encounter.content, { examConfirmations: encounter.examConfirmations }),
+        readiness: evaluateFinalizeReadiness(encounter.content, { examConfirmations: encounter.examConfirmations, allergyProfile: profile }),
         previous,
         changes: previous ? diffEncounterContent(previous.content, encounter.content) : [],
         bottleSuggestions: eyeDropBottleSuggestions(encounter, drugPresets),
@@ -683,12 +683,15 @@ async function routeEyeApiRequest(input = {}) {
       const target = closeTargetAppointment(dayAppointments, current, validated.appointmentId);
       let encounter = current;
       let version = null;
+      let profile = null;
       if (current.status === "draft") {
-        ({ encounter, version } = await finalizeAndSave({ eyeStore, orgId, current, expectedRevision: validated.expectedRevision, actor, now, audit, context }));
+        ({ encounter, version, profile } = await finalizeAndSave({ eyeStore, orgId, current, expectedRevision: validated.expectedRevision, actor, now, audit, context }));
       } else if (current.revision !== validated.expectedRevision) {
         throw conflictError("encounter was updated by someone else; reload and try again");
+      } else {
+        profile = await loadProfile(eyeStore, orgId, current.patientId, await eyeStore.listPatientEncounters(orgId, current.patientId));
       }
-      const readiness = evaluateFinalizeReadiness(encounter.content, { examConfirmations: encounter.examConfirmations });
+      const readiness = evaluateFinalizeReadiness(encounter.content, { examConfirmations: encounter.examConfirmations, allergyProfile: profile });
       let appointment = target.appointment;
       let appointmentError = target.error;
       let appointmentMoved = false;
@@ -1831,7 +1834,7 @@ async function finalizeAndSave({ eyeStore, orgId, current, expectedRevision, act
     : diagnosesForEncounter(profile, current.encounterDate);
   const finalized = finalizeEncounter(
     { ...current, content: { ...current.content, diagnoses } },
-    { actor, now }
+    { actor, now, profile }
   );
   const { version, warnings } = finalized;
   // 承認（指導医）: 設定が有効で、確定した人が承認が必要なら、この版を承認待ちにする（approval.js）
@@ -1850,7 +1853,7 @@ async function finalizeAndSave({ eyeStore, orgId, current, expectedRevision, act
   if (requirement === "pending") {
     await audit({ eventType: "eye.encounter_approval_requested", targetType: "encounter", targetId: encounter.encounterId, patientId: encounter.patientId, safePayload: { version: version.version } });
   }
-  return { encounter, version, warnings };
+  return { encounter, version, warnings, profile };
 }
 
 // 受付の状態を変えて保存する（状態の API・診察終了・会計連携で共通）。

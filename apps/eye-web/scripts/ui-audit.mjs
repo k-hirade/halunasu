@@ -228,7 +228,7 @@ const STATES = {
   editor: { path: editorPath },
   "editor-dark": { path: editorPath },
   "editor-tab-info": leftTab("患者情報"),
-  "editor-tab-exam": leftTab("検査"),
+  "editor-tab-exam": leftTab("検査結果"),
   "editor-tab-historylist": leftTab("診療履歴"),
   "editor-tab-drugs": leftTab("薬歴"),
   "editor-tab-files": leftTab("ファイル"),

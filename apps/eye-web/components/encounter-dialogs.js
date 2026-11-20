@@ -30,7 +30,9 @@ const WARNING_KINDS = {
   comment_text_missing: ["コメント", "文なし"],
   chief_complaint_empty: ["記載", "主訴なし"],
   plan_empty: ["記載", "方針なし"],
-  next_visit_missing: ["次回", "未設定"]
+  next_visit_missing: ["次回", "未設定"],
+  allergy_unconfirmed: ["アレルギー", "未確認"],
+  exam_order_missing: ["検査・処置", "オーダーなし"]
 };
 
 function warningKind(item) {
@@ -39,7 +41,7 @@ function warningKind(item) {
   return ["カルテ", "確認"];
 }
 
-// 警告の 1 行を見分けるキー（無効化した行を覚えるため）。
+// 警告の 1 行を見分けるキー（「今回は確認しない」にした行を覚えるため）。
 export function warningKey(item) {
   return `${item.code}|${item.field || ""}|${item.message || ""}`;
 }
@@ -47,8 +49,9 @@ export function warningKey(item) {
 const LEVEL_LABELS = { blocker: "要修正", high: "確認", low: "注意" };
 
 // 警告一覧（デジカルの保存時の警告一覧）。止めるのは記録として成り立たない行（blockers）だけで、確認事項（warnings）は
-// 見たうえでそのまま進める。行ごとの［無効化］で、その確認事項を今回は出さない（確定の記録には警告として残る）。
-// 検査値の確認と引き継ぎ処方の確認は、無効化しなければ進むときにまとめて済ませる。
+// 見たうえでそのまま進める。行ごとの［今回は確認しない］で、その確認事項を今回は出さない（確定の記録には警告として残る）。
+// 検査値の確認と引き継ぎ処方の確認は、［今回は確認しない］にしなければ進むときにまとめて済ませる。
+// 警告が 1 件も無いときはこのダイアログを出さずに受付の状態へ進む（encounter-editor.js の startNext）。
 export function WarningsDialog({ content, readiness, version, error = "", proceedLabel, onProceed, onCancel, onFix = null, dismissed = null, onDismiss = null, onRestore = null }) {
   const [busy, setBusy] = useState(false);
   const blockers = readiness.blockers;
@@ -97,7 +100,7 @@ export function WarningsDialog({ content, readiness, version, error = "", procee
                           <span className="warn-actions">
                             {onFix && item.code === "order_planned" && item.field ? <button className="btn btn-chip" onClick={() => onFix(item)} type="button">実施にする</button> : null}
                             {!item.blocker && onDismiss ? (
-                              <button aria-label={`「${item.message}」を無効化`} className="btn btn-chip warn-dismiss" onClick={() => onDismiss(warningKey(item))} title="今回はこの確認を出さない（確定の記録には残ります）" type="button">無効化</button>
+                              <button aria-label={`「${item.message}」を今回は確認しない`} className="btn btn-chip warn-dismiss" onClick={() => onDismiss(warningKey(item))} title="今回はこの確認を出さない（確定の記録には残ります）" type="button">今回は確認しない</button>
                             ) : null}
                           </span>
                         </td>
@@ -112,7 +115,7 @@ export function WarningsDialog({ content, readiness, version, error = "", procee
         ) : null}
         {hiddenCount ? (
           <p className="muted small warnings-hidden">
-            無効化した確認 {hiddenCount}件（確定の記録には警告として残ります）
+            今回は確認しない項目 {hiddenCount}件（確定の記録には警告として残ります）
             {onRestore ? <button className="link-button" onClick={onRestore} type="button">元に戻す</button> : null}
           </p>
         ) : null}
@@ -290,7 +293,7 @@ export function SendDialog({ patient, encounterId, encounterDate, error = "", on
 
 // ショートカット一覧（デジカルの 4 列。1 行に「操作 … キー」。入力欄にカーソルがあるときは 1 文字のキーは効かない）。
 export function ShortcutHelpDialog({ leftTabs, categories, onClose }) {
-  const common = [["S", "保存"], ["Q", "次へ（確定 → 受付の状態 → 次の患者）"], ["K", "会計へ送信"], ["R", "検査依頼"], ["A", "ファイルを追加"], ["B", "病名を追加"], ["E", "検査タブ"], ["F", "患者検索"], ["L", "患者リスト"], ["U", "受付画面へ"], ["?", "この一覧"], ["⌘/Ctrl+S", "保存（入力中も）"], ["⌘/Ctrl+Enter", "次へ（入力中も）"], ["Esc", "引き出しを閉じる"]];
+  const common = [["S", "保存"], ["Q", "次へ（確定 → 受付の状態 → 次の患者）"], ["K", "会計へ送信"], ["R", "検査依頼"], ["A", "ファイルを追加"], ["B", "病名を追加"], ["E", "検査結果タブ"], ["F", "患者検索"], ["L", "患者リスト"], ["U", "受付画面へ"], ["?", "この一覧"], ["⌘/Ctrl+S", "保存（入力中も）"], ["⌘/Ctrl+Enter", "次へ（入力中も）"], ["Esc", "引き出しを閉じる"]];
   const half = Math.ceil(common.length / 2);
   const list = (items) => (
     <dl className="shortcut-list">{items.map(([key, label]) => <div key={key}><dd>{label}</dd><dt><kbd>{key}</kbd></dt></div>)}</dl>
@@ -455,7 +458,7 @@ export function AmendDialog({ onConfirm, onCancel }) {
   );
 }
 
-const EXAM_EYES = [["ou", "両眼"], ["od", "右眼"], ["os", "左眼"]];
+const EXAM_EYES = [["od", "右眼"], ["os", "左眼"], ["ou", "両眼"]];
 
 // 検査依頼（デジカルの［検査依頼］）: 診察の途中で、検査をしてほしい項目を選んで検査室へ回す。
 // 選んだ項目は今日のカルテの検査・処置に「予定」として入り（受付一覧・検査室の予定に出る）、受付は「検査中」になる。

@@ -164,8 +164,16 @@ async function runDoctorFlow(browser) {
   await page.keyboard.press("b");
   const dxDialog = page.getByRole("dialog", { name: "傷病名新規登録" });
   await dxDialog.getByLabel("傷病名を検索").fill("開放隅角緑内障");
-  await dxDialog.locator(".dx-add-row").filter({ hasText: /^原発開放隅角緑内障/u }).first().getByRole("button", { name: "主病" }).click();
+  // 眼は既定なし: 選ぶまで登録のボタンは押せない
+  const dxRow = dxDialog.locator(".dx-add-row").filter({ hasText: /^原発開放隅角緑内障/u }).first();
+  await dxDialog.getByText("眼を選んでください（右・左・両）。選ぶと登録できます。").waitFor();
+  assert.equal(await dxRow.getByRole("button", { name: "主病" }).isDisabled(), true, "no eye, no add");
+  await dxDialog.getByRole("group", { name: /^眼/u }).getByRole("button", { name: "両" }).click();
+  await dxRow.getByRole("button", { name: "主病" }).click();
   await dxDialog.getByText(/登録しました: 原発開放隅角緑内障（主病）/u).waitFor();
+  // 同じ病名・同じ眼は重ねて登録できない（登録済みの印が付く）
+  await dxRow.getByText("登録済み（両眼）").waitFor();
+  assert.equal(await dxRow.getByRole("button", { name: "確定" }).isDisabled(), true, "the same code and eye cannot be added twice");
   await dxDialog.getByRole("button", { name: "閉じる" }).click();
   await page.locator(".dx-table").getByText("原発開放隅角緑内障").waitFor();
   assert.match(await page.locator(".dx-table .dx-code").first().innerText(), /^\d+$/u, "a master code is kept");
@@ -1290,14 +1298,14 @@ async function runOrthoptistFlow(browser) {
   // 散瞳: ボタン 1 つ + 眼の選択。散瞳オーダーは自動で実施にしない
   await page.locator(".checklist-choices").getByRole("button", { name: "ほかの検査" }).click();
   await page.locator(".checklist-choices").getByRole("button", { name: "散瞳", exact: true }).click();
-  await page.getByRole("button", { name: "散瞳開始" }).click();
+  await page.getByRole("button", { name: "両眼の散瞳を開始" }).click();
   await page.getByText(/散瞳中（両眼） 0分/u).waitFor();
   assert.equal(await page.locator(".checklist-row").filter({ hasText: "散瞳" }).locator(".order-status-performed").count(), 0);
   await page.getByRole("button", { name: "散瞳オーダーを実施にする" }).click();
   await page.locator(".checklist-row").filter({ hasText: "散瞳" }).locator(".order-status-performed").waitFor();
   // （受付の「散瞳中」の組に入らないよう、散瞳は取り消してから検査終了を確かめる）
   await page.getByRole("button", { name: "散瞳を取り消す" }).click();
-  await page.getByRole("button", { name: "散瞳開始" }).waitFor();
+  await page.getByRole("button", { name: "両眼の散瞳を開始" }).waitFor();
 
   // 申し送り: 定型チップは末尾に追記
   await page.getByRole("textbox", { name: "スタッフメモ" }).fill("左眼は固視が不安定");
@@ -1983,7 +1991,7 @@ async function assertExamLayoutFits(page) {
 // ==== replicate-2 chart-left: カルテ左ペイン（デジカルの 2 段タブ・副作用薬等・バイタル・問診・サマリー・診療履歴の一覧・患者情報） ====
 async function runChartLeftChecks(page) {
   const tabs = await page.locator(".chart-left .pane-tab").allInnerTexts();
-  assert.deepEqual(tabs.map((text) => text.replace(/\d+$/u, "").trim()), ["患者情報", "問診", "副作用薬等", "バイタル", "検査", "診療履歴", "薬歴", "ファイル", "サマリー", "病名"], "left tabs follow the DigiKar two-row order");
+  assert.deepEqual(tabs.map((text) => text.replace(/\d+$/u, "").trim()), ["患者情報", "問診", "副作用薬等", "バイタル", "検査結果", "診療履歴", "薬歴", "ファイル", "サマリー", "病名"], "left tabs follow the DigiKar two-row order");
   // 診療履歴の「一覧」: 日付 × 区分の表。行を押すとその日のカルテ 1 件だけを下に出す
   await page.locator(".chart-head").click();
   await page.keyboard.press("Shift+Digit7");
@@ -2128,15 +2136,15 @@ async function assertChartMainRep2(page) {
   await printMenu.getByRole("button", { name: "紹介状・診断書などの文書…" }).waitFor();
   assert.equal(await printMenu.getByRole("button", { name: "会計連絡票（確定後）" }).isDisabled(), true);
   await page.locator(".actionbar-print > summary").click();
-  // 警告一覧: 行ごとに無効化でき、元に戻せる
+  // 警告一覧: 行ごとに「今回は確認しない」にでき、元に戻せる
   await bar.getByRole("button", { name: /次へ/u }).click();
   const warnings = page.getByRole("dialog", { name: /警告一覧/u });
   const rows = warnings.locator(".warnings-table tbody tr");
   await rows.first().waitFor();
   const before = await rows.count();
-  await warnings.getByRole("button", { name: /を無効化$/u }).first().click();
+  await warnings.getByRole("button", { name: /を今回は確認しない$/u }).first().click();
   assert.equal(await rows.count(), before - 1, "a dismissed warning leaves the table");
-  await warnings.getByText(/無効化した確認 1件/u).waitFor();
+  await warnings.getByText(/今回は確認しない項目 1件/u).waitFor();
   await warnings.getByRole("button", { name: "元に戻す" }).click();
   assert.equal(await rows.count(), before);
   await warnings.getByRole("button", { name: "戻って編集" }).click();

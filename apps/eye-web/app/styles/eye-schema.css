@@ -324,3 +324,11 @@
     flex: none;
   }
 }
+
+/* 暗室表示: 画面ではシェーマの白い紙を暗くする（反転 + 色相 180° 回転）。紙は暗く、灰の下絵は灰のまま、
+   黒の線は白く、赤・青・緑などの色合いは保つ。保存する線の色は変えず、印刷（@media print・印刷画面）は白い紙のまま */
+@media screen {
+  :root[data-theme="dark"] .sketch-surface:not(.print-shell .sketch-surface) {
+    filter: invert(0.92) hue-rotate(180deg);
+  }
+}

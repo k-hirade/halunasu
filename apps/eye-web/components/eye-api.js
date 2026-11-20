@@ -2,6 +2,7 @@
 
 import { useCallback } from "react";
 import { getStoredPlatformAccessToken, usePlatformAuth } from "./platform-auth";
+import { describeFieldError } from "../lib/field-errors";
 
 export function runtimeConfig() {
   if (typeof window === "undefined") return { eyeBaseUrl: "/api/eye" };
@@ -28,6 +29,8 @@ export function useEyeApi() {
       const error = new Error(userMessage(response.status, payload));
       error.status = response.status;
       error.field = payload.field;
+      // 欄の横に出す短い文（例: 「数量は0〜999で入れてください。」）
+      if (response.status === 400 && payload.field) error.fieldMessage = describeFieldError(payload.field, payload.message).inline;
       error.details = payload.details;
       throw error;
     }
@@ -40,7 +43,8 @@ function userMessage(status, payload) {
   if (status === 403) return "この操作を行う権限がありません。";
   if (status === 404) return "対象が見つかりません。";
   if (status === 400 && payload.details?.blockers) return `確定できません: ${payload.details.blockers.map((item) => item.message).join(" ")}`;
-  if (status === 400 && payload.field) return `入力を確認してください（${payload.field}）: ${payload.message}`;
+  // 項目のパスと英語の文は日本語の欄名・指示にする（例: 「処方 2行目の数量: 0〜999で入れてください。」）
+  if (status === 400 && payload.field) return describeFieldError(payload.field, payload.message).top;
   return payload.message || `エラーが発生しました（HTTP ${status}）`;
 }
 

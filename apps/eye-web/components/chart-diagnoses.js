@@ -161,6 +161,7 @@ export function DiagnosisTab({ profile, patientId, canEdit, encounterDate, onSav
       {addOpen ? (
         <DiagnosisAddDialog
           encounterDate={encounterDate}
+          existing={all}
           learning={learning}
           onAdd={(item) => run([...all, item])}
           onClose={() => setAddOpen(false)}
@@ -193,10 +194,17 @@ export function DiagnosisTab({ profile, patientId, canEdit, encounterDate, onSav
   );
 }
 
+// 同じ病名か（コードがあればコード、無ければ名前で見る）
+function sameDiagnosis(item, entry) {
+  return entry.code ? item.code === entry.code : !item.code && item.name === entry.name;
+}
+
 // 新規登録: 検索（空なら学習リスト・よく使う病名）→ 行ごとに［確定］［主病］［疑い］。押すとすぐ登録し、ダイアログは開いたまま。
-function DiagnosisAddDialog({ encounterDate, learning, onAdd, onClose }) {
+// 眼は既定を持たない（必ず選ぶ）。選ぶまで登録のボタンは押せない。すでに登録中（転帰前）の病名には「登録済み」と眼を出し、
+// 同じ病名・同じ眼は重ねて登録しない。
+function DiagnosisAddDialog({ encounterDate, learning, onAdd, onClose, existing = [] }) {
   const [query, setQuery] = useState("");
-  const [eye, setEye] = useState("ou");
+  const [eye, setEye] = useState("");
   const [eyeOnly, setEyeOnly] = useState(true);
   const [added, setAdded] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -228,13 +236,25 @@ function DiagnosisAddDialog({ encounterDate, learning, onAdd, onClose }) {
     if (ok) setAdded((current) => [...current, `${entry.name}${mode === "suspected" ? "（疑い）" : mode === "primary" ? "（主病）" : ""}`]);
   }
 
-  const buttons = (entry) => (
-    <span className="dx-add-actions">
-      <button className="btn btn-chip" disabled={busy} onClick={() => add(entry, "confirmed")} type="button">確定</button>
-      <button className="btn btn-chip" disabled={busy} onClick={() => add(entry, "primary")} type="button">主病</button>
-      <button className="btn btn-chip" disabled={busy} onClick={() => add(entry, "suspected")} type="button">疑い</button>
-    </span>
-  );
+  const active = existing.filter((item) => item.status !== "resolved");
+  const registeredEyes = (entry) => [...new Set(active.filter((item) => sameDiagnosis(item, entry)).map((item) => item.eye || "ou"))];
+  const buttons = (entry) => {
+    const duplicate = Boolean(eye) && registeredEyes(entry).includes(eye);
+    const title = !eye ? "眼を選んでください" : duplicate ? "同じ眼で登録済みです" : undefined;
+    const disabled = busy || !eye || duplicate;
+    return (
+      <span className="dx-add-actions">
+        <button className="btn btn-chip" disabled={disabled} onClick={() => add(entry, "confirmed")} title={title} type="button">確定</button>
+        <button className="btn btn-chip" disabled={disabled} onClick={() => add(entry, "primary")} title={title} type="button">主病</button>
+        <button className="btn btn-chip" disabled={disabled} onClick={() => add(entry, "suspected")} title={title} type="button">疑い</button>
+      </span>
+    );
+  };
+  const registeredTag = (entry) => {
+    const eyes = registeredEyes(entry);
+    if (!eyes.length) return null;
+    return <span className="tag dx-registered">登録済み（{["od", "os", "ou"].filter((key) => eyes.includes(key)).map((key) => EYE_LABELS[key]).join("・")}）</span>;
+  };
 
   return (
     <div className="dialog-backdrop" role="presentation">
@@ -242,23 +262,24 @@ function DiagnosisAddDialog({ encounterDate, learning, onAdd, onClose }) {
         <h2 id="dx-add-heading">傷病名新規登録</h2>
         <div className="dx-add-search">
           <input aria-label="傷病名を検索" autoFocus className="input grow" onChange={(event) => setQuery(event.target.value)} placeholder="傷病名・カナで検索" value={query} />
-          <span aria-label="眼" className="segmented" role="group">
+          <span aria-describedby={eye ? undefined : "dx-eye-hint"} aria-label="眼（必ず選ぶ）" className={`segmented${eye ? "" : " is-missing"}`} role="group">
             {EYES.map(([key, label]) => <button aria-pressed={eye === key} key={key} onClick={() => setEye(key)} type="button">{label}</button>)}
           </span>
           <label className="check-line small"><input checked={eyeOnly} onChange={(event) => setEyeOnly(event.target.checked)} type="checkbox" />眼科のみ</label>
         </div>
+        {eye ? null : <p className="dx-eye-hint" id="dx-eye-hint">眼を選んでください（右・左・両）。選ぶと登録できます。</p>}
         <p className="muted small">開始日は診療日（{formatDate(encounterDate)}）になります。{query.trim() ? "" : "空欄のときは、この医院でよく使う病名を出しています。"}</p>
         {search.error ? <p className="alert alert-danger small">{search.error}</p> : null}
         <ul className="dx-add-list">
           {suggestions.map((entry) => (
             <li className="dx-add-row" key={entry.key}>
-              <span className="dx-add-name">{entry.name}{entry.code ? <span className="dx-code">{entry.code}</span> : null}{entry.learned ? <span className="muted small"> {entry.learned}回</span> : null}</span>
+              <span className="dx-add-name">{entry.name}{entry.code ? <span className="dx-code">{entry.code}</span> : null}{entry.learned ? <span className="muted small"> {entry.learned}回</span> : null}{registeredTag(entry)}</span>
               {buttons(entry)}
             </li>
           ))}
           {query.trim() && !search.loading && !suggestions.some((entry) => entry.name === query.trim()) ? (
             <li className="dx-add-row is-free">
-              <span className="dx-add-name">「{query.trim()}」をそのまま登録（コードなし）</span>
+              <span className="dx-add-name">「{query.trim()}」をそのまま登録（コードなし）{registeredTag({ name: query.trim(), code: "" })}</span>
               {buttons({ name: query.trim(), code: "" })}
             </li>
           ) : null}
