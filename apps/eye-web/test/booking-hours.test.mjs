@@ -49,7 +49,9 @@ test("bookings are counted per configured slot and cancelled or absent ones are 
     { date: MONDAY, time: "09:14", status: "checked_in" },
     { date: MONDAY, time: "09:15", status: "booked" },
     { date: MONDAY, time: "09:20", status: "cancelled" },
-    { date: MONDAY, time: "", status: "booked" }
+    { date: MONDAY, time: "", status: "booked" },
+    // 予約なしの当日受付は予約の件数に入れない
+    { date: MONDAY, time: "09:10", status: "checked_in", walkIn: true }
   ];
   assert.deepEqual(countBySlot(appointments, 15), { [MONDAY]: { "09:00": 2, "09:15": 1 } });
   assert.deepEqual(countBySlot(appointments, 30), { [MONDAY]: { "09:00": 3 } });

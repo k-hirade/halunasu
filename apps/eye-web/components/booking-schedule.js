@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AppointmentDialog } from "./appointment-dialog";
 import { BookingCalendar } from "./booking-calendar";
 import { useEyeApi } from "./eye-api";
@@ -11,6 +12,7 @@ import { todayIso } from "../lib/format";
 // 空いている枠を押すと、その日時を入れた予約登録を開く。
 export function BookingSchedule() {
   const api = useEyeApi();
+  const router = useRouter();
   const [date, setDate] = useState("");
   const [context, setContext] = useState(null);
   const [booking, setBooking] = useState(null);
@@ -29,12 +31,13 @@ export function BookingSchedule() {
       <div className="rc-toolbar">
         <h1 className="rc-title">予約状況</h1>
         <Link className="btn btn-ghost btn-sm" href={`/reception${date ? `?date=${date}` : ""}`}>受付一覧へ</Link>
-        <span className="muted small">{canReceive ? "空いている枠を押すと、その日時で予約を登録します。" : "予約の登録は受付の担当者が行います。"}</span>
+        <span className="muted small">{canReceive ? "空いている枠を押すと、その日時で予約を登録します（過去の日は受付一覧を開きます）。" : "予約の登録は受付の担当者が行います。"}</span>
       </div>
       {notice ? <p className="alert alert-ok" role="status">{notice}</p> : null}
       {date ? (
         <BookingCalendar
           date={date}
+          onOpenDay={(day) => router.push(`/reception?date=${day}`)}
           onPickDay={setDate}
           onPickSlot={(day, time) => { if (canReceive) setBooking({ date: day, time }); }}
           refreshKey={refreshKey}

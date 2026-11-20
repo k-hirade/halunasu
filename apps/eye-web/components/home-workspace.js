@@ -16,7 +16,8 @@ import {
   listStageOf,
   nextWaitingPatient,
   publishWaitingCount,
-  stageEnteredAt
+  stageEnteredAt,
+  waitTimeOf
 } from "../lib/consult-flow";
 import { recordClock as formatClock } from "../lib/exam-record";
 import { ageWithMonths } from "../lib/patient-summary";
@@ -80,12 +81,16 @@ export function HomeWorkspace() {
     api("/v1/eye/context").then((payload) => setContext(payload.context)).catch((nextError) => setError(nextError.message));
   }, [api]);
 
+  // 後から出した要求の応答だけを使う（遅れて届いた前の応答で新しい一覧を上書きしない）
+  const loadSeq = useRef(0);
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current;
     const day = todayIso();
     const [appointmentPayload, encounterPayload] = await Promise.all([
       api(`/v1/eye/appointments?date=${day}`),
       api(`/v1/eye/encounters?date=${day}`)
     ]);
+    if (seq !== loadSeq.current) return appointmentPayload;
     const at = Date.now();
     setData(appointmentPayload);
     setEncounters(encounterPayload.encounters || []);
@@ -293,12 +298,16 @@ export function HomeWorkspace() {
     const stage = listStageOf(item, data.encountersByPatient, now);
     const snapshot = item.patientSnapshot || {};
     const entered = stage === "booked" ? "" : stageEnteredAt(item);
-    const wait = entered ? minutesSince(entered, now) : null;
+    // 待ちは次の状態に移った時刻で止める（会計済は会計待の間だけ）
+    const waitTime = stage === "booked" ? null : waitTimeOf(item, { now, today: date });
+    const wait = waitTime?.minutes ?? null;
     const [warnAt, alertAt] = WAIT_THRESHOLDS[stage] || [];
     const waitLevel = wait === null || !warnAt ? "" : wait >= alertAt ? " is-alert" : wait >= warnAt ? " is-warn" : "";
     const isSelected = item.appointmentId === selectedId;
     const encounter = data.encountersByPatient[item.patientId];
     const status = item.displayStatus || item.status;
+    // 検査の段階のうち処置中は札を分ける（検査中と色・形で見分ける）
+    const treating = stage === "exam" && status === "in_treatment";
     return (
       <tr
         aria-selected={isSelected}
@@ -323,12 +332,12 @@ export function HomeWorkspace() {
         <td className={`cl-sex sex-${snapshot.sex || "unknown"}`}>{snapshot.sex && snapshot.sex !== "unknown" ? SEX_LABELS[snapshot.sex] : ""}</td>
         <td className="cl-age">{ageWithMonths(snapshot.birthDate, item.date)}</td>
         <td className="cl-stage">
-          <span className={`cl-stage-tag stage-${stage}`}>{STAGE_LABELS[stage]}</span>
+          <span className={`cl-stage-tag stage-${stage}${treating ? " is-treatment" : ""}`}>{treating ? "処置" : STAGE_LABELS[stage]}</span>
           {stage === "consult" && encounter ? <span className="cl-sub">{encounter.status === "finalized" ? "確定済み" : "下書き"}</span> : null}
-          {status !== LIST_STAGES.find((entry) => entry.key === stage)?.status && APPOINTMENT_STATUS_LABELS[status] ? <span className="cl-sub">{APPOINTMENT_STATUS_LABELS[status]}</span> : null}
+          {!treating && status !== LIST_STAGES.find((entry) => entry.key === stage)?.status && APPOINTMENT_STATUS_LABELS[status] ? <span className="cl-sub">{APPOINTMENT_STATUS_LABELS[status]}</span> : null}
         </td>
         <td className="cl-time mono">{formatClock(entered) || ""}</td>
-        <td className={`cl-wait mono${waitLevel}`}>{wait === null ? "" : `${wait}分`}</td>
+        <td className={`cl-wait mono${waitLevel}`}>{waitTime?.unfinished ? <span title={`最後の更新 ${formatClock(waitTime.since)}`}>未終了</span> : wait === null ? "" : `${wait}分`}</td>
         <td className="cl-plan mono">{item.time || ""}</td>
         <td className="cl-purpose">
           {APPOINTMENT_PURPOSE_LABELS[item.purpose] || ""}

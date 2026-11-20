@@ -7,7 +7,9 @@ import { APPOINTMENT_STATUS_MENU } from "@halunasu/eye-contracts";
 import { AppointmentDialog } from "./appointment-dialog";
 import { CancelReceptionDialog, DayHistoryDialog, MarkBadges, MarksDialog, ReceptionHistoryDialog, ReceptionMemoDialog, StatusMenu, useReceptionSettings } from "./reception-dialogs";
 import { useEyeApi } from "./eye-api";
+import { waitTimeOf } from "../lib/consult-flow";
 import { DateNav } from "./mini-calendar";
+import { usePopoverPlacement } from "./popover-placement";
 import { linkAppointmentToPatient, PatientRegisterDialog, RECEPTION_CHANGED_EVENT } from "./patient-register-dialog";
 import { doctorName, useDoctors } from "./use-doctors";
 import {
@@ -57,6 +59,12 @@ export function ReceptionWorkspace() {
   const router = useRouter();
   const doctors = useDoctors();
   const [date, setDate] = useState(todayIso());
+  // ?date= を読むまでは取りに行かない（今日の分を先に取って、後から来た応答で別の日の一覧を上書きしないため）
+  const [dateReady, setDateReady] = useState(false);
+  const dateRef = useRef(date);
+  dateRef.current = date;
+  const loadSeq = useRef(0);
+  const [loadError, setLoadError] = useState("");
   const [data, setData] = useState({ appointments: [], encountersByPatient: {}, loaded: false });
   const [details, setDetails] = useState({});
   const [context, setContext] = useState(null);
@@ -88,11 +96,23 @@ export function ReceptionWorkspace() {
     setSort(sanitizeSort(readStored(SORT_STORAGE_KEY, DEFAULT_SORT)));
     const requested = new URLSearchParams(window.location.search).get("date");
     if (requested && /^\d{4}-\d{2}-\d{2}$/u.test(requested)) setDate(requested);
+    setDateReady(true);
   }, []);
 
+  // 後から出した要求の応答だけを使う。選んでいない日付の応答（遅れて届いた前の日付の分）は捨てる
   const load = useCallback(async () => {
-    const payload = await api(`/v1/eye/appointments?date=${date}`);
-    setData({ ...payload, loaded: true });
+    const seq = ++loadSeq.current;
+    const stale = () => seq !== loadSeq.current || dateRef.current !== date;
+    let payload;
+    try {
+      payload = await api(`/v1/eye/appointments?date=${date}`);
+    } catch (nextError) {
+      if (stale()) return;
+      throw nextError;
+    }
+    if (stale()) return;
+    setData({ ...payload, date, loaded: true });
+    setLoadError("");
     setNow(Date.now());
   }, [api, date]);
 
@@ -101,13 +121,15 @@ export function ReceptionWorkspace() {
   }, [api]);
 
   useEffect(() => {
+    if (!dateReady) return undefined;
     setData((current) => (current.date === date ? current : { appointments: [], encountersByPatient: {}, loaded: false }));
-    load().catch((nextError) => setError(nextError.message));
+    setLoadError("");
+    load().catch((nextError) => setLoadError(nextError.message));
     const handle = setInterval(() => { load().catch(() => {}); }, REFRESH_MS);
     const onChanged = () => { load().catch(() => {}); };
     window.addEventListener(RECEPTION_CHANGED_EVENT, onChanged);
     return () => { clearInterval(handle); window.removeEventListener(RECEPTION_CHANGED_EVENT, onChanged); };
-  }, [load, date]);
+  }, [load, date, dateReady]);
 
   // 患者メモ・前回受付日は、日付を変えたときと患者が増えたときだけ引く（15 秒ごとの更新では引かない）
   const patientKey = useMemo(() => [...new Set(data.appointments.map((item) => item.patientId).filter(Boolean))].sort().join(","), [data.appointments]);
@@ -121,6 +143,7 @@ export function ReceptionWorkspace() {
       api(`/v1/eye/appointments/patient-details?date=${date}`),
       api(`/v1/eye/appointments/patient-marks?date=${date}`).catch(() => ({ patients: {} }))
     ]);
+    if (dateRef.current !== date) return;
     setDetails(payload.patients || {});
     setPatientMarks(marks.patients || {});
   }, [api, date, patientKey]);
@@ -137,7 +160,7 @@ export function ReceptionWorkspace() {
     try {
       await Promise.all([load(), loadDetails()]);
     } catch (nextError) {
-      setError(nextError.message);
+      setLoadError(nextError.message);
     } finally {
       setRefreshing(false);
     }
@@ -200,6 +223,14 @@ export function ReceptionWorkspace() {
       return;
     }
     router.push(`/patients/${appointment.patientId}`);
+  }
+
+  // 行の［カルテ］の説明（押すと openRow と同じ動き）。未登録の受付は患者登録の後に開ける
+  function chartTitleOf(appointment) {
+    if (!appointment.patientId) return "患者登録の後にカルテを開けます";
+    if (data.encountersByPatient[appointment.patientId]) return "この日のカルテを開く";
+    if (canWrite && IN_CLINIC.includes(appointment.status)) return "この日のカルテを作って開く";
+    return "この日のカルテはまだありません（患者のページを開きます）";
   }
 
   function onRowClick(event, appointment) {
@@ -311,7 +342,9 @@ export function ReceptionWorkspace() {
     writeStored(COLUMNS_STORAGE_KEY, next);
   }
 
-  const waitOf = (item) => (IN_CLINIC.includes(item.status) ? minutesSince(item.statusHistory?.at(-1)?.at, now) : null);
+  // 待ち時間は院内の状態の間だけ。過去の日で院内のまま残った受付は数えずに「未終了」
+  const waitTimeFor = (item) => (IN_CLINIC.includes(item.status) ? waitTimeOf(item, { now, today: todayIso() }) : null);
+  const waitOf = (item) => waitTimeFor(item)?.minutes ?? null;
   const dilationOf = (item) => {
     const encounter = data.encountersByPatient[item.patientId];
     return IN_CLINIC.includes(item.status) && encounter?.dilationStartedAt ? minutesSince(encounter.dilationStartedAt, now) : null;
@@ -432,7 +465,9 @@ export function ReceptionWorkspace() {
       }
       case "dilation": return <DilationChip minutes={dilationOf(item)} />;
       case "wait": {
-        const wait = waitOf(item);
+        const waitTime = waitTimeFor(item);
+        if (waitTime?.unfinished) return <span className="flow-wait is-unfinished" title={`最後の更新 ${formatClock(waitTime.since)}`}>未終了</span>;
+        const wait = waitTime?.minutes ?? null;
         if (wait === null) return "";
         const [warnAt, alertAt] = WAIT_THRESHOLDS[item.status] || [];
         const level = !warnAt ? "" : wait >= alertAt ? " is-alert" : wait >= warnAt ? " is-warn" : "";
@@ -444,6 +479,7 @@ export function ReceptionWorkspace() {
 
   function rowMenu(item) {
     const entries = [];
+    if (item.patientId) entries.push(["カルテ", () => openRow(item)]);
     if (item.patientId) entries.push(["患者のページ", () => router.push(`/patients/${item.patientId}`)]);
     if (item.patientId && canWrite && IN_CLINIC.includes(item.status)) entries.push(["検査入力", () => openChart(item, "exam")]);
     if (!item.patientId && canReceive) entries.push(["患者登録", () => setRegistering(item)]);
@@ -454,7 +490,7 @@ export function ReceptionWorkspace() {
     if (item.status === "booked") entries.push(["予約票を印刷", () => openPrint(item, "booking")]);
     if (item.queueNumber && item.status !== "cancelled") entries.push(["受付票を印刷", () => openPrint(item, "visit")]);
     entries.push(["受付編集履歴", () => setHistoryOf(item)]);
-    if (canReceive && item.status !== "cancelled") entries.push(["受付取消", () => setCancelling({ target: item, busy: false })]);
+    if (canReceive && item.status !== "cancelled") entries.push(["受付取消", () => setCancelling({ target: item, busy: false }), "danger"]);
     return entries;
   }
 
@@ -464,7 +500,7 @@ export function ReceptionWorkspace() {
         <h1 className="rc-title">受付</h1>
         <DateNav date={date} onChange={(value) => { setDate(value || todayIso()); setNotice(""); }} />
         {!isToday ? <button className="btn btn-ghost btn-sm" onClick={() => setDate(todayIso())} type="button">今日</button> : null}
-        <span className="rc-count" aria-live="polite">{filteredOn ? `${rows.length} / ${totalShown}件` : `全 ${rows.length}件`}</span>
+        <span className="rc-count" aria-live="polite">{!data.loaded ? "全 —件" : filteredOn ? `${rows.length} / ${totalShown}件` : `全 ${rows.length}件`}</span>
         <div className="rc-filter-wrap">
           <button aria-expanded={filterOpen} aria-haspopup="dialog" className={`btn btn-ghost btn-sm rc-filter-button${filteredOn ? " is-active" : ""}`} onClick={() => setFilterOpen(!filterOpen)} type="button">▼ 絞り込み</button>
           {filteredOn ? <button aria-label="絞り込みを解除" className="btn btn-ghost btn-sm" onClick={() => setFilters(DEFAULT_FILTERS)} type="button">×</button> : null}
@@ -502,6 +538,7 @@ export function ReceptionWorkspace() {
         </div>
       </div>
       {error ? <p className="alert alert-danger" role="alert">{error}</p> : null}
+      {loadError ? <p className="alert alert-danger" role="alert">受付一覧を読み込めませんでした。{loadError}（↻ で読み直せます）</p> : null}
       {notice ? <p className="alert alert-ok" role="status">{notice}</p> : null}
       {/* 場所（トプコンの場所一覧）: 院内の患者を場所で分ける。場所は行の「場所」で変える（無ければステータスから決まる） */}
       <div aria-label="場所" className="rc-places" role="tablist">
@@ -535,6 +572,14 @@ export function ReceptionWorkspace() {
                 <tr className={`rc-row status-${displayStatusOf(item)}`} key={item.appointmentId} onClick={(event) => onRowClick(event, item)}>
                   {columns.map((column) => <td className={`rc-col-${column.key}`} data-label={column.label} key={column.key}>{renderCell(column, item)}</td>)}
                   <td className="rc-col-actions">
+                    <button
+                      aria-label={`${item.patientName} のカルテ`}
+                      className="btn btn-ghost btn-sm rc-chart-button"
+                      disabled={!item.patientId}
+                      onClick={() => openRow(item)}
+                      title={chartTitleOf(item)}
+                      type="button"
+                    >カルテ</button>
                     {canReceive ? (
                       <button
                         aria-label={`${item.patientName} の次回予約`}
@@ -547,8 +592,8 @@ export function ReceptionWorkspace() {
                       <details className="more-menu">
                         <summary aria-label={`${item.patientName} のその他の操作`} className="btn btn-chip">…</summary>
                         <div className="more-menu-list">
-                          {menu.map(([label, action]) => (
-                            <button className="btn btn-ghost" key={label} onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); action(); }} type="button">{label}</button>
+                          {menu.map(([label, action, tone]) => (
+                            <button className={`btn btn-ghost${tone === "danger" ? " rc-menu-danger" : ""}`} key={label} onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); action(); }} type="button">{label}</button>
                           ))}
                         </div>
                       </details>
@@ -560,7 +605,7 @@ export function ReceptionWorkspace() {
           </tbody>
         </table>
         {data.loaded && rows.length === 0 ? <p className="rc-empty muted">{place && filtered.length ? `${LOCATION_LABELS[place]}にいる患者はいません。` : appointments.length ? "絞り込みに当てはまる受付はありません。" : "この日の予約・受付はありません。"}</p> : null}
-        {!data.loaded && !error ? <p className="rc-empty muted">読み込み中…</p> : null}
+        {!data.loaded && !loadError ? <p className="rc-empty muted" role="status">{monthDayLabel(date)}の受付を読み込み中…</p> : null}
       </div>
 
       {dialog ? (
@@ -706,6 +751,8 @@ function DilationChip({ minutes }) {
 // 絞り込み（デジカルの ▼ フィルタ）: ステータス・医師・診療科・表示する列の 4 列と、下段に患者メモ・受付メモの文字列。選ぶとすぐ反映する。
 function FilterPopover({ appointments, doctors, filters, hiddenColumns, onFilters, onColumn, onClose }) {
   const ref = useRef(null);
+  // ボタンの下に置くと右にはみ出る幅（1101〜1300px など）では、画面の中に寄せる（1100px 以下は CSS で固定表示）
+  usePopoverPlacement(ref, true);
   useEffect(() => {
     const onDown = (event) => {
       if (ref.current?.contains(event.target) || event.target.closest?.(".rc-filter-button")) return;
@@ -882,6 +929,12 @@ export function progressOf(appointment, encounter, now) {
       ) : null}
     </>
   );
+}
+
+// 「11月20日」
+function monthDayLabel(iso) {
+  const [, month, day] = String(iso).split("-").map(Number);
+  return month && day ? `${month}月${day}日` : "";
 }
 
 export function formatClock(iso) {

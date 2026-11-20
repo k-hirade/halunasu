@@ -318,6 +318,20 @@
   color: var(--blue-ink);
 }
 
+/* 検査の段階でも処置中は色とひし形で分ける */
+.cl-stage-tag.is-treatment {
+  background: var(--treat-soft);
+  border-color: var(--treat);
+  color: var(--treat);
+}
+
+.cl-stage-tag.is-treatment::before {
+  content: "◆";
+  font-size: 0.7em;
+  margin-right: 2px;
+  vertical-align: 0.1em;
+}
+
 .cl-stage-tag.stage-dark {
   background: var(--amber-soft);
   border-color: var(--amber-line);

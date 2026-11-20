@@ -300,6 +300,8 @@ test("counts appointments per day, hour and half hour for the booking grid", () 
     { date: "2026-11-02", time: "09:00", status: "booked" },
     { date: "2026-11-02", time: "09:59", status: "checked_in" },
     { date: "2026-11-02", time: "", status: "booked" },
+    { date: "2026-11-02", time: "", status: "checked_in", walkIn: true },
+    { date: "2026-11-02", time: "11:00", status: "waiting_doctor", walkIn: true },
     { date: "2026-11-02", time: "10:00", status: "cancelled" },
     { date: "2026-11-02", time: "10:00", status: "no_show" },
     { date: "2026-11-05", time: "10:00", status: "booked" }

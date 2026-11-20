@@ -709,7 +709,11 @@ async function runDoctorFlow(browser) {
   await page.goto(`${baseUrl}/`);
   await openPatientFromSearch(page, "見本", "見本 花子");
   await page.getByRole("heading", { name: "経過" }).waitFor();
-  await page.getByRole("button", { name: /本日のカルテを作成/ }).click();
+  // 今日の確定済みカルテがあるので、主ボタンは「本日のカルテを開く」。同じ日の 2 枚目は「…」から明示して作る
+  await page.getByRole("link", { name: "本日のカルテを開く" }).waitFor();
+  assert.equal(await page.getByRole("button", { name: /本日のカルテを作成/ }).count(), 0, "a finalized chart of today is opened, not duplicated");
+  await page.locator(".pt-actions summary").click();
+  await page.getByRole("button", { name: /同じ日にもう1枚作成/ }).click();
   // セット（右のオーダー、1 キー）: フォルダの木から押すと中央に入る
   await page.getByRole("textbox", { name: "主訴・所見", exact: true }).waitFor();
   await page.locator(".chart-head").click();
@@ -859,6 +863,7 @@ async function runReceptionFlow(browser) {
   assert.deepEqual(headers.map((text) => text.replace(/[▲▼↕]/gu, "").trim()).slice(-4), ["会計", "進捗", "散瞳", "待ち"]);
   assert.equal(await table.getByRole("button", { name: "待ち時間", exact: true }).count(), 1, "the short heading keeps the full name for screen readers");
   await page.getByText("全 0件").waitFor();
+  assert.equal(await page.title(), "受付｜ハルナス", "each page has its own tab title");
 
   // 予約（2 列のダイアログ）: 予約状況の枠を押すと予約日・予約時間に入る。医師・診療科を選ぶ
   await page.getByRole("button", { name: "予約を追加" }).click();
@@ -884,6 +889,19 @@ async function runReceptionFlow(browser) {
   await pickStatus(row, "試験 一郎", "checked_in");
   await waitForStatus(row, "checked_in");
   assert.equal((await row.locator(".rc-col-no").innerText()).trim(), "001");
+  // 行の［カルテ］: 押すと何が起きるかは title で分かる（カルテを書けない受付の役割では、カルテが無ければ患者のページ）
+  assert.equal(await row.getByRole("button", { name: "試験 一郎 のカルテ" }).getAttribute("title"), "この日のカルテはまだありません（患者のページを開きます）");
+
+  // 当日受付で候補が出たら、候補を選ぶか「別の人として登録」を押すまで登録できない（同じ人の二重登録を防ぐ）
+  await page.getByRole("button", { name: "当日受付" }).click();
+  const duplicateCheck = page.getByRole("dialog", { name: "当日受付" });
+  await duplicateCheck.getByLabel("患者を検索").fill("試験");
+  await duplicateCheck.getByRole("button", { name: /試験 一郎/ }).waitFor();
+  assert.match(await duplicateCheck.locator(".candidate").first().innerText(), /1948\(S23\)\/11\/02/u, "candidates show the birth date with the era");
+  assert.equal(await duplicateCheck.getByRole("button", { name: "登録", exact: true }).isDisabled(), true, "a candidate must be chosen first");
+  await duplicateCheck.getByRole("button", { name: "別の人として登録" }).click();
+  assert.equal(await duplicateCheck.getByRole("button", { name: "登録", exact: true }).isDisabled(), false);
+  await duplicateCheck.getByRole("button", { name: "キャンセル" }).click();
 
   // 予約なし・未登録の当日受付 → 患者登録（行の「…」メニューから）
   await page.getByRole("button", { name: "当日受付" }).click();

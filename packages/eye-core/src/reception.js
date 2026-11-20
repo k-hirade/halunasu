@@ -49,7 +49,7 @@ export function pickNextWaitingAppointment(appointments = [], { excludeAppointme
   return waiting[0] || null;
 }
 
-// 予約状況（週 × 時間）の件数。取消・不在は数えない。時刻のない予約は「終日」（untimed）。
+// 予約状況（週 × 時間）の件数。取消・不在と、予約なしの当日受付（walkIn）は数えない。時刻のない予約は「終日」（untimed）。
 // slots は 1 時間ごと（"09" → 件数）。halfSlots は 30 分ごと（"09:00" / "09:30" → 件数）。
 export function countAppointmentSlots(appointments = [], { from, to } = {}) {
   const days = [];
@@ -57,7 +57,7 @@ export function countAppointmentSlots(appointments = [], { from, to } = {}) {
   const byDate = new Map(days.map((day) => [day.date, day]));
   for (const item of appointments) {
     const day = byDate.get(item.date);
-    if (!day || !isActiveAppointmentStatus(item.status)) continue;
+    if (!day || item.walkIn || !isActiveAppointmentStatus(item.status)) continue;
     day.total += 1;
     if (!/^\d{2}:\d{2}$/u.test(item.time || "")) {
       day.untimed += 1;

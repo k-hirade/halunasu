@@ -240,12 +240,30 @@ th.rc-col-status::after {
 }
 
 .rc-status.is-in_exam,
-.rc-status.is-in_treatment,
-.rc-dot.is-in_exam,
-.rc-dot.is-in_treatment {
+.rc-dot.is-in_exam {
   background-color: var(--teal-soft);
   border-color: var(--teal);
   color: var(--teal-dark);
+}
+
+/* 処置中は色だけでなく点の形（ひし形）でも検査中と分ける */
+.rc-status.is-in_treatment,
+.rc-dot.is-in_treatment {
+  background-color: var(--treat-soft);
+  border-color: var(--treat);
+  color: var(--treat);
+}
+
+.rc-dot.is-in_treatment {
+  border-radius: 1px;
+  transform: rotate(45deg) scale(0.85);
+}
+
+.rc-status.is-in_treatment::before {
+  content: "◆";
+  font-size: 0.7em;
+  margin-right: 3px;
+  vertical-align: 0.1em;
 }
 
 .rc-status.is-checkout,
@@ -500,6 +518,18 @@ td.rc-col-actions > * + * {
 td.rc-col-actions .more-menu {
   display: inline-block;
   text-align: left;
+}
+
+/* 行の「…」の受付取消: ステータスの ▾ と同じく区切り線の下に赤で出す */
+.more-menu-list .btn.rc-menu-danger {
+  border-radius: 0 0 6px 6px;
+  border-top: 1px solid var(--line);
+  color: var(--red);
+  margin-top: 4px;
+}
+
+.flow-wait.is-unfinished {
+  font-weight: 400;
 }
 
 .rc-empty {
@@ -883,6 +913,13 @@ span.ap-value {
 
 .bk-slot.is-past {
   background: var(--surface-muted);
+}
+
+/* 過去の日で押せない枠 */
+.bk-slot.is-inert,
+.bk-slot.is-inert:hover {
+  background: var(--surface-muted);
+  cursor: default;
 }
 
 .bk-count {
@@ -1289,6 +1326,15 @@ fieldset.register-row > legend {
   margin-top: 4px;
 }
 
+/* 候補があるときの「別の人として登録」 */
+.ap-new-person {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
 .btn.btn.ap-list-toggle {
   display: none;
 }
@@ -1677,6 +1723,30 @@ fieldset.register-row > legend {
   .rc-memo > span:first-child,
   span.rc-memo {
     max-width: 9em;
+  }
+
+  /* 行の［カルテ］を足した分、受付メモ・進捗を 1em ずつ狭くする（全文は title。rep2-reconcile.css の 7em より後に効かせる） */
+  .rc-table .rc-memo.rc-memo > span:first-child,
+  .rc-table span.rc-memo.rc-memo,
+  .rc-table .rc-progress.rc-progress {
+    max-width: 6em;
+  }
+
+  /* 行の［カルテ］［予約］［…］は横の余白を詰める（操作の列を足しても 1366 で横にスクロールしない） */
+  .rc-table td.rc-col-actions {
+    padding-inline: 3px;
+  }
+
+  .rc-table td.rc-col-actions .btn.btn-sm {
+    padding-inline: 5px;
+  }
+
+  .rc-table td.rc-col-actions .more-menu > summary.btn {
+    padding-inline: 6px;
+  }
+
+  td.rc-col-actions > * + * {
+    margin-left: 2px;
   }
 }
 

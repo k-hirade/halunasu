@@ -7,6 +7,7 @@ import { ConfirmDialog, SaveIndicator } from "./encounter-dialogs";
 import { DocumentFieldsEditor, TemplatePicker } from "./document-fields";
 import { DocumentInsertPanel } from "./document-insert-panel";
 import { useEyeApi } from "./eye-api";
+import { LoadErrorPage } from "./load-error";
 import { LetterSheet } from "./letter-sheet";
 import { usePrintNames } from "./use-print-names";
 import { usePrintSettings } from "./print-settings";
@@ -302,7 +303,7 @@ export function DocumentEditor({ documentId }) {
 
   useAutoHeight(bodyRef, form?.body);
 
-  if (error && !document) return <main className="eye-page"><p className="alert alert-danger" role="alert">{error}</p></main>;
+  if (error && !document) return <LoadErrorPage message={error} />;
   if (!document || !form) return <main className="eye-page"><p className="loading">読み込み中…</p></main>;
 
   const patient = document.patientSnapshot || {};

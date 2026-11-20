@@ -7,7 +7,8 @@ import { useEyeApi } from "./eye-api";
 import { formatDayButton } from "./mini-calendar";
 import { useClinicSchedule } from "./use-clinic-hours";
 import { DEFAULT_DEPARTMENTS, doctorName, useDoctors } from "./use-doctors";
-import { APPOINTMENT_PURPOSE_LABELS, APPOINTMENT_STATUS_LABELS, patientLine, todayIso } from "../lib/format";
+import { ageOn, APPOINTMENT_PURPOSE_LABELS, APPOINTMENT_STATUS_LABELS, patientLine, SEX_LABELS, todayIso } from "../lib/format";
+import { birthWithEra } from "../lib/reception-table";
 import { outsideHoursNotice } from "../lib/booking-hours";
 import { receptionPrintHref } from "../lib/reception-extras";
 
@@ -25,6 +26,9 @@ export function AppointmentDialog({ title, initial = {}, fixedPatient = null, ap
   const [patient, setPatient] = useState(fixedPatient || (editing?.patientId ? snapshotPatient(editing) : null));
   const [query, setQuery] = useState(initial.patientName || "");
   const [candidates, setCandidates] = useState([]);
+  // 候補を引き終えた検索語と、候補があっても「別の人として登録」を選んだ氏名（同じ人の重複登録を防ぐ）
+  const [searchedQuery, setSearchedQuery] = useState("");
+  const [asNewName, setAsNewName] = useState("");
   const [history, setHistory] = useState({ patientId: "", items: [], loading: false });
   const [calendarOpen, setCalendarOpen] = useState(false);
   // 720px 以下で予約一覧を開いているか（広い画面では常に出す。CSS で切り替える）
@@ -59,8 +63,8 @@ export function AppointmentDialog({ title, initial = {}, fixedPatient = null, ap
     let cancelled = false;
     const handle = setTimeout(() => {
       api("/v1/eye/patients/search", { method: "POST", body: { q: query.trim() } })
-        .then((payload) => { if (!cancelled) setCandidates(payload.patients.slice(0, 8)); })
-        .catch(() => {});
+        .then((payload) => { if (!cancelled) { setCandidates(payload.patients.slice(0, 8)); setSearchedQuery(query.trim()); } })
+        .catch(() => { if (!cancelled) { setCandidates([]); setSearchedQuery(query.trim()); } });
     }, 200);
     return () => { cancelled = true; clearTimeout(handle); };
   }, [api, fixedPatient, patient, query]);
@@ -175,6 +179,9 @@ export function AppointmentDialog({ title, initial = {}, fixedPatient = null, ap
   }
 
   const unregisteredName = (form.patientName || query).trim();
+  // 未登録の氏名で登録できるのは、候補を引き終えて、候補が無いか「別の人として登録」を選んだときだけ
+  const candidatesShown = !patient && !editingItem && Boolean(query.trim()) && candidates.length > 0;
+  const unregisteredReady = Boolean(unregisteredName) && searchedQuery === query.trim() && (!candidatesShown || asNewName === query.trim());
   const departments = [...new Set([...DEFAULT_DEPARTMENTS, ...history.items.map((item) => item.department).filter(Boolean)])];
   const today = todayIso();
   const upcoming = history.items.filter((item) => item.status !== "cancelled");
@@ -226,13 +233,20 @@ export function AppointmentDialog({ title, initial = {}, fixedPatient = null, ap
                     <li key={candidate.patientId}>
                       <button className="candidate" onClick={() => setPatient(candidate)} type="button">
                         <strong>{candidate.displayName}</strong>
-                        <span className="muted small">{candidate.displayNameKana} {patientLine(candidate)}</span>
+                        <span className="muted small">{candidate.displayNameKana} {candidateLine(candidate)}</span>
                       </button>
                     </li>
                   ))}
                 </ul>
               ) : null}
-              {query.trim() && !candidates.length ? <span className="muted small">該当なし。「{query.trim()}」として未登録のまま登録し、あとで患者登録できます。</span> : null}
+              {candidatesShown && asNewName !== query.trim() ? (
+                <div className="ap-new-person">
+                  <span className="muted small">同じ人がいれば選んでください。いなければ</span>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setAsNewName(query.trim())} type="button">別の人として登録</button>
+                </div>
+              ) : null}
+              {candidatesShown && asNewName === query.trim() ? <span className="muted small">候補とは別の人として「{query.trim()}」を未登録のまま登録します。</span> : null}
+              {query.trim() && !candidates.length && searchedQuery === query.trim() ? <span className="muted small">該当なし。「{query.trim()}」として未登録のまま登録し、あとで患者登録できます。</span> : null}
             </>
           )}
         </div>
@@ -329,7 +343,7 @@ export function AppointmentDialog({ title, initial = {}, fixedPatient = null, ap
         </div>
         <div className="dialog-actions">
           <button className="btn btn-ghost" onClick={onCancel} type="button">キャンセル</button>
-          <button className="btn btn-primary" disabled={busy || (!patient && !editingItem && !unregisteredName) || !form.date} type="submit">{submitLabel}</button>
+          <button className="btn btn-primary" disabled={busy || (!patient && !editingItem && !unregisteredReady) || !form.date} title={!patient && !editingItem && candidatesShown && asNewName !== query.trim() ? "候補から選ぶか「別の人として登録」を押してください" : undefined} type="submit">{submitLabel}</button>
         </div>
 
         {calendarOpen ? (
@@ -383,4 +397,15 @@ function formFrom(appointment, initial) {
 
 function snapshotPatient(appointment) {
   return { patientId: appointment.patientId, displayName: appointment.patientName, ...(appointment.patientSnapshot || {}) };
+}
+
+// 候補の 1 行: 患者番号・生年月日（和暦）・年齢・性別（同姓同名を見分ける）
+function candidateLine(patient = {}) {
+  const age = ageOn(patient.birthDate);
+  return [
+    patient.primaryPatientNumber ? `No.${patient.primaryPatientNumber}` : "",
+    patient.birthDate ? birthWithEra(patient.birthDate) : "生年月日なし",
+    age === null ? "" : `${age}歳`,
+    patient.sex && patient.sex !== "unknown" ? SEX_LABELS[patient.sex] || "" : ""
+  ].filter(Boolean).join(" ・ ");
 }
