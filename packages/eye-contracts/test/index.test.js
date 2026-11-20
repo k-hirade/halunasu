@@ -250,7 +250,7 @@ test("phrases take an optional SOAP category and chart templates are validated",
   const { validatePhraseInput, validateChartTemplateInput, PHRASE_SOAP_CATEGORIES, MAX_CHART_TEMPLATE_TEXT, auditEventCategory } = await import("../src/index.js");
   // 区分を送らない古い画面の保存では soap を持たない（保存済みの区分を消さない）
   assert.equal("soap" in validatePhraseInput({ target: "plan", text: "経過観察" }), false);
-  assert.equal(validatePhraseInput({ target: "findingsText", text: "S) かわりなし", soap: "S" }).soap, "S");
+  assert.equal(validatePhraseInput({ target: "findingsText", text: "S) 見え方の変化なし", soap: "S" }).soap, "S");
   assert.equal(validatePhraseInput({ target: "plan", text: "x", soap: "" }).soap, "", "empty means: decide from the target");
   assert.equal(validatePhraseInput({ target: "plan", text: "x", soap: "none" }).soap, "none");
   assert.throws(() => validatePhraseInput({ target: "plan", text: "x", soap: "X" }), (error) => error.field === "soap");

@@ -12,7 +12,7 @@ test("phrase SOAP category: explicit value, then the target, then an S)/O)/A)/P)
   assert.equal(phraseSoap({ target: "plan", soap: "none" }), "", "none means other");
   assert.equal(phraseSoap({ target: "plan" }), "P");
   assert.equal(phraseSoap({ target: "findings.fundus", soap: "" }), "O");
-  assert.equal(phraseSoap({ target: "findingsText", text: "S) かわりなし" }), "S");
+  assert.equal(phraseSoap({ target: "findingsText", text: "S) 見え方の変化なし" }), "S");
   assert.equal(phraseSoap({ target: "findingsText", text: "（a）病状に変化なし" }), "A");
   assert.equal(phraseSoap({ target: "findingsText", text: "o：著変なし" }), "O");
   assert.equal(phraseSoap({ target: "findingsText", text: "視神経に特記所見なし" }), "");
@@ -22,7 +22,7 @@ test("phrase SOAP category: explicit value, then the target, then an S)/O)/A)/P)
 test("phrases are grouped S, O, A, P, other and inactive ones are left out", () => {
   const phrases = [
     { phraseId: "1", target: "plan", text: "経過観察" },
-    { phraseId: "2", target: "findingsText", text: "S) かわりなし" },
+    { phraseId: "2", target: "findingsText", text: "S) 見え方の変化なし" },
     { phraseId: "3", target: "findingsText", text: "眼底 異常なし", soap: "O" },
     { phraseId: "4", target: "staffNote", text: "次回散瞳" },
     { phraseId: "5", target: "chiefComplaint", text: "かすみ", active: false }
