@@ -7,13 +7,16 @@ import { usePathname } from "next/navigation";
 import { BRAND_NAME, ORGANIZATION_STORAGE_KEY, PRODUCT_NAME } from "../lib/brand";
 import { countWaiting, WAITING_COUNT_EVENT } from "../lib/consult-flow";
 import { todayIso } from "../lib/format";
+import { arrangeItems, TEXT_SIZE_STORAGE_KEY } from "../lib/display-prefs";
 import { THEME_STORAGE_KEY } from "../lib/theme";
+import { DisplaySettingsDialog } from "./display-settings-dialog";
 import { useEyeApi } from "./eye-api";
 import { isModalOpen, Modal } from "./modal";
 import { FACILITY_CHANGED_EVENT, OPEN_PATIENT_SEARCH_EVENT, SHORTCUT_HELP_EVENT } from "./patient-search";
 import { PasswordChangeDialog } from "./password-change-dialog";
 import { PatientSearchModal } from "./patient-search-modal";
 import { usePlatformAuth } from "./platform-auth";
+import { applyTextSize, useDisplayPrefs } from "./use-display-prefs";
 
 // 診察待ちの人数をほかの画面で取り直す間隔。診察画面（/）では画面側の 15 秒ごとの更新をそのまま使う。
 const BADGE_REFRESH_MS = 60000;
@@ -110,6 +113,8 @@ export function SiteNav() {
   const [search, setSearch] = useState(null);
   const [help, setHelp] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
+  const [displayOpen, setDisplayOpen] = useState(false);
+  const display = useDisplayPrefs(context);
   const userMenuRef = useRef(null);
   const screen = screenName(pathname);
 
@@ -137,6 +142,18 @@ export function SiteNav() {
     window.addEventListener(FACILITY_CHANGED_EVENT, load);
     return () => { cancelled = true; window.removeEventListener(FACILITY_CHANGED_EVENT, load); };
   }, [api]);
+
+  // 文字の大きさを利用者の設定に合わせ、次に開いたときの最初の描画用に端末にも写す
+  const textSize = display.ready ? display.prefs.textSize : "";
+  useEffect(() => {
+    if (!textSize) return;
+    applyTextSize(textSize);
+    try {
+      window.localStorage.setItem(TEXT_SIZE_STORAGE_KEY, textSize);
+    } catch {
+      // 保存できない環境では今回の表示だけ
+    }
+  }, [textSize]);
 
   // ログインできた病院コードを端末に覚える（次回のログイン画面で入力を省く）
   const organizationCode = context?.organizationCode || session?.organizationCode || "";
@@ -211,6 +228,15 @@ export function SiteNav() {
     setPasswordOpen(true);
   }
 
+  function openDisplaySettings() {
+    // 閉じたあとは、開いたメニューのボタンへフォーカスを戻す（メニューの中の項目は閉じると見えなくなるため）
+    const opener = menuOpen ? document.querySelector(".eh-menu-button") : userMenuRef.current?.querySelector("summary");
+    opener?.focus({ preventScroll: true });
+    setMenuOpen(false);
+    userMenuRef.current?.removeAttribute("open");
+    setDisplayOpen(true);
+  }
+
   function toggleDark() {
     const next = !dark;
     setDark(next);
@@ -232,12 +258,26 @@ export function SiteNav() {
     ? { href: "/settings", label: "施設管理" }
     : context?.canManageSets ? { href: "/settings#sets", label: "セット管理" } : null;
   const badgeLabel = waiting ? `診察待 ${waiting}人` : "";
-  // 施設管理（管理者）またはセット管理（管理者でない医師）のアイコン。管理者は操作記録・経営データ集計も並べる
-  const destinations = [
+  // 施設管理（管理者）またはセット管理（管理者でない医師）のアイコン。管理者は操作記録・経営データ集計も並べる。
+  // 並びと出す・隠すは「表示の設定」（権限の無い項目は設定に関係なく出さない）。最初の 2 つの後ろに検索を置く
+  const allowedTools = [
     ...DESTINATIONS,
     ...(settingsItem ? [{ id: "settings", href: settingsItem.href, label: settingsItem.label, match: (path) => path.startsWith("/settings") }] : []),
-    ...(context?.canManageSettings ? ADMIN_DESTINATIONS : [])
+    ...(context?.canManageSettings ? ADMIN_DESTINATIONS : []),
+    { id: "dark", label: "暗室" }
   ];
+  const tools = arrangeItems(allowedTools, display.prefs.nav);
+  const destinations = tools.filter((item) => item.href);
+
+  function toolButton(item) {
+    if (item.href) return destinationLink(item, "bar");
+    return (
+      <button aria-label={dark ? "画面を明るく戻す（暗室）" : "画面を暗くする（暗室）"} aria-pressed={dark} className="eh-tool eh-tool-dark" data-tip={dark ? "画面を明るく戻す（暗室）" : "画面を暗くする（暗室）"} key={item.id} onClick={toggleDark} type="button">
+        <Icon name="dark" />
+        <span className="eh-tool-label">暗室</span>
+      </button>
+    );
+  }
 
   function destinationLink(item, variant) {
     const current = item.match(pathname);
@@ -273,18 +313,14 @@ export function SiteNav() {
         </div>
         <nav aria-label="メイン" className="eh-right">
           <div className="eh-tools">
-            {destinations.slice(0, 2).map((item) => destinationLink(item, "bar"))}
+            {tools.slice(0, 2).map(toolButton)}
           </div>
           <button aria-haspopup="dialog" aria-label="患者検索（/）" className="eh-tool eh-tool-search" data-tip="患者検索（/）" onClick={() => openSearch()} type="button">
             <Icon name="search" />
             <span className="eh-tool-label">検索</span>
           </button>
           <div className="eh-tools">
-            {destinations.slice(2).map((item) => destinationLink(item, "bar"))}
-            <button aria-label={dark ? "画面を明るく戻す（暗室）" : "画面を暗くする（暗室）"} aria-pressed={dark} className="eh-tool eh-tool-dark" data-tip={dark ? "画面を明るく戻す（暗室）" : "画面を暗くする（暗室）"} onClick={toggleDark} type="button">
-              <Icon name="dark" />
-              <span className="eh-tool-label">暗室</span>
-            </button>
+            {tools.slice(2).map(toolButton)}
           </div>
           <span aria-hidden="true" className="eh-sep" />
           <button aria-haspopup="dialog" aria-label="ショートカット・ヘルプ" className="eh-tool eh-tool-help" data-tip="ショートカット・ヘルプ" onClick={openHelp} type="button">
@@ -310,6 +346,7 @@ export function SiteNav() {
               <button aria-pressed={dark} className="eh-user-item" onClick={toggleDark} type="button">
                 暗室表示<span className="eh-user-state">{dark ? "オン" : "オフ"}</span>
               </button>
+              <button aria-haspopup="dialog" className="eh-user-item" disabled={!display.ready} onClick={openDisplaySettings} type="button">表示の設定</button>
               <button aria-haspopup="dialog" className="eh-user-item" onClick={openPasswordChange} type="button">パスワード変更</button>
               <button className="eh-user-item" onClick={logout} type="button">ログアウト</button>
             </div>
@@ -331,6 +368,7 @@ export function SiteNav() {
           <div className="eh-menu-user">
             <p className="eh-menu-user-name">{userName}{roles ? <span className="muted">（{roles}）</span> : null}{clinicName ? <span className="muted eh-menu-clinic">{clinicName}</span> : null}</p>
             <button aria-pressed={dark} className="eh-command" onClick={toggleDark} type="button">{dark ? "暗室表示をやめる" : "暗室表示にする"}</button>
+            <button aria-haspopup="dialog" className="eh-command" disabled={!display.ready} onClick={openDisplaySettings} type="button">表示の設定</button>
             <button aria-haspopup="dialog" className="eh-command" onClick={openPasswordChange} type="button">パスワード変更</button>
             <button className="eh-command" onClick={logout} type="button">ログアウト</button>
           </div>
@@ -338,6 +376,10 @@ export function SiteNav() {
       ) : null}
       {search ? <PatientSearchModal initialQuery={search.query} onClose={() => setSearch(null)} /> : null}
       {help && typeof document !== "undefined" ? createPortal(<GlobalHelpDialog onClose={() => setHelp(false)} />, document.body) : null}
+      {displayOpen && typeof document !== "undefined" ? createPortal(
+        <DisplaySettingsDialog navItems={allowedTools.map((item) => ({ id: item.id, label: item.label }))} onClose={() => setDisplayOpen(false)} onSave={display.save} prefs={display.prefs} />,
+        document.body
+      ) : null}
       {passwordOpen && typeof document !== "undefined" ? createPortal(<PasswordChangeDialog onClose={() => setPasswordOpen(false)} />, document.body) : null}
     </header>
   );

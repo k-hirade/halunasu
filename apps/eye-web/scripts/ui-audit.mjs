@@ -56,6 +56,11 @@ const openUserMenu = (page, view) => page.locator(view.width < 768 ? ".eh-menu-b
 // カルテの左「患者の情報」は 768px 未満で引き出し、右「オーダー」は 1280px 未満で引き出し
 const openLeftPane = async (page, view) => { if (view.width < 768) await page.locator(".encounter-actions").getByRole("button", { name: "患者の情報", exact: true }).click(); };
 const openRightPane = async (page, view) => { if (view.width < 1280) await page.locator(".encounter-actions").getByRole("button", { name: "オーダー", exact: true }).click(); };
+// カルテ上の「…」（その他の操作）から項目を選ぶ（版履歴・定期登録・セット登録はここ）
+const chartMenuItem = async (page, name) => {
+  await page.locator(".actionbar-more > summary").click();
+  await page.locator(".actionbar-more > .more-menu-list").getByRole("button", { name }).click();
+};
 const leftTab = (label) => ({ path: editorPath, run: async (page, view) => { await openLeftPane(page, view); await page.locator(".chart-left").getByRole("tab", { name: new RegExp(`^${label}`, "u") }).click(); } });
 const rightCategory = (label, query = "") => ({
   path: editorPath,
@@ -303,7 +308,7 @@ const STATES = {
     }
   },
   "editor-finalized": { path: finalizedPath },
-  "editor-versions": { path: finalizedPath, run: async (page) => { await page.getByRole("button", { name: /^版履歴/u }).first().click(); await page.getByRole("dialog", { name: "版履歴" }).waitFor(); } },
+  "editor-versions": { path: finalizedPath, run: async (page) => { await chartMenuItem(page, /^版履歴/u); await page.getByRole("dialog", { name: "版履歴" }).waitFor(); } },
   "editor-shortcuts": { path: editorPath, run: async (page) => { await page.getByRole("button", { name: "ショートカット一覧" }).click(); await page.getByRole("dialog", { name: "ショートカット" }).waitFor(); } },
   // ==== replicate-2 eye: シェーマの道具（四角・斜線の塗りで描いた状態） ====
   "editor-schema-tools": {
@@ -353,7 +358,7 @@ const STATES = {
       await page.waitForTimeout(600);
     }
   },
-  "editor-set-create": { path: editorPath, run: async (page) => { await page.getByRole("button", { name: "セット登録" }).click(); await page.getByRole("dialog", { name: /セット登録/u }).waitFor(); } },
+  "editor-set-create": { path: editorPath, run: async (page) => { await chartMenuItem(page, "セット登録"); await page.getByRole("dialog", { name: /セット登録/u }).waitFor(); } },
   "editor-visit": { path: editorPath, run: async (page) => { await page.getByRole("button", { name: /^診療日・区分を変える/u }).click(); await page.getByRole("dialog").first().waitFor(); } },
   "editor-profile": { path: editorPath, run: async (page) => { await page.getByRole("button", { name: "既往・内服を編集" }).first().click(); await page.getByRole("dialog").first().waitFor(); } },
   "editor-allergy": { path: editorPath, run: async (page) => { await page.getByRole("button", { name: "アレルギー・病名" }).first().click(); await page.waitForTimeout(400); } },
@@ -460,6 +465,12 @@ const STATES = {
   settings: { path: "settings" },
   "settings-dark": { path: "settings" },
   "settings-facility-edit": { path: "settings", run: async (page) => { await page.getByRole("button", { name: "✎ 編集" }).click(); await page.waitForTimeout(400); } },
+  // 表示の設定（利用者メニュー）と、文字の大きさ「大」での主な画面（はみ出さないか）
+  "display-settings": { path: "reception", run: async (page, view) => { await openDisplaySettings(page, view); } },
+  "reception-large": { path: "reception", run: async (page, view) => setLargeText(page, view) },
+  "editor-large": { path: editorPath, run: async (page, view) => setLargeText(page, view) },
+  "exam-large": { path: "exam", run: async (page, view) => setLargeText(page, view) },
+  "settings-large": { path: "settings", run: async (page, view) => setLargeText(page, view) },
   "settings-users": { path: "settingsUsers" },
   "settings-users-edit": { path: "settingsUsers", run: async (page) => { await page.locator(".users-table").getByRole("button", { name: /を編集$/u }).first().click(); await page.waitForTimeout(400); } },
   "settings-sets": { path: "settingsSets", run: async (page) => { await page.locator(".set-tree-item", { hasText: "点眼" }).first().click(); await page.waitForTimeout(300); } },
@@ -543,7 +554,7 @@ const STATES = {
   "editor-regular-create": {
     path: editorPath,
     run: async (page) => {
-      await page.getByRole("button", { name: "定期登録" }).click();
+      await chartMenuItem(page, "定期登録");
       await page.getByRole("dialog", { name: "定期登録" }).waitFor();
     }
   },
@@ -551,7 +562,7 @@ const STATES = {
   "editor-order-regular": {
     path: editorPath,
     run: async (page, view) => {
-      await page.getByRole("button", { name: "定期登録" }).click();
+      await chartMenuItem(page, "定期登録");
       const dialog = page.getByRole("dialog", { name: "定期登録" });
       await dialog.getByLabel("定期の名前").fill(`監査 定期 ${view.width}`);
       await dialog.getByRole("radio", { name: /毎回/u }).check();
@@ -716,7 +727,7 @@ Object.assign(STATES, {
   // 書いた人: 差し戻し（理由つき）
   "approval-returned": { path: "approvalReturned", account: "doctor" },
   // 版履歴の承認の記録（承認待ちにした・差し戻し）
-  "approval-versions": { path: "approvalReturned", run: async (page) => { await page.locator(".chart-head").getByRole("button", { name: /^版履歴/u }).click(); await page.getByRole("dialog", { name: "版履歴" }).waitFor(); } },
+  "approval-versions": { path: "approvalReturned", run: async (page) => { await chartMenuItem(page, /^版履歴/u); await page.getByRole("dialog", { name: "版履歴" }).waitFor(); } },
   // 診察の「承認待ち」タブ（承認者）
   "approval-home": { path: "home", run: async (page) => { await page.getByRole("tab", { name: /^承認待ち/u }).click(); await page.waitForTimeout(400); } },
   // 患者のカルテ一覧の札・会計の「未承認」・紙の「未承認」
@@ -844,6 +855,26 @@ async function runJob(browser, storageState, paths, { name, state, width, height
   } finally {
     await context.close();
   }
+}
+
+async function openDisplaySettings(page, view) {
+  await openUserMenu(page, view);
+  await page.getByRole("button", { name: "表示の設定" }).click();
+  const dialog = page.getByRole("dialog", { name: "表示の設定" });
+  await dialog.waitFor();
+  return dialog;
+}
+
+// 表示の設定で文字を「大」にして保存し、開き直す（最初の描画から大きい文字になる）
+async function setLargeText(page, view) {
+  const dialog = await openDisplaySettings(page, view);
+  await dialog.getByRole("radio", { name: "大" }).check();
+  await dialog.getByRole("button", { name: "保存" }).click();
+  await dialog.waitFor({ state: "detached" });
+  await page.reload({ waitUntil: "networkidle", timeout: 60_000 }).catch(() => null);
+  await page.waitForTimeout(2500);
+  await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+  if (await page.evaluate(() => document.documentElement.dataset.textSize) !== "large") throw new Error("text size is not large after reload");
 }
 
 async function openPassword(page, view) {

@@ -95,6 +95,17 @@
   }
 }
 
+/* 文字の大きさ「大」（表示の設定）。文字のトークンを約 1.15 倍にする。紙に出す大きさは変えない */
+@media screen {
+  :root[data-text-size="large"] {
+    --fs-xs: 14px;
+    --fs-sm: 15px;
+    --fs-md: 16px;
+    --fs-lg: 18px;
+    --fs-xl: 23px;
+  }
+}
+
 /* 暗室表示（散瞳後の診察や暗い検査室向け） */
 :root[data-theme="dark"] {
   --page: #0b1220;

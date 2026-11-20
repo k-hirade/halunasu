@@ -233,6 +233,11 @@
   flex: 0 0 auto;
 }
 
+/* 表示の設定で隠したタブを、キーなどから開いている間だけ出すとき（下線を点線にして一時的と分かるように） */
+.chart-left .pane-tab.is-hidden-tab {
+  border-bottom-style: dashed;
+}
+
 @container left-pane (max-width: 360px) {
   .chart-left .pane-tab {
     padding: 4px 6px;

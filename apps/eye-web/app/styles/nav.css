@@ -788,3 +788,91 @@
     grid-column: 2;
   }
 }
+
+/* 表示の設定（利用者メニューから開く）。2 つの一覧を横に並べ、狭い画面では縦に積む */
+.display-settings h2 {
+  font-size: var(--fs-lg);
+  margin: 0 0 4px;
+}
+
+.display-settings-lists {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  margin-top: 8px;
+}
+
+.display-list h3 {
+  margin: 0 0 2px;
+}
+
+.display-list > p {
+  margin: 0 0 6px;
+}
+
+.display-list-items {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.display-list-item {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  padding: 4px 8px;
+}
+
+.display-list-item + .display-list-item {
+  border-top: 1px solid var(--line);
+}
+
+/* 行の高さいっぱいを押せる（スマホで小さいチェックだけを狙わなくてよい） */
+.display-list-check {
+  align-items: center;
+  align-self: stretch;
+  cursor: pointer;
+  display: flex;
+  flex: 1 1 auto;
+  gap: 8px;
+  min-height: 36px;
+  min-width: 0;
+}
+
+.display-list-move {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.display-list-move .btn[aria-disabled="true"] {
+  opacity: 0.4;
+}
+
+.display-settings-more {
+  margin-top: 12px;
+}
+
+.display-settings-size .check-line {
+  min-height: 36px;
+}
+
+.display-settings-size {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+
+.display-settings-size legend {
+  float: left;
+  font-weight: 600;
+  margin-right: 8px;
+}
+
+.display-settings .dialog-actions .display-settings-reset {
+  margin-right: auto;
+}

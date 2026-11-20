@@ -5,6 +5,7 @@ import { PopoverAutoPlacement } from "../components/popover-placement";
 import { SiteNav } from "../components/site-nav";
 import { BRAND_DESCRIPTION, BRAND_LOGIN, BRAND_NAME, BRAND_TITLE, PAGE_TITLE_TEMPLATE, PRODUCT_NAME } from "../lib/brand";
 import { eyeRuntimeConfigFromEnv } from "../lib/runtime-config";
+import { TEXT_SIZE_BOOT_SCRIPT } from "../lib/display-prefs";
 import { THEME_BOOT_SCRIPT } from "../lib/theme";
 
 // タブの名前は画面ごと（各 page.js の metadata.title →「受付｜ハルナス」）。共有の画面に出るので患者名は入れない
@@ -33,6 +34,8 @@ export default async function RootLayout({ children }) {
           }}
         />
         <script id="halunasu-eye-theme" nonce={nonce} suppressHydrationWarning dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
+        {/* 文字の大きさ（表示の設定）も最初の描画より前に当てる。利用者が分かる前なので、この端末で最後に使った値 */}
+        <script id="halunasu-eye-text-size" nonce={nonce} suppressHydrationWarning dangerouslySetInnerHTML={{ __html: TEXT_SIZE_BOOT_SCRIPT }} />
       </head>
       <body>
         {/* 「…」メニューなどのポップオーバーを、画面やスクロール枠の端で切れない位置に開く */}

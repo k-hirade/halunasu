@@ -284,6 +284,7 @@ async function runDoctorFlow(browser) {
   await assertEditorPopoversFit(page);
   await assertEditorResponsiveB(page);
   await assertChartMainRep2(page);
+  await assertDisplaySettings(page);
   // S で保存
   await page.keyboard.press("s");
   await page.getByText("保存しました。").waitFor({ timeout: 15_000 });
@@ -307,7 +308,7 @@ async function runDoctorFlow(browser) {
   await page.getByRole("dialog", { name: "患者ステータス選択" }).getByRole("button", { name: "決定" }).click();
   await page.getByText("確定 v2").first().waitFor();
   await assertChartMainSendRep2(page);
-  await page.getByRole("button", { name: /^版履歴/u }).first().click();
+  await chartMenuItem(page, /^版履歴/u);
   assert.equal(await page.getByRole("dialog", { name: "版履歴" }).getByRole("link", { name: /^v\d$/u }).count(), 2, "both versions are kept");
   // 共通のダイアログ: Tab は中だけを回り（後ろは inert）、Esc で閉じて開いたボタンへ戻る。カルテの Esc（引き出しを閉じる）は動かない
   const versionsDialog = page.getByRole("dialog", { name: "版履歴" });
@@ -319,7 +320,7 @@ async function runDoctorFlow(browser) {
   }
   await page.keyboard.press("Escape");
   await versionsDialog.waitFor({ state: "detached" });
-  assert.match(await page.evaluate(() => document.activeElement?.textContent || ""), /版履歴/u, "focus returns to the opener");
+  assert.equal(await page.locator(".actionbar-more > summary").evaluate((node) => node === document.activeElement), true, "focus returns to the … button that opened it");
   assert.equal(await page.locator("[inert]").count(), 0, "inert is removed after closing");
   // 「…」メニュー: Esc で閉じて summary へ戻る。外を押しても閉じる
   await page.locator(".actionbar-more > summary").click();
@@ -757,7 +758,7 @@ async function runDoctorFlow(browser) {
   await page.locator("button.phrase-tile").click();
   assert.match(await page.getByRole("textbox", { name: "方針", exact: true }).inputValue(), /点眼継続。\n次回同様。/u);
   // 現在のカルテからセット（フォルダもその場で作る）→ セットタブの先頭に入る
-  await page.getByRole("button", { name: "セット登録" }).click();
+  await chartMenuItem(page, "セット登録");
   const setDialog = page.getByRole("dialog", { name: /セット登録/u });
   await setDialog.getByLabel("セット名").fill("緑内障 再診 Do");
   await setDialog.getByRole("button", { name: "＋ フォルダ" }).click();
@@ -1799,6 +1800,58 @@ async function assertEditorPopoversFit(page) {
 }
 
 // ヘッダーの虫めがねで患者検索のモーダルを開き、語を入れる
+// 表示の設定（利用者メニュー）: 上のアイコン・カルテ左のタブの出す・隠す・並び、カルテガイド、文字の大きさ。端末・利用者ごとに覚える
+async function assertDisplaySettings(page) {
+  const open = async () => {
+    await page.locator(".eh-user-button").click();
+    await page.locator(".eh-user-list").getByRole("button", { name: "表示の設定" }).click();
+    const dialog = page.getByRole("dialog", { name: "表示の設定" });
+    await dialog.waitFor();
+    return dialog;
+  };
+  const tabNames = () => page.locator(".chart-left .pane-tab").evaluateAll((nodes) => nodes.map((node) => node.firstChild?.textContent || ""));
+  let dialog = await open();
+  await dialog.getByRole("checkbox", { name: "予約状況" }).uncheck();
+  await dialog.getByRole("checkbox", { name: "診療履歴" }).uncheck();
+  // ↑↓ はキーボードでも押せる（端でもフォーカスは外れない）
+  await dialog.getByRole("button", { name: "病名を上へ" }).focus();
+  await page.keyboard.press("Enter");
+  assert.equal(await dialog.getByRole("button", { name: "病名を上へ" }).evaluate((node) => node === document.activeElement), true, "focus stays on the moved row");
+  await dialog.getByRole("checkbox", { name: /カルテガイド/u }).uncheck();
+  await dialog.getByRole("radio", { name: "大" }).check();
+  await dialog.getByRole("button", { name: "保存" }).click();
+  await dialog.waitFor({ state: "detached" });
+  assert.equal(await page.locator(".eh-tool-schedule").count(), 0, "a hidden header icon is gone");
+  assert.equal(await page.getByRole("button", { name: "患者検索（/）" }).isVisible(), true, "search always stays");
+  assert.equal(await page.locator(".chart-guide").count(), 0, "the chart guide can be hidden");
+  assert.equal(await page.evaluate(() => document.documentElement.dataset.textSize), "large");
+  assert.equal(await page.evaluate(() => window.localStorage.getItem("halunasu-eye-text-size")), "large", "the text size is kept for the next paint");
+  const names = await tabNames();
+  assert.equal(names.includes("診療履歴"), false, "a hidden tab is not listed");
+  assert.deepEqual(names.slice(-2), ["病名", "サマリー"], "tabs follow the chosen order");
+  // 隠したタブも Shift+数字（元の割り当て）で開け、開いている間だけ最後に出る
+  await page.locator(".chart-head").click();
+  await page.keyboard.press("Shift+Digit7");
+  await page.locator(".chart-left .pane-tab.is-hidden-tab[aria-selected='true']").filter({ hasText: "診療履歴" }).waitFor();
+  // 「…」からもカルテガイドを出せる
+  await chartMenuItem(page, "カルテガイドを出す");
+  await page.locator(".chart-guide").waitFor();
+  // 既定に戻す
+  dialog = await open();
+  await dialog.getByRole("button", { name: "既定に戻す" }).click();
+  await dialog.getByRole("button", { name: "保存" }).click();
+  await dialog.waitFor({ state: "detached" });
+  await page.locator(".eh-tool-schedule").first().waitFor();
+  assert.equal(await page.evaluate(() => document.documentElement.dataset.textSize || ""), "");
+  assert.equal((await tabNames()).join(","), "患者情報,問診,副作用薬等,バイタル,検査結果,診療履歴,薬歴,ファイル,サマリー,病名");
+}
+
+// カルテ上の「…」（その他の操作）から項目を選ぶ（版履歴・定期登録・セット登録・カルテガイドはここ）
+async function chartMenuItem(page, name) {
+  await page.locator(".actionbar-more > summary").click();
+  await page.locator(".actionbar-more > .more-menu-list").getByRole("button", { name }).click();
+}
+
 async function searchPatient(page, query) {
   await page.getByRole("button", { name: "患者検索（/）" }).click();
   const dialog = page.getByRole("dialog", { name: "患者検索" });
@@ -2191,7 +2244,7 @@ async function assertChartMainRep2(page) {
   await requested.locator("details[open] .more-menu-list").getByRole("button", { name: "削除", exact: true }).click();
   assert.equal(await page.locator(".rp-group.is-order").filter({ hasText: "眼圧検査" }).count(), 0);
   // 定期: 今のカルテから登録 → 右下の「定期」に出る → 編集から削除
-  await page.getByRole("button", { name: "定期登録" }).click();
+  await chartMenuItem(page, "定期登録");
   const regular = page.getByRole("dialog", { name: "定期登録" });
   await regular.getByText(/処方 ラタノプロスト/u).first().waitFor();
   await regular.getByLabel("定期の名前").fill("スモーク定期");
@@ -2450,7 +2503,7 @@ async function runApprovalFlow(browser) {
   await director.locator("[data-approval-action='approve']").click();
   await director.locator("[data-approval-bar='approved']").waitFor();
   await director.getByText(/v2 を承認しました/u).waitFor();
-  await director.locator(".chart-head").getByRole("button", { name: /^版履歴/u }).click();
+  await chartMenuItem(director, /^版履歴/u);
   const versions = director.getByRole("dialog", { name: "版履歴" });
   await versions.locator(".approval-version.is-danger").first().waitFor();
   await versions.locator(".approval-version.is-ok").first().waitFor();

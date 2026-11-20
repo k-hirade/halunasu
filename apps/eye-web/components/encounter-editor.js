@@ -28,6 +28,8 @@ import { StatusTag } from "./home-workspace";
 import { CommonDiagnosesList, PatientBanner, ProfileDialog } from "./patient-banner";
 import { openPatientSearch, SHORTCUT_HELP_EVENT } from "./patient-search";
 import { useEncounterDraft } from "./use-encounter-draft";
+import { useDisplayPrefs } from "./use-display-prefs";
+import { arrangeItems } from "../lib/display-prefs";
 import { useMeasuredHeight } from "./use-measured-height";
 import { useMediaQuery } from "./use-media-query";
 import { isModalOpen, Modal } from "./modal";
@@ -63,6 +65,17 @@ export function EncounterEditor({ encounterId }) {
   // オーダー欄から足した束（rpId）。処置・行為の列でしばらく目立たせる
   const [justAdded, setJustAdded] = useState("");
   const [leftTab, setLeftTab] = useState("history");
+  // 表示の設定（左のタブの出す・隠す・並び、カルテガイド）。利用者メニューの「表示の設定」で変える
+  const display = useDisplayPrefs(context);
+  const displayReady = display.ready;
+  const hiddenTabs = display.prefs.leftTabs.hidden;
+  // 既定の診療履歴を隠しているときは、最初に開くタブを並びの先頭にする（読み込んだときの 1 回だけ）
+  const firstTabChecked = useRef(false);
+  useEffect(() => {
+    if (!displayReady || firstTabChecked.current) return;
+    firstTabChecked.current = true;
+    if (hiddenTabs.includes("history")) setLeftTab((current) => (current === "history" ? arrangeItems(LEFT_TABS, display.prefs.leftTabs)[0]?.id || current : current));
+  }, [displayReady, hiddenTabs, display.prefs.leftTabs]);
   const [category, setCategory] = useState("drug");
   const [selectedRp, setSelectedRp] = useState(null);
   const [drawer, setDrawer] = useState(null);
@@ -662,6 +675,10 @@ export function EncounterEditor({ encounterId }) {
     )
   };
   const primaryDx = (profile?.diagnoses || []).filter((item) => item.status !== "resolved" && item.primary);
+  // 左のタブ: 表示の設定の並びで出す。隠したタブをキー（Shift+数字など）や他のボタンから開いたときは、開いている間だけ最後に出す
+  const visibleTabs = arrangeItems(LEFT_TABS, display.prefs.leftTabs);
+  const shownTabs = visibleTabs.some((tab) => tab.id === leftTab) ? visibleTabs : [...visibleTabs, LEFT_TABS.find((tab) => tab.id === leftTab)].filter(Boolean);
+  const showGuide = display.prefs.guide;
 
   return (
     <main className={`chart-page${drawer ? ` is-drawer-${drawer}` : ""}`}>
@@ -703,8 +720,8 @@ export function EncounterEditor({ encounterId }) {
               <button className="btn btn-chip" onClick={() => setDrawer(null)} type="button">閉じる</button>
             </div>
             <div className="pane-tabs" role="tablist">
-              {LEFT_TABS.map((tab) => (
-                <button aria-selected={leftTab === tab.id} className="pane-tab" key={tab.id} onClick={() => setLeftTab(tab.id)} role="tab" title={`${tab.label}（${tab.keyLabel}）`} type="button">
+              {shownTabs.map((tab) => (
+                <button aria-selected={leftTab === tab.id} className={`pane-tab${visibleTabs.includes(tab) ? "" : " is-hidden-tab"}`} key={tab.id} onClick={() => setLeftTab(tab.id)} role="tab" title={`${tab.label}（${tab.keyLabel}）`} type="button">
                   {tab.label}{tab.id === "history" && detail.history.length ? <span className="pane-tab-count">{detail.history.length}</span> : null}
                 </button>
               ))}
@@ -721,22 +738,24 @@ export function EncounterEditor({ encounterId }) {
               <span className="chart-tab" title={dirtyMark ? "保存していない変更があります" : undefined}>{dirtyMark}外来 {VISIT_TYPE_LABELS[meta.visitType] || ""}</span>
               <span className="chart-head-spacer" />
               {editable ? <SaveIndicator onRetry={save} state={saveState} /> : null}
-              <button className="btn btn-chip" onClick={() => setDialog("versions")} type="button">版履歴{detail.versions.length ? ` v${detail.versions.length}` : ""}</button>
-              {/* その他の操作（版履歴・下書きの破棄・修正）。右下の操作帯はデジカルと同じ 5 つの大きいボタンだけにする */}
+              {detail.versions.length ? <span className="chart-head-version muted small" title="版履歴は「…」から開けます">v{detail.versions.length}</span> : null}
+              {/* その他の操作（版履歴・定期登録・セット登録・カルテガイド・下書きの破棄・修正）。右下の操作帯はデジカルと同じ 5 つの大きいボタンだけにする。
+                  閉じたあとは「…」へフォーカスを戻す（ダイアログを閉じたときもそこへ戻る） */}
               <details className="more-menu actionbar-more">
                 <summary aria-label="その他の操作" className="btn btn-chip"><MoreIcon /></summary>
                 <div className="more-menu-list">
-                  <button className="btn btn-ghost" onClick={(event) => { event.currentTarget.closest("details").open = false; setDialog("versions"); }} type="button">版履歴</button>
+                  <button className="btn btn-ghost" onClick={(event) => { closeMenu(event); setDialog("versions"); }} type="button">版履歴{detail.versions.length ? ` v${detail.versions.length}` : ""}</button>
+                  {context?.canManageSets && editable ? <button className="btn btn-ghost" onClick={(event) => { closeMenu(event); setRegularDialog({ mode: "create", error: "" }); }} title="この患者の定期にする（次回・毎回・Nか月ごとに右下へ出す）" type="button">定期登録</button> : null}
+                  {context?.canManageSets && editable ? <button className="btn btn-ghost" onClick={(event) => { closeMenu(event); setDialog("set-create"); }} type="button">セット登録</button> : null}
+                  <button aria-pressed={showGuide} className="btn btn-ghost" disabled={!displayReady} onClick={(event) => { closeMenu(event); display.save({ ...display.prefs, guide: !showGuide }); }} type="button">{showGuide ? "カルテガイドを隠す" : "カルテガイドを出す"}</button>
                   {encounter.status === "draft" && encounter.versionCount === 0 && context?.canWrite ? (
-                    <button className="btn btn-ghost danger-text" onClick={(event) => { event.currentTarget.closest("details").open = false; setDialog("discard"); }} type="button">下書きを破棄</button>
+                    <button className="btn btn-ghost danger-text" onClick={(event) => { closeMenu(event); setDialog("discard"); }} type="button">下書きを破棄</button>
                   ) : null}
                   {finalizedView && context?.canFinalize && !editable ? (
-                    <button className="btn btn-ghost" onClick={(event) => { event.currentTarget.closest("details").open = false; setDialog("amend"); }} type="button">修正する（理由を残す）</button>
+                    <button className="btn btn-ghost" onClick={(event) => { closeMenu(event); setDialog("amend"); }} type="button">修正する（理由を残す）</button>
                   ) : null}
                 </div>
               </details>
-              {context?.canManageSets && editable ? <button className="btn btn-chip" onClick={() => setRegularDialog({ mode: "create", error: "" })} title="この患者の定期にする（次回・毎回・Nか月ごとに右下へ出す）" type="button">定期登録</button> : null}
-              {context?.canManageSets && editable ? <button className="btn btn-chip" onClick={() => setDialog("set-create")} type="button">セット登録</button> : null}
             </div>
             <div className="chart-head-line is-sub">
               <span>眼科</span>
@@ -748,8 +767,8 @@ export function EncounterEditor({ encounterId }) {
               <span className="muted small chart-head-editors">記載 {encounter.updatedBy?.displayName || encounter.createdBy?.displayName || ""}{encounter.updatedAt ? ` ${formatDateTime(encounter.updatedAt).slice(11)}` : ""}</span>
               {editable && !finalizedView ? <button aria-label={`診療日・区分を変える（${formatDate(meta.encounterDate)} ${VISIT_TYPE_LABELS[meta.visitType]}）`} className="btn btn-chip" onClick={() => setDialog("visit")} type="button">✎</button> : null}
             </div>
-            {/* カルテガイド（トプコン）: 項目ごとの記入状況をボタンの色で出す。押すとその欄へ移る */}
-            <nav aria-label="カルテガイド" className="chart-guide">
+            {/* カルテガイド（トプコン）: 項目ごとの記入状況をボタンの色で出す。押すとその欄へ移る。表示の設定・「…」で隠せる */}
+            {showGuide ? <nav aria-label="カルテガイド" className="chart-guide">
               {guide.map((item) => (
                 <button
                   aria-label={`${item.label}（${GUIDE_STATE_LABELS[item.state]}${item.hint ? `・${item.hint}` : ""}）`}
@@ -763,7 +782,7 @@ export function EncounterEditor({ encounterId }) {
                   {item.label}
                 </button>
               ))}
-            </nav>
+            </nav> : null}
           </div>
           {encounter.amendment ? (
             <p className="alert alert-warn chart-alert">確定済み v{encounter.versionCount} を修正中です（理由: {encounter.amendment.reason}）。→ 次へ で確定すると v{encounter.versionCount + 1} になり、前の版も残ります。</p>
