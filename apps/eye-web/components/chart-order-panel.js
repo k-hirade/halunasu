@@ -5,6 +5,7 @@ import { PER_EYE_PHRASE_TARGETS } from "@halunasu/eye-contracts";
 import { RX_BADGES, useMasterSearch } from "./chart-shared";
 import { pointsLabel, useMasterLookup } from "./chart-points";
 import { PHRASE_TARGET_LABELS } from "../lib/format";
+import { groupPhrasesBySoap, soapFilterOptions } from "../lib/chart-soap";
 import { displayDrugName } from "../lib/drug-name";
 
 // 右のオーダー欄の区分タブ（デジカルの 2 段の区分 + すべて）。key はショートカットの数字キー。
@@ -356,23 +357,35 @@ function SetTree({ orderSets, setFolders, editable, canManageSets, onApplySet, o
   );
 }
 
+// 定型文は S・O・A・P・その他の見出しに分けて並べる（区分は定型文ごとの設定、無ければ差し込む欄・本文の頭で決める。lib/chart-soap.js）
 function PhraseList({ phrases, editable, onInsertPhrase }) {
-  const active = phrases.filter((item) => item.active !== false);
-  const groups = Object.entries({ findingsText: "主訴・所見（自由記載）", ...PHRASE_TARGET_LABELS })
-    .map(([target, label]) => [target, label, active.filter((item) => item.target === target)])
-    .filter(([, , items]) => items.length);
-  if (!groups.length) return <p className="muted small">設定画面で定型文を登録できます。</p>;
+  const [soap, setSoap] = useState(null);
+  const options = soapFilterOptions(phrases);
+  const filter = options.some((option) => option.value === soap) ? soap : null;
+  const groups = groupPhrasesBySoap(phrases, filter);
+  if (!options[0].count) return <p className="muted small">設定画面で定型文を登録できます。</p>;
+  const tileTitle = (item) => `${item.text}\n→ ${PHRASE_TARGET_LABELS[item.target] || ""}`;
   return (
     <div className="phrase-list">
       <p className="muted small">主訴・所見の自由記載はカーソルの位置に入ります。</p>
-      {groups.map(([target, label, items]) => (
-        <section className="order-group" key={target}>
-          <h3 className="order-group-title">{label}</h3>
+      {options.length > 2 ? (
+        <div aria-label="定型文を S・O・A・P で絞り込む" className="flow-chips phrase-soap-chips" role="group">
+          {options.map((option) => (
+            <button aria-pressed={filter === option.value} className="flow-chip" key={option.value ?? "all"} onClick={() => setSoap(option.value)} type="button">
+              {option.label} <strong>{option.count}</strong>
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {groups.map((group) => (
+        <section className="order-group" key={group.key || "other"}>
+          <h3 className="order-group-title">{group.label}</h3>
           {/* トプコンの所見入力サポート: 定型文はボタンの並び。押すとその欄に入る。眼ごとの欄は右・左・両を選ぶ */}
           <div className="phrase-tiles">
-            {items.map((item) => (PER_EYE_PHRASE_TARGETS.includes(target) ? (
-              <div className="phrase-tile is-eye" key={item.phraseId} title={item.text}>
+            {group.items.map((item) => (PER_EYE_PHRASE_TARGETS.includes(item.target) ? (
+              <div className="phrase-tile is-eye" key={item.phraseId} title={tileTitle(item)}>
                 <span className="phrase-tile-label">{item.label || item.text}</span>
+                <span className="phrase-tile-target">{PHRASE_TARGET_LABELS[item.target]}</span>
                 <span className="phrase-tile-eyes">
                   <button aria-label={`${item.label || item.text}を右眼に挿入`} className="btn btn-chip" disabled={!editable} onClick={() => onInsertPhrase(item, "od")} type="button">右</button>
                   <button aria-label={`${item.label || item.text}を左眼に挿入`} className="btn btn-chip" disabled={!editable} onClick={() => onInsertPhrase(item, "os")} type="button">左</button>
@@ -380,8 +393,10 @@ function PhraseList({ phrases, editable, onInsertPhrase }) {
                 </span>
               </div>
             ) : (
-              <button className="phrase-tile" disabled={!editable} key={item.phraseId} onClick={() => onInsertPhrase(item)} title={item.text} type="button">
+              <button className="phrase-tile" disabled={!editable} key={item.phraseId} onClick={() => onInsertPhrase(item)} title={tileTitle(item)} type="button">
                 <span className="phrase-tile-label">{item.label || item.text}</span>
+                {/* 主訴・所見（自由記載）以外の欄に入る定型文は、入る欄を小さく添える */}
+                {item.target !== "findingsText" ? <span className="phrase-tile-target">{PHRASE_TARGET_LABELS[item.target]}</span> : null}
               </button>
             )))}
           </div>

@@ -20,6 +20,7 @@ export class MemoryEyeStore {
     this.receptionSettings = new Map();
     this.patientMarks = new Map();
     this.clinicConfig = new Map();
+    this.chartTemplates = new Map();
     this.documents = new Map();
     this.files = new Map();
     this.billingHandoffs = new Map();
@@ -190,6 +191,23 @@ export class MemoryEyeStore {
     if ((current?.revision || 0) !== expectedRevision) throw storeError("ConflictError", 409, "settings were updated by someone else; reload and try again");
     const saved = { ...config, section, orgId };
     records.set(section, clone(saved));
+    return clone(saved);
+  }
+
+  // 記載の型。医師ごとに 1 件。expectedRevision（まだ無いときは 0）が今の版と違えば 409。
+  listChartTemplates(orgId) {
+    return [...this.forOrg(this.chartTemplates, orgId).values()].map(clone);
+  }
+
+  getChartTemplate(orgId, memberId) {
+    return cloneOrNull(this.forOrg(this.chartTemplates, orgId).get(memberId));
+  }
+
+  saveChartTemplate(orgId, record, expectedRevision) {
+    const records = this.forOrg(this.chartTemplates, orgId);
+    if ((records.get(record.memberId)?.revision || 0) !== expectedRevision) throw storeError("ConflictError", 409, "the chart template was updated by someone else; reload and try again");
+    const saved = { ...record, orgId };
+    records.set(record.memberId, clone(saved));
     return clone(saved);
   }
 

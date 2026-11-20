@@ -630,3 +630,43 @@
     max-height: 100dvh;
   }
 }
+
+/* 記載の型（要望 #40）: 型の文は改行のまま見せる */
+.chart-template-preview {
+  display: -webkit-box;
+  overflow: hidden;
+  white-space: pre-wrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+
+.chart-template-table th {
+  white-space: nowrap;
+}
+
+.chart-template-table td:first-child {
+  width: 30%;
+}
+
+.chart-template-table .admin-desc {
+  min-width: 8em;
+}
+
+.chart-template-table .master-tag {
+  margin-left: 6px;
+}
+
+.chart-template-updated {
+  display: block;
+}
+
+.chart-template-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chart-template-input {
+  font-family: inherit;
+  min-height: 10em;
+}

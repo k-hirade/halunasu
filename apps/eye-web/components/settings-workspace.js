@@ -11,6 +11,8 @@ import { OrderSetsSection } from "./settings-sets";
 import { UsersSection } from "./settings-users";
 import { ClinicHoursSection, DocTemplatesSection, LabListsSection, OtherSettingsSection, PrintSettingsSection, ReceptionLabelsSection } from "./settings-config";
 import { ReportSection } from "./settings-report";
+import { ChartTemplatesSection } from "./settings-chart-templates";
+import { PHRASE_SOAP_OPTIONS, phraseSoap, SOAP_GROUP_LABELS } from "../lib/chart-soap";
 import { ApprovalSettingsSection, ReferenceRangesSection } from "./settings-approval";
 import { COMMON_USAGES, downloadJson, formatDateTime, PHRASE_TARGET_LABELS, PHRASE_TARGET_SOAP, PRESCRIPTION_KIND_LABELS, SOAP_LABELS, todayIso } from "../lib/format";
 import { daysPerBottle, drugBottleText, drugDefaultText, drugSearchValues, matchesSearch, normalizeSearch, phraseSearchValues } from "../lib/settings";
@@ -25,6 +27,7 @@ const SECTIONS = [
   { key: "labels", label: "受付ラベル・患者マーク", group: "input" },
   { key: "sets", label: "セット", group: "input" },
   { key: "phrases", label: "定型文", group: "input" },
+  { key: "chart-templates", label: "記載の型", group: "input" },
   { key: "drugs", label: "よく使う薬剤", group: "input" },
   { key: "lab", label: "検査会社・院内検査項目", group: "input" },
   { key: "ranges", label: "基準値（バイタル・検査）", group: "input" },
@@ -197,6 +200,7 @@ export function SettingsWorkspace() {
             />
           ) : null}
           {section === "phrases" ? <PhrasesSection canEdit={context.canManageSettings} onDirtyChange={onDirtyChange} onSaved={upsert(setPhrases, "phraseId", phraseSortKey)} phrases={phrases} /> : null}
+          {section === "chart-templates" ? <ChartTemplatesSection context={context} /> : null}
           {section === "drugs" ? <DrugsSection canEdit={context.canManageSettings} onDirtyChange={onDirtyChange} onSaved={upsert(setPresets, "presetId", (item) => item.name)} presets={presets} /> : null}
           {section === "export" ? <ExportSection context={context} /> : null}
           {section === "audit" ? <AuditLogSection defaultPreset={AUDIT_PRESETS[otherSettings?.auditDefaultRange] || "week"} masters={{ drugPresets: presets, orderSets, phrases }} /> : null}
@@ -397,11 +401,11 @@ const PHRASE_TARGETS = Object.keys(PHRASE_TARGET_LABELS);
 const PHRASE_TARGET_GROUPS = ["S", "O", "A", "P", ""].map((letter) => [letter, PHRASE_TARGETS.filter((key) => PHRASE_TARGET_SOAP[key] === letter)]);
 
 function phraseToDraft(item) {
-  return { phraseId: item?.phraseId || "", target: item?.target || "plan", label: item?.label || "", text: item?.text || "", active: item ? item.active !== false : true };
+  return { phraseId: item?.phraseId || "", target: item?.target || "plan", label: item?.label || "", text: item?.text || "", soap: item?.soap || "", active: item ? item.active !== false : true };
 }
 
 function phraseBody(draft) {
-  return { ...(draft.phraseId ? { phraseId: draft.phraseId } : {}), target: draft.target, label: draft.label.trim(), text: draft.text, active: draft.active };
+  return { ...(draft.phraseId ? { phraseId: draft.phraseId } : {}), target: draft.target, label: draft.label.trim(), text: draft.text, soap: draft.soap, active: draft.active };
 }
 
 function PhrasesSection({ phrases, canEdit, onSaved, onDirtyChange }) {
@@ -414,7 +418,7 @@ function PhrasesSection({ phrases, canEdit, onSaved, onDirtyChange }) {
     toDraft: (item) => phraseToDraft(item || { target: target || lastTarget.current, active: true }),
     toBody: phraseBody,
     validate: (draft) => (draft.text.trim() ? "" : "本文を入れてください。"),
-    fieldLabels: { label: "表示名", text: "本文", target: "差し込む欄" },
+    fieldLabels: { label: "表示名", text: "本文", target: "差し込む欄", soap: "S・O・A・P の区分" },
     onDirtyChange,
     save: async (body) => {
       const { phrase } = await api("/v1/eye/phrases", { method: "POST", body });
@@ -435,7 +439,7 @@ function PhrasesSection({ phrases, canEdit, onSaved, onDirtyChange }) {
   ];
   const renderRow = (item) => (
     <>
-      <span className="master-name"><strong title={item.label || undefined}>{item.label || <span className="muted">（表示名なし）</span>}</strong></span>
+      <span className="master-name"><strong title={item.label || undefined}>{item.label || <span className="muted">（表示名なし）</span>}</strong>{phraseSoap(item) ? <SoapMark letters={phraseSoap(item)} /> : null}</span>
       <span className="master-desc" title={item.text}>{item.text}</span>
       <span className="master-kind">{item.active === false ? PHRASE_TARGET_LABELS[item.target] : ""}</span>
     </>
@@ -496,6 +500,13 @@ function PhraseForm({ draft, setDraft }) {
           <input autoComplete="off" className="input" maxLength={60} onChange={set("label")} value={draft.label} />
         </label>
       </div>
+      <label className="field">
+        <span>S・O・A・P の区分</span>
+        <select className="input" onChange={set("soap")} value={draft.soap}>
+          {PHRASE_SOAP_OPTIONS.map(([value, label]) => <option key={value || "auto"} value={value}>{value ? label : `${label}：${SOAP_GROUP_LABELS[phraseSoap({ target: draft.target, text: draft.text })]}`}</option>)}
+        </select>
+        <small className="muted">カルテの定型文の一覧で、この区分の見出しの下に出ます。</small>
+      </label>
       <label className="field">
         <span>本文<em>必須</em></span>
         <textarea className="input phrase-text-input" maxLength={4000} onChange={set("text")} required rows={5} value={draft.text} />

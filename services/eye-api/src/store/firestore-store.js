@@ -18,6 +18,7 @@ import {
   eyePatientMarksPath,
   eyeReceptionSettingsPath,
   eyeClinicConfigPath,
+  eyeChartTemplatePath,
   eyeIolRecordsPath,
   organizationPath
 } from "../../../../packages/firestore-schema/src/index.js";
@@ -321,6 +322,25 @@ export class FirestoreEyeStore {
       const current = dataOrNull(await transaction.get(ref));
       if ((current?.revision || 0) !== expectedRevision) throw storeError("ConflictError", 409, "settings were updated by someone else; reload and try again");
       const saved = { ...config, section, orgId };
+      transaction.set(ref, saved);
+      return saved;
+    });
+  }
+
+  async listChartTemplates(orgId) {
+    return docs(await this.orgCollection(orgId, collections.eyeChartTemplates).get());
+  }
+
+  async getChartTemplate(orgId, memberId) {
+    return dataOrNull(await this.doc(eyeChartTemplatePath(orgId, memberId)).get());
+  }
+
+  async saveChartTemplate(orgId, record, expectedRevision) {
+    return this.db.runTransaction(async (transaction) => {
+      const ref = this.doc(eyeChartTemplatePath(orgId, record.memberId));
+      const current = dataOrNull(await transaction.get(ref));
+      if ((current?.revision || 0) !== expectedRevision) throw storeError("ConflictError", 409, "the chart template was updated by someone else; reload and try again");
+      const saved = { ...record, orgId };
       transaction.set(ref, saved);
       return saved;
     });

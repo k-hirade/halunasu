@@ -34,6 +34,10 @@ export const PHRASE_TARGETS = Object.freeze([
   // 主訴・所見の自由記載（1 欄）
   "findingsText"
 ]);
+// 定型文の SOAP の区分（任意）。空は「差し込む欄から決める」、none は「区分なし（その他）」。
+export const PHRASE_SOAP_CATEGORIES = Object.freeze(["S", "O", "A", "P", "none"]);
+// 記載の型（医師ごとの主訴・所見のひな形）の長さ
+export const MAX_CHART_TEMPLATE_TEXT = 2000;
 // 眼ごとに右・左・両を選んで差し込む定型文の欄
 export const PER_EYE_PHRASE_TARGETS = Object.freeze(["findings.anterior", "findings.lens", "findings.fundus", "findings.other"]);
 export const SKETCH_TEMPLATES = Object.freeze(["anterior", "fundus", "blank", "cornea", "lens", "gonio", "eyelid", "vfgrid"]);
@@ -232,7 +236,7 @@ export function isActiveAppointmentStatus(status) {
 
 // 操作記録の種類。画面の絞り込みチップと API の category 絞り込みで同じ分け方を使う。
 export const AUDIT_CATEGORIES = Object.freeze(["view", "change", "finalize", "export", "settings", "other"]);
-const AUDIT_SETTINGS_EVENTS = new Set(["eye.drug_preset_saved", "eye.order_set_saved", "eye.set_folder_saved", "eye.phrase_saved", "eye.staff_profile_saved", "eye.facility_settings_saved", "eye.clinic_config_saved"]);
+const AUDIT_SETTINGS_EVENTS = new Set(["eye.drug_preset_saved", "eye.order_set_saved", "eye.set_folder_saved", "eye.phrase_saved", "eye.staff_profile_saved", "eye.facility_settings_saved", "eye.clinic_config_saved", "eye.chart_template_saved"]);
 const AUDIT_APPROVAL_EVENTS = new Set(["eye.encounter_approval_requested", "eye.encounter_approved", "eye.encounter_returned"]);
 const AUDIT_CHANGE_SUFFIX = /_(created|updated|saved|discarded|amend_started|confirmed|unconfirmed|status_changed|uploaded|archived|reviewed)$/u;
 
@@ -396,7 +400,22 @@ export function validatePhraseInput(input = {}) {
     target: requiredEnum(input.target, PHRASE_TARGETS, "target"),
     label: optionalString(input.label, "label", 60),
     text: requiredString(input.text, "text", MAX_TEXT),
-    active: input.active === undefined ? true : Boolean(input.active)
+    active: input.active === undefined ? true : Boolean(input.active),
+    // SOAP の区分は送られたときだけ変える（区分を知らない古い画面の保存で消さない）
+    ...(input.soap === undefined ? {} : { soap: optionalEnum(input.soap, PHRASE_SOAP_CATEGORIES, "soap") })
+  };
+}
+
+// 記載の型: 医師ごとに 1 つ。新しいカルテの主訴・所見が空のときに入る文（例「S)\nO)\nA)\nP)」）。
+export function validateChartTemplateInput(input = {}) {
+  if (!isPlainObject(input)) throw validationError("body must be an object", "body");
+  const expectedRevision = input.expectedRevision === undefined ? 0 : input.expectedRevision;
+  if (!Number.isInteger(expectedRevision) || expectedRevision < 0) throw validationError("expectedRevision must be a non-negative integer", "expectedRevision");
+  if (input.active !== undefined && typeof input.active !== "boolean") throw validationError("active must be true or false", "active");
+  return {
+    expectedRevision,
+    text: optionalText(input.text, "text", MAX_CHART_TEMPLATE_TEXT),
+    active: input.active !== false
   };
 }
 

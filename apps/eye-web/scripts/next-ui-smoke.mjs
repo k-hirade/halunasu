@@ -44,6 +44,7 @@ try {
     await runReceptionResponsiveChecks(browser);
     await runRep2ReconcileChecks(browser);
     await runApprovalFlow(browser);
+    await runChartTemplateFlow(browser);
   } finally {
     await browser.close().catch(() => null);
   }
@@ -442,7 +443,7 @@ async function runDoctorFlow(browser) {
   // 設定（デジカルの施設管理と同じ形）: 最初は医療機関情報。［編集］のダイアログで入れた値が紙に載る
   await page.goto(`${baseUrl}/settings`);
   await page.getByRole("heading", { name: "医療機関情報" }).waitFor();
-  assert.deepEqual(await page.locator(".settings-nav-item").allInnerTexts().then((items) => items.map((text) => text.replace(/\d+$/u, "").trim())), ["医療機関情報", "利用者管理", "診療時間・予約枠", "カルテの承認", "受付ラベル・患者マーク", "セット", "定型文", "よく使う薬剤", "検査会社・院内検査項目", "基準値（バイタル・検査）", "文書雛形", "帳票設定", "その他設定", "操作記録", "経営データ集計", "データ出力"]);
+  assert.deepEqual(await page.locator(".settings-nav-item").allInnerTexts().then((items) => items.map((text) => text.replace(/\d+$/u, "").trim())), ["医療機関情報", "利用者管理", "診療時間・予約枠", "カルテの承認", "受付ラベル・患者マーク", "セット", "定型文", "記載の型", "よく使う薬剤", "検査会社・院内検査項目", "基準値（バイタル・検査）", "文書雛形", "帳票設定", "その他設定", "操作記録", "経営データ集計", "データ出力"]);
   await page.getByRole("button", { name: "✎ 編集" }).click();
   const facilityDialog = page.getByRole("dialog", { name: "医療機関情報の編集" });
   await facilityDialog.getByLabel("医療機関名").fill("スモーク眼科クリニック");
@@ -2461,6 +2462,85 @@ async function runApprovalFlow(browser) {
   const logs = await callApi(director, "GET", "/v1/eye/audit-logs?category=finalize");
   const types = (logs.auditLogs || []).map((item) => item.eventType);
   assert.ok(types.includes("eye.encounter_approved") && types.includes("eye.encounter_returned"), "approval events are audited");
+
+  assert.deepEqual(pageErrors, []);
+  await directorContext.close();
+  await doctorContext.close();
+}
+
+// 要望 #40: 記載の型（医師ごと）と定型文の S・O・A・P。医師は自分の型だけを直し、新しいカルテの主訴・所見に入る
+async function runChartTemplateFlow(browser) {
+  const directorContext = await browser.newContext({ viewport: { width: 1366, height: 900 } });
+  const doctorContext = await browser.newContext({ viewport: { width: 1366, height: 900 } });
+  const director = await directorContext.newPage();
+  const doctor = await doctorContext.newPage();
+  const pageErrors = [];
+  for (const page of [director, doctor]) page.on("pageerror", (error) => pageErrors.push(error.message));
+  await loginWithRetry(director, "director");
+  await loginWithRetry(doctor, "doctor");
+  const today = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+
+  // 管理者でない医師: 設定の「記載の型」に自分の行だけが出る。例（SOAP）から入れて保存
+  await doctor.goto(`${baseUrl}/settings#chart-templates`);
+  const section = doctor.getByRole("region", { name: "記載の型" });
+  await section.getByText("自分の型だけを変えられます。").waitFor();
+  assert.equal(await section.locator("tbody tr").count(), 1, "a doctor sees only their own template");
+  await section.getByRole("button", { name: /の記載の型を編集$/u }).click();
+  const dialog = doctor.getByRole("dialog", { name: /^記載の型/u });
+  await dialog.getByRole("button", { name: "SOAP", exact: true }).click();
+  assert.equal(await dialog.getByLabel("記載の型の文").inputValue(), "S)\nO)\nA)\nP)");
+  await dialog.getByRole("button", { name: "保存", exact: true }).click();
+  await dialog.waitFor({ state: "detached" });
+  await section.getByText(/記載の型を保存しました/u).waitFor();
+  assert.match(await section.locator(".chart-template-preview").innerText(), /^S\)\nO\)\nA\)\nP\)/u);
+
+  // 管理者は全員の型が見える（院長・医師）
+  await director.goto(`${baseUrl}/settings#chart-templates`);
+  await director.getByRole("region", { name: "記載の型" }).locator("tbody tr").nth(1).waitFor();
+
+  // 定型文（管理者）: 主訴・所見の S)・P) と方針の文。区分は設定で選べる
+  await director.goto(`${baseUrl}/settings#phrases`);
+  await director.getByRole("button", { name: "＋ 定型文を追加" }).click();
+  const phrasePanel = director.getByRole("dialog", { name: "定型文の編集" });
+  await phrasePanel.getByLabel("差し込む欄").selectOption("findingsText");
+  await phrasePanel.getByLabel("S・O・A・P の区分").selectOption("S");
+  await phrasePanel.getByLabel("本文").fill("S) 見え方の変化なし");
+  await phrasePanel.getByRole("button", { name: "保存", exact: true }).click();
+  await phrasePanel.getByText("保存しました").waitFor();
+  await phrasePanel.getByRole("button", { name: "閉じる", exact: true }).click();
+  await callApi(director, "POST", "/v1/eye/phrases", { target: "findingsText", text: "P) 点眼を続ける", soap: "P" });
+
+  // 新しいカルテ: 主訴・所見に自分の型が入っている
+  await doctor.goto(`${baseUrl}/`);
+  const { patient } = await callApi(doctor, "POST", "/v1/eye/patients", { displayName: "型 試験", displayNameKana: "カタ シケン", birthDate: "1965-07-08", sex: "female", primaryPatientNumber: "TP001" });
+  const created = await callApi(doctor, "POST", "/v1/eye/encounters", { patientId: patient.patientId, encounterDate: today, visitType: "initial" });
+  assert.equal(created.encounter.content.findingsText, "S)\nO)\nA)\nP)");
+  await doctor.goto(`${baseUrl}/encounters/${created.encounter.encounterId}`);
+  const text = doctor.getByRole("textbox", { name: "主訴・所見", exact: true });
+  await text.waitFor();
+  assert.equal(await text.inputValue(), "S)\nO)\nA)\nP)");
+  // 見出しの「型を入れる」で、もう一度入れられる（自由記載の外なら末尾）
+  await doctor.locator(".chart-col-findings .col-tools").getByRole("button", { name: "型を入れる" }).click();
+  assert.equal(await text.inputValue(), "S)\nO)\nA)\nP)\nS)\nO)\nA)\nP)");
+
+  // 定型文は S・O・A・P・その他の見出しに分かれ、区分で絞り込める
+  await doctor.getByRole("tab", { name: "定型文" }).click();
+  const phraseList = doctor.locator(".phrase-list");
+  await phraseList.locator(".order-group-title").first().waitFor();
+  const headings = await phraseList.locator(".order-group-title").allInnerTexts();
+  assert.deepEqual(headings.filter((item) => ["S 主観", "P 計画"].includes(item)), ["S 主観", "P 計画"], `phrases are grouped by SOAP: ${headings.join(",")}`);
+  await phraseList.getByRole("group", { name: "定型文を S・O・A・P で絞り込む" }).getByRole("button", { name: /^S/u }).click();
+  assert.deepEqual(await phraseList.locator(".order-group-title").allInnerTexts(), ["S 主観"]);
+  await phraseList.locator("button.phrase-tile", { hasText: "見え方の変化なし" }).click();
+  assert.match(await text.inputValue(), /S\) 見え方の変化なし$/u);
+
+  // 型を使わない設定にすると、新しいカルテには入らない
+  const { context: me } = await callApi(doctor, "GET", "/v1/eye/context");
+  const own = (await callApi(doctor, "GET", "/v1/eye/chart-templates")).templates.find((item) => item.memberId === me.memberId);
+  await callApi(doctor, "PUT", `/v1/eye/chart-templates/${own.memberId}`, { expectedRevision: own.revision, text: own.text, active: false });
+  const { patient: other } = await callApi(doctor, "POST", "/v1/eye/patients", { displayName: "型 なし", displayNameKana: "カタ ナシ", birthDate: "1966-07-08", sex: "male", primaryPatientNumber: "TP002" });
+  const plain = await callApi(doctor, "POST", "/v1/eye/encounters", { patientId: other.patientId, encounterDate: today, visitType: "initial" });
+  assert.equal(plain.encounter.content.findingsText || "", "");
 
   assert.deepEqual(pageErrors, []);
   await directorContext.close();
