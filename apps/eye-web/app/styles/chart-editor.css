@@ -2244,7 +2244,7 @@
   .findings-eye {
     display: grid;
     gap: 6px 8px;
-    grid-template-columns: 64px minmax(0, 1fr);
+    grid-template-columns: 80px minmax(0, 1fr);
   }
 
   .findings-eye + .findings-eye {

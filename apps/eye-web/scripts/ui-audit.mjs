@@ -322,6 +322,28 @@ const STATES = {
       await page.waitForTimeout(600);
     }
   },
+  // 眼別の所見（狭い列では右眼・左眼を上下に積む）
+  "editor-findings": { path: editorPath, run: async (page) => { if ((await page.locator("#field-eyes").getAttribute("open")) === null) await page.locator("#field-eyes > summary").click(); await page.locator("#field-eyes .findings-grid").scrollIntoViewIfNeeded(); await page.waitForTimeout(300); } },
+  // オーダー欄から薬を足した直後（トースト・足した束の強調。中くらいの幅は引き出しを開いたままページを暗くしない）
+  "editor-order-add": {
+    path: editorPath,
+    run: async (page, view) => {
+      await openRightPane(page, view);
+      await page.locator(".chart-right").getByRole("tab", { name: "投薬", exact: true }).click();
+      await page.getByLabel("オーダーを検索").fill("ラタノ");
+      await page.locator(".order-item").filter({ hasText: /ラタノ/u }).first().click();
+      await page.waitForTimeout(500);
+    }
+  },
+  // 暗室表示のシェーマ（画面では紙を暗くする。保存・印刷は白のまま）
+  "editor-schema-dark": {
+    path: editorPath,
+    run: async (page) => {
+      await page.locator(".sketch-add").click();
+      await page.getByRole("dialog").getByRole("button", { name: "右眼眼底" }).click();
+      await page.waitForTimeout(600);
+    }
+  },
   "editor-set-create": { path: editorPath, run: async (page) => { await page.getByRole("button", { name: "セット登録" }).click(); await page.getByRole("dialog", { name: /セット登録/u }).waitFor(); } },
   "editor-visit": { path: editorPath, run: async (page) => { await page.getByRole("button", { name: /^診療日・区分を変える/u }).click(); await page.getByRole("dialog").first().waitFor(); } },
   "editor-profile": { path: editorPath, run: async (page) => { await page.getByRole("button", { name: "既往・内服を編集" }).first().click(); await page.getByRole("dialog").first().waitFor(); } },
@@ -905,6 +927,8 @@ async function prepare(browser) {
     await page.getByRole("button", { name: "病名を追加" }).click();
     const dxDialog = page.getByRole("dialog", { name: "傷病名新規登録" });
     await dxDialog.getByLabel("傷病名を検索").fill("開放隅角緑内障");
+    // 眼は既定なし（選ぶまで登録できない）
+    await dxDialog.getByRole("group", { name: /^眼/u }).getByRole("button", { name: "両" }).click();
     await dxDialog.locator(".dx-add-row").filter({ hasText: /^原発開放隅角緑内障/u }).first().getByRole("button", { name: "主病" }).click();
     await dxDialog.getByText(/登録しました/u).waitFor();
     await dxDialog.getByRole("button", { name: "閉じる" }).click();
