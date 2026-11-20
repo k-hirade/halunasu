@@ -497,8 +497,16 @@
 }
 
 .exam-history-table td.is-high {
-  color: var(--red);
+  background: var(--abnormal-soft);
+  color: var(--abnormal);
   font-weight: 800;
+}
+
+/* 眼圧の基準値超え: 色だけでなく ↑ の印でも示す（右眼の赤と見分ける） */
+.exam-history-table td.is-high::after {
+  content: "↑";
+  font-size: 0.85em;
+  margin-left: 2px;
 }
 
 .exam-cell-button {
@@ -936,8 +944,16 @@
 }
 
 .exam-iop.is-high {
-  color: var(--red);
+  background: var(--abnormal-soft);
+  color: var(--abnormal);
   font-weight: 800;
+}
+
+/* 眼圧の基準値超え: 色だけでなく ↑ の印でも示す（右眼の赤と見分ける） */
+.exam-iop.is-high::after {
+  content: "↑";
+  font-size: 0.85em;
+  margin-left: 2px;
 }
 
 .exam-extras-line,

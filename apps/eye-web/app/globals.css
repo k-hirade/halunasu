@@ -57,6 +57,11 @@
   --od-soft: #fdf3f2;
   --os: #1d4ed8;
   --os-soft: #f1f5ff;
+  /* 基準値を外れた検査値。右眼の赤（--od）と同じ赤を使うため、色だけに頼らず ↑↓ の印とこの地の色を付ける */
+  --abnormal: #b42318;
+  --abnormal-soft: #fff1d6;
+  --abnormal-low: #1e40af;
+  --abnormal-low-soft: #e6f0ff;
   --radius: 10px;
   --fs-xs: 12px;
   --fs-sm: 13px;
@@ -121,6 +126,10 @@
   --od-soft: rgba(248, 113, 113, 0.07);
   --os: #93c5fd;
   --os-soft: rgba(96, 165, 250, 0.07);
+  --abnormal: #fca5a5;
+  --abnormal-soft: rgba(251, 191, 36, 0.18);
+  --abnormal-low: #93c5fd;
+  --abnormal-low-soft: rgba(96, 165, 250, 0.18);
   color-scheme: dark;
 }
 

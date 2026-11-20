@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { formatDate, todayIso } from "../lib/format";
-import { iopAxis, thinLabels, vaAxis } from "../lib/trend-scale.mjs";
+import { edgeMarkPath, iopAxis, thinLabels, vaAxis, vaPoint } from "../lib/trend-scale.mjs";
 
 // 視力（対数軸）と眼圧を同じ時間軸の上下 2 段に描き、間の「点眼」行に開始▲・中止▼・注射◆の印を置く。
 const BAND = 112;
@@ -123,7 +123,9 @@ function TrendSvg({ points, marks, show, width, onActivate, active, band: BAND_H
 
   const vaValues = points.flatMap((point) => [point.od?.va, point.os?.va]).filter(isNumber);
   const iopValues = points.flatMap((point) => [point.od?.iop, point.os?.iop]).filter(isNumber);
-  const va = vaBand && vaValues.length ? vaAxis(vaValues, vaBand) : null;
+  // 視力は数値にできない書き方（指数弁など）だけの日も軸を出し、端に印を置く
+  const vaLabelled = points.some((point) => point.od?.vaLabel || point.os?.vaLabel);
+  const va = vaBand && (vaValues.length || vaLabelled) ? vaAxis(vaValues, vaBand) : null;
   const iop = iopBand && iopValues.length ? iopAxis(iopValues, iopBand) : null;
 
   const labels = thinLabels(points.map((point) => ({ key: point.encounterId, iso: point.encounterDate, x: xOf(point.encounterDate) })));
@@ -183,10 +185,17 @@ function TrendSvg({ points, marks, show, width, onActivate, active, band: BAND_H
           return (
             <g key={key}>
               {SIDES.map(({ side, label, short, className }) => {
+                // 視力の軸の外の値・指数弁などは、軸の端に三角の印で置く（黙って落とさない）
+                const edges = key === "va" ? points
+                  .map((point) => ({ point, place: vaPoint(point[side]?.va, point[side]?.vaLabel, axis) }))
+                  .filter(({ place }) => place?.edge) : [];
+                const edgeIds = new Set(edges.map(({ point }) => point.encounterId));
                 const series = points
                   .map((point) => ({ point, value: point[side]?.[key] }))
                   .filter(({ value }) => isNumber(value));
-                if (series.length === 0) return null;
+                if (series.length === 0) {
+                  return edges.length ? <g className={className} key={side}>{edgeMarks(edges, side, label, xOf)}</g> : null;
+                }
                 const path = series.map(({ point, value }, index) => `${index === 0 ? "M" : "L"}${xOf(point.encounterDate)},${axis.y(value)}`).join(" ");
                 const last = series.at(-1);
                 let labelY = axis.y(last.value) + 4;
@@ -197,7 +206,8 @@ function TrendSvg({ points, marks, show, width, onActivate, active, band: BAND_H
                 return (
                   <g className={className} key={side}>
                     {series.length > 1 ? <path className="line" d={path} /> : null}
-                    {series.map(({ point, value }) => {
+                    {edgeMarks(edges, side, label, xOf)}
+                    {series.filter(({ point }) => !edgeIds.has(point.encounterId)).map(({ point, value }) => {
                       const x = xOf(point.encounterDate);
                       const cy = axis.y(value);
                       const text = `${formatDate(point.encounterDate)} ${label} ${key === "va" ? point[side].vaLabel || format(value) : format(value)}${unit}`;
@@ -223,6 +233,14 @@ function TrendSvg({ points, marks, show, width, onActivate, active, band: BAND_H
       ))}
     </svg>
   );
+}
+
+function edgeMarks(edges, side, label, xOf) {
+  return edges.map(({ point, place }) => (
+    <path className="edge-mark" d={edgeMarkPath(xOf(point.encounterDate), place.y, place.edge)} key={`edge-${point.encounterId}`}>
+      <title>{`${formatDate(point.encounterDate)} ${label} ${point[side]?.vaLabel || ""}（${place.note}）`}</title>
+    </path>
+  ));
 }
 
 function Band({ band, label, unit, axis, format, plotLeft, plotRight }) {

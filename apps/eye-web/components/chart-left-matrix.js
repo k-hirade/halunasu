@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { edgeMarkPath, vaFixedAxis, vaPoint } from "../lib/trend-scale.mjs";
 
 // 検査結果・バイタルの「項目 × 日付」の表と、選んだ項目のグラフ（デジカルの検査結果タブ・バイタルタブ）。
 // - 行: 項目（左に選択のチェック・項目名・基準値）。列: 日付（古い順に右へ。開いたときは最新の列が見えるよう右端へ）。
-// - 基準値を外れた値は色で示す（高い・低い）。値を押すと onCellClick（主訴・所見へ書き込む など）。
+// - 基準値を外れた値は色と ↑↓ の印で示す（高い・低い。右眼の赤と見分けられるよう色だけにしない）。値を押すと onCellClick（主訴・所見へ書き込む など）。
 // - 下のグラフは、チェックした項目を単位ごとに 1 枚ずつ描き、基準値の線（破線）を重ねる（線は切り替えられる）。
 
 export function ResultMatrix({ label, columns, rows, defaultSelected = [], onCellClick = null, onHeaderClick = null, cellTitle = "", emptyText = "記録はありません。" }) {
@@ -63,6 +64,7 @@ export function ResultMatrix({ label, columns, rows, defaultSelected = [], onCel
                       {cell ? (onCellClick ? (
                         <button className="cl-cell-button" onClick={() => onCellClick(row, column, cell)} title={cellTitle} type="button">{cell.text}</button>
                       ) : cell.text) : ""}
+                      {level ? <span aria-hidden="true" className="abn-mark">{level === "high" ? "↑" : "↓"}</span> : null}
                       {level ? <span className="sr-only">{level === "high" ? "（高い）" : "（低い）"}</span> : null}
                     </td>
                   );
@@ -103,6 +105,7 @@ const H = 132;
 const PAD = { left: 38, right: 12, top: 10, bottom: 22 };
 
 // 単位ごとに 1 枚。横軸は日付（日数に比例）、縦軸は値。基準値は破線。
+// 視力は 0.01〜2.0 の対数軸。軸の外の値・指数弁などは軸の端に三角の印で置く（黙って落とさない）。
 function MatrixGraphs({ columns, rows, showRef }) {
   const ref = useRef(null);
   const [width, setWidth] = useState(320);
@@ -130,6 +133,10 @@ function MatrixGraphs({ columns, rows, showRef }) {
   return (
     <div className="cl-graphs" ref={ref}>
       {groups.map(([unit, groupRows]) => {
+        if (unit === "視力") {
+          const series = groupRows.map((row) => ({ row, index: seriesIndex++ }));
+          return <VaMatrixGraph columns={columns} key={unit} labels={thinDates(columns, x)} series={series} showRef={showRef} width={width} x={x} />;
+        }
         const values = groupRows.flatMap((row) => columns.map((column) => row.values[column.key]?.value).filter(Number.isFinite));
         const refs = showRef ? groupRows.flatMap((row) => [row.ref?.low, row.ref?.high].filter(Number.isFinite)) : [];
         let low = Math.min(...values, ...refs);
@@ -178,6 +185,53 @@ function MatrixGraphs({ columns, rows, showRef }) {
         );
       })}
     </div>
+  );
+}
+
+function VaMatrixGraph({ columns, series, showRef, width, x, labels }) {
+  const axis = vaFixedAxis({ top: PAD.top, bottom: H - PAD.bottom });
+  return (
+    <figure className="cl-graph">
+      <figcaption className="cl-legend">
+        {series.map(({ row, index }) => <span className={`cl-legend-item cl-series-${index % 6}`} key={row.key}><span aria-hidden="true" className="cl-legend-swatch" />{row.label}</span>)}
+        <span className="muted small">（視力・対数）</span>
+      </figcaption>
+      <svg aria-label={`${series.map(({ row }) => row.label).join("・")}の経過`} className="cl-graph-svg" height={H} role="img" width={width}>
+        {axis.ticks.map((tick) => (
+          <g key={tick}>
+            <line className="cl-grid" x1={PAD.left} x2={width - PAD.right} y1={axis.y(tick)} y2={axis.y(tick)} />
+            <text className="cl-axis-text" textAnchor="end" x={PAD.left - 4} y={axis.y(tick) + 4}>{tick < 0.1 ? tick.toFixed(2) : tick.toFixed(1)}</text>
+          </g>
+        ))}
+        {labels.map((column) => <text className="cl-axis-text" key={column.key} textAnchor="middle" x={x(column)} y={H - 6}>{column.axisLabel || column.label}</text>)}
+        {showRef ? refLines(series).map(({ key, kind, value, index, label }) => (
+          <g key={key}>
+            <line className={`cl-ref-line ${index === null ? "is-shared" : `cl-series-${index % 6}`}`} x1={PAD.left} x2={width - PAD.right} y1={axis.y(value)} y2={axis.y(value)} />
+            <text className="cl-ref-text" textAnchor="end" x={width - PAD.right} y={axis.y(value) - 3}>{label} {kind === "low" ? "下限" : "上限"} {value}</text>
+          </g>
+        )) : null}
+        {series.map(({ row, index }) => {
+          const points = columns
+            .map((column) => ({ column, cell: row.values[column.key] }))
+            .filter(({ cell }) => cell)
+            .map(({ column, cell }) => ({ column, cell, place: vaPoint(cell.value, cell.text, axis) }))
+            .filter(({ place }) => place);
+          const line = points.filter(({ cell }) => Number.isFinite(cell.value));
+          return (
+            <g className={`cl-series cl-series-${index % 6}`} key={row.key}>
+              {line.length > 1 ? <polyline fill="none" points={line.map(({ column, place }) => `${x(column)},${place.y}`).join(" ")} /> : null}
+              {points.map(({ column, cell, place }) => (place.edge ? (
+                <path className="cl-edge-mark" d={edgeMarkPath(x(column), place.y, place.edge)} key={column.key}>
+                  <title>{`${column.label} ${row.label} ${cell.text}（${place.note}）`}</title>
+                </path>
+              ) : (
+                <circle cx={x(column)} cy={place.y} key={column.key} r={3}><title>{`${column.label} ${row.label} ${cell.text}`}</title></circle>
+              )))}
+            </g>
+          );
+        })}
+      </svg>
+    </figure>
   );
 }
 

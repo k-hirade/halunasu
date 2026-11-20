@@ -11,6 +11,7 @@ import {
 import { examExtrasHaveValues, ExamExtras } from "./encounter-extras";
 import { AxisField, DiopterField, moveToNextOnEnter, NumberField, VaDatalist, VaField } from "./exam-inputs";
 import { useMediaQuery } from "./use-media-query";
+import { hasExamValues } from "../lib/exam-record";
 import {
   EYE_LABELS,
   EYE_SHORT,
@@ -135,16 +136,20 @@ export function ExamTable({
     />
   );
   const iopHigh = (side) => Number.isFinite(exam[side].iop) && exam[side].iop > IOP_ALERT;
+  // 基準超えは赤だけでなく ↑ の印と地の色でも示す（右眼の赤と見分ける）
   const iop = (side) => (
-    <NumberField
-      aria-label={`${EYE_LABELS[side]} 眼圧`}
-      className={`input input-num input-iop${iopHigh(side) ? " is-high" : ""}`}
-      max={90}
-      min={0}
-      onCommit={(value) => setIop(side, value)}
-      title={iopHigh(side) ? `${IOP_ALERT} mmHg 超` : undefined}
-      value={exam[side].iop}
-    />
+    <span className={`xt-iop-field${iopHigh(side) ? " is-high" : ""}`}>
+      <NumberField
+        aria-label={`${EYE_LABELS[side]} 眼圧`}
+        className={`input input-num input-iop${iopHigh(side) ? " is-high" : ""}`}
+        max={90}
+        min={0}
+        onCommit={(value) => setIop(side, value)}
+        title={iopHigh(side) ? `${IOP_ALERT} mmHg 超` : undefined}
+        value={exam[side].iop}
+      />
+      {iopHigh(side) ? <span aria-hidden="true" className="abn-mark xt-iop-mark">↑</span> : null}
+    </span>
   );
   const method = (side) => (
     <select aria-label={`${EYE_LABELS[side]} 眼圧の測定法`} className="input xt-select" data-enter-skip onChange={(event) => setShared(side, "iopMethod", event.target.value)} value={exam[side].iopMethod || ""}>
@@ -490,10 +495,8 @@ function rememberIopMethod(value) {
   }
 }
 
-export function hasExamValues(values = {}) {
-  return Boolean(values.vaUncorrected || values.vaCorrected || Number.isFinite(values.iop)
-    || [values.correction, values.refraction].some((item) => item && Object.values(item).some((value) => value !== null && value !== undefined)));
-}
+// 判定は lib/exam-record.js（近見視力・角膜曲率・瞳孔も数える）
+export { hasExamValues };
 
 function nowTime() {
   return new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Tokyo" });

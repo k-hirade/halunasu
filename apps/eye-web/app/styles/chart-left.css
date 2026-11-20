@@ -337,15 +337,22 @@
 }
 
 .cl-matrix-cell.is-high {
-  background: var(--red-soft);
-  color: var(--red);
+  background: var(--abnormal-soft);
+  color: var(--abnormal);
   font-weight: 800;
 }
 
 .cl-matrix-cell.is-low {
-  background: var(--blue-soft);
-  color: var(--blue-ink);
+  background: var(--abnormal-low-soft);
+  color: var(--abnormal-low);
   font-weight: 800;
+}
+
+/* 基準値外の印（↑高い・↓低い）。右眼の赤と見分けられるよう、色だけでなく形でも示す */
+.abn-mark {
+  font-size: 0.85em;
+  font-weight: 800;
+  margin-left: 2px;
 }
 
 .cl-cell-button {
@@ -443,6 +450,13 @@
   fill: var(--surface);
   stroke: currentColor;
   stroke-width: 2;
+}
+
+/* 軸の外・数値にできない視力（軸の端の三角） */
+.cl-series .cl-edge-mark {
+  fill: currentColor;
+  stroke: var(--surface);
+  stroke-width: 1;
 }
 
 .cl-series-0 { color: var(--od); }

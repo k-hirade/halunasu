@@ -1175,6 +1175,20 @@ a.visit-row:focus-visible {
   stroke: var(--os);
 }
 
+/* 視力の軸の外・数値にできない視力（軸の端の三角） */
+.trend-svg .edge-mark {
+  stroke: var(--surface);
+  stroke-width: 1;
+}
+
+.trend-svg .series-od .edge-mark {
+  fill: var(--od);
+}
+
+.trend-svg .series-os .edge-mark {
+  fill: var(--os);
+}
+
 .vi-value {
   font-size: 11px;
   font-variant-numeric: tabular-nums;

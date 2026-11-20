@@ -1315,6 +1315,62 @@ test("accepts phrases for the added free-text fields", async () => {
   }
 });
 
+test("rejects unreadable new visual acuity values but keeps stored legacy values saveable", async () => {
+  const stores = createStores();
+  const doctor = await signedHeaders(stores.platformStore, "doctor");
+  const patient = await createPatient(stores, doctor);
+  const draft = await request(stores, "POST", "/v1/eye/encounters", {
+    patientId: patient.patientId,
+    encounterDate: "2026-10-27",
+    visitType: "initial",
+    content: glaucomaContent({ iopOd: 18 })
+  }, doctor);
+  assert.equal(draft.statusCode, 201, JSON.stringify(draft.body));
+  const id = draft.body.encounter.encounterId;
+  const exam = draft.body.encounter.content.exam;
+  for (const bad of ["abc", "25", "03"]) {
+    const response = await request(stores, "PATCH", `/v1/eye/encounters/${id}`, {
+      expectedRevision: draft.body.encounter.revision,
+      sections: { exam: { ...exam, od: { ...exam.od, vaUncorrected: bad } } }
+    }, doctor);
+    assert.equal(response.statusCode, 400, bad);
+    assert.match(JSON.stringify(response.body), /視力/u);
+  }
+  const good = await request(stores, "PATCH", `/v1/eye/encounters/${id}`, {
+    expectedRevision: draft.body.encounter.revision,
+    sections: { exam: { ...exam, od: { ...exam.od, vaUncorrected: "0.8p", vaCorrected: "(1.2)" }, os: { ...exam.os, vaUncorrected: "n.d." } } }
+  }, doctor);
+  assert.equal(good.statusCode, 200, JSON.stringify(good.body));
+
+  // 保存済みの古い値（今の確認の前に入った値）は、読み込み・別の項目の保存で止めない
+  const orgId = good.body.encounter.orgId;
+  const stored = await stores.eyeStore.getEncounter(orgId, id);
+  stored.content.exam.os.vaCorrected = "よく見える";
+  stores.eyeStore.encounters.get(orgId).set(id, stored);
+  const read = await request(stores, "GET", `/v1/eye/encounters/${id}`, undefined, doctor);
+  assert.equal(read.statusCode, 200);
+  assert.equal(read.body.encounter.content.exam.os.vaCorrected, "よく見える");
+  const legacyExam = read.body.encounter.content.exam;
+  const resaved = await request(stores, "PATCH", `/v1/eye/encounters/${id}`, {
+    expectedRevision: read.body.encounter.revision,
+    sections: { exam: { ...legacyExam, od: { ...legacyExam.od, iop: 17 } } }
+  }, doctor);
+  assert.equal(resaved.statusCode, 200, JSON.stringify(resaved.body));
+
+  // 検査記録も同じ
+  const recordPath = `/v1/eye/encounters/${id}/exam-records`;
+  const badRecord = await request(stores, "POST", recordPath, {
+    expectedRevision: resaved.body.encounter.revision,
+    values: { vision: { far: { od: { uncorrected: "abc" } } } }
+  }, doctor);
+  assert.equal(badRecord.statusCode, 400);
+  const okRecord = await request(stores, "POST", recordPath, {
+    expectedRevision: resaved.body.encounter.revision,
+    values: { vision: { far: { od: { uncorrected: "0.3", corrected: "(1.0×S-1.00D)" }, ou: { corrected: "1.2" } } } }
+  }, doctor);
+  assert.equal(okRecord.statusCode, 201, JSON.stringify(okRecord.body));
+});
+
 test("adds and edits timed exam records, keeps exam as the derived latest view, and maps chart edits into the current record", async () => {
   const stores = createStores();
   const doctor = await signedHeaders(stores.platformStore, "doctor");

@@ -1,12 +1,15 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { isVisualAcuityText } from "@halunasu/eye-contracts";
 import { usePopoverPlacement } from "./popover-placement";
-import { acceptNumber, normalizeNumberText, readNumber } from "../lib/exam-number";
+import { checkNumber, normalizeNumberText, readDiopter, readNumber } from "../lib/exam-number";
 import { formatDiopter } from "../lib/format";
 
 // 検査値の入力部品。
 // - 数値は type="text" で受け、入力途中（「-」「-1.」など）を消さない。完全な数値になった時点で保存値（数値）に反映する。
+// - 範囲外・読めない入力は赤枠と短い説明を出したまま欄に残し、保存しない（打っている途中の桁で保存した値も
+//   編集前の値に戻す。「200」→「20」のように、途中の値を受け付けたように見せない）。
 // - タッチ端末では OS のキーボードの代わりにテンキー（符号・0.25 刻み・前回値）を開く。iPhone の小数キーボードには
 //   マイナスがないため。「キーボード」で OS のキーボードに切り替えられる。
 // - 符号を自動で反転したり、値を丸めたりはしない。
@@ -77,12 +80,14 @@ function revealAboveSheet(input) {
 }
 
 // 数値の入力欄。value は保存値（数値または null）、onCommit で保存値を更新する。
+// step: 刻み（屈折は 0.25）。read: 文字列の読み方（屈折は 3 桁以上を 1/100 D として読む readDiopter）。
 export function NumberField({
-  value, onCommit, min, max, integer = false, format = (number) => String(number), pad = null, touch = false,
+  value, onCommit, min, max, integer = false, step, read = readNumber, format = (number) => String(number), pad = null, touch = false,
   className = "input input-num", inputMode = "decimal", ...rest
 }) {
   const [text, setText] = useState(null);
-  const [invalid, setInvalid] = useState(false);
+  const [message, setMessage] = useState(null);
+  const [hint, setHint] = useState(null);
   const [keyboard, setKeyboard] = useState(false);
   const [padOpen, setPadOpen] = useState(false);
   // フォーカス直後は「全選択」と同じ扱いにし、テンキーの数字・符号は新しい入力として始める。
@@ -91,52 +96,93 @@ export function NumberField({
   const wrapRef = useRef(null);
   const keepRef = useRef(false);
   const padRef = useRef(null);
+  const messageId = useId();
   const committed = Number.isFinite(value) ? value : null;
+  // 編集を始めたときの保存値（読めない入力のときはこの値に戻す）と、最後に自分で送った保存値
+  const startRef = useRef(committed);
+  const sentRef = useRef(committed);
+  // この編集で打ったか（打たずに通り過ぎた欄は、保存済みの値が今の条件に合わなくても赤くしない）
+  const editedRef = useRef(false);
   const shown = text ?? (committed === null ? "" : format(committed));
   const usePad = Boolean(pad && touch && !keyboard);
+  const limits = { min, max, integer, step, read };
   usePopoverPlacement(padRef, padOpen && usePad);
+
+  // ほかの操作（前回値の写し・記録の切り替えなど）で保存値が変わったら、残っている入力と説明を消す
+  useEffect(() => {
+    if (committed === sentRef.current) return;
+    sentRef.current = committed;
+    startRef.current = committed;
+    if (document.activeElement !== inputRef.current) {
+      setText(null);
+      setMessage(null);
+      setHint(null);
+    }
+  }, [committed]);
+
+  function commit(next) {
+    if (next === committed) return;
+    sentRef.current = next;
+    onCommit(next);
+  }
 
   function close() {
     keepRef.current = false;
     setText(null);
-    setInvalid(false);
+    setMessage(null);
+    setHint(null);
     setPadOpen(false);
   }
 
+  // 欄を離れるとき。読めない入力は欄に残して赤のまま（保存値は編集前のまま）。
+  function finish() {
+    if (text !== null && editedRef.current) {
+      const result = checkNumber(text, { ...limits, final: true });
+      if (!result.ok) {
+        keepRef.current = false;
+        setMessage(result.message);
+        setHint(null);
+        setPadOpen(false);
+        commit(startRef.current);
+        return;
+      }
+      commit(result.value);
+    }
+    close();
+  }
+
   function accept(next) {
+    editedRef.current = true;
     setFresh(false);
     setText(next);
-    const parsed = readNumber(next);
-    if (parsed.empty) {
-      setInvalid(false);
-      if (committed !== null) onCommit(null);
+    const result = checkNumber(next, limits);
+    if (result.ok) {
+      setMessage(null);
+      setHint(result.converted ? format(result.value) : null);
+      commit(result.value);
       return;
     }
-    if (parsed.partial) {
-      setInvalid(false);
-      return;
-    }
-    const ok = acceptNumber(parsed, { min, max, integer });
-    setInvalid(!ok);
-    if (ok && parsed.value !== committed) onCommit(parsed.value);
+    setMessage(result.message);
+    setHint(null);
+    commit(startRef.current);
   }
 
   return (
     <span
       className={`num-field${padOpen ? " is-pad-open" : ""}`}
       onBlur={(event) => {
-        // テンキーを押してフォーカスが移った場合は入力中のまま。欄の外へ出たら、
-        // 数値として読めない入力は確定済みの値の表示に戻す（途中の入力を保存値にしない）。
+        // テンキーを押してフォーカスが移った場合は入力中のまま。欄の外へ出たら確かめる。
         if (wrapRef.current?.contains(event.relatedTarget)) return;
-        close();
+        finish();
       }}
       ref={wrapRef}
     >
       <input
         {...rest}
-        aria-invalid={invalid || undefined}
+        aria-describedby={message || hint ? messageId : undefined}
+        aria-invalid={message ? true : undefined}
         autoComplete="off"
-        className={`${className}${invalid ? " is-invalid" : ""}`}
+        className={`${className}${message ? " is-invalid" : ""}`}
         inputMode={usePad ? "none" : keyboard ? "text" : inputMode}
         onBlur={(event) => {
           if (wrapRef.current?.contains(event.relatedTarget)) keepRef.current = true;
@@ -147,6 +193,11 @@ export function NumberField({
             keepRef.current = false;
             return;
           }
+          // 赤のまま残した入力は、そのまま直せるようにする（編集前の値は保ったまま）
+          if (text === null) {
+            startRef.current = committed;
+            editedRef.current = false;
+          }
           setText(event.target.value);
           setFresh(true);
           event.target.select();
@@ -156,9 +207,15 @@ export function NumberField({
           }
         }}
         ref={inputRef}
+        title={message || rest.title}
         type="text"
         value={shown}
       />
+      {message || hint ? (
+        <span className={`num-msg${message ? " is-error" : " is-hint"}`} id={messageId} role={message ? "alert" : "status"}>
+          {message || `→ ${hint}`}
+        </span>
+      ) : null}
       {padOpen && usePad ? (
         <NumberPad
           committed={committed}
@@ -176,11 +233,11 @@ export function NumberField({
             setTimeout(() => input?.focus(), 0);
           }}
           onClose={() => {
-            close();
+            finish();
             inputRef.current?.blur();
           }}
           onNext={() => {
-            close();
+            finish();
             focusNextField(inputRef.current, { includeSkipped: true });
           }}
           panelRef={padRef}
@@ -192,12 +249,14 @@ export function NumberField({
   );
 }
 
-// 屈折値（S・C）の入力欄。表示は符号付き・小数2桁。
+// 屈折値（S・C）の入力欄。表示は符号付き・小数2桁。0.25 刻み。小数点なしの 3 桁以上は 1/100 D（「-125」→ -1.25）。
 export function DiopterField({ value, onCommit, limit = 40, previous = null, touch = false, ...rest }) {
   return (
     <NumberField
       {...rest}
       format={formatDiopter}
+      read={readDiopter}
+      step={0.25}
       max={limit}
       min={-limit}
       onCommit={onCommit}
@@ -290,24 +349,86 @@ function NumberPad({ kind, text: current, fresh, committed, previous, onKey, onN
   );
 }
 
+// 視力の入力を保存する形に（全角を半角に・前後の空白を除く）。
+export function normalizeVaText(text) {
+  return String(text ?? "").normalize("NFKC").trim();
+}
+
 // 視力の入力欄。PC では候補付きの文字入力、タッチ端末では値のタイルを開く（選ぶと次の欄へ進む）。
+// 視力として読める値（小数視力の段階・(1.2)・n.d. など。eye-contracts の isVisualAcuityText）だけを保存する。
+// 読めない入力は欄を離れたときに赤枠と説明を出して残し、保存値は編集前のままにする。
 export function VaField({ value, onChange, previous = "", touch = false, className = "input input-va", ...rest }) {
   const [open, setOpen] = useState(false);
   const [keyboard, setKeyboard] = useState(false);
+  const [text, setText] = useState(null);
+  const [message, setMessage] = useState(null);
   const inputRef = useRef(null);
   const wrapRef = useRef(null);
   const keepRef = useRef(false);
   const pickerRef = useRef(null);
+  const messageId = useId();
+  const saved = value || "";
+  const startRef = useRef(saved);
+  const sentRef = useRef(saved);
+  const editedRef = useRef(false);
   const usePicker = touch && !keyboard;
   usePopoverPlacement(pickerRef, open && usePicker);
   const keep = (event) => event.preventDefault();
   const press = (handler) => ({ onClick: handler, onMouseDown: keep, onPointerDown: keep, type: "button" });
+
+  // ほかの操作で保存値が変わったら、残っている入力と説明を消す
+  useEffect(() => {
+    if (saved === sentRef.current) return;
+    sentRef.current = saved;
+    startRef.current = saved;
+    if (document.activeElement !== inputRef.current) {
+      setText(null);
+      setMessage(null);
+    }
+  }, [saved]);
+
+  const commit = (next) => {
+    if (next === saved) return;
+    sentRef.current = next;
+    onChange(next);
+  };
   const close = () => {
     keepRef.current = false;
     setOpen(false);
   };
+  const finish = () => {
+    close();
+    if (text === null || !editedRef.current) {
+      setText(null);
+      return;
+    }
+    const next = normalizeVaText(text);
+    if (isVisualAcuityText(next)) {
+      commit(next);
+      setText(null);
+      setMessage(null);
+      return;
+    }
+    commit(startRef.current);
+    setMessage("視力の書き方で入力（例: 1.2・0.5p・(1.0)・n.d.）");
+  };
+  const accept = (raw) => {
+    editedRef.current = true;
+    setText(raw);
+    const next = normalizeVaText(raw);
+    if (isVisualAcuityText(next)) {
+      setMessage(null);
+      commit(next);
+    } else {
+      // 入力の途中（「0.」など）は赤くしない。保存値は編集前のまま
+      if (message && !next) setMessage(null);
+      commit(startRef.current);
+    }
+  };
   const choose = (next) => {
-    onChange(next);
+    setText(null);
+    setMessage(null);
+    commit(next);
     close();
     focusNextField(inputRef.current);
   };
@@ -316,24 +437,31 @@ export function VaField({ value, onChange, previous = "", touch = false, classNa
       className={`num-field${open ? " is-pad-open" : ""}`}
       onBlur={(event) => {
         if (wrapRef.current?.contains(event.relatedTarget)) return;
-        close();
+        finish();
       }}
       ref={wrapRef}
     >
       <input
         {...rest}
+        aria-describedby={message ? messageId : undefined}
+        aria-invalid={message ? true : undefined}
         autoComplete="off"
-        className={className}
+        className={`${className}${message ? " is-invalid" : ""}`}
         inputMode={usePicker ? "none" : "decimal"}
         list="va-values"
         onBlur={(event) => {
           if (wrapRef.current?.contains(event.relatedTarget)) keepRef.current = true;
         }}
-        onChange={(event) => onChange(event.target.value)}
-        onFocus={() => {
+        onChange={(event) => accept(event.target.value)}
+        onFocus={(event) => {
           if (keepRef.current) {
             keepRef.current = false;
             return;
+          }
+          if (text === null) {
+            startRef.current = saved;
+            editedRef.current = false;
+            setText(event.target.value);
           }
           if (usePicker) {
             setOpen(true);
@@ -341,8 +469,10 @@ export function VaField({ value, onChange, previous = "", touch = false, classNa
           }
         }}
         ref={inputRef}
-        value={value || ""}
+        title={message || rest.title}
+        value={text ?? saved}
       />
+      {message ? <span className="num-msg is-error" id={messageId} role="alert">{message}</span> : null}
       {open && usePicker ? (
         <div aria-label="視力を選ぶ" className="va-picker" ref={pickerRef} role="group">
           <PadHead closeLabel="視力の選択を閉じる" onClose={() => { close(); inputRef.current?.blur(); }} press={press} title="視力" />
@@ -360,7 +490,9 @@ export function VaField({ value, onChange, previous = "", touch = false, classNa
           <button
             className="num-key is-action"
             {...press(() => {
-              onChange("");
+              setText("");
+              setMessage(null);
+              commit("");
               if (document.activeElement !== inputRef.current) inputRef.current?.focus({ preventScroll: true });
             })}
           >

@@ -430,3 +430,17 @@ test("validates set folders, sets with folders and diagnoses, set-from-chart, an
   assert.equal(contracts.validateEncounterContent({ findingsText: "a\r\nb  " }).findingsText, "a\nb");
   assert.equal("findingsText" in contracts.validateEncounterContent({}), false);
 });
+
+test("visual acuity text accepts the standard decimal steps and the usual written forms only", async () => {
+  const { isVisualAcuityText, assertNewExamVisualAcuity } = await import("../src/index.js");
+  for (const text of ["", "1.2", "0.15", "0.01", "2.0", "1", "1.0", "0.8p", "１．０", "(1.2)", "（0.9）", "(1.0×S-1.00D)", "(n.c.)",
+    "n.d.", "30cm指数弁", "30cm/n.d.", "指数弁", "m.m.", "手動弁", "s.l.(+)", "s.l.(-)", "光覚弁(+)", "光覚なし", "0", "n.c.", "矯正不能", "HM", "LP"]) {
+    assert.equal(isVisualAcuityText(text), true, text);
+  }
+  for (const text of ["abc", "25", "03", "0.25", "1.3", "3.0", "-1", "1.2.3", "()", "(abc)", "(1.2×)"]) {
+    assert.equal(isVisualAcuityText(text), false, text);
+  }
+  // 前と同じ値（保存済みの古い値）は止めない
+  assert.doesNotThrow(() => assertNewExamVisualAcuity({ od: { vaCorrected: "よく見える" } }, { od: { vaCorrected: "よく見える" } }));
+  assert.throws(() => assertNewExamVisualAcuity({ od: { vaCorrected: "abc" } }, {}), (error) => error.statusCode === 400 && error.field === "content.exam.od.vaCorrected");
+});

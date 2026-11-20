@@ -1213,11 +1213,33 @@ async function runOrthoptistFlow(browser) {
   await page.keyboard.press("Enter");
   assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "遠見 左眼 裸眼視力");
   assert.equal(await page.getByLabel("遠見 両眼 球面").count(), 0, "the B rows hold VA only");
+  // 3 桁の度数は 1/100 D（-125 → -1.25）。範囲外の軸・読めない視力は赤のまま欄に残し、保存しない
+  const leftSphere = page.getByLabel("遠見 左眼 球面");
+  await leftSphere.fill("-125");
+  await page.getByText("→ -1.25").waitFor();
+  await leftSphere.press("Enter");
+  assert.equal(await leftSphere.inputValue(), "-1.25");
+  const leftAxis = page.getByLabel("遠見 左眼 軸");
+  await leftAxis.fill("200");
+  await leftAxis.press("Enter");
+  assert.equal(await leftAxis.inputValue(), "200", "an out-of-range axis stays visible instead of turning into 20");
+  assert.equal(await leftAxis.getAttribute("aria-invalid"), "true");
+  await page.getByText("0〜180の範囲で入力").waitFor();
+  const leftVa = page.getByLabel("遠見 左眼 裸眼視力");
+  await leftVa.fill("abc");
+  await leftVa.press("Enter");
+  assert.equal(await leftVa.getAttribute("aria-invalid"), "true");
+  for (const field of [leftAxis, leftVa, leftSphere]) {
+    await field.fill("");
+    await field.press("Enter");
+  }
+  assert.equal(await page.locator(".rd-panel [aria-invalid=true]").count(), 0);
   await page.getByLabel("近見 両眼 矯正視力").fill("1.0");
   // 視力の候補に「矯正不能（n.c.）」がある
   assert.equal(await page.locator('#va-values option[value="n.c."]').count(), 1);
   // 眼圧: 3 回と平均（自動計算）・測定方法・時刻
   await page.getByRole("tab", { name: "眼圧" }).click();
+  await page.waitForURL(/[?&]tab=iop/u);
   await page.getByLabel("右眼 眼圧 1回目").fill("14");
   await page.getByLabel("右眼 眼圧 2回目").fill("15");
   await page.getByLabel("右眼 眼圧 3回目").fill("15");
@@ -1305,8 +1327,8 @@ async function runOrthoptistFlow(browser) {
   assert.equal(await page.getByRole("textbox", { name: "スタッフメモ" }).inputValue(), "左眼は固視が不安定\nCL装用中");
   await page.getByText("保存済み").waitFor({ timeout: 15_000 });
 
-  // 検査終了: 保存 → 値のある眼を確認 → 受付を「診察待ち」へ
-  const finish = page.getByRole("button", { name: "検査終了 → 診察待ちへ" });
+  // 検査終了: 保存 → 値のある眼を確認 → 受付を「診察待ち」へ（値は右眼だけなので、ボタンは右眼を名指しする）
+  const finish = page.getByRole("button", { name: "右眼を確認 → 診察待ちへ" });
   await finish.waitFor();
   await finish.click();
   await page.waitForURL(/\/reception$/u);
@@ -1316,7 +1338,7 @@ async function runOrthoptistFlow(browser) {
   assert.equal(await page.locator(".exam-bar-eye.is-empty").filter({ hasText: "L" }).count(), 1, "an eye without values is not confirmed");
   await assertExamLayoutFits(page);
   // 該当する受付がなければ、確認だけにして受付は動かさない
-  await page.getByRole("button", { name: "検査値を確認する" }).waitFor();
+  await page.getByRole("button", { name: "右眼を確認する" }).waitFor();
   // 保存して次へ: 次に検査する患者（受付中・検査中）の検査入力へ。いなければ、その旨を出して留まる
   await page.getByRole("button", { name: "保存して次へ" }).click();
   const examPath = new URL(`${encounterUrl}/exam`).pathname;

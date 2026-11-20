@@ -22,6 +22,8 @@ import {
   EYE_RECEPTION_ROLES,
   EYE_SET_ROLES,
   EYE_SETTINGS_ROLES,
+  assertNewExamVisualAcuity,
+  assertNewRecordVisualAcuity,
   EYE_WRITE_ROLES,
   FILE_KINDS,
   isActiveAppointmentStatus,
@@ -529,6 +531,7 @@ async function routeEyeApiRequest(input = {}) {
     requireAccess(context, EYE_WRITE_ROLES, "Eye chart write access is required");
     requirePlatformCsrf(input.headers || {}, context.session);
     const validated = validateCreateEncounterInput(input.body || {});
+    if (validated.content) assertNewExamVisualAcuity(validated.content.exam);
     const patient = await requirePatient(platformStore, orgId, validated.patientId);
     const copySource = await resolveCopySource(eyeStore, orgId, patient.patientId, validated);
     const planSource = await resolvePlanSource(eyeStore, orgId, patient.patientId, validated.encounterDate);
@@ -603,6 +606,8 @@ async function routeEyeApiRequest(input = {}) {
       requirePlatformCsrf(input.headers || {}, context.session);
       const validated = validateUpdateEncounterInput(input.body || {});
       const current = await requireEncounter(eyeStore, orgId, encounterId);
+      // 視力は新しく入れた値だけを確かめる（前からある値は再保存で止めない）
+      if (validated.sections.exam) assertNewExamVisualAcuity(validated.sections.exam, current.content?.exam);
       // 確定済みへの保存は修正の開始を兼ねる。修正は医師（と管理者）だけ。
       if (current.status === "finalized") requireAccess(context, EYE_FINALIZE_ROLES, "Only a doctor can amend an eye chart");
       const { encounter: updated, changed, amendStarted } = applyEncounterUpdate(current, validated, { actor, now });
@@ -631,6 +636,7 @@ async function routeEyeApiRequest(input = {}) {
       requireAccess(context, EYE_WRITE_ROLES, "Eye chart write access is required");
       requirePlatformCsrf(input.headers || {}, context.session);
       const validated = validateExamRecordInput(input.body || {});
+      assertNewRecordVisualAcuity(validated.values);
       const current = await requireEncounter(eyeStore, orgId, encounterId);
       const { encounter, record } = addExamRecord(current, validated, { actor, now, recordId: createId("exr"), seedRecordId: createId("exr") });
       await eyeStore.replaceEncounter(orgId, encounter, current.revision);
@@ -649,6 +655,10 @@ async function routeEyeApiRequest(input = {}) {
       requirePlatformCsrf(input.headers || {}, context.session);
       const validated = validateExamRecordInput(input.body || {}, { partial: true });
       const current = await requireEncounter(eyeStore, orgId, encounterId);
+      if (validated.values) {
+        const before = (current.content?.examRecords || []).find((record) => record.recordId === parts[5]);
+        assertNewRecordVisualAcuity(validated.values, before?.values);
+      }
       const { encounter, record } = updateExamRecord(current, parts[5], validated, { actor, now });
       await eyeStore.replaceEncounter(orgId, encounter, current.revision);
       await audit({

@@ -26,6 +26,39 @@ export function vaAxis(values, band) {
   return { y, ticks, lower, upper };
 }
 
+// 視力の固定の対数軸（0.01〜2.0）。目盛りは 0.01・0.1・0.2・0.5・1.0・2.0。検査結果の表の下のグラフに使う。
+export const VA_FIXED_TICKS = [0.01, 0.1, 0.2, 0.5, 1.0, 2.0];
+export function vaFixedAxis(band) {
+  const lower = 0.01;
+  const upper = VA_MAX;
+  const min = Math.log10(lower);
+  const max = Math.log10(upper);
+  const y = (value) => {
+    const clamped = Math.max(lower, Math.min(upper, value));
+    return band.bottom - ((Math.log10(clamped) - min) / (max - min)) * (band.bottom - band.top);
+  };
+  return { y, ticks: VA_FIXED_TICKS, lower, upper };
+}
+
+// 視力の点の置き場所。軸の外（2.0 超・下端未満）の値と、数値にできない視力（指数弁・手動弁など）は黙って落とさず、
+// 軸の端に置いて edge（"high" / "low"）と説明（note）を付ける。値も書き方もなければ null。
+export function vaPoint(value, label, axis) {
+  if (Number.isFinite(value) && value > 0) {
+    if (value > axis.upper + 1e-9) return { y: axis.y(axis.upper), edge: "high", note: `${axis.upper.toFixed(1)} より上（上端に表示）` };
+    if (value < axis.lower - 1e-9) return { y: axis.y(axis.lower), edge: "low", note: "軸の下端より下（下端に表示）" };
+    return { y: axis.y(value), edge: "", note: "" };
+  }
+  if (String(label ?? "").trim()) return { y: axis.y(axis.lower), edge: "low", note: "数値にできない視力（下端に表示）" };
+  return null;
+}
+
+// 軸の端の印（三角）。上端は上向き、下端は下向き。
+export function edgeMarkPath(x, y, edge, size = 5) {
+  return edge === "high"
+    ? `M${x},${y - size} L${x + size},${y + size * 0.6} L${x - size},${y + size * 0.6} Z`
+    : `M${x},${y + size} L${x + size},${y - size * 0.6} L${x - size},${y - size * 0.6} Z`;
+}
+
 // 眼圧: max(0, 最小−5) 〜 max(25, 最大+5)。幅は 10mmHg 以上を保つ。
 export function iopAxis(values, band) {
   const finite = values.filter((value) => Number.isFinite(value));

@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { acceptNumber, normalizeNumberText, readNumber } from "../lib/exam-number.js";
+import { acceptNumber, checkNumber, normalizeNumberText, readDiopter, readNumber } from "../lib/exam-number.js";
 import { formatDiopter, formatShortDate } from "../lib/format.js";
 
 test("a lone sign or trailing dot is a partial entry, not an empty value", () => {
@@ -52,4 +52,47 @@ test("diopters are shown signed with two decimals", () => {
 test("short dates carry the weekday", () => {
   assert.equal(formatShortDate("2026-11-03"), "11/03(火)");
   assert.equal(formatShortDate(""), "");
+});
+
+test("sphere/cylinder without a decimal point and with 3+ digits are hundredths", () => {
+  assert.deepEqual(readDiopter("-125"), { value: -1.25, converted: true });
+  assert.deepEqual(readDiopter("+075"), { value: 0.75, converted: true });
+  assert.deepEqual(readDiopter("-1250"), { value: -12.5, converted: true });
+  assert.equal(readDiopter("ー１２５").value, -1.25);
+  // 1〜2 桁と小数点つきは D のまま
+  assert.equal(readDiopter("-12").value, -12);
+  assert.equal(readDiopter("-1").value, -1);
+  assert.equal(readDiopter("-1.25").value, -1.25);
+  assert.equal(readDiopter("-12").converted, undefined);
+  assert.equal(readDiopter("-").partial, true);
+});
+
+const DIOPTER = { min: -40, max: 40, step: 0.25, read: readDiopter };
+const AXIS = { min: 0, max: 180, integer: true };
+const IOP = { min: 0, max: 90 };
+
+test("typed values are checked as a whole, not saved as an in-range prefix", () => {
+  assert.deepEqual(checkNumber("-125", DIOPTER), { ok: true, value: -1.25, converted: true });
+  assert.deepEqual(checkNumber("+075", DIOPTER), { ok: true, value: 0.75, converted: true });
+  assert.equal(checkNumber("200", AXIS).ok, false);
+  assert.equal(checkNumber("200", AXIS).message, "0〜180の範囲で入力");
+  assert.equal(checkNumber("150", IOP).message, "0〜90の範囲で入力");
+  assert.equal(checkNumber("-50", DIOPTER).message, "-40〜40の範囲で入力");
+  assert.equal(checkNumber("abc", IOP).message, "数値で入力");
+  assert.equal(checkNumber("90.5", AXIS).message, "整数で入力");
+  assert.deepEqual(checkNumber("", IOP), { ok: true, value: null });
+});
+
+test("errors that more typing can fix are quiet while typing and shown when leaving the field", () => {
+  // 0.25 刻み: 「-1.2」は「-1.25」の途中
+  assert.deepEqual(checkNumber("-1.2", DIOPTER), { ok: false, message: null });
+  assert.equal(checkNumber("-1.2", { ...DIOPTER, final: true }).message, "0.25刻みで入力");
+  // 正の下限: 「3」は「30」の途中
+  assert.deepEqual(checkNumber("3", { min: 30, max: 70 }), { ok: false, message: null });
+  assert.equal(checkNumber("3", { min: 30, max: 70, final: true }).message, "30〜70の範囲で入力");
+  // 符号だけ・末尾の点
+  assert.deepEqual(checkNumber("-", DIOPTER), { ok: false, message: null });
+  assert.equal(checkNumber("-", { ...DIOPTER, final: true }).message, "数値で入力");
+  assert.deepEqual(checkNumber("-1.", { ...DIOPTER, final: true }), { ok: true, value: -1, converted: false });
+  assert.equal(checkNumber("-1.25", { ...DIOPTER, final: true }).ok, true);
 });

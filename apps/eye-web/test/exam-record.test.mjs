@@ -104,3 +104,18 @@ test("builds the patient summary from today's records first, then the last final
   assert.deepEqual(activeDiagnoses(null, finalized).map((item) => item.name), ["緑内障", "白内障"]);
   assert.equal(latestIop({ finalized: { encounterDate: "2026-08-01", content: { exam: { od: {}, os: {} } } } }), null);
 });
+
+test("exam values count near VA, keratometry and pupil; eyes with values also come from records (PD counts for both)", async () => {
+  const { eyesWithValues, hasExamValues, recordHasEyeValues } = await import("../lib/exam-record.js");
+  assert.equal(hasExamValues({}), false);
+  assert.equal(hasExamValues({ vaNear: "0.5" }), true);
+  assert.equal(hasExamValues({ keratometry: { k1: 43.5 } }), true);
+  assert.equal(hasExamValues({ pupil: { sizeMm: 4 } }), true);
+  assert.equal(hasExamValues({ pupil: { reaction: "" }, correction: { sphere: null } }), false);
+  assert.equal(recordHasEyeValues({ iop: { os: { readings: [{ value: 15 }] } } }, "od"), false);
+  assert.equal(recordHasEyeValues({ iop: { os: { readings: [{ value: 15 }] } } }, "os"), true);
+  assert.equal(recordHasEyeValues({ pd: { far: 62 } }, "od"), true);
+  assert.deepEqual(eyesWithValues({ exam: { od: {}, os: {} } }), []);
+  assert.deepEqual(eyesWithValues({ exam: { od: { iop: 14 }, os: {} } }), ["od"]);
+  assert.deepEqual(eyesWithValues({ exam: { od: {}, os: {} }, examRecords: [{ values: { vision: { far: { os: { uncorrected: "0.3" } } } } }] }), ["os"]);
+});

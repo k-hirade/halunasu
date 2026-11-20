@@ -701,6 +701,61 @@ function validateEyeExam(input, field) {
   };
 }
 
+// 視力の書き方。小数視力（2.0〜0.01 の段階。0.8p のような p 付きも）、矯正の括弧書き（(1.2)・(1.0×S-1.00D)）、
+// 指数弁・手動弁・光覚弁(+/-)・光覚なし（0）・矯正不能（n.c.）。距離つきの「30cm指数弁」「30cm/n.d.」も受ける。
+// 新しく入力された値の確認だけに使う（保存済みの値は読み込み・再保存で止めない）。
+const VA_DECIMAL_VALUES = new Set([
+  0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.2, 1.5, 2
+]);
+const VA_WORD_PATTERN = new RegExp([
+  "^(?:\\d{1,3}\\s*cm\\s*/?\\s*)?(?:n\\.?d\\.?|cf|指数弁|m\\.?m\\.?|hm|手動弁)$",
+  "^(?:s\\.?l\\.?|lp|光覚弁?)\\s*(?:\\(\\s*[+-]\\s*\\))?$",
+  "^(?:光覚なし|nlp|0|n\\.?c\\.?|矯正不能)$"
+].join("|"), "iu");
+
+function isVisualAcuityCore(text) {
+  if (VA_WORD_PATTERN.test(text)) return true;
+  const match = text.match(/^(\d(?:\.\d{1,2})?)\s*p?$/iu);
+  return Boolean(match) && VA_DECIMAL_VALUES.has(Number(match[1]));
+}
+
+export function isVisualAcuityText(raw) {
+  const text = String(raw ?? "").normalize("NFKC").replace(/[−ー－]/gu, "-").trim();
+  if (!text) return true;
+  if (isVisualAcuityCore(text)) return true;
+  const wrapped = text.match(/^\((.+)\)$/u);
+  if (!wrapped) return false;
+  const [head, ...lens] = wrapped[1].split(/[×x*]/u);
+  return isVisualAcuityCore(head.trim()) && lens.every((part) => part.trim().length > 0);
+}
+
+function assertVisualAcuity(next, previous, field) {
+  if (!next || next === previous || isVisualAcuityText(next)) return;
+  throw validationError(`視力「${next}」は読めません（例: 1.2、0.5p、(1.0)、n.d.）`, field);
+}
+
+// カルテの検査値（exam）で、新しく入れた視力だけを確かめる。前の値と同じものはそのまま通す。
+export function assertNewExamVisualAcuity(exam, previousExam = {}, field = "content.exam") {
+  for (const side of EYE_SIDES) {
+    for (const key of ["vaUncorrected", "vaCorrected", "vaNear"]) {
+      assertVisualAcuity(exam?.[side]?.[key], previousExam?.[side]?.[key], `${field}.${side}.${key}`);
+    }
+  }
+}
+
+// 検査記録の値（視力の表）で、新しく入れた視力だけを確かめる。
+export function assertNewRecordVisualAcuity(values, previousValues = {}, field = "values") {
+  for (const distance of ["far", "near"]) {
+    for (const side of [...EYE_SIDES, "ou"]) {
+      for (const key of ["uncorrected", "corrected"]) {
+        const path = ["vision", distance, side, key];
+        const read = (source) => path.reduce((value, part) => value?.[part], source);
+        assertVisualAcuity(read(values), read(previousValues), `${field}.${path.join(".")}`);
+      }
+    }
+  }
+}
+
 // 瞳孔径（mm）と対光反射。散瞳の前に測る。
 function validatePupil(value, field) {
   if (value === undefined || value === null) return {};

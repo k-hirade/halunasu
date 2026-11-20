@@ -12,7 +12,7 @@ import {
   WORTH_PATTERN_LABELS
 } from "@halunasu/eye-contracts";
 import { SaveIndicator } from "./encounter-dialogs";
-import { DilationFlags, hasExamValues, Orders } from "./encounter-sections";
+import { DilationFlags, Orders } from "./encounter-sections";
 import { VaDatalist } from "./exam-inputs";
 import { copyDeviceValues, DevicePanels, EXAM_TABS, ExamTabBody, tabHasValues, useScrollEdge, writeValue } from "./exam-regdata";
 import { PatientBanner } from "./patient-banner";
@@ -23,10 +23,14 @@ import { useMediaQuery } from "./use-media-query";
 import { ensureEncounterFor, nextExamPatient } from "../lib/consult-flow";
 import {
   collectDeviceReadings,
+  eyeRecordValues,
+  eyesWithValues,
   hasAnyValue,
+  hasExamValues,
   isoFromClock,
   nowClock,
   recordClock,
+  recordHasEyeValues,
   recordLabel,
   sameValues,
   sortRecords
@@ -37,6 +41,14 @@ const SIDES = ["od", "os"];
 const HANDOFF_CHIPS = ["眼鏡持参なし", "CL装用中", "固視不良", "測定困難", "再検希望"];
 // 検査員がこの画面から「診察待ち」に進めてよい受付の状態。
 const FINISHABLE = new Set(["in_exam", "checked_in"]);
+const LEAVE_CONFIRM = "登録していない入力があります。破棄して移動しますか？";
+
+// 開いている大タブ・小タブ（URL の ?tab=&sub=）。ブラウザの「戻る」で同じタブに戻れるようにする。
+function tabFromUrl() {
+  if (typeof window === "undefined") return { tab: "", sub: "" };
+  const params = new URLSearchParams(window.location.search);
+  return { tab: params.get("tab") || "", sub: params.get("sub") || "" };
+}
 
 // 検査入力（トプコン IMAGEnet eカルテの検査入力 RegData に倣う）。
 // 上から 患者 / 検査日・時刻・検者・[登録]（記録の切り替え）/ 大タブ / 小タブ / 本文。下に「確定系 … キャンセル … 保存して戻る … 保存して次へ」。
@@ -88,6 +100,25 @@ export function ExamWorkbench({ encounterId }) {
     setBaseline(next);
   }, [content, context, newForm, records, selectedId]);
 
+  // 開いたとき・戻ってきたときは URL のタブを開く
+  useEffect(() => {
+    const { tab: fromUrl, sub } = tabFromUrl();
+    const known = EXAM_TABS.find((item) => item.key === fromUrl);
+    if (!known) return;
+    setTab(known.key);
+    if (sub && known.subtabs?.some(([key]) => key === sub)) setSubtabs((current) => ({ ...current, [known.key]: sub }));
+  }, []);
+
+  function chooseTab(key, sub = "") {
+    setTab(key);
+    if (sub) setSubtabs((current) => ({ ...current, [key]: sub }));
+    const params = new URLSearchParams(window.location.search);
+    params.set("tab", key);
+    if (sub) params.set("sub", sub);
+    else params.delete("sub");
+    router.replace(`${window.location.pathname}?${params.toString()}`, { scroll: false });
+  }
+
   // ほかの端末で同じ記録が変わったら、入力中でなければ取り込む
   useEffect(() => {
     if (!serverRecord || dirty) return;
@@ -101,8 +132,25 @@ export function ExamWorkbench({ encounterId }) {
   useEffect(() => {
     if (!dirty) return undefined;
     const onBeforeUnload = (event) => { event.preventDefault(); event.returnValue = ""; };
+    // 画面の中のリンク（過去履歴・カルテ全体・ナビなど）で離れる前にも確かめる。
+    // Next の Link より先に（capture で）受け、やめたときは移動を止める。
+    const onClick = (event) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const link = event.target.closest?.("a[href]");
+      if (!link || link.target === "_blank" || link.hasAttribute("download")) return;
+      const url = new URL(link.href, window.location.href);
+      if (url.origin !== window.location.origin || url.pathname === window.location.pathname) return;
+      if (!window.confirm(LEAVE_CONFIRM)) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
     window.addEventListener("beforeunload", onBeforeUnload);
-    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+    document.addEventListener("click", onClick, true);
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      document.removeEventListener("click", onClick, true);
+    };
   }, [dirty]);
 
   // 同じ日・同じ患者で「受付中」「検査中」の受付を探す。ちょうど 1 件のときだけ状態を進める（誤った受付を動かさない）。
@@ -124,7 +172,12 @@ export function ExamWorkbench({ encounterId }) {
   const previous = detail.previous;
   const confirmations = encounter.examConfirmations || { od: null, os: null };
   const flags = content.flags || {};
-  const missing = SIDES.filter((side) => !hasExamValues(content.exam[side]));
+  // 値のある眼: カルテの検査値・登録済みの記録・入力中（未登録）の記録のどれかに値がある眼
+  const savedSides = eyesWithValues(content);
+  const draftChanged = (side) => dirty && recordHasEyeValues(form.values, side)
+    && !sameValues(eyeRecordValues(form.values, side), eyeRecordValues(baseline.values, side));
+  const valueSides = SIDES.filter((side) => savedSides.includes(side) || (dirty && recordHasEyeValues(form.values, side)));
+  const missing = SIDES.filter((side) => !valueSides.includes(side));
   const willMove = canReceive && matches?.length === 1;
   const dilationMinutes = flags.dilationStartedAt ? Math.max(0, Math.floor((now - Date.parse(flags.dilationStartedAt)) / 60000)) : null;
   const touch = coarse;
@@ -212,7 +265,14 @@ export function ExamWorkbench({ encounterId }) {
       if (!latest) return;
       // 登録したばかりの値で判断する（画面の content はまだ前の値のことがある）
       const latestConfirmations = latest.examConfirmations || { od: null, os: null };
-      const pending = SIDES.filter((side) => hasExamValues(latest.content.exam[side]) && !latestConfirmations[side]);
+      const sides = eyesWithValues(latest.content);
+      // 値のある眼がなければ、何も確認せず受付も動かさない
+      if (!sides.length) {
+        setMessage({ kind: "warn", text: "検査値が未入力のため、確認していません。受付の状態も変えていません。" });
+        return;
+      }
+      const done = sides.length === 2 ? "検査値" : `${EYE_LABELS[sides[0]]}の検査値`;
+      const pending = sides.filter((side) => !latestConfirmations[side]);
       if (pending.length === 2) {
         if (!(await confirmExam("both", true))) return;
       } else {
@@ -221,14 +281,14 @@ export function ExamWorkbench({ encounterId }) {
         }
       }
       if (!canReceive) {
-        setMessage({ kind: "ok", text: "検査値を確認済みにしました。受付の状態は受付で進めてください。" });
+        setMessage({ kind: "ok", text: `${done}を確認済みにしました。受付の状態は受付で進めてください。` });
         return;
       }
       let list;
       try {
         list = await findMatches();
       } catch (nextError) {
-        setMessage({ kind: "warn", text: `検査値を確認済みにしました。受付の状態は変えていません（${nextError.message}）。` });
+        setMessage({ kind: "warn", text: `${done}を確認済みにしました。受付の状態は変えていません（${nextError.message}）。` });
         return;
       }
       setMatches(list);
@@ -236,8 +296,8 @@ export function ExamWorkbench({ encounterId }) {
         setMessage({
           kind: "warn",
           text: list.length
-            ? "検査値を確認済みにしました。この患者の本日の受付が2件以上あるため、受付の状態は変えていません。受付画面で進めてください。"
-            : "検査値を確認済みにしました。検査中の受付が見つからないため、受付の状態は変えていません。"
+            ? `${done}を確認済みにしました。この患者の本日の受付が2件以上あるため、受付の状態は変えていません。受付画面で進めてください。`
+            : `${done}を確認済みにしました。検査中の受付が見つからないため、受付の状態は変えていません。`
         });
         return;
       }
@@ -291,7 +351,13 @@ export function ExamWorkbench({ encounterId }) {
 
   const closeMenu = (event) => { event.currentTarget.closest("details")?.removeAttribute("open"); };
   const phrases = (bootstrap.phrases || []).filter((item) => item.active !== false && item.target === "staffNote");
-  const eyeState = (side) => (confirmations[side] ? "確認済" : hasExamValues(content.exam[side]) ? "未確認" : "未入力");
+  // 入力中（未登録）の値も「未確認」に数える（登録すると、値の変わった眼の確認は外れる）
+  const eyeState = (side) => (confirmations[side] && !draftChanged(side) ? "確認済" : valueSides.includes(side) ? "未確認" : "未入力");
+  const finishEye = valueSides.length === 1 ? EYE_LABELS[valueSides[0]] : "";
+  const finishLabel = willMove ? (finishEye ? `${finishEye}を確認 → 診察待ちへ` : "検査終了 → 診察待ちへ") : (finishEye ? `${finishEye}を確認する` : "検査値を確認する");
+  const finishTitle = !valueSides.length
+    ? "検査値が未入力のため確認できません"
+    : `登録・保存して${finishEye || "値のある眼"}を確認済みにします${willMove ? "。受付を「診察待ち」にします" : "（受付の状態は変えません）"}`;
   // 機器の値は、登録済みの記録に「入力中の記録」を重ねて出す（取り込んだばかりの値をすぐ見せる）
   const draftRecord = { recordId: selectedId || "draft", at: isoFromClock(encounterDate, form.clock), values: form.values };
   const readingRecords = selectedId ? records.map((record) => (record.recordId === selectedId ? { ...record, values: form.values } : record)) : [...records, draftRecord];
@@ -378,7 +444,7 @@ export function ExamWorkbench({ encounterId }) {
                   className={`rd-tab${tabHasValues(item.key, form.values) ? " has-values" : ""}`}
                   id={`rd-tab-${item.key}`}
                   key={item.key}
-                  onClick={(event) => { setTab(item.key); event.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" }); }}
+                  onClick={(event) => { chooseTab(item.key); event.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" }); }}
                   role="tab"
                   type="button"
                 >
@@ -390,7 +456,7 @@ export function ExamWorkbench({ encounterId }) {
           {activeTab.subtabs ? (
             <div aria-label={`${activeTab.label}の検査`} className="rd-subtabs" role="tablist">
               {activeTab.subtabs.map(([key, label]) => (
-                <button aria-selected={key === activeSubtab} className="rd-subtab" key={key} onClick={() => setSubtabs({ ...subtabs, [activeTab.key]: key })} role="tab" type="button">{label}</button>
+                <button aria-selected={key === activeSubtab} className="rd-subtab" key={key} onClick={() => chooseTab(activeTab.key, key)} role="tab" type="button">{label}</button>
               ))}
             </div>
           ) : null}
@@ -440,7 +506,8 @@ export function ExamWorkbench({ encounterId }) {
 
       <div aria-label="検査の操作" className="exam-bar rd-bar" data-fixed-bar="bottom" ref={examBarRef} role="region">
         <div className="exam-bar-row">
-          {editable ? <SaveIndicator onRetry={save} state={saveState} /> : null}
+          {/* 状態は 1 つだけ: 未登録の入力があるときは記録の行の「未登録の入力があります」（と［登録］）だけにする */}
+          {editable && (!dirty || saveState === "saving" || saveState === "error") ? <SaveIndicator onRetry={save} state={saveState} /> : null}
           <span className="exam-bar-eyes">
             {SIDES.map((side) => (
               <span className={`exam-bar-eye is-${eyeState(side) === "確認済" ? "done" : eyeState(side) === "未確認" ? "pending" : "empty"}`} key={side}>
@@ -458,7 +525,7 @@ export function ExamWorkbench({ encounterId }) {
               <div className="more-menu-list">
                 {SIDES.map((side) => (confirmations[side] ? (
                   <button className="btn btn-ghost" key={side} onClick={(event) => { closeMenu(event); confirmExam(side, false); }} type="button">{EYE_LABELS[side]}の確認を取り消す</button>
-                ) : hasExamValues(content.exam[side]) ? (
+                ) : savedSides.includes(side) ? (
                   <button className="btn btn-ghost" key={side} onClick={(event) => { closeMenu(event); confirmExam(side, true); }} type="button">{EYE_LABELS[side]}だけ確認する</button>
                 ) : null))}
                 <button aria-pressed={Boolean(flags.myopiaTreatment)} className="btn btn-ghost" onClick={(event) => { closeMenu(event); update(["flags"], { ...flags, myopiaTreatment: !flags.myopiaTreatment }); }} type="button">
@@ -471,8 +538,8 @@ export function ExamWorkbench({ encounterId }) {
         {editable ? (
           <div className="rd-bar-buttons">
             {missing.length && !dirty ? <span className="exam-bar-hint">{missing.length === 2 ? "検査値が未入力です" : `${EYE_LABELS[missing[0]]}は未入力です`}</span> : null}
-            <button className="btn btn-primary rd-finish" disabled={busy !== ""} onClick={finish} title={willMove ? "登録・保存して値のある眼を確認済みにし、受付を「診察待ち」にします" : "登録・保存して値のある眼を確認済みにします（受付の状態は変えません）"} type="button">
-              {busy === "finish" ? "処理中…" : willMove ? "検査終了 → 診察待ちへ" : "検査値を確認する"}
+            <button className="btn btn-primary rd-finish" disabled={busy !== "" || !valueSides.length} onClick={finish} title={finishTitle} type="button">
+              {busy === "finish" ? "処理中…" : finishLabel}
             </button>
             <span className="rd-bar-gap" />
             <button className="btn btn-ghost" disabled={!dirty || busy !== ""} onClick={cancelEdit} type="button">キャンセル</button>

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { formatDate } from "../lib/format";
 import { LABEL_CHAR_WIDTH, placeLabels } from "../lib/label-layout.mjs";
-import { iopAxis, thinLabels, vaAxis } from "../lib/trend-scale.mjs";
+import { edgeMarkPath, iopAxis, thinLabels, vaAxis, vaPoint } from "../lib/trend-scale.mjs";
 import { IOP_METHOD_LABELS, VA_CORRECTION_TYPE_LABELS } from "../lib/format";
 
 // 視力眼圧（トプコンのカルテ右上タブ「視力眼圧」に倣う）。
@@ -106,8 +106,10 @@ function SeriesChart({ kind, title, unit = "", points, series, shown, toggle, pl
   }, []);
   const active = series.filter((item) => shown.has(item.key));
   const values = points.flatMap((point) => active.map((item) => point[item.side]?.[item.field])).filter(isNumber);
+  // 視力は数値にできない書き方（指数弁など）だけの日も軸を出し、端に印を置く
+  const labelled = kind === "va" && points.some((point) => active.some((item) => point[item.side]?.[item.labelField]));
   const band = { top: PAD.top, bottom: PAD.top + plotHeight };
-  const axis = values.length ? (kind === "va" ? vaAxis(values, band) : iopAxis(values, band)) : null;
+  const axis = values.length || labelled ? (kind === "va" ? vaAxis(values, band) : iopAxis(values, band)) : null;
   const height = band.bottom + PAD.bottom;
   const left = PAD.left;
   const right = width - PAD.right;
@@ -142,12 +144,17 @@ function SeriesChart({ kind, title, unit = "", points, series, shown, toggle, pl
           )) : <text className="axis" x={left} y={band.top + plotHeight / 2}>表示する値がありません</text>}
           {axis ? active.map((item) => {
             const list = points.filter((point) => isNumber(point[item.side]?.[item.field]));
-            if (!list.length) return null;
+            // 視力の軸の外の値・指数弁などは、軸の端に三角の印で置く（黙って落とさない）
+            const edges = kind === "va" ? points
+              .map((point) => ({ point, place: vaPoint(point[item.side]?.[item.field], point[item.side]?.[item.labelField], axis) }))
+              .filter(({ place }) => place?.edge) : [];
+            if (!list.length && !edges.length) return null;
             const path = list.map((point, index) => `${index ? "L" : "M"}${xOf(point.encounterDate)},${axis.y(point[item.side][item.field])}`).join(" ");
+            const edgeIds = new Set(edges.map(({ point }) => point.encounterId));
             return (
               <g className={item.className} key={item.key}>
                 {list.length > 1 ? <path className="line" d={path} /> : null}
-                {list.map((point) => {
+                {list.filter((point) => !edgeIds.has(point.encounterId)).map((point) => {
                   const value = point[item.side][item.field];
                   const x = xOf(point.encounterDate);
                   const y = axis.y(value);
@@ -161,6 +168,11 @@ function SeriesChart({ kind, title, unit = "", points, series, shown, toggle, pl
                     </g>
                   );
                 })}
+                {edges.map(({ point, place }) => (
+                  <path className="edge-mark" d={edgeMarkPath(xOf(point.encounterDate), place.y, place.edge)} key={`edge-${point.encounterId}`}>
+                    <title>{`${formatDate(point.encounterDate)} ${item.label} ${point[item.side]?.[item.labelField] || ""}（${place.note}）`}</title>
+                  </path>
+                ))}
               </g>
             );
           }) : null}

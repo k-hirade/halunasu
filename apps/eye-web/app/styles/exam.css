@@ -39,9 +39,57 @@
 }
 
 .xt-grid .input.input-iop.is-high {
-  border-color: var(--red);
-  color: var(--red);
+  background: var(--abnormal-soft);
+  border-color: var(--abnormal);
+  color: var(--abnormal);
   font-weight: 800;
+  padding-right: 18px;
+}
+
+/* 眼圧の基準超えの印（↑）。入力欄の右端に重ねる */
+.xt-iop-field {
+  display: inline-block;
+  min-width: 0;
+  position: relative;
+}
+
+.xt-grid .xt-iop-field {
+  display: block;
+  width: 100%;
+}
+
+.xt-iop-mark {
+  color: var(--abnormal);
+  pointer-events: none;
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* 数値・視力の欄の説明（読めない入力・範囲外は赤、3 桁の度数の読み替えは → -1.25 の形） */
+.num-msg {
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.12);
+  color: var(--text-soft);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  left: 0;
+  line-height: 1.4;
+  padding: 2px 6px;
+  pointer-events: none;
+  position: absolute;
+  top: calc(100% + 2px);
+  white-space: nowrap;
+  z-index: 30;
+}
+
+.num-msg.is-error {
+  background: var(--red-soft);
+  border-color: var(--red-line);
+  color: var(--red);
 }
 
 .xt-grid .input.xt-axis.is-dim {

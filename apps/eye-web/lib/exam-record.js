@@ -26,6 +26,35 @@ export function hasAnyValue(value) {
   return true;
 }
 
+// 記録の値のうち、片眼（od / os）に関わる部分。PD は両眼の値なので左右どちらにも入れる。
+export function eyeRecordValues(values = {}, side) {
+  return {
+    far: values.vision?.far?.[side],
+    near: values.vision?.near?.[side],
+    refraction: values.refraction?.[side],
+    keratometry: values.keratometry?.[side],
+    iop: values.iop?.[side]?.readings,
+    pupil: values.pupil?.[side],
+    pd: values.pd
+  };
+}
+
+export function recordHasEyeValues(values, side) {
+  return hasAnyValue(eyeRecordValues(values, side));
+}
+
+// カルテの検査値（content.exam の片眼）に値があるか。近見視力・角膜曲率・瞳孔も数える。
+export function hasExamValues(values = {}) {
+  return Boolean(values.vaUncorrected || values.vaCorrected || values.vaNear || Number.isFinite(values.iop)
+    || [values.correction, values.refraction, values.keratometry, values.pupil].some(hasAnyValue));
+}
+
+// 検査終了・確認の対象になる眼（カルテの検査値か、登録済みの記録に値のある眼）
+export function eyesWithValues(content = {}) {
+  return ["od", "os"].filter((side) => hasExamValues(content.exam?.[side] || {})
+    || (content.examRecords || []).some((record) => recordHasEyeValues(record.values, side)));
+}
+
 // 記録の時刻（ISO）→ 日本時間の「HH:MM」
 export function recordClock(iso) {
   const time = Date.parse(iso || "");

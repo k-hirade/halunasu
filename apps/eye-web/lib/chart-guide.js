@@ -1,6 +1,8 @@
 // カルテガイド（トプコンの「記入状況でボタンの色が変わる」）。中央の見出しの下に、項目ごとの記入状況を出す。
 // state: done（入力済み）・warn（要確認）・todo（未入力）。target は押したときに移る欄の id。
 
+import { hasExamValues } from "./exam-record.js";
+
 const SIDES = ["od", "os"];
 
 // 文字列・数値の入った値が 1 つでもあるか（所見の木を見る）
@@ -13,11 +15,6 @@ export function anyText(value) {
   return false;
 }
 
-// encounter-sections.js の hasExamValues と同じ判定（画面の部品を読み込まずに使うため）
-function hasExamValues(values = {}) {
-  return Boolean(values.vaUncorrected || values.vaCorrected || Number.isFinite(values.iop)
-    || [values.correction, values.refraction].some((item) => item && Object.values(item).some((value) => value !== null && value !== undefined)));
-}
 
 export const GUIDE_STATE_LABELS = Object.freeze({ done: "入力済み", warn: "要確認", todo: "未入力" });
 

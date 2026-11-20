@@ -28,3 +28,31 @@ export function acceptNumber(parsed, { min, max, integer = false } = {}) {
     && (max === undefined || parsed.value <= max)
     && (!integer || Number.isInteger(parsed.value));
 }
+
+// 屈折値（S・C）の読み取り。小数点なしで 3 桁以上の数字は 1/100 D として読む（「-125」→ -1.25、「+075」→ +0.75、
+// 「-1250」→ -12.50）。1〜2 桁（「-12」「-1」）はそのまま D。読み替えたときは converted を付ける。
+export function readDiopter(text) {
+  const match = normalizeNumberText(text).match(/^([+-]?)(\d{3,})$/u);
+  if (match) return { value: Number(`${match[1]}${match[2]}`) / 100, converted: true };
+  return readNumber(text);
+}
+
+// 入力の確認。ok なら保存してよい（value は空なら null）。message は画面に出す短い説明。
+// final=false（入力の途中）は、続けて打てば直る誤り（正の下限未満・刻み・「-」「-1.」）を message なしで返す（赤くしない）。
+// final=true（欄を離れるとき）は、どの誤りにも message を付ける。末尾の「.」は無いものとして読む。
+export function checkNumber(text, { min, max, integer = false, step, read = readNumber, final = false } = {}) {
+  const parsed = read(final ? normalizeNumberText(text).replace(/\.$/u, "") : text);
+  if (parsed.empty) return { ok: true, value: null };
+  if (parsed.partial) return { ok: false, message: final ? "数値で入力" : null };
+  if (parsed.invalid) return { ok: false, message: "数値で入力" };
+  const { value } = parsed;
+  const range = `${min ?? ""}〜${max ?? ""}の範囲で入力`;
+  // 上限超え・負の側の下限未満は、桁を足しても戻らないのですぐ知らせる
+  if (max !== undefined && value > max) return { ok: false, message: range };
+  if (min !== undefined && value < min) return { ok: false, message: final || min <= 0 ? range : null };
+  if (integer && !Number.isInteger(value)) return { ok: false, message: "整数で入力" };
+  if (step && Math.abs(value / step - Math.round(value / step)) > 1e-9) {
+    return { ok: false, message: final ? `${step}刻みで入力` : null };
+  }
+  return { ok: true, value, converted: Boolean(parsed.converted) };
+}
